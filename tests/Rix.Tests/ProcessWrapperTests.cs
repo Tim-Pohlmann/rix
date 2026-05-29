@@ -114,7 +114,7 @@ public class ProcessWrapperTests
     private static (string fileName, string[] args) SleepCommand(int seconds)
     {
         if (OperatingSystem.IsWindows())
-            return ("cmd.exe", ["/c", $"timeout /t {seconds} /nobreak"]);
+            return ("powershell.exe", ["-NoProfile", "-Command", $"Start-Sleep -Seconds {seconds}"]);
         return ("/bin/sh", ["-c", $"sleep {seconds}"]);
     }
 }
