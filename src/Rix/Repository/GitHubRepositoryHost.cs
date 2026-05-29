@@ -1,0 +1,123 @@
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Rix.Process;
+
+namespace Rix.Repository;
+
+internal sealed class GitHubRepositoryHost : IRepositoryHost
+{
+    private readonly string _owner;
+    private readonly string _repo;
+    private readonly string _readToken;
+    private readonly string _writeToken;
+    private readonly HttpClient _http;
+
+    internal GitHubRepositoryHost(string repoIdentifier, string readToken, string writeToken)
+        : this(repoIdentifier, readToken, writeToken, handler: null) { }
+
+    private GitHubRepositoryHost(string repoIdentifier, string readToken, string writeToken, HttpMessageHandler? handler)
+    {
+        var parts = repoIdentifier.Split('/', 2);
+        _owner = parts[0];
+        _repo = parts[1];
+        _readToken = readToken;
+        _writeToken = writeToken;
+        _http = BuildHttpClient(readToken, handler);
+    }
+
+    internal static GitHubRepositoryHost WithHandler(
+        string repoIdentifier,
+        string readToken,
+        string writeToken,
+        HttpMessageHandler handler) =>
+        new(repoIdentifier, readToken, writeToken, handler);
+
+    private static HttpClient BuildHttpClient(string token, HttpMessageHandler? handler)
+    {
+        var client = handler is null ? new HttpClient() : new HttpClient(handler);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("rix/1.0");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+        return client;
+    }
+
+    public async Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
+    {
+        var cloneUrl = $"https://x-access-token:{_readToken}@github.com/{_owner}/{_repo}.git";
+        var result = await ProcessWrapper.RunAsync(
+            "git", ["clone", cloneUrl, targetDirectory],
+            workingDirectory: Path.GetTempPath(),
+            environment: ProcessWrapper.BuildSanitizedEnvironment(),
+            onStdoutLine: _ => { },
+            cancellationToken: cancellationToken);
+
+        if (!result.Succeeded)
+            throw new InvalidOperationException($"git clone failed with exit code {result.ExitCode}");
+    }
+
+    public async Task<bool> BranchExistsOnRemoteAsync(string branch, CancellationToken cancellationToken)
+    {
+        var url = $"https://api.github.com/repos/{_owner}/{_repo}/branches/{Uri.EscapeDataString(branch)}";
+        var response = await _http.GetAsync(url, cancellationToken);
+        return response.StatusCode == System.Net.HttpStatusCode.OK;
+    }
+
+    public async Task PushBranchAsync(string branch, CancellationToken cancellationToken)
+    {
+        var remoteUrl = $"https://x-access-token:{_writeToken}@github.com/{_owner}/{_repo}.git";
+        var result = await ProcessWrapper.RunAsync(
+            "git", ["push", remoteUrl, $"refs/heads/{branch}:refs/heads/{branch}"],
+            workingDirectory: Path.GetTempPath(),
+            environment: ProcessWrapper.BuildSanitizedEnvironment(),
+            onStdoutLine: _ => { },
+            cancellationToken: cancellationToken);
+
+        if (!result.Succeeded)
+            throw new InvalidOperationException($"git push failed with exit code {result.ExitCode}");
+    }
+
+    public async Task<string> CreatePullRequestAsync(
+        string branch,
+        string title,
+        string body,
+        CancellationToken cancellationToken)
+    {
+        var url = $"https://api.github.com/repos/{_owner}/{_repo}/pulls";
+        var payload = JsonSerializer.Serialize(
+            new CreatePrRequestDto(Title: title, Head: branch, Base: "main", Body: body),
+            GitHubJsonContext.Default.CreatePrRequestDto);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _writeToken);
+
+        var response = await _http.SendAsync(request, cancellationToken);
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"GitHub PR creation failed ({(int)response.StatusCode}): {json}");
+
+        var pr = JsonSerializer.Deserialize(json, GitHubJsonContext.Default.CreatePrResponseDto)
+            ?? throw new InvalidOperationException("GitHub returned null PR response");
+
+        return pr.HtmlUrl;
+    }
+
+    internal record CreatePrRequestDto(
+        [property: JsonPropertyName("title")] string Title,
+        [property: JsonPropertyName("head")] string Head,
+        [property: JsonPropertyName("base")] string Base,
+        [property: JsonPropertyName("body")] string Body);
+
+    internal record CreatePrResponseDto(
+        [property: JsonPropertyName("html_url")] string HtmlUrl);
+}
+
+[JsonSerializable(typeof(GitHubRepositoryHost.CreatePrRequestDto))]
+[JsonSerializable(typeof(GitHubRepositoryHost.CreatePrResponseDto))]
+internal partial class GitHubJsonContext : JsonSerializerContext { }
