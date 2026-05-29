@@ -42,6 +42,7 @@ jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
+    if: ${{ secrets.SONAR_TOKEN != '' }}
 
     steps:
       - uses: actions/checkout@v4
