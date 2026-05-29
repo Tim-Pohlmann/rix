@@ -1,3 +1,3 @@
 using Rix;
 
-await Startup.RunAsync(args);
+return await Startup.RunAsync(args);

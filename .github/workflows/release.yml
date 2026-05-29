@@ -110,15 +110,15 @@ jobs:
         run: echo "value=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
       - name: Publish
-        run: dotnet publish src/Rix/Rix.csproj -r ${{ matrix.rid }} -c Release -o bin/
+        run: dotnet publish src/Rix/Rix.csproj -r ${{ matrix.rid }} -c Release -o publish/
 
       - name: Archive (tar.gz)
         if: matrix.archive_ext == 'tar.gz'
-        run: tar -czf rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.tar.gz -C bin .
+        run: tar -czf rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.tar.gz -C publish .
 
       - name: Archive (zip)
         if: matrix.archive_ext == 'zip'
-        run: cd bin && zip -r ../rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.zip .
+        run: cd publish && zip -r ../rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.zip .
 
       - name: Upload asset
         run: gh release upload "${{ github.event.inputs.version }}" "rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.${{ matrix.archive_ext }}" --clobber --repo "$GITHUB_REPOSITORY"
