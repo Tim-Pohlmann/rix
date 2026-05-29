@@ -1,2 +1,2 @@
-# rix
+# RIX
 AI software factory 
