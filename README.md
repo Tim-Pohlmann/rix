@@ -1,0 +1,2 @@
+# rix
+AI software factory 
