@@ -26,16 +26,15 @@ public class JobCommandTests
             return Task.FromResult(0);
         });
 
-        Environment.SetEnvironmentVariable("RIX_REPO", "env/repo");
-        Environment.SetEnvironmentVariable("RIX_PROMPT", "env prompt");
-        Environment.SetEnvironmentVariable("RIX_READ_TOKEN", "env-read");
-        Environment.SetEnvironmentVariable("RIX_WRITE_TOKEN", "env-write");
-        Environment.SetEnvironmentVariable("RIX_MAX_TOKENS", "999");
-        Environment.SetEnvironmentVariable("RIX_TIMEOUT", "15");
-        Environment.SetEnvironmentVariable("RIX_WORK_DIR", Path.GetTempPath());
-
         try
         {
+            Environment.SetEnvironmentVariable("RIX_REPO", "env/repo");
+            Environment.SetEnvironmentVariable("RIX_PROMPT", "env prompt");
+            Environment.SetEnvironmentVariable("RIX_READ_TOKEN", "env-read");
+            Environment.SetEnvironmentVariable("RIX_WRITE_TOKEN", "env-write");
+            Environment.SetEnvironmentVariable("RIX_MAX_TOKENS", "999");
+            Environment.SetEnvironmentVariable("RIX_TIMEOUT", "15");
+            Environment.SetEnvironmentVariable("RIX_WORK_DIR", Path.GetTempPath());
             await parser.InvokeAsync("job");
         }
         finally
@@ -64,9 +63,9 @@ public class JobCommandTests
             return Task.FromResult(0);
         });
 
-        Environment.SetEnvironmentVariable("RIX_REPO", "env/repo");
         try
         {
+            Environment.SetEnvironmentVariable("RIX_REPO", "env/repo");
             await parser.InvokeAsync("job --repo flag/repo --prompt p --read-token r --write-token w");
         }
         finally
