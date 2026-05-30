@@ -19,8 +19,8 @@ public class JobConfigTests
     {
         var config = ValidConfig();
 
-        Assert.AreEqual(JobConfig.DefaultMaxTokens, config.MaxTokens);
-        Assert.AreEqual(JobConfig.DefaultTimeoutMinutes, config.TimeoutMinutes);
+        Assert.AreEqual(JobConfig.DefaultMaxTokens, config.MaxTokens.Value);
+        Assert.AreEqual(JobConfig.DefaultTimeoutMinutes, config.TimeoutMinutes.Value);
         Assert.AreEqual(Path.GetTempPath(), config.WorkDir);
     }
 
@@ -36,8 +36,8 @@ public class JobConfigTests
             timeoutMinutes: 5,
             workDir: Path.GetTempPath());
 
-        Assert.AreEqual(1000, config.MaxTokens);
-        Assert.AreEqual(5, config.TimeoutMinutes);
+        Assert.AreEqual(1000, config.MaxTokens.Value);
+        Assert.AreEqual(5, config.TimeoutMinutes.Value);
     }
 
     [TestMethod]
@@ -52,7 +52,7 @@ public class JobConfigTests
     [DataRow("noslash", "owner/repo must contain a slash")]
     public void Validate_RejectsInvalidRepo(string repo, string _)
     {
-        var config = ValidConfig() with { Repo = repo };
+        var config = ValidConfig() with { Repo = new RepoIdentifier(repo) };
         var errors = config.Validate();
         Assert.IsTrue(errors.Count > 0, "Expected validation errors for repo: " + repo);
     }
@@ -67,28 +67,28 @@ public class JobConfigTests
     [TestMethod]
     public void Validate_RejectsEmptyReadToken()
     {
-        var errors = (ValidConfig() with { ReadToken = "" }).Validate();
+        var errors = (ValidConfig() with { ReadToken = new ReadToken("") }).Validate();
         Assert.IsTrue(errors.Count > 0);
     }
 
     [TestMethod]
     public void Validate_RejectsEmptyWriteToken()
     {
-        var errors = (ValidConfig() with { WriteToken = "" }).Validate();
+        var errors = (ValidConfig() with { WriteToken = new WriteToken("") }).Validate();
         Assert.IsTrue(errors.Count > 0);
     }
 
     [TestMethod]
     public void Validate_RejectsNonPositiveMaxTokens()
     {
-        var errors = (ValidConfig() with { MaxTokens = 0 }).Validate();
+        var errors = (ValidConfig() with { MaxTokens = new MaxTokens(0) }).Validate();
         Assert.IsTrue(errors.Count > 0);
     }
 
     [TestMethod]
     public void Validate_RejectsNonPositiveTimeout()
     {
-        var errors = (ValidConfig() with { TimeoutMinutes = -1 }).Validate();
+        var errors = (ValidConfig() with { TimeoutMinutes = new TimeoutMinutes(-1) }).Validate();
         Assert.IsTrue(errors.Count > 0);
     }
 

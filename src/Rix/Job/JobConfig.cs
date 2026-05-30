@@ -1,12 +1,12 @@
 namespace Rix.Job;
 
 internal record JobConfig(
-    string Repo,
+    RepoIdentifier Repo,
     string Prompt,
-    string ReadToken,
-    string WriteToken,
-    int MaxTokens,
-    int TimeoutMinutes,
+    ReadToken ReadToken,
+    WriteToken WriteToken,
+    MaxTokens MaxTokens,
+    TimeoutMinutes TimeoutMinutes,
     string WorkDir
 )
 {
@@ -22,12 +22,12 @@ internal record JobConfig(
         int? timeoutMinutes,
         string? workDir) =>
         new(
-            Repo: repo,
+            Repo: new RepoIdentifier(repo),
             Prompt: prompt,
-            ReadToken: readToken,
-            WriteToken: writeToken,
-            MaxTokens: maxTokens ?? DefaultMaxTokens,
-            TimeoutMinutes: timeoutMinutes ?? DefaultTimeoutMinutes,
+            ReadToken: new ReadToken(readToken),
+            WriteToken: new WriteToken(writeToken),
+            MaxTokens: new MaxTokens(maxTokens ?? DefaultMaxTokens),
+            TimeoutMinutes: new TimeoutMinutes(timeoutMinutes ?? DefaultTimeoutMinutes),
             WorkDir: workDir ?? Path.GetTempPath()
         );
 
@@ -35,24 +35,24 @@ internal record JobConfig(
     {
         var errors = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(Repo))
+        if (string.IsNullOrWhiteSpace(Repo.Value))
             errors.Add("--repo is required");
-        else if (!Repo.Contains('/'))
+        else if (!Repo.Value.Contains('/'))
             errors.Add("--repo must be in the format owner/repo");
 
         if (string.IsNullOrWhiteSpace(Prompt))
             errors.Add("--prompt is required");
 
-        if (string.IsNullOrWhiteSpace(ReadToken))
+        if (string.IsNullOrWhiteSpace(ReadToken.Value))
             errors.Add("--read-token is required");
 
-        if (string.IsNullOrWhiteSpace(WriteToken))
+        if (string.IsNullOrWhiteSpace(WriteToken.Value))
             errors.Add("--write-token is required");
 
-        if (MaxTokens <= 0)
+        if (MaxTokens.Value <= 0)
             errors.Add("--max-tokens must be a positive integer");
 
-        if (TimeoutMinutes <= 0)
+        if (TimeoutMinutes.Value <= 0)
             errors.Add("--timeout must be a positive integer");
 
         if (!string.IsNullOrEmpty(WorkDir) && !Directory.Exists(WorkDir))

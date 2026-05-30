@@ -44,12 +44,12 @@ public class JobCommandTests
         }
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual("env/repo", captured.Repo);
+        Assert.AreEqual("env/repo", captured.Repo.Value);
         Assert.AreEqual("env prompt", captured.Prompt);
-        Assert.AreEqual("env-read", captured.ReadToken);
-        Assert.AreEqual("env-write", captured.WriteToken);
-        Assert.AreEqual(999, captured.MaxTokens);
-        Assert.AreEqual(15, captured.TimeoutMinutes);
+        Assert.AreEqual("env-read", captured.ReadToken.Value);
+        Assert.AreEqual("env-write", captured.WriteToken.Value);
+        Assert.AreEqual(999, captured.MaxTokens.Value);
+        Assert.AreEqual(15, captured.TimeoutMinutes.Value);
     }
 
     [TestMethod]
@@ -73,6 +73,6 @@ public class JobCommandTests
         }
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual("flag/repo", captured.Repo);
+        Assert.AreEqual("flag/repo", captured.Repo.Value);
     }
 }
