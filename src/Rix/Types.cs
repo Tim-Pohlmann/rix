@@ -38,7 +38,11 @@ internal static class BranchNameExtensions
 internal sealed class BranchNameJsonConverter : JsonConverter<BranchName>
 {
     public override BranchName Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => new(reader.GetString() ?? throw new JsonException("BranchName cannot be null"));
+    {
+        if (reader.TokenType != JsonTokenType.String)
+            throw new JsonException($"Expected string token for BranchName, got {reader.TokenType}");
+        return new(reader.GetString()!);
+    }
     public override void Write(Utf8JsonWriter writer, BranchName value, JsonSerializerOptions options)
         => writer.WriteStringValue(value.Value);
 }

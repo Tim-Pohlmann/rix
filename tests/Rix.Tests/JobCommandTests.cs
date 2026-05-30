@@ -32,6 +32,7 @@ public class JobCommandTests
         Environment.SetEnvironmentVariable("RIX_WRITE_TOKEN", "env-write");
         Environment.SetEnvironmentVariable("RIX_MAX_TOKENS", "999");
         Environment.SetEnvironmentVariable("RIX_TIMEOUT", "15");
+        Environment.SetEnvironmentVariable("RIX_WORK_DIR", Path.GetTempPath());
 
         try
         {
@@ -39,7 +40,7 @@ public class JobCommandTests
         }
         finally
         {
-            foreach (var key in new[] { "RIX_REPO", "RIX_PROMPT", "RIX_READ_TOKEN", "RIX_WRITE_TOKEN", "RIX_MAX_TOKENS", "RIX_TIMEOUT" })
+            foreach (var key in new[] { "RIX_REPO", "RIX_PROMPT", "RIX_READ_TOKEN", "RIX_WRITE_TOKEN", "RIX_MAX_TOKENS", "RIX_TIMEOUT", "RIX_WORK_DIR" })
                 Environment.SetEnvironmentVariable(key, null);
         }
 
@@ -50,6 +51,7 @@ public class JobCommandTests
         Assert.AreEqual("env-write", captured.WriteToken.Value);
         Assert.AreEqual(999, captured.MaxTokens.Value);
         Assert.AreEqual(15, captured.TimeoutMinutes.Value);
+        Assert.AreEqual(Path.GetTempPath(), captured.WorkDir);
     }
 
     [TestMethod]
