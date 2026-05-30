@@ -72,7 +72,6 @@ public class ProcessWrapperTests
             fileName, args,
             workingDirectory: Path.GetTempPath(),
             environment: env,
-            onStdoutLine: _ => { },
             cancellationToken: CancellationToken.None);
 
         Assert.AreEqual(1, result.ExitCode);
@@ -90,7 +89,6 @@ public class ProcessWrapperTests
             fileName, args,
             workingDirectory: Path.GetTempPath(),
             environment: env,
-            onStdoutLine: _ => { },
             cancellationToken: cts.Token);
 
         Assert.IsTrue(result.TimedOut);

@@ -36,8 +36,8 @@ internal sealed class ProcessWrapper
         IEnumerable<string> arguments,
         string workingDirectory,
         IReadOnlyDictionary<string, string> environment,
-        Action<string> onStdoutLine,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<string>? onStdoutLine = null)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -77,13 +77,13 @@ internal sealed class ProcessWrapper
 
     private static async Task ReadLinesAsync(
         StreamReader reader,
-        Action<string> onLine,
+        Action<string>? onLine,
         CancellationToken cancellationToken)
     {
         try
         {
             while (await reader.ReadLineAsync(cancellationToken) is { } line)
-                onLine(line);
+                onLine?.Invoke(line);
         }
         catch (OperationCanceledException) { }
     }
@@ -92,9 +92,7 @@ internal sealed class ProcessWrapper
     {
         try
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                process.Kill();
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 SendSigterm(process.Id);
             else
                 process.Kill();
