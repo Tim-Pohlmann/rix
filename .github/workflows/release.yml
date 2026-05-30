@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. v1.2.3)'
+        required: true
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Validate version format
+        run: |
+          version="${{ github.event.inputs.version }}"
+          if [[ ! "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Error: version must match v<major>.<minor>.<patch> with no leading zeros (got: $version)"
+            exit 1
+          fi
+
+      - name: Set version
+        run: |
+          semver="${{ github.event.inputs.version }}"
+          semver="${semver#v}"
+          git fetch --tags origin
+          if git rev-parse --verify "refs/tags/${{ github.event.inputs.version }}" >/dev/null 2>&1; then
+            commits_after=$(git rev-list "refs/tags/${{ github.event.inputs.version }}..origin/${{ github.event.repository.default_branch }}" --count)
+            if [[ "$commits_after" -gt 0 ]]; then
+              echo "Error: release ${{ github.event.inputs.version }} already completed ($commits_after commit(s) after tag)." >&2
+              exit 1
+            fi
+            echo "Partial re-run: tag already exists — skipping version commit."
+            exit 0
+          fi
+          bash .github/scripts/set-version.sh "$semver"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/Rix/Rix.csproj
+          if ! git diff --cached --quiet; then
+            git commit -m "Release v$semver"
+            git push origin "${{ github.event.repository.default_branch }}"
+          fi
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "${{ github.event.inputs.version }}" \
+            --title "Rix ${{ github.event.inputs.version }}" \
+            --target "$(git rev-parse HEAD)" \
+            --generate-notes \
+            --repo "$GITHUB_REPOSITORY" \
+          || gh release view "${{ github.event.inputs.version }}" --repo "$GITHUB_REPOSITORY" > /dev/null
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    name: Publish (${{ matrix.rid }})
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        include:
+          - rid: linux-x64
+            archive_ext: tar.gz
+          - rid: linux-arm64
+            archive_ext: tar.gz
+          - rid: osx-x64
+            archive_ext: tar.gz
+          - rid: osx-arm64
+            archive_ext: tar.gz
+          - rid: win-x64
+            archive_ext: zip
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ github.event.inputs.version }}
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Set version
+        id: ver
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: echo "value=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        run: dotnet publish src/Rix/Rix.csproj -r ${{ matrix.rid }} -c Release -o publish/
+
+      - name: Archive (tar.gz)
+        if: matrix.archive_ext == 'tar.gz'
+        run: tar -czf rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.tar.gz -C publish .
+
+      - name: Archive (zip)
+        if: matrix.archive_ext == 'zip'
+        run: cd publish && zip -r ../rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.zip .
+
+      - name: Upload asset
+        run: gh release upload "${{ github.event.inputs.version }}" "rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.${{ matrix.archive_ext }}" --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  bump-version:
+    name: Bump Version
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Bump minor version and commit
+        run: |
+          semver="${{ github.event.inputs.version }}"
+          semver="${semver#v}"
+          major="${semver%%.*}"
+          minor="${semver#*.}"
+          minor="${minor%%.*}"
+          next_version="$major.$((minor + 1)).0"
+          bash .github/scripts/set-version.sh "$next_version"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/Rix/Rix.csproj
+          git diff --cached --quiet && { echo "Version already bumped to $next_version"; exit 0; }
+          git commit -m "Bump version to $next_version"
+          git push origin "${{ github.event.repository.default_branch }}"
