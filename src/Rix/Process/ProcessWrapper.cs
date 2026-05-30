@@ -69,7 +69,8 @@ internal static partial class ProcessWrapper
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             TrySetProcessGroup(process.Id);
 
-        var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
+        using var stdoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, stdoutCts.Token);
 
         var timedOut = false;
         try
@@ -82,7 +83,13 @@ internal static partial class ProcessWrapper
             await TerminateGracefullyAsync(process);
         }
 
-        await stdoutTask;
+        // Drain remaining stdout. If a grandchild inherited the pipe and is still writing,
+        // cancel after a deadline rather than blocking RunAsync indefinitely.
+        if (await Task.WhenAny(stdoutTask, Task.Delay(TimeSpan.FromSeconds(2))) != stdoutTask)
+        {
+            await stdoutCts.CancelAsync();
+            await stdoutTask;
+        }
         return new ProcessResult(timedOut ? -1 : process.ExitCode, timedOut);
     }
 
