@@ -44,7 +44,7 @@ internal static class JobConfigExtensions
 
                 if (string.IsNullOrWhiteSpace(config.Repo.Owner))
                     errors.Add("--repo is required");
-                else if (string.IsNullOrWhiteSpace(config.Repo.Name))
+                else if (string.IsNullOrWhiteSpace(config.Repo.Name) || config.Repo.Name.Contains('/'))
                     errors.Add("--repo must be in the format owner/repo");
 
                 if (string.IsNullOrWhiteSpace(config.Prompt))

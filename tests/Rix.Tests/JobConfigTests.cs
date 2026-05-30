@@ -48,13 +48,14 @@ public class JobConfigTests
     }
 
     [TestMethod]
-    [DataRow("", "owner/repo is required")]
-    [DataRow("noslash", "owner/repo must contain a slash")]
-    public void ValidationErrors_RejectsInvalidRepo(string repo, string _)
+    [DataRow("", "--repo is required")]
+    [DataRow("noslash", "--repo must be in the format owner/repo")]
+    [DataRow("owner/repo/extra", "--repo must be in the format owner/repo")]
+    public void ValidationErrors_RejectsInvalidRepo(string repo, string expectedError)
     {
         var config = ValidConfig() with { Repo = RepoIdentifier.Parse(repo) };
         var errors = config.ValidationErrors;
-        Assert.IsTrue(errors.Count > 0, "Expected validation errors for repo: " + repo);
+        Assert.IsTrue(errors.Contains(expectedError), $"Expected '{expectedError}' for repo '{repo}'");
     }
 
     [TestMethod]
