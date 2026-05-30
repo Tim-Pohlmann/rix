@@ -148,7 +148,8 @@ internal static partial class ProcessWrapper
     [SupportedOSPlatform("macos")]
     private static void TrySetProcessGroup(int pid)
     {
-        if (setpgid(pid, pid) != 0 && Marshal.GetLastPInvokeError() is var errno && errno != 13 /* EACCES: child already exec'd */)
+        // EACCES: child already exec'd. ESRCH: process already exited. Both are acceptable races.
+        if (setpgid(pid, pid) != 0 && Marshal.GetLastPInvokeError() is var errno && errno != 13 /* EACCES */ && errno != 3 /* ESRCH */)
             throw new InvalidOperationException($"setpgid({pid}) failed: errno {errno}");
     }
 
