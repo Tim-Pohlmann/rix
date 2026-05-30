@@ -20,7 +20,7 @@ internal static class JobRunner
             var claude = await ClaudeCodeInstaller.ResolveAsync(cancellationToken);
             var host = new GitHubRepositoryHost(config.Repo, config.ReadToken, config.WriteToken);
 
-            LogInfo($"Cloning {config.Repo} into {cloneDir}...");
+            LogInfo($"Cloning {config.Repo.Value} into {cloneDir}...");
             await host.CloneAsync(cloneDir, cancellationToken);
 
             await using var apiServer = await LocalApiServer.StartAsync(host, cancellationToken);
@@ -29,17 +29,17 @@ internal static class JobRunner
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
             var claudeEnv = ProcessWrapper.BuildSanitizedEnvironment(new Dictionary<string, string>
             {
-                ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.ToString(),
+                ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
             });
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes));
+            timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
 
-            LogInfo($"Spawning Claude Code (max tokens: {config.MaxTokens}, timeout: {config.TimeoutMinutes}m)...");
+            LogInfo($"Spawning Claude Code (max tokens: {config.MaxTokens.Value}, timeout: {config.TimeoutMinutes.Value}m)...");
 
             var result = await ProcessWrapper.RunAsync(
                 claude,
-                ["-p", config.Prompt, "--output-format", "stream-json", "--max-tokens", config.MaxTokens.ToString(), "--append-system-prompt", systemPrompt],
+                ["-p", config.Prompt, "--output-format", "stream-json", "--max-tokens", config.MaxTokens.Value.ToString(), "--append-system-prompt", systemPrompt],
                 workingDirectory: cloneDir,
                 environment: claudeEnv,
                 onStdoutLine: line =>
@@ -54,7 +54,7 @@ internal static class JobRunner
             if (result.TimedOut)
             {
                 WriteResult(new JobFailure(
-                    $"Job timed out after {config.TimeoutMinutes} minutes.",
+                    $"Job timed out after {config.TimeoutMinutes.Value} minutes.",
                     tokensUsed,
                     durationSeconds));
                 return 1;
@@ -75,7 +75,7 @@ internal static class JobRunner
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             WriteResult(new JobFailure(
-                $"Job timed out after {config.TimeoutMinutes} minutes.",
+                $"Job timed out after {config.TimeoutMinutes.Value} minutes.",
                 tokensUsed,
                 (int)stopwatch.Elapsed.TotalSeconds));
             return 1;
