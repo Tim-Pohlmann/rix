@@ -12,7 +12,7 @@ public class GitHubRepositoryHostTests
         string repo = "owner/repo",
         string readToken = "read-tok",
         string writeToken = "write-tok") =>
-        GitHubRepositoryHost.WithHandler(new RepoIdentifier(repo), new ReadToken(readToken), new WriteToken(writeToken), new DelegatingHandlerStub(handler));
+        GitHubRepositoryHost.WithHandler(RepoIdentifier.Parse(repo), new ReadToken(readToken), new WriteToken(writeToken), new DelegatingHandlerStub(handler));
 
     [TestMethod]
     public async Task BranchExistsOnRemoteAsync_ReturnsTrue_When200()
