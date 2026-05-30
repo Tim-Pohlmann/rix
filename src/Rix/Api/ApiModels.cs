@@ -20,7 +20,7 @@ internal static class PrRequestExtensions
 {
     internal static string? Validate(this PrRequest req)
     {
-        if (!BranchName.IsValid(req.Branch))
+        if (!req.Branch.IsValidBranchName())
             return $"Branch must match rix/* pattern, got: {req.Branch}";
         if (string.IsNullOrWhiteSpace(req.Title))
             return "title is required";

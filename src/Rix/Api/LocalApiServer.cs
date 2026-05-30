@@ -11,10 +11,10 @@ namespace Rix.Api;
 internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
-    private readonly List<PrInfo> _createdPrs = [];
+    private readonly List<PullRequest> _createdPrs = [];
 
     internal string BaseUrl { get; }
-    internal IReadOnlyList<PrInfo> CreatedPrs => _createdPrs;
+    internal IReadOnlyList<PullRequest> CreatedPrs => _createdPrs;
 
     private LocalApiServer(WebApplication app, string baseUrl)
     {
@@ -63,8 +63,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             await host.PushBranchAsync(branch.Value, ct);
             var url = await host.CreatePullRequestAsync(branch.Value, req.Title, req.Body ?? string.Empty, ct);
 
-            var prInfo = new PrInfo(new Uri(url), branch);
-            _createdPrs.Add(prInfo);
+            _createdPrs.Add(new PullRequest(new Uri(url), branch));
 
             return Results.Ok(new PrCreatedResponse(url));
         });
