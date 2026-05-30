@@ -64,6 +64,11 @@ internal static partial class ProcessWrapper
         using var process = new System.Diagnostics.Process { StartInfo = startInfo, EnableRaisingEvents = true };
         process.Start();
 
+        // Best-effort: promote child to its own process group so cancellation signals the full tree.
+        // May fail with EACCES if the child exec'd before we got here; that's acceptable.
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            TrySetProcessGroup(process.Id);
+
         var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
 
         var timedOut = false;
@@ -99,40 +104,59 @@ internal static partial class ProcessWrapper
 
     private static async Task TerminateGracefullyAsync(System.Diagnostics.Process process)
     {
+        // Best-effort SIGTERM / soft kill; always fall through to hard kill after grace period.
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            try { SendSigterm(process.Id); }
+            catch (InvalidOperationException)
+            {
+                // SIGTERM failed (process group gone or permission error); proceed to hard kill.
+            }
+        }
+        else
+        {
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { return; }
+        }
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                SendSigterm(process.Id);
-            else
-                process.Kill();
-
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            try
-            {
-                await process.WaitForExitAsync(cts.Token);
-                return;
-            }
-            catch (OperationCanceledException)
-            {
-                // Grace period elapsed; fall through to hard kill.
-            }
-
-            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(cts.Token);
+            return;
         }
+        catch (OperationCanceledException)
+        {
+            // Grace period elapsed; fall through to hard kill.
+        }
+
+        try { process.Kill(entireProcessTree: true); }
         catch (InvalidOperationException)
         {
-            // Process already exited between the cancellation and the kill attempt.
+            // Process already exited between the grace period and the hard kill.
         }
+    }
+
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    private static void TrySetProcessGroup(int pid)
+    {
+        if (setpgid(pid, pid) != 0 && Marshal.GetLastPInvokeError() is var errno && errno != 13 /* EACCES: child already exec'd */)
+            throw new InvalidOperationException($"setpgid({pid}) failed: errno {errno}");
     }
 
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
     private static void SendSigterm(int pid)
     {
-        if (kill(pid, 15) != 0)
-            throw new InvalidOperationException($"kill({pid}, SIGTERM) failed: errno {Marshal.GetLastPInvokeError()}");
+        // Negative PID signals the entire process group.
+        if (kill(-pid, 15) != 0)
+            throw new InvalidOperationException($"kill(-{pid}, SIGTERM) failed: errno {Marshal.GetLastPInvokeError()}");
     }
 
     [LibraryImport("libc", SetLastError = true)]
     private static partial int kill(int pid, int sig);
+
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int setpgid(int pid, int pgid);
 }

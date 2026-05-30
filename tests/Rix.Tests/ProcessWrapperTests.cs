@@ -8,15 +8,16 @@ public class ProcessWrapperTests
     [TestMethod]
     public void BuildSanitizedEnvironment_ExcludesNonAllowedVars()
     {
-        Environment.SetEnvironmentVariable("RIX_WRITE_TOKEN", "secret");
+        var original = Environment.GetEnvironmentVariable("RIX_WRITE_TOKEN");
         try
         {
+            Environment.SetEnvironmentVariable("RIX_WRITE_TOKEN", "secret");
             var env = ProcessWrapper.BuildSanitizedEnvironment();
             Assert.IsFalse(env.ContainsKey("RIX_WRITE_TOKEN"));
         }
         finally
         {
-            Environment.SetEnvironmentVariable("RIX_WRITE_TOKEN", null);
+            Environment.SetEnvironmentVariable("RIX_WRITE_TOKEN", original);
         }
     }
 
@@ -31,16 +32,17 @@ public class ProcessWrapperTests
     [TestMethod]
     public void BuildSanitizedEnvironment_OverridesTakePrecedenceOverParentEnv()
     {
-        Environment.SetEnvironmentVariable("LANG", "en_US.UTF-8");
+        var original = Environment.GetEnvironmentVariable("LANG");
         try
         {
+            Environment.SetEnvironmentVariable("LANG", "en_US.UTF-8");
             var overrides = new Dictionary<string, string> { ["LANG"] = "C" };
             var env = ProcessWrapper.BuildSanitizedEnvironment(overrides);
             Assert.AreEqual("C", env["LANG"]);
         }
         finally
         {
-            Environment.SetEnvironmentVariable("LANG", null);
+            Environment.SetEnvironmentVariable("LANG", original);
         }
     }
 
