@@ -1,9 +1,10 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace Rix.Process;
 
-internal sealed class ProcessWrapper
+internal static partial class ProcessWrapper
 {
     private static readonly string[] AllowedEnvVars =
     [
@@ -85,7 +86,10 @@ internal sealed class ProcessWrapper
             while (await reader.ReadLineAsync(cancellationToken) is { } line)
                 onLine?.Invoke(line);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            // Expected when the job is cancelled; stdout reading stops here.
+        }
     }
 
     private static async Task TerminateGracefullyAsync(System.Diagnostics.Process process)
@@ -103,18 +107,27 @@ internal sealed class ProcessWrapper
                 await process.WaitForExitAsync(cts.Token);
                 return;
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                // Grace period elapsed; fall through to hard kill.
+            }
 
             process.Kill(entireProcessTree: true);
         }
-        catch (InvalidOperationException) { }
+        catch (InvalidOperationException)
+        {
+            // Process already exited between the cancellation and the kill attempt.
+        }
     }
 
-    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
-    private static void SendSigterm(int pid) =>
-        kill(pid, 15);
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    private static void SendSigterm(int pid)
+    {
+        if (kill(pid, 15) != 0)
+            throw new InvalidOperationException($"kill({pid}, SIGTERM) failed: errno {Marshal.GetLastPInvokeError()}");
+    }
 
-    [DllImport("libc", SetLastError = true)]
-    private static extern int kill(int pid, int sig);
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int kill(int pid, int sig);
 }
