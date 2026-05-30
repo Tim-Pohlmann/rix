@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace Rix;
 
 internal readonly record struct ReadToken(string Value);
@@ -5,8 +8,64 @@ internal readonly record struct WriteToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 
-internal readonly record struct RepoIdentifier(string Value)
+internal readonly record struct RepoIdentifier(string Owner, string Name)
 {
-    internal string Owner => Value.Split('/', 2)[0];
-    internal string Name => Value.Split('/', 2)[1];
+    internal static RepoIdentifier Parse(string value)
+    {
+        var slash = value.IndexOf('/');
+        return slash < 0
+            ? new RepoIdentifier(value, string.Empty)
+            : new RepoIdentifier(value[..slash], value[(slash + 1)..]);
+    }
+    public override string ToString() => $"{Owner}/{Name}";
+}
+
+[JsonConverter(typeof(BranchNameJsonConverter))]
+internal readonly record struct BranchName(string Value)
+{
+    private static readonly System.Text.RegularExpressions.Regex Pattern =
+        new(@"^rix/.+$", System.Text.RegularExpressions.RegexOptions.Compiled);
+    internal static bool IsValid(string value) => Pattern.IsMatch(value);
+}
+
+internal sealed class BranchNameJsonConverter : JsonConverter<BranchName>
+{
+    public override BranchName Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        => new(reader.GetString()!);
+    public override void Write(Utf8JsonWriter writer, BranchName value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.Value);
+}
+
+internal record PrInfo(
+    [property: JsonPropertyName("url")] Uri Url,
+    [property: JsonPropertyName("branch")] BranchName Branch
+);
+
+[JsonDerivedType(typeof(JobSuccess), "success")]
+[JsonDerivedType(typeof(JobFailure), "failure")]
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "status")]
+internal interface IJobResult
+{
+    int TokensUsed { get; }
+    TimeSpan Duration { get; }
+}
+
+internal record JobSuccess(
+    [property: JsonPropertyName("prs")] IReadOnlyList<PrInfo> Prs,
+    [property: JsonPropertyName("tokensUsed")] int TokensUsed,
+    [property: JsonIgnore] TimeSpan Duration
+) : IJobResult
+{
+    [JsonPropertyName("durationSeconds")]
+    public int DurationSeconds => (int)Duration.TotalSeconds;
+}
+
+internal record JobFailure(
+    [property: JsonPropertyName("error")] string Error,
+    [property: JsonPropertyName("tokensUsed")] int TokensUsed,
+    [property: JsonIgnore] TimeSpan Duration
+) : IJobResult
+{
+    [JsonPropertyName("durationSeconds")]
+    public int DurationSeconds => (int)Duration.TotalSeconds;
 }

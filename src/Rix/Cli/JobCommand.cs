@@ -57,7 +57,7 @@ internal static class JobCommand
             string Str(Option<string> opt, string env) =>
                 ctx.ParseResult.GetValueForOption(opt) ?? Environment.GetEnvironmentVariable(env) ?? string.Empty;
             int? Int(Option<int?> opt, string env) =>
-                ctx.ParseResult.GetValueForOption(opt) ?? TryParseInt(Environment.GetEnvironmentVariable(env));
+                ctx.ParseResult.GetValueForOption(opt) ?? (int.TryParse(Environment.GetEnvironmentVariable(env), out var n) ? n : null);
 
             var config = JobConfig.FromInputs(
                 repo:           Str(RepoOption,       "RIX_REPO"),
@@ -74,6 +74,5 @@ internal static class JobCommand
         return command;
     }
 
-    private static int? TryParseInt(string? value) =>
-        int.TryParse(value, out var n) ? n : null;
+
 }

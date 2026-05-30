@@ -52,7 +52,7 @@ public class JobConfigTests
     [DataRow("noslash", "owner/repo must contain a slash")]
     public void Validate_RejectsInvalidRepo(string repo, string _)
     {
-        var config = ValidConfig() with { Repo = new RepoIdentifier(repo) };
+        var config = ValidConfig() with { Repo = RepoIdentifier.Parse(repo) };
         var errors = config.Validate();
         Assert.IsTrue(errors.Count > 0, "Expected validation errors for repo: " + repo);
     }

@@ -44,7 +44,7 @@ public class JobCommandTests
         }
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual("env/repo", captured.Repo.Value);
+        Assert.AreEqual("env/repo", captured.Repo.ToString());
         Assert.AreEqual("env prompt", captured.Prompt);
         Assert.AreEqual("env-read", captured.ReadToken.Value);
         Assert.AreEqual("env-write", captured.WriteToken.Value);
@@ -73,6 +73,6 @@ public class JobCommandTests
         }
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual("flag/repo", captured.Repo.Value);
+        Assert.AreEqual("flag/repo", captured.Repo.ToString());
     }
 }
