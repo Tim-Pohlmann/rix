@@ -28,7 +28,7 @@ internal record JobConfig(
             WriteToken: new WriteToken(writeToken),
             MaxTokens: new MaxTokens(maxTokens ?? DefaultMaxTokens),
             TimeoutMinutes: new TimeoutMinutes(timeoutMinutes ?? DefaultTimeoutMinutes),
-            WorkDir: workDir ?? Path.GetTempPath()
+            WorkDir: string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir
         );
 }
 
@@ -62,7 +62,9 @@ internal static class JobConfigExtensions
                 if (config.TimeoutMinutes.Value <= 0)
                     errors.Add("--timeout must be a positive integer");
 
-                if (!string.IsNullOrEmpty(config.WorkDir) && !Directory.Exists(config.WorkDir))
+                if (string.IsNullOrWhiteSpace(config.WorkDir))
+                    errors.Add("--work-dir must not be empty");
+                else if (!Directory.Exists(config.WorkDir))
                     errors.Add($"--work-dir does not exist: {config.WorkDir}");
 
                 return errors;

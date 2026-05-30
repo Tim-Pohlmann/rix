@@ -99,4 +99,19 @@ public class JobConfigTests
         var errors = (ValidConfig() with { WorkDir = "/nonexistent/path/xyz" }).ValidationErrors;
         Assert.IsTrue(errors.Count > 0);
     }
+
+    [TestMethod]
+    public void ValidationErrors_RejectsEmptyWorkDir()
+    {
+        var errors = (ValidConfig() with { WorkDir = "" }).ValidationErrors;
+        Assert.IsTrue(errors.Count > 0);
+    }
+
+    [TestMethod]
+    public void FromInputs_DefaultsWorkDirToTemp_WhenNullOrWhitespace()
+    {
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, null).WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, "").WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, "   ").WorkDir);
+    }
 }
