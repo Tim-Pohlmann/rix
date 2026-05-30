@@ -30,33 +30,36 @@ internal record JobConfig(
             TimeoutMinutes: new TimeoutMinutes(timeoutMinutes ?? DefaultTimeoutMinutes),
             WorkDir: workDir ?? Path.GetTempPath()
         );
+}
 
-    internal IReadOnlyList<string> Validate()
+internal static class JobConfigExtensions
+{
+    internal static IReadOnlyList<string> Validate(this JobConfig config)
     {
         var errors = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(Repo.Value))
+        if (string.IsNullOrWhiteSpace(config.Repo.Value))
             errors.Add("--repo is required");
-        else if (!Repo.Value.Contains('/'))
+        else if (!config.Repo.Value.Contains('/'))
             errors.Add("--repo must be in the format owner/repo");
 
-        if (string.IsNullOrWhiteSpace(Prompt))
+        if (string.IsNullOrWhiteSpace(config.Prompt))
             errors.Add("--prompt is required");
 
-        if (string.IsNullOrWhiteSpace(ReadToken.Value))
+        if (string.IsNullOrWhiteSpace(config.ReadToken.Value))
             errors.Add("--read-token is required");
 
-        if (string.IsNullOrWhiteSpace(WriteToken.Value))
+        if (string.IsNullOrWhiteSpace(config.WriteToken.Value))
             errors.Add("--write-token is required");
 
-        if (MaxTokens.Value <= 0)
+        if (config.MaxTokens.Value <= 0)
             errors.Add("--max-tokens must be a positive integer");
 
-        if (TimeoutMinutes.Value <= 0)
+        if (config.TimeoutMinutes.Value <= 0)
             errors.Add("--timeout must be a positive integer");
 
-        if (!string.IsNullOrEmpty(WorkDir) && !Directory.Exists(WorkDir))
-            errors.Add($"--work-dir does not exist: {WorkDir}");
+        if (!string.IsNullOrEmpty(config.WorkDir) && !Directory.Exists(config.WorkDir))
+            errors.Add($"--work-dir does not exist: {config.WorkDir}");
 
         return errors;
     }
