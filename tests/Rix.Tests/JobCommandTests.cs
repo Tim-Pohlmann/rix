@@ -26,22 +26,15 @@ public class JobCommandTests
             return Task.FromResult(0);
         });
 
-        try
-        {
-            Environment.SetEnvironmentVariable("RIX_REPO", "env/repo");
-            Environment.SetEnvironmentVariable("RIX_PROMPT", "env prompt");
-            Environment.SetEnvironmentVariable("RIX_READ_TOKEN", "env-read");
-            Environment.SetEnvironmentVariable("RIX_WRITE_TOKEN", "env-write");
-            Environment.SetEnvironmentVariable("RIX_MAX_TOKENS", "999");
-            Environment.SetEnvironmentVariable("RIX_TIMEOUT", "15");
-            Environment.SetEnvironmentVariable("RIX_WORK_DIR", Path.GetTempPath());
-            await parser.InvokeAsync("job");
-        }
-        finally
-        {
-            foreach (var key in new[] { "RIX_REPO", "RIX_PROMPT", "RIX_READ_TOKEN", "RIX_WRITE_TOKEN", "RIX_MAX_TOKENS", "RIX_TIMEOUT", "RIX_WORK_DIR" })
-                Environment.SetEnvironmentVariable(key, null);
-        }
+        using var env = new EnvScope();
+        env.Set("RIX_REPO", "env/repo");
+        env.Set("RIX_PROMPT", "env prompt");
+        env.Set("RIX_READ_TOKEN", "env-read");
+        env.Set("RIX_WRITE_TOKEN", "env-write");
+        env.Set("RIX_MAX_TOKENS", "999");
+        env.Set("RIX_TIMEOUT", "15");
+        env.Set("RIX_WORK_DIR", Path.GetTempPath());
+        await parser.InvokeAsync("job");
 
         Assert.IsNotNull(captured);
         Assert.AreEqual("env/repo", captured.Repo.ToString());
@@ -63,15 +56,9 @@ public class JobCommandTests
             return Task.FromResult(0);
         });
 
-        try
-        {
-            Environment.SetEnvironmentVariable("RIX_REPO", "env/repo");
-            await parser.InvokeAsync("job --repo flag/repo --prompt p --read-token r --write-token w");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("RIX_REPO", null);
-        }
+        using var env = new EnvScope();
+        env.Set("RIX_REPO", "env/repo");
+        await parser.InvokeAsync("job --repo flag/repo --prompt p --read-token r --write-token w");
 
         Assert.IsNotNull(captured);
         Assert.AreEqual("flag/repo", captured.Repo.ToString());
