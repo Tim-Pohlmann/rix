@@ -30,11 +30,8 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
 
-      - name: Restore
-        run: dotnet restore Rix.slnx
-
       - name: Build
-        run: dotnet build Rix.slnx --no-restore -c Release
+        run: dotnet build Rix.slnx -c Release
 
       - name: Test
         run: dotnet test Rix.slnx --no-build -c Release --verbosity normal
@@ -63,9 +60,6 @@ jobs:
       - name: Install dotnet-sonarscanner
         run: dotnet tool install --global dotnet-sonarscanner
 
-      - name: Restore
-        run: dotnet restore Rix.slnx
-
       - name: Begin SonarQube analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -78,7 +72,7 @@ jobs:
             /d:sonar.cs.opencover.reportsPaths="tests/**/coverage.opencover.xml"
 
       - name: Build
-        run: dotnet build Rix.slnx --no-restore -c Release
+        run: dotnet build Rix.slnx -c Release
 
       - name: Test
         run: dotnet test Rix.slnx --no-build -c Release --verbosity normal --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
