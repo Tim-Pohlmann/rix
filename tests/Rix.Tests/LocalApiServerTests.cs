@@ -80,8 +80,8 @@ public class LocalApiServerTests
         });
 
         Assert.AreEqual(1, server.CreatedPrs.Count);
-        Assert.AreEqual("rix/feat", server.CreatedPrs[0].Branch);
-        Assert.AreEqual("https://github.com/owner/repo/pull/7", server.CreatedPrs[0].Url);
+        Assert.AreEqual(new BranchName("rix/feat"), server.CreatedPrs[0].Branch);
+        Assert.AreEqual(new Uri("https://github.com/owner/repo/pull/7"), server.CreatedPrs[0].Url);
     }
 
     [TestMethod]

@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Rix.Job;
 using Rix.Repository;
 
 namespace Rix.Api;
@@ -64,7 +63,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             await host.PushBranchAsync(branch.Value, ct);
             var url = await host.CreatePullRequestAsync(branch.Value, req.Title, req.Body ?? string.Empty, ct);
 
-            var prInfo = new PrInfo(url, branch.Value);
+            var prInfo = new PrInfo(new Uri(url), branch);
             _createdPrs.Add(prInfo);
 
             return Results.Ok(new PrCreatedResponse(url));

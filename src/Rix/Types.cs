@@ -74,11 +74,3 @@ internal record JobFailure(
     [JsonPropertyName("durationSeconds")]
     public int DurationSeconds => (int)Duration.TotalSeconds;
 }
-
-internal readonly record struct BranchName(string Value)
-{
-    private static readonly System.Text.RegularExpressions.Regex Pattern =
-        new(@"^rix/.+$", System.Text.RegularExpressions.RegexOptions.Compiled);
-
-    internal static bool IsValid(string value) => Pattern.IsMatch(value);
-}
