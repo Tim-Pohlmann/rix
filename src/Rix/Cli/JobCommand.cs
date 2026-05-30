@@ -54,32 +54,20 @@ internal static class JobCommand
 
         command.SetHandler(async ctx =>
         {
-            var repo = ctx.ParseResult.GetValueForOption(RepoOption)
-                       ?? Environment.GetEnvironmentVariable("RIX_REPO")
-                       ?? string.Empty;
+            string Str(Option<string> opt, string env) =>
+                ctx.ParseResult.GetValueForOption(opt) ?? Environment.GetEnvironmentVariable(env) ?? string.Empty;
+            int? Int(Option<int?> opt, string env) =>
+                ctx.ParseResult.GetValueForOption(opt) ?? TryParseInt(Environment.GetEnvironmentVariable(env));
 
-            var prompt = ctx.ParseResult.GetValueForOption(PromptOption)
-                         ?? Environment.GetEnvironmentVariable("RIX_PROMPT")
-                         ?? string.Empty;
-
-            var readToken = ctx.ParseResult.GetValueForOption(ReadTokenOption)
-                            ?? Environment.GetEnvironmentVariable("RIX_READ_TOKEN")
-                            ?? string.Empty;
-
-            var writeToken = ctx.ParseResult.GetValueForOption(WriteTokenOption)
-                             ?? Environment.GetEnvironmentVariable("RIX_WRITE_TOKEN")
-                             ?? string.Empty;
-
-            var maxTokens = ctx.ParseResult.GetValueForOption(MaxTokensOption)
-                            ?? TryParseInt(Environment.GetEnvironmentVariable("RIX_MAX_TOKENS"));
-
-            var timeout = ctx.ParseResult.GetValueForOption(TimeoutOption)
-                          ?? TryParseInt(Environment.GetEnvironmentVariable("RIX_TIMEOUT"));
-
-            var workDir = ctx.ParseResult.GetValueForOption(WorkDirOption)
-                          ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR");
-
-            var config = JobConfig.FromInputs(repo, prompt, readToken, writeToken, maxTokens, timeout, workDir);
+            var config = JobConfig.FromInputs(
+                repo:           Str(RepoOption,       "RIX_REPO"),
+                prompt:         Str(PromptOption,     "RIX_PROMPT"),
+                readToken:      Str(ReadTokenOption,  "RIX_READ_TOKEN"),
+                writeToken:     Str(WriteTokenOption, "RIX_WRITE_TOKEN"),
+                maxTokens:      Int(MaxTokensOption,  "RIX_MAX_TOKENS"),
+                timeoutMinutes: Int(TimeoutOption,    "RIX_TIMEOUT"),
+                workDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
+                                ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"));
             ctx.ExitCode = await handler(config);
         });
 
