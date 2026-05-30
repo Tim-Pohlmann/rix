@@ -20,7 +20,7 @@ internal static class JobRunner
             var claude = await ClaudeCodeInstaller.ResolveAsync(cancellationToken);
             var host = new GitHubRepositoryHost(config.Repo, config.ReadToken, config.WriteToken);
 
-            LogInfo($"Cloning {config.Repo.Value} into {cloneDir}...");
+            LogInfo($"Cloning {config.Repo} into {cloneDir}...");
             await host.CloneAsync(cloneDir, cancellationToken);
 
             await using var apiServer = await LocalApiServer.StartAsync(host, cancellationToken);
@@ -49,14 +49,12 @@ internal static class JobRunner
                 },
                 cancellationToken: timeoutCts.Token);
 
-            var durationSeconds = (int)stopwatch.Elapsed.TotalSeconds;
-
             if (result.TimedOut)
             {
                 WriteResult(new JobFailure(
                     $"Job timed out after {config.TimeoutMinutes.Value} minutes.",
                     tokensUsed,
-                    durationSeconds));
+                    stopwatch.Elapsed));
                 return 1;
             }
 
@@ -65,11 +63,11 @@ internal static class JobRunner
                 WriteResult(new JobFailure(
                     $"Claude Code exited with code {result.ExitCode}.",
                     tokensUsed,
-                    durationSeconds));
+                    stopwatch.Elapsed));
                 return 1;
             }
 
-            WriteResult(new JobSuccess(apiServer.CreatedPrs, tokensUsed, durationSeconds));
+            WriteResult(new JobSuccess(apiServer.CreatedPrs, tokensUsed, stopwatch.Elapsed));
             return 0;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -77,7 +75,7 @@ internal static class JobRunner
             WriteResult(new JobFailure(
                 $"Job timed out after {config.TimeoutMinutes.Value} minutes.",
                 tokensUsed,
-                (int)stopwatch.Elapsed.TotalSeconds));
+                stopwatch.Elapsed));
             return 1;
         }
         catch (Exception ex)
@@ -105,9 +103,9 @@ internal static class JobRunner
         The branch must match the pattern rix/* — any other name will be rejected.
         """;
 
-    private static void WriteResult(IJobOutcome outcome)
+    private static void WriteResult(IJobResult outcome)
     {
-        var json = JsonSerializer.Serialize(outcome, JobJsonContext.Default.IJobOutcome);
+        var json = JsonSerializer.Serialize(outcome, JobJsonContext.Default.IJobResult);
         Console.WriteLine(json);
     }
 
@@ -148,7 +146,7 @@ internal record JobLogLine(
     [property: JsonPropertyName("type")] string Type,
     [property: JsonPropertyName("message")] string Message);
 
-[JsonSerializable(typeof(IJobOutcome))]
+[JsonSerializable(typeof(IJobResult))]
 [JsonSerializable(typeof(JobSuccess))]
 [JsonSerializable(typeof(JobFailure))]
 [JsonSerializable(typeof(JobLogLine))]
