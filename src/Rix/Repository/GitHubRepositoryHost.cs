@@ -14,25 +14,24 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     private readonly string _writeToken;
     private readonly HttpClient _http;
 
-    internal GitHubRepositoryHost(string repoIdentifier, string readToken, string writeToken)
-        : this(repoIdentifier, readToken, writeToken, handler: null) { }
+    internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken, WriteToken writeToken)
+        : this(repo, readToken, writeToken, handler: null) { }
 
-    private GitHubRepositoryHost(string repoIdentifier, string readToken, string writeToken, HttpMessageHandler? handler)
+    private GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken, WriteToken writeToken, HttpMessageHandler? handler)
     {
-        var parts = repoIdentifier.Split('/', 2);
-        _owner = parts[0];
-        _repo = parts[1];
-        _readToken = readToken;
-        _writeToken = writeToken;
-        _http = BuildHttpClient(readToken, handler);
+        _owner = repo.Owner;
+        _repo = repo.Name;
+        _readToken = readToken.Value;
+        _writeToken = writeToken.Value;
+        _http = BuildHttpClient(readToken.Value, handler);
     }
 
     internal static GitHubRepositoryHost WithHandler(
-        string repoIdentifier,
-        string readToken,
-        string writeToken,
+        RepoIdentifier repo,
+        ReadToken readToken,
+        WriteToken writeToken,
         HttpMessageHandler handler) =>
-        new(repoIdentifier, readToken, writeToken, handler);
+        new(repo, readToken, writeToken, handler);
 
     private static HttpClient BuildHttpClient(string token, HttpMessageHandler? handler)
     {
