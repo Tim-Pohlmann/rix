@@ -56,12 +56,12 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
             var branch = new BranchName(req.Branch);
 
-            var exists = await host.BranchExistsOnRemoteAsync(branch.Value, ct);
+            var exists = await host.BranchExistsOnRemoteAsync(branch, ct);
             if (exists)
                 return Results.Conflict(new ErrorResponse($"Branch {branch.Value} already exists on the remote."));
 
-            await host.PushBranchAsync(branch.Value, ct);
-            var url = await host.CreatePullRequestAsync(branch.Value, req.Title, req.Body ?? string.Empty, ct);
+            await host.PushBranchAsync(branch, ct);
+            var url = await host.CreatePullRequestAsync(branch, req.Title, req.Body ?? string.Empty, ct);
 
             _createdPrs.Add(new PullRequest(new Uri(url), branch));
 

@@ -17,16 +17,16 @@ public class LocalApiServerTests
         internal string? LastPrBranch { get; private set; }
 
         public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<bool> BranchExistsOnRemoteAsync(string branch, CancellationToken cancellationToken) =>
+        public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken) =>
             Task.FromResult(BranchExistsResult);
-        public Task PushBranchAsync(string branch, CancellationToken cancellationToken)
+        public Task PushBranchAsync(BranchName branch, CancellationToken cancellationToken)
         {
-            LastPushedBranch = branch;
+            LastPushedBranch = branch.Value;
             return Task.CompletedTask;
         }
-        public Task<string> CreatePullRequestAsync(string branch, string title, string body, CancellationToken cancellationToken)
+        public Task<string> CreatePullRequestAsync(BranchName branch, string title, string body, CancellationToken cancellationToken)
         {
-            LastPrBranch = branch;
+            LastPrBranch = branch.Value;
             return Task.FromResult(PrUrlResult);
         }
     }
