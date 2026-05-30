@@ -13,25 +13,33 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     private readonly string _readToken;
     private readonly string _writeToken;
     private readonly HttpClient _http;
+    private readonly Func<string[], CancellationToken, Task<ProcessResult>> _gitRunner;
 
     internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken, WriteToken writeToken)
-        : this(repo, readToken, writeToken, handler: null) { }
+        : this(repo, readToken, writeToken, handler: null, gitRunner: null) { }
 
-    private GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken, WriteToken writeToken, HttpMessageHandler? handler)
+    private GitHubRepositoryHost(
+        RepoIdentifier repo,
+        ReadToken readToken,
+        WriteToken writeToken,
+        HttpMessageHandler? handler,
+        Func<string[], CancellationToken, Task<ProcessResult>>? gitRunner)
     {
         _owner = repo.Owner;
         _repo = repo.Name;
         _readToken = readToken.Value;
         _writeToken = writeToken.Value;
         _http = BuildHttpClient(readToken.Value, handler);
+        _gitRunner = gitRunner ?? DefaultGitRunner;
     }
 
     internal static GitHubRepositoryHost WithHandler(
         RepoIdentifier repo,
         ReadToken readToken,
         WriteToken writeToken,
-        HttpMessageHandler handler) =>
-        new(repo, readToken, writeToken, handler);
+        HttpMessageHandler handler,
+        Func<string[], CancellationToken, Task<ProcessResult>>? gitRunner = null) =>
+        new(repo, readToken, writeToken, handler, gitRunner);
 
     private static HttpClient BuildHttpClient(string token, HttpMessageHandler? handler)
     {
@@ -91,16 +99,19 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return pr.HtmlUrl;
     }
 
-    private static async Task RunGitAsync(string[] args, CancellationToken cancellationToken)
+    private async Task RunGitAsync(string[] args, CancellationToken cancellationToken)
     {
-        var result = await ProcessWrapper.RunAsync(
+        var result = await _gitRunner(args, cancellationToken);
+        if (!result.Succeeded)
+            throw new InvalidOperationException($"git {args[0]} failed with exit code {result.ExitCode}");
+    }
+
+    private static Task<ProcessResult> DefaultGitRunner(string[] args, CancellationToken cancellationToken) =>
+        ProcessWrapper.RunAsync(
             "git", args,
             workingDirectory: Path.GetTempPath(),
             environment: ProcessWrapper.BuildSanitizedEnvironment(),
             cancellationToken: cancellationToken);
-        if (!result.Succeeded)
-            throw new InvalidOperationException($"git {args[0]} failed with exit code {result.ExitCode}");
-    }
 
     internal record CreatePrRequestDto(
         [property: JsonPropertyName("title")] string Title,
