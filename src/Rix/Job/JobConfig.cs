@@ -34,33 +34,39 @@ internal record JobConfig(
 
 internal static class JobConfigExtensions
 {
-    internal static IReadOnlyList<string> Validate(this JobConfig config)
+    extension(JobConfig config)
     {
-        var errors = new List<string>();
+        public IReadOnlyList<string> ValidationErrors
+        {
+            get
+            {
+                var errors = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(config.Repo.Owner))
-            errors.Add("--repo is required");
-        else if (string.IsNullOrWhiteSpace(config.Repo.Name))
-            errors.Add("--repo must be in the format owner/repo");
+                if (string.IsNullOrWhiteSpace(config.Repo.Owner))
+                    errors.Add("--repo is required");
+                else if (string.IsNullOrWhiteSpace(config.Repo.Name))
+                    errors.Add("--repo must be in the format owner/repo");
 
-        if (string.IsNullOrWhiteSpace(config.Prompt))
-            errors.Add("--prompt is required");
+                if (string.IsNullOrWhiteSpace(config.Prompt))
+                    errors.Add("--prompt is required");
 
-        if (string.IsNullOrWhiteSpace(config.ReadToken.Value))
-            errors.Add("--read-token is required");
+                if (string.IsNullOrWhiteSpace(config.ReadToken.Value))
+                    errors.Add("--read-token is required");
 
-        if (string.IsNullOrWhiteSpace(config.WriteToken.Value))
-            errors.Add("--write-token is required");
+                if (string.IsNullOrWhiteSpace(config.WriteToken.Value))
+                    errors.Add("--write-token is required");
 
-        if (config.MaxTokens.Value <= 0)
-            errors.Add("--max-tokens must be a positive integer");
+                if (config.MaxTokens.Value <= 0)
+                    errors.Add("--max-tokens must be a positive integer");
 
-        if (config.TimeoutMinutes.Value <= 0)
-            errors.Add("--timeout must be a positive integer");
+                if (config.TimeoutMinutes.Value <= 0)
+                    errors.Add("--timeout must be a positive integer");
 
-        if (!string.IsNullOrEmpty(config.WorkDir) && !Directory.Exists(config.WorkDir))
-            errors.Add($"--work-dir does not exist: {config.WorkDir}");
+                if (!string.IsNullOrEmpty(config.WorkDir) && !Directory.Exists(config.WorkDir))
+                    errors.Add($"--work-dir does not exist: {config.WorkDir}");
 
-        return errors;
+                return errors;
+            }
+        }
     }
 }

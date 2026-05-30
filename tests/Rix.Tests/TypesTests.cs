@@ -13,7 +13,7 @@ public class TypesTests
     [DataRow("", false)]
     public void BranchName_IsValid(string value, bool expected)
     {
-        Assert.AreEqual(expected, value.IsValidBranchName());
+        Assert.AreEqual(expected, new BranchName(value).Valid);
     }
 
     [TestMethod]

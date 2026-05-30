@@ -23,7 +23,7 @@ internal static class Startup
 
     private static Task<int> RunJobAsync(JobConfig config)
     {
-        if (config.Validate() is { Count: > 0 } errors)
+        if (config.ValidationErrors is { Count: > 0 } errors)
         {
             foreach (var error in errors)
                 Console.Error.WriteLine($"error: {error}");

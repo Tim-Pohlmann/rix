@@ -28,7 +28,11 @@ internal static class BranchNameExtensions
 {
     private static readonly Regex Pattern =
         new(@"^rix/.+$", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
-    internal static bool IsValidBranchName(this string value) => Pattern.IsMatch(value);
+
+    extension(BranchName branch)
+    {
+        public bool Valid => Pattern.IsMatch(branch.Value);
+    }
 }
 
 internal sealed class BranchNameJsonConverter : JsonConverter<BranchName>
@@ -51,7 +55,7 @@ internal interface IJobResult
 {
     int TokensUsed { get; }
     TimeSpan Duration { get; }
-    int DurationSeconds { get; }
+    [JsonPropertyName("durationSeconds")] int DurationSeconds => (int)Duration.TotalSeconds;
 }
 
 internal record JobSuccess(

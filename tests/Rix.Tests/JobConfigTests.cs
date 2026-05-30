@@ -41,61 +41,61 @@ public class JobConfigTests
     }
 
     [TestMethod]
-    public void Validate_ReturnsNoErrors_ForValidConfig()
+    public void ValidationErrors_ReturnsNoErrors_ForValidConfig()
     {
-        var errors = ValidConfig().Validate();
+        var errors = ValidConfig().ValidationErrors;
         Assert.AreEqual(0, errors.Count);
     }
 
     [TestMethod]
     [DataRow("", "owner/repo is required")]
     [DataRow("noslash", "owner/repo must contain a slash")]
-    public void Validate_RejectsInvalidRepo(string repo, string _)
+    public void ValidationErrors_RejectsInvalidRepo(string repo, string _)
     {
         var config = ValidConfig() with { Repo = RepoIdentifier.Parse(repo) };
-        var errors = config.Validate();
+        var errors = config.ValidationErrors;
         Assert.IsTrue(errors.Count > 0, "Expected validation errors for repo: " + repo);
     }
 
     [TestMethod]
-    public void Validate_RejectsEmptyPrompt()
+    public void ValidationErrors_RejectsEmptyPrompt()
     {
-        var errors = (ValidConfig() with { Prompt = "" }).Validate();
+        var errors = (ValidConfig() with { Prompt = "" }).ValidationErrors;
         Assert.IsTrue(errors.Count > 0);
     }
 
     [TestMethod]
-    public void Validate_RejectsEmptyReadToken()
+    public void ValidationErrors_RejectsEmptyReadToken()
     {
-        var errors = (ValidConfig() with { ReadToken = new ReadToken("") }).Validate();
+        var errors = (ValidConfig() with { ReadToken = new ReadToken("") }).ValidationErrors;
         Assert.IsTrue(errors.Count > 0);
     }
 
     [TestMethod]
-    public void Validate_RejectsEmptyWriteToken()
+    public void ValidationErrors_RejectsEmptyWriteToken()
     {
-        var errors = (ValidConfig() with { WriteToken = new WriteToken("") }).Validate();
+        var errors = (ValidConfig() with { WriteToken = new WriteToken("") }).ValidationErrors;
         Assert.IsTrue(errors.Count > 0);
     }
 
     [TestMethod]
-    public void Validate_RejectsNonPositiveMaxTokens()
+    public void ValidationErrors_RejectsNonPositiveMaxTokens()
     {
-        var errors = (ValidConfig() with { MaxTokens = new MaxTokens(0) }).Validate();
+        var errors = (ValidConfig() with { MaxTokens = new MaxTokens(0) }).ValidationErrors;
         Assert.IsTrue(errors.Count > 0);
     }
 
     [TestMethod]
-    public void Validate_RejectsNonPositiveTimeout()
+    public void ValidationErrors_RejectsNonPositiveTimeout()
     {
-        var errors = (ValidConfig() with { TimeoutMinutes = new TimeoutMinutes(-1) }).Validate();
+        var errors = (ValidConfig() with { TimeoutMinutes = new TimeoutMinutes(-1) }).ValidationErrors;
         Assert.IsTrue(errors.Count > 0);
     }
 
     [TestMethod]
-    public void Validate_RejectsNonExistentWorkDir()
+    public void ValidationErrors_RejectsNonExistentWorkDir()
     {
-        var errors = (ValidConfig() with { WorkDir = "/nonexistent/path/xyz" }).Validate();
+        var errors = (ValidConfig() with { WorkDir = "/nonexistent/path/xyz" }).ValidationErrors;
         Assert.IsTrue(errors.Count > 0);
     }
 }
