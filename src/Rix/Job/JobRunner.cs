@@ -105,9 +105,9 @@ internal static class JobRunner
         The branch must match the pattern rix/* — any other name will be rejected.
         """;
 
-    private static void WriteResult(JobOutcome outcome)
+    private static void WriteResult(IJobOutcome outcome)
     {
-        var json = JsonSerializer.Serialize(outcome, JobJsonContext.Default.JobOutcome);
+        var json = JsonSerializer.Serialize(outcome, JobJsonContext.Default.IJobOutcome);
         Console.WriteLine(json);
     }
 
@@ -148,7 +148,7 @@ internal record JobLogLine(
     [property: JsonPropertyName("type")] string Type,
     [property: JsonPropertyName("message")] string Message);
 
-[JsonSerializable(typeof(JobOutcome))]
+[JsonSerializable(typeof(IJobOutcome))]
 [JsonSerializable(typeof(JobSuccess))]
 [JsonSerializable(typeof(JobFailure))]
 [JsonSerializable(typeof(JobLogLine))]

@@ -28,7 +28,7 @@ public class JobRunnerTests
         var prs = new[] { new PrInfo("https://github.com/o/r/pull/1", "rix/fix") };
         var outcome = new JobSuccess(prs, TokensUsed: 1000, DurationSeconds: 42);
 
-        var json = JsonSerializer.Serialize(outcome, JobJsonContext.Default.JobOutcome);
+        var json = JsonSerializer.Serialize(outcome, JobJsonContext.Default.IJobOutcome);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
@@ -43,7 +43,7 @@ public class JobRunnerTests
     {
         var outcome = new JobFailure("Something went wrong", TokensUsed: 500, DurationSeconds: 10);
 
-        var json = JsonSerializer.Serialize(outcome, JobJsonContext.Default.JobOutcome);
+        var json = JsonSerializer.Serialize(outcome, JobJsonContext.Default.IJobOutcome);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
