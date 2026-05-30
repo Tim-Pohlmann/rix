@@ -24,7 +24,7 @@ internal readonly record struct RepoIdentifier(string Owner, string Name)
 internal readonly record struct BranchName(string Value)
 {
     private static readonly System.Text.RegularExpressions.Regex Pattern =
-        new(@"^rix/.+$", System.Text.RegularExpressions.RegexOptions.Compiled);
+        new(@"^rix/.+$", System.Text.RegularExpressions.RegexOptions.Compiled, TimeSpan.FromSeconds(1));
     internal static bool IsValid(string value) => Pattern.IsMatch(value);
 }
 
