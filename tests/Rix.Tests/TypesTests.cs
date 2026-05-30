@@ -13,7 +13,7 @@ public class TypesTests
     [DataRow("", false)]
     public void BranchName_IsValid(string value, bool expected)
     {
-        Assert.AreEqual(expected, BranchName.IsValid(value));
+        Assert.AreEqual(expected, value.IsValidBranchName());
     }
 
     [TestMethod]
@@ -33,7 +33,7 @@ public class TypesTests
     [TestMethod]
     public void JobSuccess_SerializesCorrectly()
     {
-        var prs = new[] { new PrInfo(new Uri("https://github.com/o/r/pull/1"), new BranchName("rix/fix")) };
+        var prs = new[] { new PullRequest(new Uri("https://github.com/o/r/pull/1"), new BranchName("rix/fix")) };
         var outcome = new JobSuccess(prs, TokensUsed: 1000, Duration: TimeSpan.FromSeconds(42));
 
         var json = JsonSerializer.Serialize<IJobResult>(outcome);
