@@ -7,20 +7,23 @@ internal record PrInfo(
     [property: JsonPropertyName("branch")] string Branch
 );
 
-internal abstract record JobOutcome(
-    [property: JsonPropertyName("status")] string Status,
-    [property: JsonPropertyName("tokensUsed")] int TokensUsed,
-    [property: JsonPropertyName("durationSeconds")] int DurationSeconds
-);
+[JsonDerivedType(typeof(JobSuccess), "success")]
+[JsonDerivedType(typeof(JobFailure), "failure")]
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "status")]
+internal interface IJobOutcome
+{
+    int TokensUsed { get; }
+    int DurationSeconds { get; }
+}
 
 internal record JobSuccess(
     [property: JsonPropertyName("prs")] IReadOnlyList<PrInfo> Prs,
-    int TokensUsed,
-    int DurationSeconds
-) : JobOutcome("success", TokensUsed, DurationSeconds);
+    [property: JsonPropertyName("tokensUsed")] int TokensUsed,
+    [property: JsonPropertyName("durationSeconds")] int DurationSeconds
+) : IJobOutcome;
 
 internal record JobFailure(
     [property: JsonPropertyName("error")] string Error,
-    int TokensUsed,
-    int DurationSeconds
-) : JobOutcome("failure", TokensUsed, DurationSeconds);
+    [property: JsonPropertyName("tokensUsed")] int TokensUsed,
+    [property: JsonPropertyName("durationSeconds")] int DurationSeconds
+) : IJobOutcome;
