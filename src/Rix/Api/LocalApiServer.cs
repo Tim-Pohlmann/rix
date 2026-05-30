@@ -52,11 +52,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         _app.MapPost("/pr", async (PrRequest req, IRepositoryHost host, CancellationToken ct) =>
         {
-            if (!BranchName.IsValid(req.Branch))
-                return Results.BadRequest(new ErrorResponse($"Branch must match rix/* pattern, got: {req.Branch}"));
-
-            if (string.IsNullOrWhiteSpace(req.Title))
-                return Results.BadRequest(new ErrorResponse("title is required"));
+            if (req.Validate() is { } error)
+                return Results.BadRequest(new ErrorResponse(error));
 
             var branch = new BranchName(req.Branch);
 
