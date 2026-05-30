@@ -17,25 +17,15 @@ internal static partial class ProcessWrapper
         "HOME",
         "ANTHROPIC_API_KEY",
         "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
-        "CLAUDE_CODE_DEBUG",
         "LANG",
         "LC_ALL",
     ];
 
-    internal static IReadOnlyDictionary<string, string> BuildSanitizedEnvironment(
-        IReadOnlyDictionary<string, string>? overrides = null)
-    {
-        var env = AllowedEnvVars
+    internal static Dictionary<string, string> BuildSanitizedEnvironment() =>
+        AllowedEnvVars
             .Select(key => (key, value: Environment.GetEnvironmentVariable(key)))
             .Where(kv => kv.value is not null)
             .ToDictionary(kv => kv.key, kv => kv.value!);
-
-        if (overrides is not null)
-            foreach (var (key, value) in overrides)
-                env[key] = value;
-
-        return env;
-    }
 
     internal static async Task<ProcessResult> RunAsync(
         string fileName,

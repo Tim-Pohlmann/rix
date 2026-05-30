@@ -14,20 +14,11 @@ public class ProcessWrapperTests
     }
 
     [TestMethod]
-    public void BuildSanitizedEnvironment_IncludesOverrides()
+    public void BuildSanitizedEnvironment_ReturnsMutableDictionary()
     {
-        var overrides = new Dictionary<string, string> { ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = "42000" };
-        var env = ProcessWrapper.BuildSanitizedEnvironment(overrides);
+        var env = ProcessWrapper.BuildSanitizedEnvironment();
+        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = "42000";
         Assert.AreEqual("42000", env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"]);
-    }
-
-    [TestMethod]
-    public void BuildSanitizedEnvironment_OverridesTakePrecedenceOverParentEnv()
-    {
-        using var env = new EnvScope();
-        env.Set("LANG", "en_US.UTF-8");
-        var result = ProcessWrapper.BuildSanitizedEnvironment(new Dictionary<string, string> { ["LANG"] = "C" });
-        Assert.AreEqual("C", result["LANG"]);
     }
 
     [TestMethod]
