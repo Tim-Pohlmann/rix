@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,10 +8,8 @@ using Rix.Repository;
 
 namespace Rix.Api;
 
-internal sealed partial class LocalApiServer : IAsyncDisposable
+internal sealed class LocalApiServer : IAsyncDisposable
 {
-    private static readonly Regex RixBranchPattern = BranchPattern();
-
     private readonly WebApplication _app;
     private readonly List<PrInfo> _createdPrs = [];
 
@@ -54,20 +51,22 @@ internal sealed partial class LocalApiServer : IAsyncDisposable
 
         _app.MapPost("/pr", async (PrRequest req, IRepositoryHost host, CancellationToken ct) =>
         {
-            if (!RixBranchPattern.IsMatch(req.Branch))
+            if (!BranchName.IsValid(req.Branch))
                 return Results.BadRequest(new ErrorResponse($"Branch must match rix/* pattern, got: {req.Branch}"));
 
             if (string.IsNullOrWhiteSpace(req.Title))
                 return Results.BadRequest(new ErrorResponse("title is required"));
 
-            var exists = await host.BranchExistsOnRemoteAsync(req.Branch, ct);
+            var branch = new BranchName(req.Branch);
+
+            var exists = await host.BranchExistsOnRemoteAsync(branch.Value, ct);
             if (exists)
-                return Results.Conflict(new ErrorResponse($"Branch {req.Branch} already exists on the remote."));
+                return Results.Conflict(new ErrorResponse($"Branch {branch.Value} already exists on the remote."));
 
-            await host.PushBranchAsync(req.Branch, ct);
-            var url = await host.CreatePullRequestAsync(req.Branch, req.Title, req.Body ?? string.Empty, ct);
+            await host.PushBranchAsync(branch.Value, ct);
+            var url = await host.CreatePullRequestAsync(branch.Value, req.Title, req.Body ?? string.Empty, ct);
 
-            var prInfo = new PrInfo(url, req.Branch);
+            var prInfo = new PrInfo(url, branch.Value);
             _createdPrs.Add(prInfo);
 
             return Results.Ok(new PrCreatedResponse(url));
@@ -88,7 +87,4 @@ internal sealed partial class LocalApiServer : IAsyncDisposable
         listener.Stop();
         return port;
     }
-
-    [GeneratedRegex(@"^rix/.+$")]
-    private static partial Regex BranchPattern();
 }
