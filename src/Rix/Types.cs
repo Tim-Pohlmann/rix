@@ -55,7 +55,7 @@ internal interface IJobResult
 {
     int TokensUsed { get; }
     TimeSpan Duration { get; }
-    [JsonPropertyName("durationSeconds")] int DurationSeconds => (int)Duration.TotalSeconds;
+    int DurationSeconds { get; }
 }
 
 internal record JobSuccess(
