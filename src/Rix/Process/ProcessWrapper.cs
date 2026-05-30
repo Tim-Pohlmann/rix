@@ -76,10 +76,8 @@ internal static partial class ProcessWrapper
         // Drain remaining stdout. If a grandchild inherited the pipe and is still writing,
         // cancel after a deadline rather than blocking RunAsync indefinitely.
         if (await Task.WhenAny(stdoutTask, Task.Delay(TimeSpan.FromSeconds(2))) != stdoutTask)
-        {
             await stdoutCts.CancelAsync();
-            await stdoutTask;
-        }
+        await stdoutTask;
         return new ProcessResult(timedOut ? -1 : process.ExitCode, timedOut);
     }
 
@@ -147,9 +145,13 @@ internal static partial class ProcessWrapper
     [SupportedOSPlatform("macos")]
     private static void SendSigterm(int pid)
     {
-        // Negative PID signals the entire process group.
-        if (kill(-pid, 15) != 0)
-            throw new InvalidOperationException($"kill(-{pid}, SIGTERM) failed: errno {Marshal.GetLastPInvokeError()}");
+        if (kill(-pid, 15) == 0)
+            return;
+        var errno = Marshal.GetLastPInvokeError();
+        // No process group with this pgid (setpgid lost the exec race); signal the direct child.
+        if (errno == 3 /* ESRCH */ && kill(pid, 15) == 0)
+            return;
+        throw new InvalidOperationException($"kill(-{pid}, SIGTERM) failed: errno {errno}");
     }
 
     [LibraryImport("libc", SetLastError = true)]
