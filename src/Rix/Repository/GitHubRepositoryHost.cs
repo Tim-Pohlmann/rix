@@ -43,18 +43,10 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return client;
     }
 
-    public async Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
+    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
     {
         var cloneUrl = $"https://x-access-token:{_readToken}@github.com/{_owner}/{_repo}.git";
-        var result = await ProcessWrapper.RunAsync(
-            "git", ["clone", cloneUrl, targetDirectory],
-            workingDirectory: Path.GetTempPath(),
-            environment: ProcessWrapper.BuildSanitizedEnvironment(),
-            onStdoutLine: _ => { },
-            cancellationToken: cancellationToken);
-
-        if (!result.Succeeded)
-            throw new InvalidOperationException($"git clone failed with exit code {result.ExitCode}");
+        return RunGitAsync(["clone", cloneUrl, targetDirectory], cancellationToken);
     }
 
     public async Task<bool> BranchExistsOnRemoteAsync(string branch, CancellationToken cancellationToken)
@@ -64,18 +56,10 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return response.StatusCode == System.Net.HttpStatusCode.OK;
     }
 
-    public async Task PushBranchAsync(string branch, CancellationToken cancellationToken)
+    public Task PushBranchAsync(string branch, CancellationToken cancellationToken)
     {
         var remoteUrl = $"https://x-access-token:{_writeToken}@github.com/{_owner}/{_repo}.git";
-        var result = await ProcessWrapper.RunAsync(
-            "git", ["push", remoteUrl, $"refs/heads/{branch}:refs/heads/{branch}"],
-            workingDirectory: Path.GetTempPath(),
-            environment: ProcessWrapper.BuildSanitizedEnvironment(),
-            onStdoutLine: _ => { },
-            cancellationToken: cancellationToken);
-
-        if (!result.Succeeded)
-            throw new InvalidOperationException($"git push failed with exit code {result.ExitCode}");
+        return RunGitAsync(["push", remoteUrl, $"refs/heads/{branch}:refs/heads/{branch}"], cancellationToken);
     }
 
     public async Task<string> CreatePullRequestAsync(
@@ -105,6 +89,17 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
             ?? throw new InvalidOperationException("GitHub returned null PR response");
 
         return pr.HtmlUrl;
+    }
+
+    private static async Task RunGitAsync(string[] args, CancellationToken cancellationToken)
+    {
+        var result = await ProcessWrapper.RunAsync(
+            "git", args,
+            workingDirectory: Path.GetTempPath(),
+            environment: ProcessWrapper.BuildSanitizedEnvironment(),
+            cancellationToken: cancellationToken);
+        if (!result.Succeeded)
+            throw new InvalidOperationException($"git {args[0]} failed with exit code {result.ExitCode}");
     }
 
     internal record CreatePrRequestDto(
