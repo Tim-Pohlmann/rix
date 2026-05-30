@@ -4,6 +4,11 @@ using System.Runtime.Versioning;
 
 namespace Rix.Process;
 
+internal record ProcessResult(int ExitCode, bool TimedOut)
+{
+    internal bool Succeeded => ExitCode == 0 && !TimedOut;
+}
+
 internal static partial class ProcessWrapper
 {
     private static readonly string[] AllowedEnvVars =
