@@ -22,6 +22,24 @@ public class ProcessWrapperTests
     }
 
     [TestMethod]
+    public async Task RunAsync_DoesNotInheritNonAllowedEnvVars()
+    {
+        using var scope = new EnvScope();
+        scope.Set("RIX_SECRET", "should-not-leak");
+
+        var lines = new List<string>();
+        var env = ProcessWrapper.BuildSanitizedEnvironment();
+        await ProcessWrapper.RunAsync(
+            "/bin/sh", ["-c", "echo ${RIX_SECRET:-ABSENT}"],
+            workingDirectory: Path.GetTempPath(),
+            environment: env,
+            onStdoutLine: lines.Add,
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsTrue(lines.Any(l => l.Contains("ABSENT")), "Child should not see RIX_SECRET");
+    }
+
+    [TestMethod]
     public async Task RunAsync_CapturesStdoutLines()
     {
         var lines = new List<string>();

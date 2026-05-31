@@ -115,16 +115,14 @@ internal static partial class ProcessWrapper
         }
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        try
-        {
-            await process.WaitForExitAsync(cts.Token);
-            return;
-        }
+        try { await process.WaitForExitAsync(cts.Token); }
         catch (OperationCanceledException)
         {
             // Grace period elapsed; fall through to hard kill.
         }
 
+        // Always attempt tree kill: SIGTERM may have exited the direct child while leaving
+        // grandchildren running (e.g. when the process-group fallback was used).
         try { process.Kill(entireProcessTree: true); }
         catch (InvalidOperationException)
         {
