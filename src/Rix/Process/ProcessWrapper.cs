@@ -58,15 +58,19 @@ internal static class ProcessWrapper
         await Task.WhenAny(processTask, stdoutTask);
         if (stdoutTask.IsFaulted)
             try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { }
+            catch (InvalidOperationException) { /* process already exited */ }
 
-        var timedOut = false;
-        try { await processTask; }
+        bool timedOut;
+        try
+        {
+            await processTask;
+            timedOut = false;
+        }
         catch (OperationCanceledException)
         {
             timedOut = true;
             try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { }
+            catch (InvalidOperationException) { /* process already exited */ }
         }
 
         await stdoutTask;
