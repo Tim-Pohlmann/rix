@@ -74,7 +74,7 @@ internal static class ProcessWrapper
         }
 
         await stdoutTask;
-        return new ProcessResult(timedOut ? -1 : process.ExitCode, timedOut);
+        return new ProcessResult(timedOut ? -1 : process.ExitCode, timedOut); // NOSONAR: timedOut is set in catch (OperationCanceledException) above
     }
 
     private static async Task ReadLinesAsync(
