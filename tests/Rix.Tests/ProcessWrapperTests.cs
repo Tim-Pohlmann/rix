@@ -29,8 +29,9 @@ public class ProcessWrapperTests
 
         var lines = new List<string>();
         var env = ProcessWrapper.BuildSanitizedEnvironment();
+        var (fileName, args) = PrintEnvCommand("RIX_SECRET");
         await ProcessWrapper.RunAsync(
-            "/bin/sh", ["-c", "echo ${RIX_SECRET:-ABSENT}"],
+            fileName, args,
             workingDirectory: Path.GetTempPath(),
             environment: env,
             onStdoutLine: lines.Add,
@@ -103,6 +104,13 @@ public class ProcessWrapperTests
 
         Assert.IsTrue(result.TimedOut);
         Assert.IsFalse(result.Succeeded);
+    }
+
+    private static (string fileName, string[] args) PrintEnvCommand(string varName)
+    {
+        if (OperatingSystem.IsWindows())
+            return ("cmd.exe", ["/c", $"if defined {varName} (echo PRESENT) else (echo ABSENT)"]);
+        return ("/bin/sh", ["-c", $"echo ${{{varName}:-ABSENT}}"]);
     }
 
     private static (string fileName, string[] args) EchoCommand(string text)
