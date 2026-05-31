@@ -11,15 +11,17 @@ namespace Rix.Api;
 internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
-    private readonly List<PullRequest> _createdPrs = [];
 
-    internal string BaseUrl { get; }
-    internal IReadOnlyList<PullRequest> CreatedPrs => _createdPrs;
+    internal Uri BaseUrl { get; }
+    internal IReadOnlyList<PullRequest> CreatedPrs { get; }
+    internal IReadOnlyList<string> Logs { get; }
 
-    private LocalApiServer(WebApplication app, string baseUrl)
+    private LocalApiServer(WebApplication app, Uri baseUrl, IReadOnlyList<PullRequest> createdPrs, IReadOnlyList<string> logs)
     {
         _app = app;
         BaseUrl = baseUrl;
+        CreatedPrs = createdPrs;
+        Logs = logs;
     }
 
     internal static async Task<LocalApiServer> StartAsync(
@@ -27,44 +29,44 @@ internal sealed class LocalApiServer : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var port = FindFreePort();
-        var baseUrl = $"http://127.0.0.1:{port}";
+        var baseUrl = new Uri($"http://127.0.0.1:{port}");
+        var createdPrs = new List<PullRequest>();
+        var logs = new List<string>();
 
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton(repositoryHost);
-        builder.WebHost.UseUrls(baseUrl);
+        builder.WebHost.UseUrls(baseUrl.ToString());
         builder.Logging.ClearProviders();
+        builder.Logging.AddProvider(new LogCollector(logs));
         builder.Services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonContext.Default));
 
         var app = builder.Build();
-        var server = new LocalApiServer(app, baseUrl);
+        var server = new LocalApiServer(app, baseUrl, createdPrs, logs);
 
-        server.MapEndpoints();
+        MapEndpoints(app, createdPrs);
 
         await app.StartAsync(cancellationToken);
         return server;
     }
 
-    private void MapEndpoints()
+    private static void MapEndpoints(WebApplication app, List<PullRequest> createdPrs)
     {
-        _app.MapGet("/health", () => Results.Ok());
+        app.MapGet("/health", () => Results.Ok());
 
-        _app.MapPost("/pr", async (PrRequest req, IRepositoryHost host, CancellationToken ct) =>
+        app.MapPost("/pr", async (PrRequest req, IRepositoryHost host, CancellationToken ct) =>
         {
             if (req.Validate() is { } error)
                 return Results.BadRequest(new ErrorResponse(error));
 
             var branch = new BranchName(req.Branch);
-
-            var exists = await host.BranchExistsOnRemoteAsync(branch, ct);
-            if (exists)
+            if (await host.BranchExistsOnRemoteAsync(branch, ct))
                 return Results.Conflict(new ErrorResponse($"Branch {branch.Value} already exists on the remote."));
 
             await host.PushBranchAsync(branch, ct);
-            var url = await host.CreatePullRequestAsync(branch, req.Title, req.Body ?? string.Empty, ct);
+            var url = await host.CreatePullRequestAsync(branch, req.Title, req.Body, ct);
 
-            _createdPrs.Add(new PullRequest(new Uri(url), branch));
-
+            createdPrs.Add(new PullRequest(new Uri(url), branch));
             return Results.Ok(new PrCreatedResponse(url));
         });
     }
@@ -82,5 +84,19 @@ internal sealed class LocalApiServer : IAsyncDisposable
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+    private sealed class LogCollector(List<string> logs) : ILoggerProvider
+    {
+        public ILogger CreateLogger(string categoryName) => new Logger(logs, categoryName);
+        public void Dispose() { }
+
+        private sealed class Logger(List<string> logs, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+                logs.Add($"[{logLevel}] {category}: {formatter(state, exception)}");
+        }
     }
 }

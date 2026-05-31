@@ -40,7 +40,7 @@ public class LocalApiServerTests
         await using var server = await LocalApiServer.StartAsync(host, CancellationToken.None);
         using var client = new HttpClient();
 
-        var response = await client.GetAsync($"{server.BaseUrl}/health");
+        var response = await client.GetAsync(new Uri(server.BaseUrl, "/health"));
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
     }
 
@@ -51,7 +51,7 @@ public class LocalApiServerTests
         await using var server = await LocalApiServer.StartAsync(host, CancellationToken.None);
         using var client = new HttpClient();
 
-        var response = await client.PostAsJsonAsync($"{server.BaseUrl}/pr", new
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
         {
             branch = "rix/my-fix",
             title = "Fix null ref",
@@ -71,7 +71,7 @@ public class LocalApiServerTests
         await using var server = await LocalApiServer.StartAsync(host, CancellationToken.None);
         using var client = new HttpClient();
 
-        await client.PostAsJsonAsync($"{server.BaseUrl}/pr", new
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
         {
             branch = "rix/feat",
             title = "Add feature",
@@ -90,7 +90,7 @@ public class LocalApiServerTests
         await using var server = await LocalApiServer.StartAsync(host, CancellationToken.None);
         using var client = new HttpClient();
 
-        var response = await client.PostAsJsonAsync($"{server.BaseUrl}/pr", new
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
         {
             branch = "main",
             title = "Title",
@@ -107,7 +107,7 @@ public class LocalApiServerTests
         await using var server = await LocalApiServer.StartAsync(host, CancellationToken.None);
         using var client = new HttpClient();
 
-        var response = await client.PostAsJsonAsync($"{server.BaseUrl}/pr", new
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
         {
             branch = "rix/existing",
             title = "Title",
@@ -124,7 +124,7 @@ public class LocalApiServerTests
         await using var server = await LocalApiServer.StartAsync(host, CancellationToken.None);
         using var client = new HttpClient();
 
-        await client.PostAsJsonAsync($"{server.BaseUrl}/pr", new
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
         {
             branch = "rix/order-check",
             title = "Check order",
