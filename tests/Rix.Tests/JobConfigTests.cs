@@ -53,7 +53,7 @@ public class JobConfigTests
     [DataRow("owner/repo/extra", "--repo must be in the format owner/repo")]
     public void ValidationErrors_RejectsInvalidRepo(string repo, string expectedError)
     {
-        var config = ValidConfig() with { Repo = RepoIdentifier.Parse(repo) };
+        var config = ValidConfig() with { Repo = new RepoIdentifier(repo) };
         var errors = config.ValidationErrors;
         Assert.IsTrue(errors.Contains(expectedError), $"Expected '{expectedError}' for repo '{repo}'");
     }

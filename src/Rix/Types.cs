@@ -9,16 +9,9 @@ internal readonly record struct WriteToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 
-internal readonly record struct RepoIdentifier(string Owner, string Name)
+internal readonly record struct RepoIdentifier(string Value)
 {
-    internal static RepoIdentifier Parse(string value)
-    {
-        var slash = value.IndexOf('/');
-        return slash < 0
-            ? new RepoIdentifier(value, string.Empty)
-            : new RepoIdentifier(value[..slash], value[(slash + 1)..]);
-    }
-    public override string ToString() => $"{Owner}/{Name}";
+    public override string ToString() => Value;
 }
 
 [JsonConverter(typeof(BranchNameJsonConverter))]

@@ -51,20 +51,20 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
     {
-        var cloneUrl = $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Owner}/{_repo.Name}.git";
+        var cloneUrl = $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Value}.git";
         return RunGitAsync(["clone", cloneUrl, targetDirectory], cancellationToken);
     }
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
-        var url = $"https://api.github.com/repos/{_repo.Owner}/{_repo.Name}/branches/{Uri.EscapeDataString(branch.Value)}";
+        var url = $"https://api.github.com/repos/{_repo.Value}/branches/{Uri.EscapeDataString(branch.Value)}";
         var response = await _http.GetAsync(url, cancellationToken);
         return response.StatusCode == System.Net.HttpStatusCode.OK;
     }
 
     public Task PushBranchAsync(BranchName branch, CancellationToken cancellationToken)
     {
-        var remoteUrl = $"https://x-access-token:{_writeToken.Value}@github.com/{_repo.Owner}/{_repo.Name}.git";
+        var remoteUrl = $"https://x-access-token:{_writeToken.Value}@github.com/{_repo.Value}.git";
         return RunGitAsync(["push", remoteUrl, $"refs/heads/{branch.Value}:refs/heads/{branch.Value}"], cancellationToken);
     }
 
@@ -74,7 +74,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         string body,
         CancellationToken cancellationToken)
     {
-        var url = $"https://api.github.com/repos/{_repo.Owner}/{_repo.Name}/pulls";
+        var url = $"https://api.github.com/repos/{_repo.Value}/pulls";
         var payload = JsonSerializer.Serialize(
             new CreatePrRequestDto(Title: title, Head: branch.Value, Base: "main", Body: body),
             GitHubJsonContext.Default.CreatePrRequestDto);

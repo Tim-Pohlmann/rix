@@ -22,7 +22,7 @@ internal record JobConfig(
         int? timeoutMinutes,
         string? workDir) =>
         new(
-            Repo: RepoIdentifier.Parse(repo),
+            Repo: new RepoIdentifier(repo),
             Prompt: prompt,
             ReadToken: new ReadToken(readToken),
             WriteToken: new WriteToken(writeToken),
@@ -42,9 +42,9 @@ internal static class JobConfigExtensions
             {
                 var errors = new List<string>();
 
-                if (string.IsNullOrWhiteSpace(config.Repo.Owner))
+                if (string.IsNullOrWhiteSpace(config.Repo.Value))
                     errors.Add("--repo is required");
-                else if (string.IsNullOrWhiteSpace(config.Repo.Name) || config.Repo.Name.Contains('/'))
+                else if (!IsValidRepoFormat(config.Repo.Value))
                     errors.Add("--repo must be in the format owner/repo");
 
                 if (string.IsNullOrWhiteSpace(config.Prompt))
@@ -70,5 +70,13 @@ internal static class JobConfigExtensions
                 return errors;
             }
         }
+    }
+
+    private static bool IsValidRepoFormat(string value)
+    {
+        var parts = value.Split('/');
+        return parts.Length == 2
+            && !string.IsNullOrWhiteSpace(parts[0])
+            && !string.IsNullOrWhiteSpace(parts[1]);
     }
 }

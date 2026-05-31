@@ -18,7 +18,7 @@ public class GitHubRepositoryHostTests
         string writeToken = "write-tok",
         Func<string[], CancellationToken, Task<ProcessResult>>? gitRunner = null) =>
         GitHubRepositoryHost.WithHandler(
-            RepoIdentifier.Parse(repo),
+            new RepoIdentifier(repo),
             new ReadToken(readToken),
             new WriteToken(writeToken),
             new DelegatingHandlerStub(handler),
