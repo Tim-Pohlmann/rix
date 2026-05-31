@@ -53,12 +53,15 @@ internal static class ProcessWrapper
         process.Start();
 
         var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
+        var processTask = process.WaitForExitAsync(cancellationToken);
+
+        await Task.WhenAny(processTask, stdoutTask);
+        if (stdoutTask.IsFaulted)
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
 
         var timedOut = false;
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken);
-        }
+        try { await processTask; }
         catch (OperationCanceledException)
         {
             timedOut = true;
