@@ -71,12 +71,11 @@ internal static class ProcessWrapper
             timedOut = true;
             try { process.Kill(entireProcessTree: true); }
             catch (InvalidOperationException) { /* process already exited */ }
+            await process.WaitForExitAsync(CancellationToken.None);
         }
 
         await stdoutTask;
-        if (timedOut)
-            await process.WaitForExitAsync(CancellationToken.None);
-        return new ProcessResult(timedOut ? -1 : process.ExitCode, timedOut); // NOSONAR: timedOut is set in catch (OperationCanceledException) above
+        return new ProcessResult(timedOut ? -1 : process.ExitCode, timedOut); // NOSONAR
     }
 
     private static async Task ReadLinesAsync(
