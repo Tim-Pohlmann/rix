@@ -75,11 +75,13 @@ internal static class ProcessWrapper
         Action<string>? onLine,
         CancellationToken cancellationToken)
     {
-        try
+        while (true)
         {
-            while (await reader.ReadLineAsync(cancellationToken) is { } line)
-                onLine?.Invoke(line);
+            string? line;
+            try { line = await reader.ReadLineAsync(cancellationToken); }
+            catch (OperationCanceledException) { return; }
+            if (line is null) return;
+            onLine?.Invoke(line);
         }
-        catch (OperationCanceledException) { }
     }
 }
