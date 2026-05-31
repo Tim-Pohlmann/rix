@@ -16,7 +16,8 @@ public class JobRunnerTests
             writeToken: "",
             maxTokens: null,
             timeoutMinutes: null,
-            workDir: null);
+            workDir: null,
+            agentUser: null);
 
         var exitCode = await Startup.RunAsync(["job"]);
         Assert.AreEqual(2, exitCode);

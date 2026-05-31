@@ -12,7 +12,8 @@ public class JobConfigTests
         writeToken: "write-tok",
         maxTokens: null,
         timeoutMinutes: null,
-        workDir: null);
+        workDir: null,
+        agentUser: null);
 
     [TestMethod]
     public void FromInputs_AppliesDefaults()
@@ -34,7 +35,8 @@ public class JobConfigTests
             writeToken: "w",
             maxTokens: 1000,
             timeoutMinutes: 5,
-            workDir: Path.GetTempPath());
+            workDir: Path.GetTempPath(),
+            agentUser: null);
 
         Assert.AreEqual(1000, config.MaxTokens.Value);
         Assert.AreEqual(5, config.TimeoutMinutes.Value);
@@ -110,8 +112,8 @@ public class JobConfigTests
     [TestMethod]
     public void FromInputs_DefaultsWorkDirToTemp_WhenNullOrWhitespace()
     {
-        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, null).WorkDir);
-        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, "").WorkDir);
-        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, "   ").WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, null, null).WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, "", null).WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, "   ", null).WorkDir);
     }
 }

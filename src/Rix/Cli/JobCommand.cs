@@ -40,6 +40,11 @@ internal static class JobCommand
         description: "Base directory for the temp clone (default: system temp)")
     { IsRequired = false };
 
+    private static readonly Option<string?> AgentUserOption = new(
+        name: "--agent-user",
+        description: "OS user to run Claude Code as via sudo (isolates agent from host secrets)")
+    { IsRequired = false };
+
     internal static Command Build(Func<JobConfig, Task<int>> handler)
     {
         var command = new Command("job", "Clone a repo, run Claude Code against it, and report created PRs");
@@ -51,6 +56,7 @@ internal static class JobCommand
         command.AddOption(MaxTokensOption);
         command.AddOption(TimeoutOption);
         command.AddOption(WorkDirOption);
+        command.AddOption(AgentUserOption);
 
         command.SetHandler(async ctx =>
         {
@@ -67,7 +73,9 @@ internal static class JobCommand
                 maxTokens:      Int(MaxTokensOption,  "RIX_MAX_TOKENS"),
                 timeoutMinutes: Int(TimeoutOption,    "RIX_TIMEOUT"),
                 workDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
-                                ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"));
+                                ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"),
+                agentUser:      ctx.ParseResult.GetValueForOption(AgentUserOption)
+                                ?? Environment.GetEnvironmentVariable("RIX_AGENT_USER"));
             ctx.ExitCode = await handler(config);
         });
 

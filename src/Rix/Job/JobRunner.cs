@@ -33,13 +33,18 @@ internal static class JobRunner
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
 
-            LogInfo($"Spawning Claude Code (max tokens: {config.MaxTokens.Value}, timeout: {config.TimeoutMinutes.Value}m)...");
+            var claudeArgs = new string[] { "-p", config.Prompt, "--output-format", "stream-json", "--max-tokens", config.MaxTokens.Value.ToString(), "--append-system-prompt", systemPrompt };
+            var (executable, args, environment) = config.AgentUser is { } agentUser
+                ? ("sudo", BuildSudoArgs(agentUser, claude, claudeArgs, claudeEnv), new Dictionary<string, string>())
+                : (claude, claudeArgs, claudeEnv);
+
+            LogInfo($"Spawning Claude Code (max tokens: {config.MaxTokens.Value}, timeout: {config.TimeoutMinutes.Value}m){(config.AgentUser is { } u ? $" as user '{u}'" : "")}...");
 
             var result = await ProcessWrapper.RunAsync(
-                claude,
-                ["-p", config.Prompt, "--output-format", "stream-json", "--max-tokens", config.MaxTokens.Value.ToString(), "--append-system-prompt", systemPrompt],
+                executable,
+                args,
                 workingDirectory: cloneDir,
-                environment: claudeEnv,
+                environment: environment,
                 onStdoutLine: line =>
                 {
                     Console.Error.WriteLine(line);
@@ -85,6 +90,12 @@ internal static class JobRunner
         {
             Cleanup(cloneDir);
         }
+    }
+
+    private static string[] BuildSudoArgs(string agentUser, string claude, string[] claudeArgs, Dictionary<string, string> env)
+    {
+        var envArgs = env.Select(kv => $"{kv.Key}={kv.Value}").ToArray();
+        return ["-u", agentUser, "-n", "--", "env", ..envArgs, claude, ..claudeArgs];
     }
 
     private static string BuildSystemPrompt(string apiBaseUrl) => $$"""

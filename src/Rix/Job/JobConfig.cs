@@ -7,7 +7,8 @@ internal record JobConfig(
     WriteToken WriteToken,
     MaxTokens MaxTokens,
     TimeoutMinutes TimeoutMinutes,
-    string WorkDir
+    string WorkDir,
+    string? AgentUser
 )
 {
     internal const int DefaultMaxTokens = 50_000;
@@ -20,7 +21,8 @@ internal record JobConfig(
         string writeToken,
         int? maxTokens,
         int? timeoutMinutes,
-        string? workDir) =>
+        string? workDir,
+        string? agentUser) =>
         new(
             Repo: new RepoIdentifier(repo),
             Prompt: prompt,
@@ -28,7 +30,8 @@ internal record JobConfig(
             WriteToken: new WriteToken(writeToken),
             MaxTokens: new MaxTokens(maxTokens ?? DefaultMaxTokens),
             TimeoutMinutes: new TimeoutMinutes(timeoutMinutes ?? DefaultTimeoutMinutes),
-            WorkDir: string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir
+            WorkDir: string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir,
+            AgentUser: string.IsNullOrWhiteSpace(agentUser) ? null : agentUser
         );
 }
 
