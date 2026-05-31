@@ -49,11 +49,11 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return client;
     }
 
-    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
-    {
-        var cloneUrl = $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Value}.git";
-        return RunGitAsync(["clone", cloneUrl, targetDirectory], cancellationToken);
-    }
+    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
+        RunGitWithCredentialsAsync(
+            _readToken.Value,
+            ["clone", $"https://github.com/{_repo.Value}.git", targetDirectory],
+            cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
@@ -62,11 +62,11 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return response.StatusCode == System.Net.HttpStatusCode.OK;
     }
 
-    public Task PushBranchAsync(BranchName branch, CancellationToken cancellationToken)
-    {
-        var remoteUrl = $"https://x-access-token:{_writeToken.Value}@github.com/{_repo.Value}.git";
-        return RunGitAsync(["push", remoteUrl, $"refs/heads/{branch.Value}:refs/heads/{branch.Value}"], cancellationToken);
-    }
+    public Task PushBranchAsync(BranchName branch, CancellationToken cancellationToken) =>
+        RunGitWithCredentialsAsync(
+            _writeToken.Value,
+            ["push", $"https://github.com/{_repo.Value}.git", $"refs/heads/{branch.Value}:refs/heads/{branch.Value}"],
+            cancellationToken);
 
     public async Task<string> CreatePullRequestAsync(
         BranchName branch,
@@ -98,11 +98,28 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return pr.HtmlUrl;
     }
 
+    private async Task RunGitWithCredentialsAsync(string token, string[] args, CancellationToken cancellationToken)
+    {
+        var credFile = Path.Combine(Path.GetTempPath(), $".rix-{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllText(credFile, $"https://x-access-token:{token}@github.com\n");
+            await RunGitAsync(["-c", $"credential.helper=store --file={credFile}", ..args], cancellationToken);
+        }
+        finally
+        {
+            if (File.Exists(credFile)) File.Delete(credFile);
+        }
+    }
+
     private async Task RunGitAsync(string[] args, CancellationToken cancellationToken)
     {
         var result = await _gitRunner(args, cancellationToken);
         if (!result.Succeeded)
-            throw new InvalidOperationException($"git {args[0]} failed with exit code {result.ExitCode}");
+        {
+            var verb = Array.Find(args, a => !a.StartsWith('-')) ?? args[0];
+            throw new InvalidOperationException($"git {verb} failed with exit code {result.ExitCode}");
+        }
     }
 
     private static Task<ProcessResult> DefaultGitRunner(string[] args, CancellationToken cancellationToken) =>

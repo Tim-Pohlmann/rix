@@ -9,8 +9,21 @@ internal readonly record struct WriteToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 
-internal readonly record struct RepoIdentifier(string Value)
+internal readonly record struct RepoIdentifier
 {
+    internal string Value { get; }
+
+    internal RepoIdentifier(string value)
+    {
+        if (!string.IsNullOrEmpty(value))
+        {
+            var slash = value.IndexOf('/');
+            if (slash <= 0 || slash == value.Length - 1 || value.IndexOf('/', slash + 1) >= 0)
+                throw new ArgumentException($"'{value}' is not a valid repo identifier; expected owner/name format.", nameof(value));
+        }
+        Value = value;
+    }
+
     public override string ToString() => Value;
 }
 

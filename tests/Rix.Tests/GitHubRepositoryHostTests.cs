@@ -50,9 +50,10 @@ public class GitHubRepositoryHostTests
         await host.CloneAsync("/tmp/target", CancellationToken.None);
 
         Assert.IsNotNull(capturedArgs);
-        Assert.AreEqual("clone", capturedArgs[0]);
-        StringAssert.Contains(capturedArgs[1], "my-read-token");
-        Assert.AreEqual("/tmp/target", capturedArgs[2]);
+        Assert.AreEqual("-c", capturedArgs[0]);
+        Assert.AreEqual("clone", capturedArgs[2]);
+        Assert.IsFalse(capturedArgs.Any(a => a.Contains("my-read-token")), "Token must not appear in git args");
+        Assert.AreEqual("/tmp/target", capturedArgs[4]);
     }
 
     [TestMethod]
@@ -67,9 +68,10 @@ public class GitHubRepositoryHostTests
         await host.PushBranchAsync(new BranchName("rix/fix"), CancellationToken.None);
 
         Assert.IsNotNull(capturedArgs);
-        Assert.AreEqual("push", capturedArgs[0]);
-        StringAssert.Contains(capturedArgs[1], "my-write-token");
-        StringAssert.Contains(capturedArgs[2], "rix/fix");
+        Assert.AreEqual("-c", capturedArgs[0]);
+        Assert.AreEqual("push", capturedArgs[2]);
+        Assert.IsFalse(capturedArgs.Any(a => a.Contains("my-write-token")), "Token must not appear in git args");
+        StringAssert.Contains(capturedArgs[4], "rix/fix");
     }
 
     [TestMethod]

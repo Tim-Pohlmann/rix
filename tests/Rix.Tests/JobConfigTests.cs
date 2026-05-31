@@ -48,14 +48,20 @@ public class JobConfigTests
     }
 
     [TestMethod]
-    [DataRow("", "--repo is required")]
-    [DataRow("noslash", "--repo must be in the format owner/repo")]
-    [DataRow("owner/repo/extra", "--repo must be in the format owner/repo")]
-    public void ValidationErrors_RejectsInvalidRepo(string repo, string expectedError)
+    public void ValidationErrors_RejectsEmptyRepo()
     {
-        var config = ValidConfig() with { Repo = new RepoIdentifier(repo) };
-        var errors = config.ValidationErrors;
-        Assert.IsTrue(errors.Contains(expectedError), $"Expected '{expectedError}' for repo '{repo}'");
+        var config = ValidConfig() with { Repo = new RepoIdentifier("") };
+        Assert.IsTrue(config.ValidationErrors.Contains("--repo is required"));
+    }
+
+    [TestMethod]
+    [DataRow("noslash")]
+    [DataRow("owner/repo/extra")]
+    [DataRow("/repo")]
+    [DataRow("owner/")]
+    public void RepoIdentifier_ThrowsOnInvalidFormat(string repo)
+    {
+        Assert.ThrowsException<ArgumentException>(() => new RepoIdentifier(repo));
     }
 
     [TestMethod]
