@@ -5,7 +5,8 @@ namespace Rix.Api;
 internal record PrRequest(
     [property: JsonPropertyName("branch")] string Branch,
     [property: JsonPropertyName("title")] string Title,
-    [property: JsonPropertyName("body")] string Body
+    [property: JsonPropertyName("body")] string Body,
+    [property: JsonPropertyName("baseBranch")] string? BaseBranch
 );
 
 internal record PrCreatedResponse(

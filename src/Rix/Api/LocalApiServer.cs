@@ -64,7 +64,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 return Results.Conflict(new ErrorResponse($"Branch {branch.Value} already exists on the remote."));
 
             await host.PushBranchAsync(branch, ct);
-            var url = await host.CreatePullRequestAsync(branch, req.Title, req.Body, ct);
+            var url = await host.CreatePullRequestAsync(branch, req.Title, req.Body, req.BaseBranch ?? "main", ct);
 
             createdPrs.Add(new PullRequest(new Uri(url), branch));
             return Results.Ok(new PrCreatedResponse(url));

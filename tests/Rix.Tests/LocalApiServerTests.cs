@@ -24,7 +24,7 @@ public class LocalApiServerTests
             LastPushedBranch = branch.Value;
             return Task.CompletedTask;
         }
-        public Task<string> CreatePullRequestAsync(BranchName branch, string title, string body, CancellationToken cancellationToken)
+        public Task<string> CreatePullRequestAsync(BranchName branch, string title, string body, string baseBranch, CancellationToken cancellationToken)
         {
             LastPrBranch = branch.Value;
             return Task.FromResult(PrUrlResult);
