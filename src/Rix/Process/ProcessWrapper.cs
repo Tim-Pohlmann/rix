@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 
 namespace Rix.Process;
 
@@ -9,7 +7,7 @@ internal record ProcessResult(int ExitCode, bool TimedOut)
     internal bool Succeeded => ExitCode == 0 && !TimedOut;
 }
 
-internal static partial class ProcessWrapper
+internal static class ProcessWrapper
 {
     private static readonly string[] AllowedEnvVars =
     [
@@ -51,16 +49,10 @@ internal static partial class ProcessWrapper
         foreach (var (key, value) in environment)
             startInfo.Environment[key] = value;
 
-        using var process = new System.Diagnostics.Process { StartInfo = startInfo, EnableRaisingEvents = true };
+        using var process = new System.Diagnostics.Process { StartInfo = startInfo };
         process.Start();
 
-        // Best-effort: promote child to its own process group so cancellation signals the full tree.
-        // May fail with EACCES if the child exec'd before we got here; that's acceptable.
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            TrySetProcessGroup(process.Id);
-
-        using var stdoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, stdoutCts.Token);
+        var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
 
         var timedOut = false;
         try
@@ -70,13 +62,10 @@ internal static partial class ProcessWrapper
         catch (OperationCanceledException)
         {
             timedOut = true;
-            await TerminateGracefullyAsync(process);
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
         }
 
-        // Drain remaining stdout. If a grandchild inherited the pipe and is still writing,
-        // cancel after a deadline rather than blocking RunAsync indefinitely.
-        if (await Task.WhenAny(stdoutTask, Task.Delay(TimeSpan.FromSeconds(2))) != stdoutTask)
-            await stdoutCts.CancelAsync();
         await stdoutTask;
         return new ProcessResult(timedOut ? -1 : process.ExitCode, timedOut);
     }
@@ -91,70 +80,6 @@ internal static partial class ProcessWrapper
             while (await reader.ReadLineAsync(cancellationToken) is { } line)
                 onLine?.Invoke(line);
         }
-        catch (OperationCanceledException)
-        {
-            // Expected when the job is cancelled; stdout reading stops here.
-        }
+        catch (OperationCanceledException) { }
     }
-
-    private static async Task TerminateGracefullyAsync(System.Diagnostics.Process process)
-    {
-        // Best-effort SIGTERM / soft kill; always fall through to hard kill after grace period.
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            try { SendSigterm(process.Id); }
-            catch (InvalidOperationException)
-            {
-                // SIGTERM failed (process group gone or permission error); proceed to hard kill.
-            }
-        }
-        else
-        {
-            try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { return; }
-        }
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        try { await process.WaitForExitAsync(cts.Token); }
-        catch (OperationCanceledException)
-        {
-            // Grace period elapsed; fall through to hard kill.
-        }
-
-        // Always attempt tree kill: SIGTERM may have exited the direct child while leaving
-        // grandchildren running (e.g. when the process-group fallback was used).
-        try { process.Kill(entireProcessTree: true); }
-        catch (InvalidOperationException)
-        {
-            // Process already exited between the grace period and the hard kill.
-        }
-    }
-
-    [SupportedOSPlatform("linux")]
-    [SupportedOSPlatform("macos")]
-    private static void TrySetProcessGroup(int pid)
-    {
-        // EACCES: child already exec'd. ESRCH: process already exited. Both are acceptable races.
-        if (setpgid(pid, pid) != 0 && Marshal.GetLastPInvokeError() is var errno && errno != 13 /* EACCES */ && errno != 3 /* ESRCH */)
-            throw new InvalidOperationException($"setpgid({pid}) failed: errno {errno}");
-    }
-
-    [SupportedOSPlatform("linux")]
-    [SupportedOSPlatform("macos")]
-    private static void SendSigterm(int pid)
-    {
-        if (kill(-pid, 15) == 0)
-            return;
-        var errno = Marshal.GetLastPInvokeError();
-        // No process group with this pgid (setpgid lost the exec race); signal the direct child.
-        if (errno == 3 /* ESRCH */ && kill(pid, 15) == 0)
-            return;
-        throw new InvalidOperationException($"kill(-{pid}, SIGTERM) failed: errno {errno}");
-    }
-
-    [LibraryImport("libc", SetLastError = true)]
-    private static partial int kill(int pid, int sig);
-
-    [LibraryImport("libc", SetLastError = true)]
-    private static partial int setpgid(int pid, int pgid);
 }
