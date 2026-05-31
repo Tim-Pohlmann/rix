@@ -27,10 +27,8 @@ internal static class JobRunner
             LogInfo($"API server started at {apiServer.BaseUrl}");
 
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
-            var claudeEnv = ProcessWrapper.BuildSanitizedEnvironment(new Dictionary<string, string>
-            {
-                ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
-            });
+            var claudeEnv = ProcessWrapper.BuildSanitizedEnvironment();
+            claudeEnv["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString();
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
