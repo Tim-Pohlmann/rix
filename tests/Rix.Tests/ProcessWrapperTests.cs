@@ -56,6 +56,21 @@ public class ProcessWrapperTests
     }
 
     [TestMethod]
+    public async Task RunAsync_PropagatesOnStdoutLineException()
+    {
+        var env = ProcessWrapper.BuildSanitizedEnvironment();
+        var (fileName, args) = EchoCommand("hello");
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => ProcessWrapper.RunAsync(
+                fileName, args,
+                workingDirectory: Path.GetTempPath(),
+                environment: env,
+                onStdoutLine: _ => throw new InvalidOperationException("callback failed"),
+                cancellationToken: CancellationToken.None));
+    }
+
+    [TestMethod]
     public async Task RunAsync_TimesOut_WhenCancelled()
     {
         var env = ProcessWrapper.BuildSanitizedEnvironment();
