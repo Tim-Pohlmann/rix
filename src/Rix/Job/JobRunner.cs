@@ -26,7 +26,7 @@ internal static class JobRunner
             await using var apiServer = await LocalApiServer.StartAsync(host, cancellationToken);
             LogInfo($"API server started at {apiServer.BaseUrl}");
 
-            var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
+            var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl.ToString());
             var claudeEnv = ProcessWrapper.BuildSanitizedEnvironment();
             claudeEnv["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString();
 
