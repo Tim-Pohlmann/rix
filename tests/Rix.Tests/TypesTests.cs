@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Rix.Job;
 
 namespace Rix.Tests;
 
