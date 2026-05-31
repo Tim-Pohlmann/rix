@@ -95,7 +95,7 @@ public class GitHubRepositoryHostTests
             };
         }, gitRunner: SuccessGitRunner);
 
-        var url = await host.CreatePullRequestAsync(new BranchName("rix/fix"), "Fix bug", "Body text", CancellationToken.None);
+        var url = await host.CreatePullRequestAsync(new BranchName("rix/fix"), "Fix bug", "Body text", "main", CancellationToken.None);
         Assert.AreEqual("https://github.com/owner/repo/pull/42", url);
     }
 
@@ -113,7 +113,7 @@ public class GitHubRepositoryHostTests
             };
         }, writeToken: "my-write-token", gitRunner: SuccessGitRunner);
 
-        await host.CreatePullRequestAsync(new BranchName("rix/branch"), "Title", "Body", CancellationToken.None);
+        await host.CreatePullRequestAsync(new BranchName("rix/branch"), "Title", "Body", "main", CancellationToken.None);
         Assert.AreEqual("my-write-token", capturedAuth);
     }
 
@@ -126,7 +126,7 @@ public class GitHubRepositoryHostTests
         }, gitRunner: SuccessGitRunner);
 
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => host.CreatePullRequestAsync(new BranchName("rix/branch"), "Title", "Body", CancellationToken.None));
+            () => host.CreatePullRequestAsync(new BranchName("rix/branch"), "Title", "Body", "main", CancellationToken.None));
     }
 
     [TestMethod]
@@ -138,7 +138,7 @@ public class GitHubRepositoryHostTests
         }, gitRunner: SuccessGitRunner);
 
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => host.CreatePullRequestAsync(new BranchName("rix/branch"), "Title", "Body", CancellationToken.None));
+            () => host.CreatePullRequestAsync(new BranchName("rix/branch"), "Title", "Body", "main", CancellationToken.None));
     }
 
     private sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler)

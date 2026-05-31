@@ -72,11 +72,12 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         BranchName branch,
         string title,
         string body,
+        string baseBranch,
         CancellationToken cancellationToken)
     {
         var url = $"https://api.github.com/repos/{_repo.Value}/pulls";
         var payload = JsonSerializer.Serialize(
-            new CreatePrRequestDto(Title: title, Head: branch.Value, Base: "main", Body: body),
+            new CreatePrRequestDto(Title: title, Head: branch.Value, Base: baseBranch, Body: body),
             GitHubJsonContext.Default.CreatePrRequestDto);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
