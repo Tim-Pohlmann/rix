@@ -74,6 +74,8 @@ internal static class ProcessWrapper
         }
 
         await stdoutTask;
+        if (timedOut)
+            await process.WaitForExitAsync(CancellationToken.None);
         return new ProcessResult(timedOut ? -1 : process.ExitCode, timedOut); // NOSONAR: timedOut is set in catch (OperationCanceledException) above
     }
 
