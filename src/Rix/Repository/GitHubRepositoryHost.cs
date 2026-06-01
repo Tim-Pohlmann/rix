@@ -14,7 +14,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken)
         : this(repo, readToken, handler: null, gitRunner: null) { }
 
-    private GitHubRepositoryHost(
+    internal GitHubRepositoryHost(
         RepoIdentifier repo,
         ReadToken readToken,
         HttpMessageHandler? handler,
@@ -25,13 +25,6 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         _http = BuildHttpClient(readToken, handler);
         _gitRunner = gitRunner ?? DefaultGitRunner;
     }
-
-    internal static GitHubRepositoryHost WithHandler(
-        RepoIdentifier repo,
-        ReadToken readToken,
-        HttpMessageHandler handler,
-        Func<string[], CancellationToken, Task<ProcessResult>>? gitRunner = null) =>
-        new(repo, readToken, handler, gitRunner);
 
     private static HttpClient BuildHttpClient(ReadToken token, HttpMessageHandler? handler)
     {

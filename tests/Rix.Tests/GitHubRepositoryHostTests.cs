@@ -15,7 +15,7 @@ public class GitHubRepositoryHostTests
         string repo = "owner/repo",
         string readToken = "read-tok",
         Func<string[], CancellationToken, Task<ProcessResult>>? gitRunner = null) =>
-        GitHubRepositoryHost.WithHandler(
+        new(
             new RepoIdentifier(repo),
             new ReadToken(readToken),
             new DelegatingHandlerStub(handler),
