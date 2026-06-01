@@ -55,7 +55,7 @@ public class LocalApiServerTests
         });
 
         Assert.AreEqual(1, server.PendingPrRequests.Count);
-        Assert.AreEqual(new BranchName("rix/feat"), server.PendingPrRequests[0].Branch);
+        Assert.AreEqual(new RixBranchName("rix/feat"), server.PendingPrRequests[0].Branch);
         Assert.AreEqual("Add feature", server.PendingPrRequests[0].Title);
     }
 

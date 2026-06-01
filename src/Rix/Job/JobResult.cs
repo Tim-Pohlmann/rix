@@ -13,7 +13,6 @@ internal interface IJobResult
 }
 
 internal record JobSuccess(
-    [property: JsonPropertyName("prs")] IReadOnlyList<PullRequest> Prs,
     [property: JsonPropertyName("tokensUsed")] int TokensUsed,
     [property: JsonIgnore] TimeSpan Duration
 ) : IJobResult

@@ -25,7 +25,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     }
 
     internal static async Task<LocalApiServer> StartAsync(
-        Func<BranchName, CancellationToken, Task<bool>> branchExists,
+        Func<RixBranchName, CancellationToken, Task<bool>> branchExists,
         CancellationToken cancellationToken)
     {
         var pendingPrRequests = new ConcurrentQueue<PrRequest>();
@@ -50,19 +50,15 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
     private static void MapEndpoints(
         WebApplication app,
-        Func<BranchName, CancellationToken, Task<bool>> branchExists,
+        Func<RixBranchName, CancellationToken, Task<bool>> branchExists,
         ConcurrentQueue<PrRequest> pendingPrRequests)
     {
         app.MapGet("/health", () => Results.Ok());
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
         {
-            var branch = req.Branch;
-            if (!branch.Valid)
-                return Results.BadRequest(new ErrorResponse($"Branch must match rix/* pattern, got: {branch.Value}"));
-
-            if (await branchExists(branch, ct))
-                return Results.Conflict(new ErrorResponse($"Branch {branch.Value} already exists on the remote."));
+            if (await branchExists(req.Branch, ct))
+                return Results.Conflict(new ErrorResponse($"Branch {req.Branch.Value} already exists on the remote."));
 
             pendingPrRequests.Enqueue(req);
             return Results.Ok(new PrQueuedResponse("queued"));
