@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json;
 using Rix.Process;
 using Rix.Repository;
 
@@ -15,12 +14,10 @@ public class GitHubRepositoryHostTests
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string readToken = "read-tok",
-        string writeToken = "write-tok",
         Func<string[], CancellationToken, Task<ProcessResult>>? gitRunner = null) =>
         GitHubRepositoryHost.WithHandler(
             new RepoIdentifier(repo),
             new ReadToken(readToken),
-            new WriteToken(writeToken),
             new DelegatingHandlerStub(handler),
             gitRunner);
 
@@ -36,6 +33,14 @@ public class GitHubRepositoryHostTests
     {
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         Assert.IsFalse(await host.BranchExistsOnRemoteAsync(new BranchName("rix/missing"), CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task BranchExistsOnRemoteAsync_Throws_ForNon404Error()
+    {
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(
+            () => host.BranchExistsOnRemoteAsync(new BranchName("rix/branch"), CancellationToken.None));
     }
 
     [TestMethod]
@@ -57,24 +62,6 @@ public class GitHubRepositoryHostTests
     }
 
     [TestMethod]
-    public async Task PushBranchAsync_CallsGitPush_WithCorrectArgs()
-    {
-        string[]? capturedArgs = null;
-        var host = BuildHost(
-            _ => new HttpResponseMessage(HttpStatusCode.OK),
-            writeToken: "my-write-token",
-            gitRunner: (args, _) => { capturedArgs = args; return Task.FromResult(new ProcessResult(0, false)); });
-
-        await host.PushBranchAsync(new BranchName("rix/fix"), CancellationToken.None);
-
-        Assert.IsNotNull(capturedArgs);
-        Assert.AreEqual("-c", capturedArgs[0]);
-        Assert.AreEqual("push", capturedArgs[2]);
-        Assert.IsFalse(capturedArgs.Any(a => a.Contains("my-write-token")), "Token must not appear in git args");
-        StringAssert.Contains(capturedArgs[4], "rix/fix");
-    }
-
-    [TestMethod]
     public async Task CloneAsync_Throws_WhenGitFails()
     {
         var host = BuildHost(
@@ -86,61 +73,16 @@ public class GitHubRepositoryHostTests
     }
 
     [TestMethod]
-    public async Task CreatePullRequestAsync_ReturnsUrl_OnSuccess()
+    public async Task CloneAsync_ErrorMessage_ContainsVerb_NotCredentialHelper()
     {
-        var host = BuildHost(_ =>
-        {
-            var body = JsonSerializer.Serialize(new { html_url = "https://github.com/owner/repo/pull/42" });
-            return new HttpResponseMessage(HttpStatusCode.Created)
-            {
-                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
-            };
-        }, gitRunner: SuccessGitRunner);
+        var host = BuildHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _) => Task.FromResult(new ProcessResult(128, false)));
 
-        var url = await host.CreatePullRequestAsync(new BranchName("rix/fix"), "Fix bug", "Body text", "main", CancellationToken.None);
-        Assert.AreEqual("https://github.com/owner/repo/pull/42", url);
-    }
-
-    [TestMethod]
-    public async Task CreatePullRequestAsync_UsesWriteToken()
-    {
-        string? capturedAuth = null;
-        var host = BuildHost(req =>
-        {
-            capturedAuth = req.Headers.Authorization?.Parameter;
-            var body = JsonSerializer.Serialize(new { html_url = "https://github.com/owner/repo/pull/1" });
-            return new HttpResponseMessage(HttpStatusCode.Created)
-            {
-                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
-            };
-        }, writeToken: "my-write-token", gitRunner: SuccessGitRunner);
-
-        await host.CreatePullRequestAsync(new BranchName("rix/branch"), "Title", "Body", "main", CancellationToken.None);
-        Assert.AreEqual("my-write-token", capturedAuth);
-    }
-
-    [TestMethod]
-    public async Task CreatePullRequestAsync_Throws_OnErrorResponse()
-    {
-        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.UnprocessableEntity)
-        {
-            Content = new StringContent("{\"message\":\"Validation Failed\"}", System.Text.Encoding.UTF8, "application/json"),
-        }, gitRunner: SuccessGitRunner);
-
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => host.CreatePullRequestAsync(new BranchName("rix/branch"), "Title", "Body", "main", CancellationToken.None));
-    }
-
-    [TestMethod]
-    public async Task CreatePullRequestAsync_Throws_OnNullResponse()
-    {
-        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.Created)
-        {
-            Content = new StringContent("null", System.Text.Encoding.UTF8, "application/json"),
-        }, gitRunner: SuccessGitRunner);
-
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => host.CreatePullRequestAsync(new BranchName("rix/branch"), "Title", "Body", "main", CancellationToken.None));
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.CloneAsync("/tmp/target", CancellationToken.None));
+        StringAssert.Contains(ex.Message, "clone");
+        Assert.IsFalse(ex.Message.Contains("credential"), "Error message must not leak credential helper path");
     }
 
     private sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler)
