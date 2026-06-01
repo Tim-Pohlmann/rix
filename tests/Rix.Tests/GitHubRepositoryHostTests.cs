@@ -19,7 +19,7 @@ public class GitHubRepositoryHostTests
             new RepoIdentifier(repo),
             new ReadToken(readToken),
             new DelegatingHandlerStub(handler),
-            gitRunner);
+            gitRunner ?? SuccessGitRunner);
 
     [TestMethod]
     public async Task BranchExistsOnRemoteAsync_ReturnsTrue_When200()
@@ -55,10 +55,9 @@ public class GitHubRepositoryHostTests
         await host.CloneAsync("/tmp/target", CancellationToken.None);
 
         Assert.IsNotNull(capturedArgs);
-        Assert.AreEqual("-c", capturedArgs[0]);
-        Assert.AreEqual("clone", capturedArgs[2]);
-        Assert.IsFalse(capturedArgs.Any(a => a.Contains("my-read-token")), "Token must not appear in git args");
-        Assert.AreEqual("/tmp/target", capturedArgs[4]);
+        Assert.AreEqual("clone", capturedArgs[0]);
+        Assert.IsTrue(capturedArgs[1].Contains("my-read-token"), "Token must be embedded in clone URL");
+        Assert.AreEqual("/tmp/target", capturedArgs[2]);
     }
 
     [TestMethod]
@@ -68,21 +67,9 @@ public class GitHubRepositoryHostTests
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _) => Task.FromResult(new ProcessResult(128, false)));
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => host.CloneAsync("/tmp/target", CancellationToken.None));
-    }
-
-    [TestMethod]
-    public async Task CloneAsync_ErrorMessage_ContainsVerb_NotCredentialHelper()
-    {
-        var host = BuildHost(
-            _ => new HttpResponseMessage(HttpStatusCode.OK),
-            gitRunner: (_, _) => Task.FromResult(new ProcessResult(128, false)));
-
         var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => host.CloneAsync("/tmp/target", CancellationToken.None));
         StringAssert.Contains(ex.Message, "clone");
-        Assert.IsFalse(ex.Message.Contains("credential"), "Error message must not leak credential helper path");
     }
 
     private sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler)

@@ -37,9 +37,8 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-        RunGitWithCredentialsAsync(
-            "clone",
-            ["clone", $"https://github.com/{_repo.Value}.git", targetDirectory],
+        RunGitAsync("clone",
+            ["clone", $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Value}.git", targetDirectory],
             cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
@@ -50,20 +49,6 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
             return false;
         response.EnsureSuccessStatusCode();
         return true;
-    }
-
-    private async Task RunGitWithCredentialsAsync(string verb, string[] args, CancellationToken cancellationToken)
-    {
-        var credFile = Path.Combine(Path.GetTempPath(), $".rix-{Guid.NewGuid():N}");
-        try
-        {
-            await File.WriteAllTextAsync(credFile, $"https://x-access-token:{_readToken.Value}@github.com\n", cancellationToken);
-            await RunGitAsync(verb, ["-c", $"credential.helper=store --file={credFile}", ..args], cancellationToken);
-        }
-        finally
-        {
-            if (File.Exists(credFile)) File.Delete(credFile);
-        }
     }
 
     private async Task RunGitAsync(string verb, string[] args, CancellationToken cancellationToken)
