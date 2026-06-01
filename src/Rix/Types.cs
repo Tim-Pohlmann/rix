@@ -15,12 +15,9 @@ internal readonly record struct RepoIdentifier
 
     internal RepoIdentifier(string value)
     {
-        if (!string.IsNullOrEmpty(value))
-        {
-            var slash = value.IndexOf('/');
-            if (slash <= 0 || slash == value.Length - 1 || value.IndexOf('/', slash + 1) >= 0)
-                throw new ArgumentException($"'{value}' is not a valid repo identifier; expected owner/name format.", nameof(value));
-        }
+        var slash = value.IndexOf('/');
+        if (slash <= 0 || slash == value.Length - 1 || value.IndexOf('/', slash + 1) >= 0)
+            throw new ArgumentException($"'{value}' is not a valid repo identifier; expected owner/name format.", nameof(value));
         Value = value;
     }
 

@@ -59,15 +59,25 @@ internal static class JobCommand
             int? Int(Option<int?> opt, string env) =>
                 ctx.ParseResult.GetValueForOption(opt) ?? (int.TryParse(Environment.GetEnvironmentVariable(env), out var n) ? n : null);
 
-            var config = JobConfig.FromInputs(
-                repo:           Str(RepoOption,       "RIX_REPO"),
-                prompt:         Str(PromptOption,     "RIX_PROMPT"),
-                readToken:      Str(ReadTokenOption,  "RIX_READ_TOKEN"),
-                writeToken:     Str(WriteTokenOption, "RIX_WRITE_TOKEN"),
-                maxTokens:      Int(MaxTokensOption,  "RIX_MAX_TOKENS"),
-                timeoutMinutes: Int(TimeoutOption,    "RIX_TIMEOUT"),
-                workDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
-                                ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"));
+            JobConfig config;
+            try
+            {
+                config = JobConfig.FromInputs(
+                    repo:           Str(RepoOption,       "RIX_REPO"),
+                    prompt:         Str(PromptOption,     "RIX_PROMPT"),
+                    readToken:      Str(ReadTokenOption,  "RIX_READ_TOKEN"),
+                    writeToken:     Str(WriteTokenOption, "RIX_WRITE_TOKEN"),
+                    maxTokens:      Int(MaxTokensOption,  "RIX_MAX_TOKENS"),
+                    timeoutMinutes: Int(TimeoutOption,    "RIX_TIMEOUT"),
+                    workDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
+                                    ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"));
+            }
+            catch (ArgumentException ex)
+            {
+                Console.Error.WriteLine($"error: {ex.Message}");
+                ctx.ExitCode = 2;
+                return;
+            }
             ctx.ExitCode = await handler(config);
         });
 

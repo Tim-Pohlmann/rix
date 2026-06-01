@@ -48,13 +48,7 @@ public class JobConfigTests
     }
 
     [TestMethod]
-    public void ValidationErrors_RejectsEmptyRepo()
-    {
-        var config = ValidConfig() with { Repo = new RepoIdentifier("") };
-        Assert.IsTrue(config.ValidationErrors.Contains("--repo is required"));
-    }
-
-    [TestMethod]
+    [DataRow("")]
     [DataRow("noslash")]
     [DataRow("owner/repo/extra")]
     [DataRow("/repo")]

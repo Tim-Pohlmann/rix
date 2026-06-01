@@ -42,9 +42,6 @@ internal static class JobConfigExtensions
             {
                 var errors = new List<string>();
 
-                if (string.IsNullOrWhiteSpace(config.Repo.Value))
-                    errors.Add("--repo is required");
-
                 if (string.IsNullOrWhiteSpace(config.Prompt))
                     errors.Add("--prompt is required");
 
