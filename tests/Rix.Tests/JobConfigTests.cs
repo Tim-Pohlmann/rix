@@ -5,14 +5,16 @@ namespace Rix.Tests;
 [TestClass]
 public class JobConfigTests
 {
+    private static readonly string ExistingDir = Path.GetTempPath();
+
     private static JobConfig ValidConfig() => JobConfig.FromInputs(
         repo: "owner/repo",
         prompt: "Fix the bug",
         readToken: "read-tok",
-        writeToken: "write-tok",
         maxTokens: null,
         timeoutMinutes: null,
-        workDir: null);
+        workDir: null,
+        outputDir: ExistingDir);
 
     [TestMethod]
     public void FromInputs_AppliesDefaults()
@@ -31,10 +33,10 @@ public class JobConfigTests
             repo: "owner/repo",
             prompt: "Fix",
             readToken: "r",
-            writeToken: "w",
             maxTokens: 1000,
             timeoutMinutes: 5,
-            workDir: Path.GetTempPath());
+            workDir: Path.GetTempPath(),
+            outputDir: ExistingDir);
 
         Assert.AreEqual(1000, config.MaxTokens.Value);
         Assert.AreEqual(5, config.TimeoutMinutes.Value);
@@ -73,13 +75,6 @@ public class JobConfigTests
     }
 
     [TestMethod]
-    public void ValidationErrors_RejectsEmptyWriteToken()
-    {
-        var errors = (ValidConfig() with { WriteToken = new WriteToken("") }).ValidationErrors;
-        Assert.IsTrue(errors.Count > 0);
-    }
-
-    [TestMethod]
     public void ValidationErrors_RejectsNonPositiveMaxTokens()
     {
         var errors = (ValidConfig() with { MaxTokens = new MaxTokens(0) }).ValidationErrors;
@@ -108,10 +103,24 @@ public class JobConfigTests
     }
 
     [TestMethod]
+    public void ValidationErrors_RejectsEmptyOutputDir()
+    {
+        var errors = (ValidConfig() with { OutputDir = "" }).ValidationErrors;
+        Assert.IsTrue(errors.Any(e => e.Contains("--output-dir")));
+    }
+
+    [TestMethod]
+    public void ValidationErrors_RejectsNonExistentOutputDir()
+    {
+        var errors = (ValidConfig() with { OutputDir = "/nonexistent/out" }).ValidationErrors;
+        Assert.IsTrue(errors.Any(e => e.Contains("--output-dir")));
+    }
+
+    [TestMethod]
     public void FromInputs_DefaultsWorkDirToTemp_WhenNullOrWhitespace()
     {
-        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, null).WorkDir);
-        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, "").WorkDir);
-        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", "w", null, null, "   ").WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", null, null, null, ExistingDir).WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", null, null, "", ExistingDir).WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", null, null, "   ", ExistingDir).WorkDir);
     }
 }

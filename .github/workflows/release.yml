@@ -82,8 +82,6 @@ jobs:
             archive_ext: tar.gz
           - rid: osx-arm64
             archive_ext: tar.gz
-          - rid: win-x64
-            archive_ext: zip
 
     steps:
       - uses: actions/checkout@v4

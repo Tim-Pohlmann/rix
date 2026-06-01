@@ -9,28 +9,12 @@ internal record ProcessResult(int ExitCode, bool TimedOut)
 
 internal static class ProcessWrapper
 {
-    private static readonly string[] AllowedEnvVars =
-    [
-        "PATH",
-        "HOME",
-        "ANTHROPIC_API_KEY",
-        "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
-        "LANG",
-        "LC_ALL",
-    ];
-
-    internal static Dictionary<string, string> BuildSanitizedEnvironment() =>
-        AllowedEnvVars
-            .Select(key => (key, value: Environment.GetEnvironmentVariable(key)))
-            .Where(kv => kv.value is not null)
-            .ToDictionary(kv => kv.key, kv => kv.value!);
-
     internal static async Task<ProcessResult> RunAsync(
         string fileName,
         IEnumerable<string> arguments,
         string workingDirectory,
-        IReadOnlyDictionary<string, string> environment,
-        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? environmentOverrides = null,
+        CancellationToken cancellationToken = default,
         Action<string>? onStdoutLine = null)
     {
         var startInfo = new ProcessStartInfo
@@ -45,9 +29,12 @@ internal static class ProcessWrapper
         foreach (var arg in arguments)
             startInfo.ArgumentList.Add(arg);
 
-        startInfo.Environment.Clear();
-        foreach (var (key, value) in environment)
-            startInfo.Environment[key] = value;
+        if (environmentOverrides is not null)
+        {
+            startInfo.Environment.Clear();
+            foreach (var (key, value) in environmentOverrides)
+                startInfo.Environment[key] = value;
+        }
 
         using var process = new System.Diagnostics.Process { StartInfo = startInfo };
         process.Start();

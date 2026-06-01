@@ -6,51 +6,13 @@ namespace Rix.Tests;
 public class ProcessWrapperTests
 {
     [TestMethod]
-    public void BuildSanitizedEnvironment_ExcludesNonAllowedVars()
-    {
-        using var env = new EnvScope();
-        env.Set("RIX_WRITE_TOKEN", "secret");
-        Assert.IsFalse(ProcessWrapper.BuildSanitizedEnvironment().ContainsKey("RIX_WRITE_TOKEN"));
-    }
-
-    [TestMethod]
-    public void BuildSanitizedEnvironment_ReturnsMutableDictionary()
-    {
-        var env = ProcessWrapper.BuildSanitizedEnvironment();
-        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = "42000";
-        Assert.AreEqual("42000", env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"]);
-    }
-
-    [TestMethod]
-    public async Task RunAsync_DoesNotInheritNonAllowedEnvVars()
-    {
-        using var scope = new EnvScope();
-        scope.Set("RIX_SECRET", "should-not-leak");
-
-        var lines = new List<string>();
-        var env = ProcessWrapper.BuildSanitizedEnvironment();
-        var (fileName, args) = PrintEnvCommand("RIX_SECRET");
-        await ProcessWrapper.RunAsync(
-            fileName, args,
-            workingDirectory: Path.GetTempPath(),
-            environment: env,
-            onStdoutLine: lines.Add,
-            cancellationToken: CancellationToken.None);
-
-        Assert.IsTrue(lines.Any(l => l.Contains("ABSENT")), "Child should not see RIX_SECRET");
-    }
-
-    [TestMethod]
     public async Task RunAsync_CapturesStdoutLines()
     {
         var lines = new List<string>();
-        var env = ProcessWrapper.BuildSanitizedEnvironment();
 
-        var (fileName, args) = EchoCommand("hello");
         var result = await ProcessWrapper.RunAsync(
-            fileName, args,
+            "/bin/sh", ["-c", "echo hello"],
             workingDirectory: Path.GetTempPath(),
-            environment: env,
             onStdoutLine: lines.Add,
             cancellationToken: CancellationToken.None);
 
@@ -61,13 +23,9 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_ReportsNonZeroExitCode()
     {
-        var env = ProcessWrapper.BuildSanitizedEnvironment();
-        var (fileName, args) = ExitCommand(1);
-
         var result = await ProcessWrapper.RunAsync(
-            fileName, args,
+            "/bin/sh", ["-c", "exit 1"],
             workingDirectory: Path.GetTempPath(),
-            environment: env,
             cancellationToken: CancellationToken.None);
 
         Assert.AreEqual(1, result.ExitCode);
@@ -77,14 +35,10 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_PropagatesOnStdoutLineException()
     {
-        var env = ProcessWrapper.BuildSanitizedEnvironment();
-        var (fileName, args) = EchoCommand("hello");
-
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => ProcessWrapper.RunAsync(
-                fileName, args,
+                "/bin/sh", ["-c", "echo hello"],
                 workingDirectory: Path.GetTempPath(),
-                environment: env,
                 onStdoutLine: _ => throw new InvalidOperationException("callback failed"),
                 cancellationToken: CancellationToken.None));
     }
@@ -92,45 +46,46 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_TimesOut_WhenCancelled()
     {
-        var env = ProcessWrapper.BuildSanitizedEnvironment();
-        var (fileName, args) = SleepCommand(60);
-
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
         var result = await ProcessWrapper.RunAsync(
-            fileName, args,
+            "/bin/sh", ["-c", "sleep 60"],
             workingDirectory: Path.GetTempPath(),
-            environment: env,
             cancellationToken: cts.Token);
 
         Assert.IsTrue(result.TimedOut);
         Assert.IsFalse(result.Succeeded);
     }
 
-    private static (string fileName, string[] args) PrintEnvCommand(string varName)
+    [TestMethod]
+    public async Task RunAsync_InheritsParentEnv_WhenNoOverrides()
     {
-        if (OperatingSystem.IsWindows())
-            return ("cmd.exe", ["/c", $"if defined {varName} (echo PRESENT) else (echo ABSENT)"]);
-        return ("/bin/sh", ["-c", $"echo ${{{varName}:-ABSENT}}"]);
+        using var scope = new EnvScope();
+        scope.Set("RIX_TEST_INHERIT", "inherited-value");
+
+        var lines = new List<string>();
+        await ProcessWrapper.RunAsync(
+            "/bin/sh", ["-c", "echo ${RIX_TEST_INHERIT:-ABSENT}"],
+            workingDirectory: Path.GetTempPath(),
+            onStdoutLine: lines.Add,
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsTrue(lines.Any(l => l.Contains("inherited-value")), "Child should inherit parent env");
     }
 
-    private static (string fileName, string[] args) EchoCommand(string text)
+    [TestMethod]
+    public async Task RunAsync_UsesOnlyOverrides_WhenProvided()
     {
-        if (OperatingSystem.IsWindows())
-            return ("cmd.exe", ["/c", $"echo {text}"]);
-        return ("/bin/sh", ["-c", $"echo {text}"]);
-    }
+        using var scope = new EnvScope();
+        scope.Set("RIX_TEST_INHERIT", "inherited-value");
 
-    private static (string fileName, string[] args) ExitCommand(int code)
-    {
-        if (OperatingSystem.IsWindows())
-            return ("cmd.exe", ["/c", $"exit {code}"]);
-        return ("/bin/sh", ["-c", $"exit {code}"]);
-    }
+        var lines = new List<string>();
+        await ProcessWrapper.RunAsync(
+            "/bin/sh", ["-c", "echo ${RIX_TEST_INHERIT:-ABSENT}"],
+            workingDirectory: Path.GetTempPath(),
+            environmentOverrides: new Dictionary<string, string> { ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "" },
+            onStdoutLine: lines.Add,
+            cancellationToken: CancellationToken.None);
 
-    private static (string fileName, string[] args) SleepCommand(int seconds)
-    {
-        if (OperatingSystem.IsWindows())
-            return ("cmd.exe", ["/c", $"ping 127.0.0.1 -n {seconds + 1}"]);
-        return ("/bin/sh", ["-c", $"sleep {seconds}"]);
+        Assert.IsTrue(lines.Any(l => l.Contains("ABSENT")), "Child should not see parent env when overrides provided");
     }
 }

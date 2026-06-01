@@ -13,6 +13,7 @@ internal interface IJobResult
 }
 
 internal record JobSuccess(
+    [property: JsonPropertyName("pendingPrRequests")] IReadOnlyList<PendingPr> PendingPrRequests,
     [property: JsonPropertyName("tokensUsed")] int TokensUsed,
     [property: JsonIgnore] TimeSpan Duration
 ) : IJobResult

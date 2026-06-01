@@ -20,11 +20,6 @@ internal static class JobCommand
         description: "GitHub PAT with read-only repo access")
     { IsRequired = false };
 
-    private static readonly Option<string> WriteTokenOption = new(
-        name: "--write-token",
-        description: "GitHub PAT with write access (push + PR creation)")
-    { IsRequired = false };
-
     private static readonly Option<int?> MaxTokensOption = new(
         name: "--max-tokens",
         description: $"Claude Code token budget cap (default: {JobConfig.DefaultMaxTokens})")
@@ -40,17 +35,22 @@ internal static class JobCommand
         description: "Base directory for the temp clone (default: system temp)")
     { IsRequired = false };
 
+    private static readonly Option<string?> OutputDirOption = new(
+        name: "--output-dir",
+        description: "Directory where result.json and git bundles are written")
+    { IsRequired = false };
+
     internal static Command Build(Func<JobConfig, Task<int>> handler)
     {
-        var command = new Command("job", "Clone a repo, run Claude Code against it, and report created PRs");
+        var command = new Command("job", "Clone a repo, run Claude Code against it, and write output bundles");
 
         command.AddOption(RepoOption);
         command.AddOption(PromptOption);
         command.AddOption(ReadTokenOption);
-        command.AddOption(WriteTokenOption);
         command.AddOption(MaxTokensOption);
         command.AddOption(TimeoutOption);
         command.AddOption(WorkDirOption);
+        command.AddOption(OutputDirOption);
 
         command.SetHandler(async ctx =>
         {
@@ -63,14 +63,15 @@ internal static class JobCommand
             try
             {
                 config = JobConfig.FromInputs(
-                    repo:           Str(RepoOption,       "RIX_REPO"),
-                    prompt:         Str(PromptOption,     "RIX_PROMPT"),
-                    readToken:      Str(ReadTokenOption,  "RIX_READ_TOKEN"),
-                    writeToken:     Str(WriteTokenOption, "RIX_WRITE_TOKEN"),
-                    maxTokens:      Int(MaxTokensOption,  "RIX_MAX_TOKENS"),
-                    timeoutMinutes: Int(TimeoutOption,    "RIX_TIMEOUT"),
+                    repo:           Str(RepoOption,      "RIX_REPO"),
+                    prompt:         Str(PromptOption,    "RIX_PROMPT"),
+                    readToken:      Str(ReadTokenOption, "RIX_READ_TOKEN"),
+                    maxTokens:      Int(MaxTokensOption, "RIX_MAX_TOKENS"),
+                    timeoutMinutes: Int(TimeoutOption,   "RIX_TIMEOUT"),
                     workDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
-                                    ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"));
+                                    ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"),
+                    outputDir:      ctx.ParseResult.GetValueForOption(OutputDirOption)
+                                    ?? Environment.GetEnvironmentVariable("RIX_OUTPUT_DIR"));
             }
             catch (ArgumentException ex)
             {
@@ -83,6 +84,4 @@ internal static class JobCommand
 
         return command;
     }
-
-
 }
