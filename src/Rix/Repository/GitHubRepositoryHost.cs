@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Headers;
 using Rix.Process;
 
@@ -63,7 +64,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         var credFile = Path.Combine(Path.GetTempPath(), $".rix-{Guid.NewGuid():N}");
         try
         {
-            File.WriteAllText(credFile, $"https://x-access-token:{_readToken.Value}@github.com\n");
+            await File.WriteAllTextAsync(credFile, $"https://x-access-token:{_readToken.Value}@github.com\n", cancellationToken);
             await RunGitAsync(verb, ["-c", $"credential.helper=store --file={credFile}", ..args], cancellationToken);
         }
         finally
@@ -79,6 +80,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
             throw new InvalidOperationException($"git {verb} failed with exit code {result.ExitCode}");
     }
 
+    [ExcludeFromCodeCoverage]
     private static Task<ProcessResult> DefaultGitRunner(string[] args, CancellationToken cancellationToken) =>
         ProcessWrapper.RunAsync(
             "git", args,

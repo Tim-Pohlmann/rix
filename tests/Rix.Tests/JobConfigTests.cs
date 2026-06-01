@@ -61,7 +61,7 @@ public class JobConfigTests
     [DataRow("owner/")]
     public void RepoIdentifier_ThrowsOnInvalidFormat(string repo)
     {
-        Assert.ThrowsException<ArgumentException>(() => new RepoIdentifier(repo));
+        Assert.ThrowsExactly<ArgumentException>(() => new RepoIdentifier(repo));
     }
 
     [TestMethod]
