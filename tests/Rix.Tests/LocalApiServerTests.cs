@@ -55,7 +55,7 @@ public class LocalApiServerTests
         });
 
         Assert.AreEqual(1, server.PendingPrRequests.Count);
-        Assert.AreEqual(new RixBranchName("rix/feat"), server.PendingPrRequests[0].Branch);
+        Assert.AreEqual("rix/feat", server.PendingPrRequests[0].Branch);
         Assert.AreEqual("Add feature", server.PendingPrRequests[0].Title);
     }
 
@@ -74,6 +74,9 @@ public class LocalApiServerTests
         });
 
         Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/*");
     }
 
     [TestMethod]

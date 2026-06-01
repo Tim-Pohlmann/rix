@@ -57,8 +57,12 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
         {
-            if (await branchExists(req.Branch, ct))
-                return Results.Conflict(new ErrorResponse($"Branch {req.Branch.Value} already exists on the remote."));
+            RixBranchName branch;
+            try { branch = new RixBranchName(req.Branch); }
+            catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse(ex.Message)); }
+
+            if (await branchExists(branch, ct))
+                return Results.Conflict(new ErrorResponse($"Branch {branch.Value} already exists on the remote."));
 
             pendingPrRequests.Enqueue(req);
             return Results.Ok(new PrQueuedResponse("queued"));
