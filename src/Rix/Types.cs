@@ -9,16 +9,19 @@ internal readonly record struct WriteToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 
-internal readonly record struct RepoIdentifier(string Owner, string Name)
+internal readonly record struct RepoIdentifier
 {
-    internal static RepoIdentifier Parse(string value)
+    internal string Value { get; }
+
+    internal RepoIdentifier(string value)
     {
         var slash = value.IndexOf('/');
-        return slash < 0
-            ? new RepoIdentifier(value, string.Empty)
-            : new RepoIdentifier(value[..slash], value[(slash + 1)..]);
+        if (slash <= 0 || slash == value.Length - 1 || value.IndexOf('/', slash + 1) >= 0)
+            throw new ArgumentException($"'{value}' is not a valid repo identifier; expected owner/name format.", nameof(value));
+        Value = value;
     }
-    public override string ToString() => $"{Owner}/{Name}";
+
+    public override string ToString() => Value;
 }
 
 [JsonConverter(typeof(BranchNameJsonConverter))]
