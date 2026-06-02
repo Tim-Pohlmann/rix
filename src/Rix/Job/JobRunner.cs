@@ -13,13 +13,29 @@ namespace Rix.Job;
 [JsonSerializable(typeof(PendingPr))]
 internal partial class JobJsonContext : JsonSerializerContext { }
 
+internal delegate Task<ProcessResult> RunProcessAsync(
+    string fileName,
+    IEnumerable<string> arguments,
+    string workingDirectory,
+    IReadOnlyDictionary<string, string>? environmentOverrides,
+    CancellationToken cancellationToken);
+
 internal static class JobRunner
 {
-    internal static async Task<int> RunAsync(JobConfig config, CancellationToken cancellationToken)
+    internal static Task<int> RunAsync(JobConfig config, CancellationToken cancellationToken) =>
+        RunAsync(
+            config,
+            new GitHubRepositoryHost(config.Repo, config.ReadToken),
+            (f, a, d, e, ct) => ProcessWrapper.RunAsync(f, a, d, e, ct),
+            cancellationToken);
+
+    internal static async Task<int> RunAsync(
+        JobConfig config,
+        IRepositoryHost host,
+        RunProcessAsync processRunner,
+        CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-
-        var host = new GitHubRepositoryHost(config.Repo, config.ReadToken);
 
         var cloneDir = Path.Combine(config.WorkDir, $"rix-clone-{Guid.NewGuid():N}");
         Directory.CreateDirectory(cloneDir);
@@ -30,15 +46,16 @@ internal static class JobRunner
 
             await using var apiServer = await LocalApiServer.StartAsync(host, cancellationToken);
 
-            var claudeResult = await ProcessWrapper.RunAsync(
-                "claude", ["--output-format", "stream-json", "--print", config.Prompt],
-                workingDirectory: cloneDir,
-                environmentOverrides: new Dictionary<string, string>
+            var claudeResult = await processRunner(
+                "claude",
+                ["--output-format", "stream-json", "--print", config.Prompt],
+                cloneDir,
+                new Dictionary<string, string>
                 {
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
                     ["RIX_API_URL"] = apiServer.BaseUrl.ToString(),
                 },
-                cancellationToken: cancellationToken);
+                cancellationToken);
 
             if (!claudeResult.Succeeded)
             {
@@ -63,11 +80,12 @@ internal static class JobRunner
                 var bundleFile = $"{safeName}.bundle";
                 var bundlePath = Path.Combine(config.OutputDir, bundleFile);
 
-                var bundleResult = await ProcessWrapper.RunAsync(
-                    "git", ["bundle", "create", bundlePath, $"HEAD..{req.Branch.Value}"],
-                    workingDirectory: cloneDir,
-                    environmentOverrides: gitEnv,
-                    cancellationToken: CancellationToken.None);
+                var bundleResult = await processRunner(
+                    "git",
+                    ["bundle", "create", bundlePath, $"HEAD..{req.Branch.Value}"],
+                    cloneDir,
+                    gitEnv,
+                    CancellationToken.None);
 
                 if (!bundleResult.Succeeded)
                     throw new InvalidOperationException($"git bundle failed for branch {req.Branch.Value}");
