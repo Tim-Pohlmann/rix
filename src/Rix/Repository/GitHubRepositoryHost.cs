@@ -4,7 +4,7 @@ using Rix.Process;
 
 namespace Rix.Repository;
 
-internal sealed class GitHubRepositoryHost : IRepositoryHost
+internal sealed class GitHubRepositoryHost : IRepositoryHost, IDisposable
 {
     private readonly RepoIdentifier _repo;
     private readonly ReadToken _readToken;
@@ -57,6 +57,8 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         if (!result.Succeeded)
             throw new InvalidOperationException($"git {verb} failed with exit code {result.ExitCode}");
     }
+
+    public void Dispose() => _http.Dispose();
 
     [ExcludeFromCodeCoverage]
     private static Task<ProcessResult> DefaultGitRunner(string[] args, CancellationToken cancellationToken) =>

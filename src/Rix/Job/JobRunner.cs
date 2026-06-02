@@ -22,12 +22,17 @@ internal delegate Task<ProcessResult> RunProcessAsync(
 
 internal static class JobRunner
 {
-    internal static Task<int> RunAsync(JobConfig config, CancellationToken cancellationToken) =>
-        RunAsync(
-            config,
-            new GitHubRepositoryHost(config.Repo, config.ReadToken),
-            (f, a, d, e, ct) => ProcessWrapper.RunAsync(f, a, d, e, ct),
-            cancellationToken);
+    private static readonly IReadOnlyDictionary<string, string> GitEnv = new Dictionary<string, string>
+    {
+        ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
+        ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
+    };
+
+    internal static async Task<int> RunAsync(JobConfig config, CancellationToken cancellationToken)
+    {
+        using var host = new GitHubRepositoryHost(config.Repo, config.ReadToken);
+        return await RunAsync(config, host, (f, a, d, e, ct) => ProcessWrapper.RunAsync(f, a, d, e, ct), cancellationToken);
+    }
 
     internal static async Task<int> RunAsync(
         JobConfig config,
@@ -68,12 +73,6 @@ internal static class JobRunner
                 return 1;
             }
 
-            var gitEnv = new Dictionary<string, string>
-            {
-                ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
-                ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
-            };
-
             var pendingPrs = await Task.WhenAll(apiServer.QueuedPrRequests.Select(async req =>
             {
                 var safeName = req.Branch.Value.Replace('/', '-');
@@ -84,7 +83,7 @@ internal static class JobRunner
                     "git",
                     ["bundle", "create", bundlePath, $"HEAD..{req.Branch.Value}"],
                     cloneDir,
-                    gitEnv,
+                    GitEnv,
                     CancellationToken.None);
 
                 if (!bundleResult.Succeeded)

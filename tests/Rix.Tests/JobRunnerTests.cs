@@ -9,7 +9,7 @@ namespace Rix.Tests;
 [TestClass]
 public class JobRunnerTests
 {
-    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+    private static readonly HttpClient HttpClient = new();
 
     private string _workDir = null!;
     private string _outputDir = null!;
@@ -24,8 +24,8 @@ public class JobRunnerTests
     [TestCleanup]
     public void Cleanup()
     {
-        if (Directory.Exists(_workDir)) Directory.Delete(_workDir, true);
-        if (Directory.Exists(_outputDir)) Directory.Delete(_outputDir, true);
+        try { Directory.Delete(_workDir, recursive: true); } catch (DirectoryNotFoundException) { }
+        try { Directory.Delete(_outputDir, recursive: true); } catch (DirectoryNotFoundException) { }
     }
 
     [TestMethod]
@@ -185,43 +185,37 @@ public class JobRunnerTests
         int claudeExitCode = 0,
         bool claudeTimedOut = false,
         QueuedPrSpec? pr = null) =>
-        async (fileName, args, workDir, envOverrides, ct) =>
+        async (fileName, args, workDir, envOverrides, ct) => fileName switch
         {
-            if (fileName == "claude")
-            {
-                if (pr is not null && envOverrides is not null && envOverrides.TryGetValue("RIX_API_URL", out var apiUrl))
-                {
-                    using var client = new HttpClient();
-                    await client.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
-                    {
-                        branch = pr.Branch,
-                        title = pr.Title,
-                        body = pr.Body,
-                        baseBranch = pr.BaseBranch,
-                    });
-                }
-                return new ProcessResult(claudeTimedOut ? -1 : claudeExitCode, claudeTimedOut);
-            }
-
-            if (fileName == "git")
-            {
-                var bundlePath = args.ElementAt(2); // "bundle", "create", <path>, ...
-                await File.WriteAllTextAsync(bundlePath, "fake-bundle");
-                return new ProcessResult(0, false);
-            }
-
-            throw new NotSupportedException($"Unexpected process: {fileName}");
+            "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, envOverrides),
+            "git" => await SimulateGitBundleAsync(args),
+            _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
         };
 
-    private record QueuedPrSpec(string Branch, string BaseBranch, string Title, string Body);
-
-    private sealed class StubRepositoryHost : IRepositoryHost
+    private static async Task<ProcessResult> SimulateClaudeAsync(
+        int exitCode, bool timedOut, QueuedPrSpec? pr, IReadOnlyDictionary<string, string>? envOverrides)
     {
-        public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken) =>
-            Task.FromResult(false);
+        if (pr is not null && envOverrides is not null && envOverrides.TryGetValue("RIX_API_URL", out var apiUrl))
+        {
+            await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+            {
+                branch = pr.Branch,
+                title = pr.Title,
+                body = pr.Body,
+                baseBranch = pr.BaseBranch,
+            });
+        }
+        return new ProcessResult(timedOut ? -1 : exitCode, timedOut);
     }
+
+    private static async Task<ProcessResult> SimulateGitBundleAsync(IEnumerable<string> args)
+    {
+        var bundlePath = args.ElementAt(2); // git bundle create <path> <range>
+        await File.WriteAllTextAsync(bundlePath, "fake-bundle");
+        return new ProcessResult(0, false);
+    }
+
+    private record QueuedPrSpec(string Branch, string BaseBranch, string Title, string Body);
 
     private sealed class TrackingRepositoryHost : IRepositoryHost
     {
