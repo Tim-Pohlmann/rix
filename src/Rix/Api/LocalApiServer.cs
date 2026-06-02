@@ -58,33 +58,44 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(req.Branch)) return Results.BadRequest(new ErrorResponse("branch is required"));
-            if (string.IsNullOrWhiteSpace(req.BaseBranch)) return Results.BadRequest(new ErrorResponse("baseBranch is required"));
-            if (string.IsNullOrWhiteSpace(req.Title)) return Results.BadRequest(new ErrorResponse("title is required"));
-            if (string.IsNullOrWhiteSpace(req.Body)) return Results.BadRequest(new ErrorResponse("body is required"));
+            var validationError = TryBuildPendingPr(req, out var pendingPr);
+            if (validationError is not null)
+                return Results.BadRequest(new ErrorResponse(validationError));
 
-            RixBranchName branch;
-            try { branch = new RixBranchName(req.Branch); }
-            catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse($"RixBranchName: {ex.Message}")); }
+            if (await host.BranchExistsOnRemoteAsync(pendingPr!.Branch, ct))
+                return Results.Conflict(new ErrorResponse($"Branch {pendingPr.Branch.Value} already exists on the remote."));
 
-            BranchName baseBranch;
-            try { baseBranch = new BranchName(req.BaseBranch); }
-            catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse($"BranchName: {ex.Message}")); }
-
-            PrTitle title;
-            try { title = new PrTitle(req.Title); }
-            catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse($"PrTitle: {ex.Message}")); }
-
-            PrBody body;
-            try { body = new PrBody(req.Body); }
-            catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse($"PrBody: {ex.Message}")); }
-
-            if (await host.BranchExistsOnRemoteAsync(branch, ct))
-                return Results.Conflict(new ErrorResponse($"Branch {branch.Value} already exists on the remote."));
-
-            pendingPrRequests.Enqueue(new PendingPr(branch, baseBranch, title, body));
+            pendingPrRequests.Enqueue(pendingPr);
             return Results.Ok(new PrQueuedResponse("queued"));
         });
+    }
+
+    private static string? TryBuildPendingPr(PrRequest req, out PendingPr? pr)
+    {
+        pr = null;
+        if (string.IsNullOrWhiteSpace(req.Branch)) return "branch is required";
+        if (string.IsNullOrWhiteSpace(req.BaseBranch)) return "baseBranch is required";
+        if (string.IsNullOrWhiteSpace(req.Title)) return "title is required";
+        if (string.IsNullOrWhiteSpace(req.Body)) return "body is required";
+
+        RixBranchName branch;
+        try { branch = new RixBranchName(req.Branch); }
+        catch (ArgumentException ex) { return $"RixBranchName: {ex.Message}"; }
+
+        BranchName baseBranch;
+        try { baseBranch = new BranchName(req.BaseBranch); }
+        catch (ArgumentException ex) { return $"BranchName: {ex.Message}"; }
+
+        PrTitle title;
+        try { title = new PrTitle(req.Title); }
+        catch (ArgumentException ex) { return $"PrTitle: {ex.Message}"; }
+
+        PrBody body;
+        try { body = new PrBody(req.Body); }
+        catch (ArgumentException ex) { return $"PrBody: {ex.Message}"; }
+
+        pr = new PendingPr(branch, baseBranch, title, body);
+        return null;
     }
 
     public async ValueTask DisposeAsync()
