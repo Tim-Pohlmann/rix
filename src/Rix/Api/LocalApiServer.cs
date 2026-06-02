@@ -65,17 +65,24 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
             RixBranchName branch;
             try { branch = new RixBranchName(req.Branch); }
-            catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse(ex.Message)); }
+            catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse($"RixBranchName: {ex.Message}")); }
+
+            BranchName baseBranch;
+            try { baseBranch = new BranchName(req.BaseBranch); }
+            catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse($"BranchName: {ex.Message}")); }
+
+            PrTitle title;
+            try { title = new PrTitle(req.Title); }
+            catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse($"PrTitle: {ex.Message}")); }
+
+            PrBody body;
+            try { body = new PrBody(req.Body); }
+            catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse($"PrBody: {ex.Message}")); }
 
             if (await host.BranchExistsOnRemoteAsync(branch, ct))
                 return Results.Conflict(new ErrorResponse($"Branch {branch.Value} already exists on the remote."));
 
-            pendingPrRequests.Enqueue(new PendingPr(
-                branch,
-                new BranchName(req.BaseBranch),
-                new PrTitle(req.Title),
-                new PrBody(req.Body)));
-
+            pendingPrRequests.Enqueue(new PendingPr(branch, baseBranch, title, body));
             return Results.Ok(new PrQueuedResponse("queued"));
         });
     }
