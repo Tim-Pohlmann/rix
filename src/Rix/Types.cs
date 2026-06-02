@@ -8,6 +8,8 @@ internal readonly record struct ReadToken(string Value);
 internal readonly record struct WriteToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
+internal readonly record struct PrTitle(string Value);
+internal readonly record struct PrBody(string Value);
 
 internal readonly record struct RepoIdentifier
 {
@@ -25,16 +27,21 @@ internal readonly record struct RepoIdentifier
 }
 
 [JsonConverter(typeof(BranchNameJsonConverter))]
-internal readonly record struct BranchName(string Value);
+internal record BranchName(string Value)
+{
+    public override string ToString() => Value;
+}
 
-internal static class BranchNameExtensions
+[JsonConverter(typeof(RixBranchNameJsonConverter))]
+internal record RixBranchName : BranchName
 {
     private static readonly Regex Pattern =
         new(@"^rix/.+$", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
-    extension(BranchName branch)
+    internal RixBranchName(string value) : base(value)
     {
-        public bool Valid => Pattern.IsMatch(branch.Value);
+        if (!Pattern.IsMatch(value))
+            throw new ArgumentException($"Branch must match rix/* pattern, got: {value}", nameof(value));
     }
 }
 
@@ -50,7 +57,22 @@ internal sealed class BranchNameJsonConverter : JsonConverter<BranchName>
         => writer.WriteStringValue(value.Value);
 }
 
-internal record PullRequest(
-    [property: JsonPropertyName("url")] Uri Url,
-    [property: JsonPropertyName("branch")] BranchName Branch
+internal sealed class RixBranchNameJsonConverter : JsonConverter<RixBranchName>
+{
+    public override RixBranchName Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+            throw new JsonException($"Expected string token for RixBranchName, got {reader.TokenType}");
+        try { return new(reader.GetString()!); }
+        catch (ArgumentException ex) { throw new JsonException(ex.Message, ex); }
+    }
+    public override void Write(Utf8JsonWriter writer, RixBranchName value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.Value);
+}
+
+internal record PendingPr(
+    RixBranchName Branch,
+    BranchName BaseBranch,
+    PrTitle Title,
+    PrBody Body
 );

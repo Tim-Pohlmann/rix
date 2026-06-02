@@ -7,14 +7,29 @@ namespace Rix.Tests;
 public class TypesTests
 {
     [TestMethod]
-    [DataRow("rix/fix-bug", true)]
-    [DataRow("rix/feature", true)]
-    [DataRow("main", false)]
-    [DataRow("feature/foo", false)]
-    [DataRow("", false)]
-    public void BranchName_IsValid(string value, bool expected)
+    [DataRow("rix/fix-bug")]
+    [DataRow("rix/feature")]
+    public void RixBranchName_AcceptsValidValues(string value)
     {
-        Assert.AreEqual(expected, new BranchName(value).Valid);
+        var branch = new RixBranchName(value);
+        Assert.AreEqual(value, branch.Value);
+    }
+
+    [TestMethod]
+    [DataRow("main")]
+    [DataRow("feature/foo")]
+    [DataRow("")]
+    public void RixBranchName_ThrowsOnInvalidValues(string value)
+    {
+        Assert.ThrowsExactly<ArgumentException>(() => new RixBranchName(value));
+    }
+
+    [TestMethod]
+    public void BranchName_AcceptsAnyString()
+    {
+        Assert.AreEqual("main", new BranchName("main").Value);
+        Assert.AreEqual("rix/fix", new BranchName("rix/fix").Value);
+        Assert.AreEqual("", new BranchName("").Value);
     }
 
     [TestMethod]
@@ -34,8 +49,7 @@ public class TypesTests
     [TestMethod]
     public void JobSuccess_SerializesCorrectly()
     {
-        var prs = new[] { new PullRequest(new Uri("https://github.com/o/r/pull/1"), new BranchName("rix/fix")) };
-        var outcome = new JobSuccess(prs, TokensUsed: 1000, Duration: TimeSpan.FromSeconds(42));
+        var outcome = new JobSuccess(TokensUsed: 1000, Duration: TimeSpan.FromSeconds(42));
 
         var json = JsonSerializer.Serialize<IJobResult>(outcome);
         using var doc = JsonDocument.Parse(json);
@@ -44,9 +58,6 @@ public class TypesTests
         Assert.AreEqual("success", root.GetProperty("status").GetString());
         Assert.AreEqual(1000, root.GetProperty("tokensUsed").GetInt32());
         Assert.AreEqual(42, root.GetProperty("durationSeconds").GetInt32());
-        Assert.AreEqual(1, root.GetProperty("prs").GetArrayLength());
-        Assert.AreEqual("https://github.com/o/r/pull/1", root.GetProperty("prs")[0].GetProperty("url").GetString());
-        Assert.AreEqual("rix/fix", root.GetProperty("prs")[0].GetProperty("branch").GetString());
     }
 
     [TestMethod]
