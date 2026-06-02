@@ -5,13 +5,26 @@ namespace Rix.Tests;
 [TestClass]
 public class ProcessWrapperTests
 {
+    private static string Shell => OperatingSystem.IsWindows() ? "pwsh" : "/bin/sh";
+
+    private static string Echo(string text) =>
+        OperatingSystem.IsWindows() ? $"Write-Output '{text}'" : $"echo {text}";
+
+    private static string SleepSeconds(int n) =>
+        OperatingSystem.IsWindows() ? $"Start-Sleep -s {n}" : $"sleep {n}";
+
+    private static string PrintEnvOrFallback(string varName, string fallback) =>
+        OperatingSystem.IsWindows()
+            ? $"$v=$env:{varName}; if($v){{$v}}else{{'{fallback}'}}"
+            : $"echo ${{{varName}:-{fallback}}}";
+
     [TestMethod]
     public async Task RunAsync_CapturesStdoutLines()
     {
         var lines = new List<string>();
 
         var result = await ProcessWrapper.RunAsync(
-            "/bin/sh", ["-c", "echo hello"],
+            Shell, ["-c", Echo("hello")],
             workingDirectory: Path.GetTempPath(),
             onStdoutLine: lines.Add,
             cancellationToken: CancellationToken.None);
@@ -24,7 +37,7 @@ public class ProcessWrapperTests
     public async Task RunAsync_ReportsNonZeroExitCode()
     {
         var result = await ProcessWrapper.RunAsync(
-            "/bin/sh", ["-c", "exit 1"],
+            Shell, ["-c", "exit 1"],
             workingDirectory: Path.GetTempPath(),
             cancellationToken: CancellationToken.None);
 
@@ -37,7 +50,7 @@ public class ProcessWrapperTests
     {
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => ProcessWrapper.RunAsync(
-                "/bin/sh", ["-c", "echo hello"],
+                Shell, ["-c", Echo("hello")],
                 workingDirectory: Path.GetTempPath(),
                 onStdoutLine: _ => throw new InvalidOperationException("callback failed"),
                 cancellationToken: CancellationToken.None));
@@ -48,7 +61,7 @@ public class ProcessWrapperTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
         var result = await ProcessWrapper.RunAsync(
-            "/bin/sh", ["-c", "sleep 60"],
+            Shell, ["-c", SleepSeconds(60)],
             workingDirectory: Path.GetTempPath(),
             cancellationToken: cts.Token);
 
@@ -64,7 +77,7 @@ public class ProcessWrapperTests
 
         var lines = new List<string>();
         await ProcessWrapper.RunAsync(
-            "/bin/sh", ["-c", "echo ${RIX_TEST_INHERIT:-ABSENT}"],
+            Shell, ["-c", PrintEnvOrFallback("RIX_TEST_INHERIT", "ABSENT")],
             workingDirectory: Path.GetTempPath(),
             onStdoutLine: lines.Add,
             cancellationToken: CancellationToken.None);
@@ -80,7 +93,7 @@ public class ProcessWrapperTests
 
         var lines = new List<string>();
         await ProcessWrapper.RunAsync(
-            "/bin/sh", ["-c", "echo ${RIX_TEST_INHERIT:-ABSENT}"],
+            Shell, ["-c", PrintEnvOrFallback("RIX_TEST_INHERIT", "ABSENT")],
             workingDirectory: Path.GetTempPath(),
             environmentOverrides: new Dictionary<string, string> { ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "" },
             onStdoutLine: lines.Add,

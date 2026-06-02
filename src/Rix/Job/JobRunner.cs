@@ -40,10 +40,9 @@ internal static class JobRunner
                 },
                 cancellationToken: cancellationToken);
 
-            stopwatch.Stop();
-
             if (!claudeResult.Succeeded)
             {
+                stopwatch.Stop();
                 var failure = new JobFailure(
                     claudeResult.TimedOut ? "Claude timed out" : $"Claude exited with code {claudeResult.ExitCode}",
                     TokensUsed: 0,
@@ -52,8 +51,13 @@ internal static class JobRunner
                 return 1;
             }
 
-            var pendingPrs = new List<PendingPr>();
-            foreach (var req in apiServer.QueuedPrRequests)
+            var gitEnv = new Dictionary<string, string>
+            {
+                ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
+                ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
+            };
+
+            var pendingPrs = await Task.WhenAll(apiServer.QueuedPrRequests.Select(async req =>
             {
                 var safeName = req.Branch.Value.Replace('/', '-');
                 var bundleFile = $"{safeName}.bundle";
@@ -62,31 +66,27 @@ internal static class JobRunner
                 var bundleResult = await ProcessWrapper.RunAsync(
                     "git", ["bundle", "create", bundlePath, $"HEAD..{req.Branch.Value}"],
                     workingDirectory: cloneDir,
-                    environmentOverrides: new Dictionary<string, string>
-                    {
-                        ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
-                        ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
-                    },
+                    environmentOverrides: gitEnv,
                     cancellationToken: CancellationToken.None);
 
                 if (!bundleResult.Succeeded)
                     throw new InvalidOperationException($"git bundle failed for branch {req.Branch.Value}");
 
-                pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
-            }
+                return new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile);
+            }));
+
+            stopwatch.Stop();
 
             var success = new JobSuccess(pendingPrs, TokensUsed: 0, Duration: stopwatch.Elapsed);
-
             var resultJson = JsonSerializer.Serialize<IJobResult>(success, JobJsonContext.Default.IJobResult);
             await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, CancellationToken.None);
-
-            WriteResult(success);
+            Console.WriteLine(resultJson);
             return 0;
         }
         finally
         {
-            if (Directory.Exists(cloneDir))
-                Directory.Delete(cloneDir, recursive: true);
+            try { Directory.Delete(cloneDir, recursive: true); }
+            catch (DirectoryNotFoundException) { }
         }
     }
 
