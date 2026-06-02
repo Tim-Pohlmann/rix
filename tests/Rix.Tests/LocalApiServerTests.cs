@@ -58,11 +58,11 @@ public class LocalApiServerTests
             baseBranch = "main",
         });
 
-        Assert.AreEqual(1, server.PendingPrRequests.Count);
-        Assert.AreEqual(new RixBranchName("rix/feat"), server.PendingPrRequests[0].Branch);
-        Assert.AreEqual(new BranchName("main"), server.PendingPrRequests[0].BaseBranch);
-        Assert.AreEqual(new PrTitle("Add feature"), server.PendingPrRequests[0].Title);
-        Assert.AreEqual(new PrBody("body"), server.PendingPrRequests[0].Body);
+        Assert.AreEqual(1, server.QueuedPrRequests.Count);
+        Assert.AreEqual(new RixBranchName("rix/feat"), server.QueuedPrRequests[0].Branch);
+        Assert.AreEqual(new BranchName("main"), server.QueuedPrRequests[0].BaseBranch);
+        Assert.AreEqual(new PrTitle("Add feature"), server.QueuedPrRequests[0].Title);
+        Assert.AreEqual(new PrBody("body"), server.QueuedPrRequests[0].Body);
     }
 
     [TestMethod]

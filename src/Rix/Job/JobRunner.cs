@@ -53,7 +53,7 @@ internal static class JobRunner
             }
 
             var pendingPrs = new List<PendingPr>();
-            foreach (var req in apiServer.PendingPrRequests)
+            foreach (var req in apiServer.QueuedPrRequests)
             {
                 var safeName = req.Branch.Value.Replace('/', '-');
                 var bundleFile = $"{safeName}.bundle";
@@ -72,7 +72,7 @@ internal static class JobRunner
                 if (!bundleResult.Succeeded)
                     throw new InvalidOperationException($"git bundle failed for branch {req.Branch.Value}");
 
-                pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, bundleFile));
+                pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
             }
 
             var success = new JobSuccess(pendingPrs, TokensUsed: 0, Duration: stopwatch.Elapsed);
