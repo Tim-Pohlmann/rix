@@ -8,6 +8,8 @@ internal readonly record struct ReadToken(string Value);
 internal readonly record struct WriteToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
+internal readonly record struct PrTitle(string Value);
+internal readonly record struct PrBody(string Value);
 
 internal readonly record struct RepoIdentifier
 {
@@ -67,3 +69,10 @@ internal sealed class RixBranchNameJsonConverter : JsonConverter<RixBranchName>
     public override void Write(Utf8JsonWriter writer, RixBranchName value, JsonSerializerOptions options)
         => writer.WriteStringValue(value.Value);
 }
+
+internal record PendingPr(
+    RixBranchName Branch,
+    BranchName BaseBranch,
+    PrTitle Title,
+    PrBody Body
+);

@@ -3,20 +3,21 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Rix.Repository;
 
 namespace Rix.Api;
 
 internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
-    private readonly ConcurrentQueue<PrRequest> _pendingPrRequests;
+    private readonly ConcurrentQueue<PendingPr> _pendingPrRequests;
     private readonly ConcurrentQueue<string> _logs;
 
     internal Uri BaseUrl { get; }
-    internal IReadOnlyList<PrRequest> PendingPrRequests => _pendingPrRequests.ToArray();
+    internal IReadOnlyList<PendingPr> PendingPrRequests => _pendingPrRequests.ToArray();
     internal IReadOnlyList<string> Logs => _logs.ToArray();
 
-    private LocalApiServer(WebApplication app, Uri baseUrl, ConcurrentQueue<PrRequest> pendingPrRequests, ConcurrentQueue<string> logs)
+    private LocalApiServer(WebApplication app, Uri baseUrl, ConcurrentQueue<PendingPr> pendingPrRequests, ConcurrentQueue<string> logs)
     {
         _app = app;
         BaseUrl = baseUrl;
@@ -25,10 +26,10 @@ internal sealed class LocalApiServer : IAsyncDisposable
     }
 
     internal static async Task<LocalApiServer> StartAsync(
-        Func<RixBranchName, CancellationToken, Task<bool>> branchExists,
+        IRepositoryHost host,
         CancellationToken cancellationToken)
     {
-        var pendingPrRequests = new ConcurrentQueue<PrRequest>();
+        var pendingPrRequests = new ConcurrentQueue<PendingPr>();
         var logs = new ConcurrentQueue<string>();
 
         var builder = WebApplication.CreateBuilder();
@@ -40,7 +41,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         var app = builder.Build();
 
-        MapEndpoints(app, branchExists, pendingPrRequests);
+        MapEndpoints(app, host, pendingPrRequests);
 
         await app.StartAsync(cancellationToken);
 
@@ -50,8 +51,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
     private static void MapEndpoints(
         WebApplication app,
-        Func<RixBranchName, CancellationToken, Task<bool>> branchExists,
-        ConcurrentQueue<PrRequest> pendingPrRequests)
+        IRepositoryHost host,
+        ConcurrentQueue<PendingPr> pendingPrRequests)
     {
         app.MapGet("/health", () => Results.Ok());
 
@@ -61,10 +62,15 @@ internal sealed class LocalApiServer : IAsyncDisposable
             try { branch = new RixBranchName(req.Branch); }
             catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse(ex.Message)); }
 
-            if (await branchExists(branch, ct))
+            if (await host.BranchExistsOnRemoteAsync(branch, ct))
                 return Results.Conflict(new ErrorResponse($"Branch {branch.Value} already exists on the remote."));
 
-            pendingPrRequests.Enqueue(req);
+            pendingPrRequests.Enqueue(new PendingPr(
+                branch,
+                new BranchName(req.BaseBranch),
+                new PrTitle(req.Title),
+                new PrBody(req.Body)));
+
             return Results.Ok(new PrQueuedResponse("queued"));
         });
     }
