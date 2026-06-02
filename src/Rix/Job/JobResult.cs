@@ -23,12 +23,12 @@ internal abstract record JobResultBase(
 
 internal record JobSuccess(
     [property: JsonPropertyName("pendingPrRequests")] IReadOnlyList<PendingPr> PendingPrRequests,
-    [property: JsonPropertyName("tokensUsed")] int TokensUsed,
-    [property: JsonIgnore] TimeSpan Duration
+    int TokensUsed,
+    TimeSpan Duration
 ) : JobResultBase(TokensUsed, Duration);
 
 internal record JobFailure(
     [property: JsonPropertyName("error")] string Error,
-    [property: JsonPropertyName("tokensUsed")] int TokensUsed,
-    [property: JsonIgnore] TimeSpan Duration
+    int TokensUsed,
+    TimeSpan Duration
 ) : JobResultBase(TokensUsed, Duration);

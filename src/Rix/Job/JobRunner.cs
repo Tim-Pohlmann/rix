@@ -103,7 +103,7 @@ internal static class JobRunner
         finally
         {
             try { Directory.Delete(cloneDir, recursive: true); }
-            catch (DirectoryNotFoundException) { }
+            catch (DirectoryNotFoundException) { /* already cleaned up */ }
         }
     }
 
