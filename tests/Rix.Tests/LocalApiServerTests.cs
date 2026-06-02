@@ -11,7 +11,7 @@ public class LocalApiServerTests
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
-    private static IRepositoryHost FakeHost(bool branchExists) =>
+    private static StubRepositoryHost FakeHost(bool branchExists) =>
         new StubRepositoryHost(_ => Task.FromResult(branchExists));
 
     [TestMethod]

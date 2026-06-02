@@ -58,6 +58,11 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
         {
+            if (string.IsNullOrWhiteSpace(req.Branch)) return Results.BadRequest(new ErrorResponse("branch is required"));
+            if (string.IsNullOrWhiteSpace(req.BaseBranch)) return Results.BadRequest(new ErrorResponse("baseBranch is required"));
+            if (string.IsNullOrWhiteSpace(req.Title)) return Results.BadRequest(new ErrorResponse("title is required"));
+            if (string.IsNullOrWhiteSpace(req.Body)) return Results.BadRequest(new ErrorResponse("body is required"));
+
             RixBranchName branch;
             try { branch = new RixBranchName(req.Branch); }
             catch (ArgumentException ex) { return Results.BadRequest(new ErrorResponse(ex.Message)); }
