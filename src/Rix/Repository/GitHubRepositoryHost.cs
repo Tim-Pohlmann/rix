@@ -37,8 +37,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-        RunGitAsync("clone",
-            ["clone", $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Value}.git", targetDirectory],
+        RunGitAsync(["clone", $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Value}.git", targetDirectory],
             cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
@@ -51,11 +50,11 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return true;
     }
 
-    private async Task RunGitAsync(string verb, string[] args, CancellationToken cancellationToken)
+    private async Task RunGitAsync(string[] args, CancellationToken cancellationToken)
     {
         var result = await _gitRunner(args, cancellationToken);
         if (!result.Succeeded)
-            throw new InvalidOperationException($"git {verb} failed with exit code {result.ExitCode}");
+            throw new InvalidOperationException($"git {args[0]} failed with exit code {result.ExitCode}");
     }
 
     [ExcludeFromCodeCoverage]

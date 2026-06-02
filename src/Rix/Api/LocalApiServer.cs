@@ -80,19 +80,19 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         RixBranchName branch;
         try { branch = new RixBranchName(req.Branch); }
-        catch (ArgumentException ex) { return $"RixBranchName: {ex.Message}"; }
+        catch (ArgumentException ex) { return $"{nameof(RixBranchName)}: {ex.Message}"; }
 
         BranchName baseBranch;
         try { baseBranch = new BranchName(req.BaseBranch); }
-        catch (ArgumentException ex) { return $"BranchName: {ex.Message}"; }
+        catch (ArgumentException ex) { return $"{nameof(BranchName)}: {ex.Message}"; }
 
         PrTitle title;
         try { title = new PrTitle(req.Title); }
-        catch (ArgumentException ex) { return $"PrTitle: {ex.Message}"; }
+        catch (ArgumentException ex) { return $"{nameof(PrTitle)}: {ex.Message}"; }
 
         PrBody body;
         try { body = new PrBody(req.Body); }
-        catch (ArgumentException ex) { return $"PrBody: {ex.Message}"; }
+        catch (ArgumentException ex) { return $"{nameof(PrBody)}: {ex.Message}"; }
 
         pr = new PendingPr(branch, baseBranch, title, body);
         return null;
