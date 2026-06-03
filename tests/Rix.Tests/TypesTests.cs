@@ -49,7 +49,8 @@ public class TypesTests
     [TestMethod]
     public void JobSuccess_SerializesCorrectly()
     {
-        var outcome = new JobSuccess(TokensUsed: 1000, Duration: TimeSpan.FromSeconds(42));
+        var prs = new[] { new PendingPr(new RixBranchName("rix/fix"), new BranchName("main"), new PrTitle("Fix bug"), new PrBody("body"), "rix-fix.bundle") };
+        var outcome = new JobSuccess(prs, TokensUsed: 1000, Duration: TimeSpan.FromSeconds(42));
 
         var json = JsonSerializer.Serialize<IJobResult>(outcome);
         using var doc = JsonDocument.Parse(json);
@@ -58,6 +59,9 @@ public class TypesTests
         Assert.AreEqual("success", root.GetProperty("status").GetString());
         Assert.AreEqual(1000, root.GetProperty("tokensUsed").GetInt32());
         Assert.AreEqual(42, root.GetProperty("durationSeconds").GetInt32());
+        Assert.AreEqual(1, root.GetProperty("pendingPrRequests").GetArrayLength());
+        Assert.AreEqual("rix/fix", root.GetProperty("pendingPrRequests")[0].GetProperty("branch").GetString());
+        Assert.AreEqual("rix-fix.bundle", root.GetProperty("pendingPrRequests")[0].GetProperty("bundleFile").GetString());
     }
 
     [TestMethod]

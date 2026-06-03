@@ -63,7 +63,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         ProcessWrapper.RunAsync(
             "git", args,
             workingDirectory: Path.GetTempPath(),
-            environment: new Dictionary<string, string>
+            environmentOverrides: new Dictionary<string, string>
             {
                 ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
                 ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",

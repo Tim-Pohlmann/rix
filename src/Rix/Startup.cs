@@ -21,16 +21,15 @@ internal static class Startup
         return await parser.InvokeAsync(args);
     }
 
-    private static Task<int> RunJobAsync(JobConfig config)
+    private static async Task<int> RunJobAsync(JobConfig config)
     {
         if (config.ValidationErrors is { Count: > 0 } errors)
         {
             foreach (var error in errors)
                 Console.Error.WriteLine($"error: {error}");
-            return Task.FromResult(2);
+            return 2;
         }
 
-        // Job execution will be wired in a later PR.
-        throw new NotImplementedException("Job execution not yet implemented");
+        return await JobRunner.RunAsync(config, CancellationToken.None);
     }
 }

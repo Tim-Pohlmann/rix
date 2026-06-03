@@ -5,10 +5,13 @@ using System.Text.RegularExpressions;
 namespace Rix;
 
 internal readonly record struct ReadToken(string Value);
-internal readonly record struct WriteToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
+
+[JsonConverter(typeof(PrTitleJsonConverter))]
 internal readonly record struct PrTitle(string Value);
+
+[JsonConverter(typeof(PrBodyJsonConverter))]
 internal readonly record struct PrBody(string Value);
 
 internal readonly record struct RepoIdentifier
@@ -70,9 +73,36 @@ internal sealed class RixBranchNameJsonConverter : JsonConverter<RixBranchName>
         => writer.WriteStringValue(value.Value);
 }
 
+internal sealed class PrTitleJsonConverter : JsonConverter<PrTitle>
+{
+    public override PrTitle Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+            throw new JsonException($"Expected string token for PrTitle, got {reader.TokenType}");
+        return new(reader.GetString()!);
+    }
+    public override void Write(Utf8JsonWriter writer, PrTitle value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.Value);
+}
+
+internal sealed class PrBodyJsonConverter : JsonConverter<PrBody>
+{
+    public override PrBody Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+            throw new JsonException($"Expected string token for PrBody, got {reader.TokenType}");
+        return new(reader.GetString()!);
+    }
+    public override void Write(Utf8JsonWriter writer, PrBody value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.Value);
+}
+
+internal record QueuedPr(RixBranchName Branch, BranchName BaseBranch, PrTitle Title, PrBody Body);
+
 internal record PendingPr(
-    RixBranchName Branch,
-    BranchName BaseBranch,
-    PrTitle Title,
-    PrBody Body
+    [property: JsonPropertyName("branch")] RixBranchName Branch,
+    [property: JsonPropertyName("baseBranch")] BranchName BaseBranch,
+    [property: JsonPropertyName("title")] PrTitle Title,
+    [property: JsonPropertyName("body")] PrBody Body,
+    [property: JsonPropertyName("bundleFile")] string BundleFile
 );

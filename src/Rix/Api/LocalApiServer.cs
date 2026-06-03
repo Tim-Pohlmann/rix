@@ -10,14 +10,14 @@ namespace Rix.Api;
 internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
-    private readonly ConcurrentQueue<PendingPr> _pendingPrRequests;
+    private readonly ConcurrentQueue<QueuedPr> _pendingPrRequests;
     private readonly ConcurrentQueue<string> _logs;
 
     internal Uri BaseUrl { get; }
-    internal IReadOnlyList<PendingPr> PendingPrRequests => _pendingPrRequests.ToArray();
+    internal IReadOnlyList<QueuedPr> QueuedPrRequests => _pendingPrRequests.ToArray();
     internal IReadOnlyList<string> Logs => _logs.ToArray();
 
-    private LocalApiServer(WebApplication app, Uri baseUrl, ConcurrentQueue<PendingPr> pendingPrRequests, ConcurrentQueue<string> logs)
+    private LocalApiServer(WebApplication app, Uri baseUrl, ConcurrentQueue<QueuedPr> pendingPrRequests, ConcurrentQueue<string> logs)
     {
         _app = app;
         BaseUrl = baseUrl;
@@ -29,7 +29,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IRepositoryHost host,
         CancellationToken cancellationToken)
     {
-        var pendingPrRequests = new ConcurrentQueue<PendingPr>();
+        var pendingPrRequests = new ConcurrentQueue<QueuedPr>();
         var logs = new ConcurrentQueue<string>();
 
         var builder = WebApplication.CreateBuilder();
@@ -52,25 +52,25 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static void MapEndpoints(
         WebApplication app,
         IRepositoryHost host,
-        ConcurrentQueue<PendingPr> pendingPrRequests)
+        ConcurrentQueue<QueuedPr> pendingPrRequests)
     {
         app.MapGet("/health", () => Results.Ok());
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
         {
-            var validationError = TryBuildPendingPr(req, out var pendingPr);
+            var validationError = TryBuildQueuedPr(req, out var queuedPr);
             if (validationError is not null)
                 return Results.BadRequest(new ErrorResponse(validationError));
 
-            if (await host.BranchExistsOnRemoteAsync(pendingPr!.Branch, ct))
-                return Results.Conflict(new ErrorResponse($"Branch {pendingPr.Branch.Value} already exists on the remote."));
+            if (await host.BranchExistsOnRemoteAsync(queuedPr!.Branch, ct))
+                return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
 
-            pendingPrRequests.Enqueue(pendingPr);
+            pendingPrRequests.Enqueue(queuedPr!);
             return Results.Ok(new PrQueuedResponse("queued"));
         });
     }
 
-    private static string? TryBuildPendingPr(PrRequest req, out PendingPr? pr)
+    private static string? TryBuildQueuedPr(PrRequest req, out QueuedPr? pr)
     {
         pr = null;
         if (string.IsNullOrWhiteSpace(req.Branch)) return "branch is required";
@@ -94,7 +94,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         try { body = new PrBody(req.Body); }
         catch (ArgumentException ex) { return $"PrBody: {ex.Message}"; }
 
-        pr = new PendingPr(branch, baseBranch, title, body);
+        pr = new QueuedPr(branch, baseBranch, title, body);
         return null;
     }
 

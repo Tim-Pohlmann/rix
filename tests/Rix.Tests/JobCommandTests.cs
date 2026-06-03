@@ -30,20 +30,20 @@ public class JobCommandTests
         env.Set("RIX_REPO", "env/repo");
         env.Set("RIX_PROMPT", "env prompt");
         env.Set("RIX_READ_TOKEN", "env-read");
-        env.Set("RIX_WRITE_TOKEN", "env-write");
         env.Set("RIX_MAX_TOKENS", "999");
         env.Set("RIX_TIMEOUT", "15");
         env.Set("RIX_WORK_DIR", Path.GetTempPath());
+        env.Set("RIX_OUTPUT_DIR", Path.GetTempPath());
         await parser.InvokeAsync("job");
 
         Assert.IsNotNull(captured);
         Assert.AreEqual("env/repo", captured.Repo.ToString());
         Assert.AreEqual("env prompt", captured.Prompt);
         Assert.AreEqual("env-read", captured.ReadToken.Value);
-        Assert.AreEqual("env-write", captured.WriteToken.Value);
         Assert.AreEqual(999, captured.MaxTokens.Value);
         Assert.AreEqual(15, captured.TimeoutMinutes.Value);
         Assert.AreEqual(Path.GetTempPath(), captured.WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), captured.OutputDir);
     }
 
     [TestMethod]
@@ -58,7 +58,7 @@ public class JobCommandTests
 
         using var env = new EnvScope();
         env.Set("RIX_REPO", "env/repo");
-        await parser.InvokeAsync("job --repo flag/repo --prompt p --read-token r --write-token w");
+        await parser.InvokeAsync("job --repo flag/repo --prompt p --read-token r");
 
         Assert.IsNotNull(captured);
         Assert.AreEqual("flag/repo", captured.Repo.ToString());
@@ -68,7 +68,7 @@ public class JobCommandTests
     public async Task Command_Returns2_WhenRepoFormatIsInvalid()
     {
         var parser = BuildParser(_ => Task.FromResult(0));
-        var exitCode = await parser.InvokeAsync("job --repo invalid-no-slash --prompt p --read-token r --write-token w");
+        var exitCode = await parser.InvokeAsync("job --repo invalid-no-slash --prompt p --read-token r");
         Assert.AreEqual(2, exitCode);
     }
 }

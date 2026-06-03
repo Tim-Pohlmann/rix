@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Rix.Api;
-using Rix.Repository;
 
 namespace Rix.Tests;
 
@@ -12,7 +11,7 @@ public class LocalApiServerTests
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     private static StubRepositoryHost FakeHost(bool branchExists) =>
-        new StubRepositoryHost(_ => Task.FromResult(branchExists));
+        new(_ => Task.FromResult(branchExists));
 
     [TestMethod]
     public async Task GetHealth_Returns200()
@@ -58,11 +57,11 @@ public class LocalApiServerTests
             baseBranch = "main",
         });
 
-        Assert.AreEqual(1, server.PendingPrRequests.Count);
-        Assert.AreEqual(new RixBranchName("rix/feat"), server.PendingPrRequests[0].Branch);
-        Assert.AreEqual(new BranchName("main"), server.PendingPrRequests[0].BaseBranch);
-        Assert.AreEqual(new PrTitle("Add feature"), server.PendingPrRequests[0].Title);
-        Assert.AreEqual(new PrBody("body"), server.PendingPrRequests[0].Body);
+        Assert.AreEqual(1, server.QueuedPrRequests.Count);
+        Assert.AreEqual(new RixBranchName("rix/feat"), server.QueuedPrRequests[0].Branch);
+        Assert.AreEqual(new BranchName("main"), server.QueuedPrRequests[0].BaseBranch);
+        Assert.AreEqual(new PrTitle("Add feature"), server.QueuedPrRequests[0].Title);
+        Assert.AreEqual(new PrBody("body"), server.QueuedPrRequests[0].Body);
     }
 
     [TestMethod]
@@ -102,11 +101,4 @@ public class LocalApiServerTests
         Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
     }
 
-    private sealed class StubRepositoryHost(Func<BranchName, Task<bool>> branchExists) : IRepositoryHost
-    {
-        public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken) =>
-            branchExists(branch);
-    }
 }

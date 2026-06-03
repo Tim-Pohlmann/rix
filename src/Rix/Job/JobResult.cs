@@ -12,7 +12,7 @@ internal interface IJobResult
     int DurationSeconds { get; }
 }
 
-internal record JobSuccess(
+internal abstract record JobResultBase(
     [property: JsonPropertyName("tokensUsed")] int TokensUsed,
     [property: JsonIgnore] TimeSpan Duration
 ) : IJobResult
@@ -21,12 +21,14 @@ internal record JobSuccess(
     public int DurationSeconds => (int)Duration.TotalSeconds;
 }
 
+internal record JobSuccess(
+    [property: JsonPropertyName("pendingPrRequests")] IReadOnlyList<PendingPr> PendingPrRequests,
+    int TokensUsed,
+    TimeSpan Duration
+) : JobResultBase(TokensUsed, Duration);
+
 internal record JobFailure(
     [property: JsonPropertyName("error")] string Error,
-    [property: JsonPropertyName("tokensUsed")] int TokensUsed,
-    [property: JsonIgnore] TimeSpan Duration
-) : IJobResult
-{
-    [JsonPropertyName("durationSeconds")]
-    public int DurationSeconds => (int)Duration.TotalSeconds;
-}
+    int TokensUsed,
+    TimeSpan Duration
+) : JobResultBase(TokensUsed, Duration);
