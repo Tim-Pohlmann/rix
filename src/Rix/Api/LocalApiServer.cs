@@ -58,7 +58,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
         {
-            var validationError = TryBuildPendingPr(req, out var queuedPr);
+            var validationError = TryBuildQueuedPr(req, out var queuedPr);
             if (validationError is not null)
                 return Results.BadRequest(new ErrorResponse(validationError));
 
@@ -70,7 +70,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         });
     }
 
-    private static string? TryBuildPendingPr(PrRequest req, out QueuedPr? pr)
+    private static string? TryBuildQueuedPr(PrRequest req, out QueuedPr? pr)
     {
         pr = null;
         if (string.IsNullOrWhiteSpace(req.Branch)) return "branch is required";
