@@ -30,7 +30,7 @@ internal static class JobRunner
 
     internal static async Task<int> RunAsync(JobConfig config, CancellationToken cancellationToken)
     {
-        using var host = new GitHubRepositoryHost(config.Repo, config.ReadToken);
+        var host = new GitHubRepositoryHost(config.Repo, config.ReadToken);
         return await RunAsync(config, host, (f, a, d, e, ct) => ProcessWrapper.RunAsync(f, a, d, e, ct), cancellationToken);
     }
 
@@ -73,7 +73,8 @@ internal static class JobRunner
                 return 1;
             }
 
-            var pendingPrs = await Task.WhenAll(apiServer.QueuedPrRequests.Select(async req =>
+            var pendingPrs = new List<PendingPr>();
+            foreach (var req in apiServer.QueuedPrRequests)
             {
                 var safeName = req.Branch.Value.Replace('/', '-');
                 var bundleFile = $"{safeName}.bundle";
@@ -81,22 +82,26 @@ internal static class JobRunner
 
                 var bundleResult = await processRunner(
                     "git",
-                    ["bundle", "create", bundlePath, $"HEAD..{req.Branch.Value}"],
+                    ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
                     cloneDir,
                     GitEnv,
                     CancellationToken.None);
 
                 if (!bundleResult.Succeeded)
-                    throw new InvalidOperationException($"git bundle failed for branch {req.Branch.Value}");
+                {
+                    stopwatch.Stop();
+                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: 0, stopwatch.Elapsed));
+                    return 1;
+                }
 
-                return new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile);
-            }));
+                pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
+            }
 
             stopwatch.Stop();
 
             var success = new JobSuccess(pendingPrs, TokensUsed: 0, Duration: stopwatch.Elapsed);
             var resultJson = JsonSerializer.Serialize<IJobResult>(success, JobJsonContext.Default.IJobResult);
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, CancellationToken.None);
+            await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, cancellationToken);
             Console.WriteLine(resultJson);
             return 0;
         }

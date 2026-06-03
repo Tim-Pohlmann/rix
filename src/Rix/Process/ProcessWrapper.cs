@@ -31,7 +31,6 @@ internal static class ProcessWrapper
 
         if (environmentOverrides is not null)
         {
-            startInfo.Environment.Clear();
             foreach (var (key, value) in environmentOverrides)
                 startInfo.Environment[key] = value;
         }

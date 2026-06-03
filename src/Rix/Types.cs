@@ -76,7 +76,11 @@ internal sealed class RixBranchNameJsonConverter : JsonConverter<RixBranchName>
 internal sealed class PrTitleJsonConverter : JsonConverter<PrTitle>
 {
     public override PrTitle Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => new(reader.GetString()!);
+    {
+        if (reader.TokenType != JsonTokenType.String)
+            throw new JsonException($"Expected string token for PrTitle, got {reader.TokenType}");
+        return new(reader.GetString()!);
+    }
     public override void Write(Utf8JsonWriter writer, PrTitle value, JsonSerializerOptions options)
         => writer.WriteStringValue(value.Value);
 }
@@ -84,7 +88,11 @@ internal sealed class PrTitleJsonConverter : JsonConverter<PrTitle>
 internal sealed class PrBodyJsonConverter : JsonConverter<PrBody>
 {
     public override PrBody Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => new(reader.GetString()!);
+    {
+        if (reader.TokenType != JsonTokenType.String)
+            throw new JsonException($"Expected string token for PrBody, got {reader.TokenType}");
+        return new(reader.GetString()!);
+    }
     public override void Write(Utf8JsonWriter writer, PrBody value, JsonSerializerOptions options)
         => writer.WriteStringValue(value.Value);
 }

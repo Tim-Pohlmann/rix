@@ -86,19 +86,21 @@ public class ProcessWrapperTests
     }
 
     [TestMethod]
-    public async Task RunAsync_UsesOnlyOverrides_WhenProvided()
+    public async Task RunAsync_AppliesOverridesOnTopOfParentEnv_WhenProvided()
     {
         using var scope = new EnvScope();
         scope.Set("RIX_TEST_INHERIT", "inherited-value");
+        scope.Set("RIX_TEST_OVERRIDE", "original-value");
 
         var lines = new List<string>();
         await ProcessWrapper.RunAsync(
-            Shell, ["-c", PrintEnvOrFallback("RIX_TEST_INHERIT", "ABSENT")],
+            Shell, ["-c", $"{PrintEnvOrFallback("RIX_TEST_INHERIT", "ABSENT")} && {PrintEnvOrFallback("RIX_TEST_OVERRIDE", "ABSENT")}"],
             workingDirectory: Path.GetTempPath(),
-            environmentOverrides: new Dictionary<string, string> { ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "" },
+            environmentOverrides: new Dictionary<string, string> { ["RIX_TEST_OVERRIDE"] = "overridden-value" },
             onStdoutLine: lines.Add,
             cancellationToken: CancellationToken.None);
 
-        Assert.IsTrue(lines.Any(l => l.Contains("ABSENT")), "Child should not see parent env when overrides provided");
+        Assert.IsTrue(lines.Any(l => l.Contains("inherited-value")), "Child should still inherit parent env when overrides provided");
+        Assert.IsTrue(lines.Any(l => l.Contains("overridden-value")), "Override should replace the original value");
     }
 }
