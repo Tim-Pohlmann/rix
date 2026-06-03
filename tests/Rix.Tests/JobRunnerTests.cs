@@ -84,7 +84,7 @@ public class JobRunnerTests
         await Run(pr: new("rix/my-fix", "main", "My fix", "body"));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
-        StringAssert.Contains(json, "rix-my-fix.bundle");
+        StringAssert.Contains(json, "rix_2Fmy-fix.bundle");
     }
 
     [TestMethod]
@@ -92,15 +92,15 @@ public class JobRunnerTests
     {
         await Run(pr: new("rix/my-fix", "main", "My fix", "body"));
 
-        Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "rix-my-fix.bundle")));
+        Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "rix_2Fmy-fix.bundle")));
     }
 
     [TestMethod]
-    public async Task RunAsync_SanitizesBranchNameInBundleFileName()
+    public async Task RunAsync_EncodesSlashesInBundleFileName()
     {
         await Run(pr: new("rix/feat/sub", "main", "T", "b"));
 
-        Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "rix-feat-sub.bundle")));
+        Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "rix_2Ffeat_2Fsub.bundle")));
     }
 
     [TestMethod]

@@ -40,6 +40,10 @@ internal static class JobRunner
         RunProcessAsync processRunner,
         CancellationToken cancellationToken)
     {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
+        var ct = timeoutCts.Token;
+
         var stopwatch = Stopwatch.StartNew();
 
         var cloneDir = Path.Combine(config.WorkDir, $"rix-clone-{Guid.NewGuid():N}");
@@ -47,9 +51,9 @@ internal static class JobRunner
 
         try
         {
-            await host.CloneAsync(cloneDir, cancellationToken);
+            await host.CloneAsync(cloneDir, ct);
 
-            await using var apiServer = await LocalApiServer.StartAsync(host, cancellationToken);
+            await using var apiServer = await LocalApiServer.StartAsync(host, ct);
 
             var claudeResult = await processRunner(
                 "claude",
@@ -60,7 +64,7 @@ internal static class JobRunner
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
                     ["RIX_API_URL"] = apiServer.BaseUrl.ToString(),
                 },
-                cancellationToken);
+                ct);
 
             if (!claudeResult.Succeeded)
             {
@@ -76,7 +80,7 @@ internal static class JobRunner
             var pendingPrs = new List<PendingPr>();
             foreach (var req in apiServer.QueuedPrRequests)
             {
-                var safeName = req.Branch.Value.Replace('/', '-');
+                var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
                 var bundleFile = $"{safeName}.bundle";
                 var bundlePath = Path.Combine(config.OutputDir, bundleFile);
 
@@ -85,7 +89,7 @@ internal static class JobRunner
                     ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
                     cloneDir,
                     GitEnv,
-                    CancellationToken.None);
+                    ct);
 
                 if (!bundleResult.Succeeded)
                 {
@@ -101,7 +105,7 @@ internal static class JobRunner
 
             var success = new JobSuccess(pendingPrs, TokensUsed: 0, Duration: stopwatch.Elapsed);
             var resultJson = JsonSerializer.Serialize<IJobResult>(success, JobJsonContext.Default.IJobResult);
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, cancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, ct);
             Console.WriteLine(resultJson);
             return 0;
         }
