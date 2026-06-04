@@ -118,7 +118,7 @@ public class JobRunnerTests
     {
         string? capturedCloneDir = null;
 
-        RunProcessAsync tracker = async (f, a, d, e, ct) =>
+        RunProcessAsync tracker = async (f, a, d, e, ct, cb) =>
         {
             if (f == "claude") capturedCloneDir = d;
             return new ProcessResult(0, false);
@@ -135,7 +135,7 @@ public class JobRunnerTests
     {
         string? capturedCloneDir = null;
 
-        RunProcessAsync tracker = (f, a, d, e, ct) =>
+        RunProcessAsync tracker = (f, a, d, e, ct, cb) =>
         {
             capturedCloneDir = d;
             return Task.FromResult(new ProcessResult(1, false));
@@ -148,20 +148,44 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_PassesApiUrlToClaudeEnv()
+    public async Task RunAsync_PassesApiUrlInSystemPromptArg()
     {
-        string? apiUrl = null;
+        string? systemPromptArg = null;
 
-        RunProcessAsync capture = (f, a, d, e, ct) =>
+        RunProcessAsync capture = (f, a, d, e, ct, cb) =>
         {
-            if (f == "claude") apiUrl = e?["RIX_API_URL"];
+            if (f == "claude")
+            {
+                var argList = a.ToList();
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 0 && idx + 1 < argList.Count)
+                    systemPromptArg = argList[idx + 1];
+            }
             return Task.FromResult(new ProcessResult(0, false));
         };
 
         await JobRunner.RunAsync(MakeConfig(), new StubRepositoryHost(), capture, CancellationToken.None);
 
-        Assert.IsNotNull(apiUrl);
-        StringAssert.StartsWith(apiUrl, "http://");
+        Assert.IsNotNull(systemPromptArg);
+        StringAssert.Contains(systemPromptArg, "http://");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ExtractsTokensUsed_FromClaudeResultLine()
+    {
+        var tokenLine = """{"type":"result","usage":{"output_tokens":42}}""";
+
+        RunProcessAsync fakeWithTokens = (f, a, d, e, ct, cb) =>
+        {
+            if (f == "claude") cb?.Invoke(tokenLine);
+            return Task.FromResult(new ProcessResult(0, false));
+        };
+
+        await JobRunner.RunAsync(MakeConfig(), new StubRepositoryHost(), fakeWithTokens, CancellationToken.None);
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(42, doc.RootElement.GetProperty("tokensUsed").GetInt32());
     }
 
     // ---- helpers ----
@@ -185,25 +209,45 @@ public class JobRunnerTests
         int claudeExitCode = 0,
         bool claudeTimedOut = false,
         QueuedPrSpec? pr = null) =>
-        async (fileName, args, workDir, envOverrides, ct) => fileName switch
+        async (fileName, args, workDir, envOverrides, ct, cb) => fileName switch
         {
-            "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, envOverrides),
+            "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, args),
             "git" => await SimulateGitBundleAsync(args),
             _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
         };
 
     private static async Task<ProcessResult> SimulateClaudeAsync(
-        int exitCode, bool timedOut, QueuedPrSpec? pr, IReadOnlyDictionary<string, string>? envOverrides)
+        int exitCode, bool timedOut, QueuedPrSpec? pr, IEnumerable<string> args)
     {
-        if (pr is not null && envOverrides is not null && envOverrides.TryGetValue("RIX_API_URL", out var apiUrl))
+        if (pr is not null)
         {
-            await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+            var argList = args.ToList();
+            var idx = argList.IndexOf("--append-system-prompt");
+            string? apiUrl = null;
+            if (idx >= 0 && idx + 1 < argList.Count)
             {
-                branch = pr.Branch,
-                title = pr.Title,
-                body = pr.Body,
-                baseBranch = pr.BaseBranch,
-            });
+                var systemPrompt = argList[idx + 1];
+                // Extract URL from system prompt: "... available at <url>. ..."
+                var atIdx = systemPrompt.IndexOf("available at ", StringComparison.Ordinal);
+                if (atIdx >= 0)
+                {
+                    var start = atIdx + "available at ".Length;
+                    var end = systemPrompt.IndexOf(' ', start);
+                    var urlWithPossibleDot = end >= 0 ? systemPrompt[start..end] : systemPrompt[start..];
+                    apiUrl = urlWithPossibleDot.TrimEnd('.');
+                }
+            }
+
+            if (apiUrl is not null)
+            {
+                await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+                {
+                    branch = pr.Branch,
+                    title = pr.Title,
+                    body = pr.Body,
+                    baseBranch = pr.BaseBranch,
+                });
+            }
         }
         return new ProcessResult(timedOut ? -1 : exitCode, timedOut);
     }

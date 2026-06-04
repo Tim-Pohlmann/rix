@@ -18,7 +18,8 @@ internal delegate Task<ProcessResult> RunProcessAsync(
     IEnumerable<string> arguments,
     string workingDirectory,
     IReadOnlyDictionary<string, string>? environmentOverrides,
-    CancellationToken cancellationToken);
+    CancellationToken cancellationToken,
+    Action<string>? onStdoutLine = null);
 
 internal static class JobRunner
 {
@@ -31,7 +32,7 @@ internal static class JobRunner
     internal static async Task<int> RunAsync(JobConfig config, CancellationToken cancellationToken)
     {
         var host = new GitHubRepositoryHost(config.Repo, config.ReadToken);
-        return await RunAsync(config, host, (f, a, d, e, ct) => ProcessWrapper.RunAsync(f, a, d, e, ct), cancellationToken);
+        return await RunAsync(config, host, (f, a, d, e, ct, cb) => ProcessWrapper.RunAsync(f, a, d, e, ct, cb), cancellationToken);
     }
 
     internal static async Task<int> RunAsync(
@@ -55,23 +56,30 @@ internal static class JobRunner
 
             await using var apiServer = await LocalApiServer.StartAsync(host, ct);
 
+            var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
+            var tokensUsed = 0;
+
             var claudeResult = await processRunner(
                 "claude",
-                ["--output-format", "stream-json", "--print", config.Prompt],
+                ["--output-format", "stream-json", "--print", "--append-system-prompt", systemPrompt, config.Prompt],
                 cloneDir,
                 new Dictionary<string, string>
                 {
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
-                    ["RIX_API_URL"] = apiServer.BaseUrl.ToString(),
                 },
-                ct);
+                ct,
+                line =>
+                {
+                    if (TryExtractTokenUsage(line, out var tokens))
+                        tokensUsed = tokens;
+                });
 
             if (!claudeResult.Succeeded)
             {
                 stopwatch.Stop();
                 var failure = new JobFailure(
                     claudeResult.TimedOut ? "Claude timed out" : $"Claude exited with code {claudeResult.ExitCode}",
-                    TokensUsed: 0,
+                    TokensUsed: tokensUsed,
                     Duration: stopwatch.Elapsed);
                 WriteResult(failure);
                 return 1;
@@ -89,12 +97,13 @@ internal static class JobRunner
                     ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
                     cloneDir,
                     GitEnv,
-                    ct);
+                    ct,
+                    null);
 
                 if (!bundleResult.Succeeded)
                 {
                     stopwatch.Stop();
-                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: 0, stopwatch.Elapsed));
+                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: tokensUsed, stopwatch.Elapsed));
                     return 1;
                 }
 
@@ -103,7 +112,7 @@ internal static class JobRunner
 
             stopwatch.Stop();
 
-            var success = new JobSuccess(pendingPrs, TokensUsed: 0, Duration: stopwatch.Elapsed);
+            var success = new JobSuccess(pendingPrs, TokensUsed: tokensUsed, Duration: stopwatch.Elapsed);
             var resultJson = JsonSerializer.Serialize<IJobResult>(success, JobJsonContext.Default.IJobResult);
             await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, ct);
             Console.WriteLine(resultJson);
@@ -114,6 +123,26 @@ internal static class JobRunner
             try { Directory.Delete(cloneDir, recursive: true); }
             catch (DirectoryNotFoundException) { /* already cleaned up */ }
         }
+    }
+
+    internal static string BuildSystemPrompt(Uri apiBaseUrl) =>
+        $"The Rix API is available at {apiBaseUrl}. Use it to queue pull requests when you are done.";
+
+    internal static bool TryExtractTokenUsage(string line, out int tokensUsed)
+    {
+        tokensUsed = 0;
+        try
+        {
+            var doc = JsonDocument.Parse(line);
+            if (doc.RootElement.TryGetProperty("usage", out var usage) &&
+                usage.TryGetProperty("output_tokens", out var outputTokens))
+            {
+                tokensUsed = outputTokens.GetInt32();
+                return true;
+            }
+        }
+        catch (JsonException) { /* not a JSON line */ }
+        return false;
     }
 
     private static void WriteResult(IJobResult result)
