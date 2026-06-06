@@ -53,6 +53,29 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_Returns2_WhenClaudeInstallerFails()
+    {
+        var result = await JobRunner.RunAsync(
+            MakeConfig(), CancellationToken.None,
+            processRunner: FakeRunner(),
+            claudeInstaller: _ => Task.FromResult(false));
+
+        Assert.AreEqual(2, result);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DoesNotClone_WhenClaudeInstallerFails()
+    {
+        var host = new TrackingRepositoryHost();
+
+        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: host, processRunner: FakeRunner(),
+            claudeInstaller: _ => Task.FromResult(false));
+
+        Assert.IsFalse(host.CloneCalled);
+    }
+
+    [TestMethod]
     public async Task RunAsync_WritesResultJson_OnSuccess()
     {
         await Run();
@@ -108,7 +131,9 @@ public class JobRunnerTests
     {
         var host = new TrackingRepositoryHost();
 
-        await JobRunner.RunAsync(MakeConfig(), host, FakeRunner(), CancellationToken.None);
+        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: host, processRunner: FakeRunner(),
+            claudeInstaller: _ => Task.FromResult(true));
 
         Assert.IsTrue(host.CloneCalled);
     }
@@ -124,7 +149,9 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await JobRunner.RunAsync(MakeConfig(), new StubRepositoryHost(), tracker, CancellationToken.None);
+        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: tracker,
+            claudeInstaller: _ => Task.FromResult(true));
 
         Assert.IsNotNull(capturedCloneDir);
         Assert.IsFalse(Directory.Exists(capturedCloneDir), "Clone dir should be deleted after run");
@@ -141,7 +168,9 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"));
         };
 
-        await JobRunner.RunAsync(MakeConfig(), new StubRepositoryHost(), tracker, CancellationToken.None);
+        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: tracker,
+            claudeInstaller: _ => Task.FromResult(true));
 
         Assert.IsNotNull(capturedCloneDir);
         Assert.IsFalse(Directory.Exists(capturedCloneDir));
@@ -158,7 +187,9 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(), new StubRepositoryHost(), capture, CancellationToken.None);
+        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: capture,
+            claudeInstaller: _ => Task.FromResult(true));
 
         Assert.IsNotNull(apiUrl);
         StringAssert.StartsWith(apiUrl, "http://");
@@ -170,7 +201,10 @@ public class JobRunnerTests
         int claudeExitCode = 0,
         bool claudeTimedOut = false,
         QueuedPrSpec? pr = null) =>
-        JobRunner.RunAsync(MakeConfig(), new StubRepositoryHost(), FakeRunner(claudeExitCode, claudeTimedOut, pr), CancellationToken.None);
+        JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(),
+            processRunner: FakeRunner(claudeExitCode, claudeTimedOut, pr),
+            claudeInstaller: _ => Task.FromResult(true));
 
     private JobConfig MakeConfig() => JobConfig.FromInputs(
         repo: "owner/repo",
