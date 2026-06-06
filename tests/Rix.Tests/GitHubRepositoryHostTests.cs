@@ -8,7 +8,7 @@ namespace Rix.Tests;
 public class GitHubRepositoryHostTests
 {
     private static readonly Func<string[], CancellationToken, Task<ProcessResult>> SuccessGitRunner =
-        (_, _) => Task.FromResult(new ProcessResult(0, false));
+        (_, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
 
     private static GitHubRepositoryHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
@@ -50,7 +50,7 @@ public class GitHubRepositoryHostTests
         var host = BuildHost(
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             readToken: "my-read-token",
-            gitRunner: (args, _) => { capturedArgs = args; return Task.FromResult(new ProcessResult(0, false)); });
+            gitRunner: (args, _) => { capturedArgs = args; return Task.FromResult<ProcessResult>(new ProcessSuccess()); });
 
         await host.CloneAsync("/tmp/target", CancellationToken.None);
 
@@ -65,7 +65,7 @@ public class GitHubRepositoryHostTests
     {
         var host = BuildHost(
             _ => new HttpResponseMessage(HttpStatusCode.OK),
-            gitRunner: (_, _) => Task.FromResult(new ProcessResult(128, false)));
+            gitRunner: (_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
         var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => host.CloneAsync("/tmp/target", CancellationToken.None));

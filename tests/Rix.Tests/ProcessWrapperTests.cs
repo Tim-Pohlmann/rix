@@ -29,7 +29,7 @@ public class ProcessWrapperTests
             onStdoutLine: lines.Add,
             cancellationToken: CancellationToken.None);
 
-        Assert.IsTrue(result.Succeeded);
+        Assert.IsInstanceOfType<ProcessSuccess>(result);
         Assert.IsTrue(lines.Any(l => l.Contains("hello")), $"Expected 'hello' in output. Got: [{string.Join(", ", lines)}]");
     }
 
@@ -41,8 +41,8 @@ public class ProcessWrapperTests
             workingDirectory: Path.GetTempPath(),
             cancellationToken: CancellationToken.None);
 
-        Assert.AreEqual(1, result.ExitCode);
-        Assert.IsFalse(result.Succeeded);
+        Assert.IsInstanceOfType<ProcessFailure>(result);
+        Assert.AreEqual("exited with code 1", ((ProcessFailure)result).Reason);
     }
 
     [TestMethod]
@@ -65,8 +65,8 @@ public class ProcessWrapperTests
             workingDirectory: Path.GetTempPath(),
             cancellationToken: cts.Token);
 
-        Assert.IsTrue(result.TimedOut);
-        Assert.IsFalse(result.Succeeded);
+        Assert.IsInstanceOfType<ProcessFailure>(result);
+        Assert.AreEqual("timed out", ((ProcessFailure)result).Reason);
     }
 
     [TestMethod]

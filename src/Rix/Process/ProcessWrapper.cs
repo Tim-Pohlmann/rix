@@ -2,10 +2,9 @@ using System.Diagnostics;
 
 namespace Rix.Process;
 
-internal record ProcessResult(int ExitCode, bool TimedOut)
-{
-    internal bool Succeeded => ExitCode == 0 && !TimedOut;
-}
+internal abstract record ProcessResult;
+internal sealed record ProcessSuccess(string? Output = null) : ProcessResult;
+internal sealed record ProcessFailure(string Reason) : ProcessResult;
 
 internal static class ProcessWrapper
 {
@@ -61,7 +60,8 @@ internal static class ProcessWrapper
         }
 
         await stdoutTask;
-        return new ProcessResult(timedOut ? -1 : process.ExitCode, timedOut); // NOSONAR
+        if (timedOut) return new ProcessFailure("timed out");
+        return process.ExitCode == 0 ? new ProcessSuccess() : new ProcessFailure($"exited with code {process.ExitCode}");
     }
 
     private static async Task ReadLinesAsync(
