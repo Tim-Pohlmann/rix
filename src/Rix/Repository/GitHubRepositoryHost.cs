@@ -53,8 +53,8 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     private async Task RunGitAsync(string[] args, CancellationToken cancellationToken)
     {
         var result = await _gitRunner(args, cancellationToken);
-        if (!result.Succeeded)
-            throw new InvalidOperationException($"git {args[0]} failed with exit code {result.ExitCode}");
+        if (result is ProcessFailure f)
+            throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
     }
 
     [ExcludeFromCodeCoverage]

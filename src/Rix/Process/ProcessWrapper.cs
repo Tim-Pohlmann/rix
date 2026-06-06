@@ -1,11 +1,14 @@
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace Rix.Process;
 
-internal record ProcessResult(int ExitCode, bool TimedOut)
+internal abstract record ProcessResult
 {
-    internal bool Succeeded => ExitCode == 0 && !TimedOut;
+    private protected ProcessResult() { }
 }
+internal sealed record ProcessSuccess(string? Output = null) : ProcessResult;
+internal sealed record ProcessFailure(string Reason) : ProcessResult;
 
 internal static class ProcessWrapper
 {
@@ -36,7 +39,8 @@ internal static class ProcessWrapper
         }
 
         using var process = new System.Diagnostics.Process { StartInfo = startInfo };
-        process.Start();
+        try { process.Start(); }
+        catch (Win32Exception ex) { return new ProcessFailure(ex.Message); }
 
         var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
         var processTask = process.WaitForExitAsync(cancellationToken);
@@ -46,22 +50,21 @@ internal static class ProcessWrapper
             try { process.Kill(entireProcessTree: true); }
             catch (InvalidOperationException) { /* process already exited */ }
 
-        bool timedOut;
         try
         {
             await processTask;
-            timedOut = false;
         }
         catch (OperationCanceledException)
         {
-            timedOut = true;
             try { process.Kill(entireProcessTree: true); }
             catch (InvalidOperationException) { /* process already exited */ }
             await process.WaitForExitAsync(CancellationToken.None);
+            await stdoutTask;
+            return new ProcessFailure("timed out");
         }
 
         await stdoutTask;
-        return new ProcessResult(timedOut ? -1 : process.ExitCode, timedOut); // NOSONAR
+        return process.ExitCode == 0 ? new ProcessSuccess() : new ProcessFailure($"exited with code {process.ExitCode}");
     }
 
     private static async Task ReadLinesAsync(
