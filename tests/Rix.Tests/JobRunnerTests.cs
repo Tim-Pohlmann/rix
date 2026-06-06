@@ -121,7 +121,7 @@ public class JobRunnerTests
         RunProcessAsync tracker = async (f, a, d, e, ct) =>
         {
             if (f == "claude") capturedCloneDir = d;
-            return new ProcessResult(0, false);
+            return new ProcessSuccess();
         };
 
         await JobRunner.RunAsync(MakeConfig(), new StubRepositoryHost(), tracker, CancellationToken.None);
@@ -138,7 +138,7 @@ public class JobRunnerTests
         RunProcessAsync tracker = (f, a, d, e, ct) =>
         {
             capturedCloneDir = d;
-            return Task.FromResult(new ProcessResult(1, false));
+            return Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"));
         };
 
         await JobRunner.RunAsync(MakeConfig(), new StubRepositoryHost(), tracker, CancellationToken.None);
@@ -155,7 +155,7 @@ public class JobRunnerTests
         RunProcessAsync capture = (f, a, d, e, ct) =>
         {
             if (f == "claude") apiUrl = e?["RIX_API_URL"];
-            return Task.FromResult(new ProcessResult(0, false));
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
         await JobRunner.RunAsync(MakeConfig(), new StubRepositoryHost(), capture, CancellationToken.None);
@@ -205,14 +205,14 @@ public class JobRunnerTests
                 baseBranch = pr.BaseBranch,
             });
         }
-        return new ProcessResult(timedOut ? -1 : exitCode, timedOut);
+        return timedOut ? new ProcessFailure("timed out") : (exitCode == 0 ? new ProcessSuccess() : new ProcessFailure($"exited with code {exitCode}"));
     }
 
     private static async Task<ProcessResult> SimulateGitBundleAsync(IEnumerable<string> args)
     {
         var bundlePath = args.ElementAt(2); // git bundle create <path> <range>
         await File.WriteAllTextAsync(bundlePath, "fake-bundle");
-        return new ProcessResult(0, false);
+        return new ProcessSuccess();
     }
 
     private record QueuedPrSpec(string Branch, string BaseBranch, string Title, string Body);

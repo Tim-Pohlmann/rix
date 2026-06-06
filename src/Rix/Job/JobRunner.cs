@@ -66,11 +66,11 @@ internal static class JobRunner
                 },
                 ct);
 
-            if (!claudeResult.Succeeded)
+            if (claudeResult is ProcessFailure claudeFailure)
             {
                 stopwatch.Stop();
                 var failure = new JobFailure(
-                    claudeResult.TimedOut ? "Claude timed out" : $"Claude exited with code {claudeResult.ExitCode}",
+                    $"Claude failed: {claudeFailure.Reason}",
                     TokensUsed: 0,
                     Duration: stopwatch.Elapsed);
                 WriteResult(failure);
@@ -91,7 +91,7 @@ internal static class JobRunner
                     GitEnv,
                     ct);
 
-                if (!bundleResult.Succeeded)
+                if (bundleResult is ProcessFailure)
                 {
                     stopwatch.Stop();
                     WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: 0, stopwatch.Elapsed));
