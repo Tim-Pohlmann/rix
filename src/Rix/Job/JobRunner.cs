@@ -65,6 +65,8 @@ internal static class JobRunner
 
             await using var apiServer = await LocalApiServer.StartAsync(host, ct);
 
+            var tokensUsed = 0;
+
             var claudeResult = await processRunner(
                 "claude",
                 ["--output-format", "stream-json", "--print", config.Prompt],
@@ -74,7 +76,11 @@ internal static class JobRunner
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
                     ["RIX_API_URL"] = apiServer.BaseUrl.ToString(),
                 },
-                Console.Error.WriteLine,
+                line =>
+                {
+                    Console.Error.WriteLine(line);
+                    TryExtractTokenUsage(line, ref tokensUsed);
+                },
                 ct);
 
             if (claudeResult is ProcessFailure claudeFailure)
@@ -82,7 +88,7 @@ internal static class JobRunner
                 stopwatch.Stop();
                 var failure = new JobFailure(
                     $"Claude failed: {claudeFailure.Reason}",
-                    TokensUsed: 0,
+                    TokensUsed: tokensUsed,
                     Duration: stopwatch.Elapsed);
                 WriteResult(failure);
                 return 1;
@@ -106,7 +112,7 @@ internal static class JobRunner
                 if (bundleResult is ProcessFailure)
                 {
                     stopwatch.Stop();
-                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: 0, stopwatch.Elapsed));
+                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: tokensUsed, stopwatch.Elapsed));
                     return 1;
                 }
 
@@ -115,7 +121,7 @@ internal static class JobRunner
 
             stopwatch.Stop();
 
-            var success = new JobSuccess(pendingPrs, TokensUsed: 0, Duration: stopwatch.Elapsed);
+            var success = new JobSuccess(pendingPrs, TokensUsed: tokensUsed, Duration: stopwatch.Elapsed);
             var resultJson = JsonSerializer.Serialize<IJobResult>(success, JobJsonContext.Default.IJobResult);
             await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, ct);
             Console.WriteLine(resultJson);
@@ -126,6 +132,26 @@ internal static class JobRunner
             try { Directory.Delete(cloneDir, recursive: true); }
             catch (DirectoryNotFoundException) { /* already cleaned up */ }
         }
+    }
+
+    private static void TryExtractTokenUsage(string line, ref int tokensUsed)
+    {
+        var trimmed = line.TrimStart();
+        if (trimmed.Length == 0 || trimmed[0] != '{') return;
+        if (!trimmed.Contains("\"total_input_tokens\"") && !trimmed.Contains("\"total_output_tokens\"")) return;
+        try
+        {
+            using var doc = JsonDocument.Parse(trimmed);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("type", out var type) ||
+                type.ValueKind != JsonValueKind.String || type.GetString() != "result")
+                return;
+            var input = root.TryGetProperty("total_input_tokens", out var i) && i.ValueKind == JsonValueKind.Number && i.TryGetInt64(out var iv) ? iv : 0L;
+            var output = root.TryGetProperty("total_output_tokens", out var o) && o.ValueKind == JsonValueKind.Number && o.TryGetInt64(out var ov) ? ov : 0L;
+            tokensUsed = (int)Math.Min((long)tokensUsed + input + output, int.MaxValue);
+        }
+        catch (JsonException) { /* non-JSON line, skip */ }
     }
 
     private static void WriteResult(IJobResult result)
