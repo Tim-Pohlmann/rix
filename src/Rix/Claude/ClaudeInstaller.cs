@@ -19,7 +19,7 @@ internal static class ClaudeInstaller
 
         if (await RunCommandAsync("npm", ["--version"], runProcess, cancellationToken) is { } npmReason)
         {
-            await error.WriteLineAsync($"error: npm is not available and claude is not installed ({npmReason}). Install Node.js to continue.");
+            await error.WriteLineAsync($"error: claude is not installed and npm could not be run ({npmReason}). Install Node.js to continue.");
             return false;
         }
 

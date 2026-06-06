@@ -46,7 +46,8 @@ internal static class JobRunner
                 workingDirectory: workingDirectory,
                 environmentOverrides: environmentOverrides,
                 cancellationToken: token);
-        claudeInstaller ??= token => ClaudeInstaller.EnsureInstalledAsync(token);
+        claudeInstaller ??= token => ClaudeInstaller.EnsureInstalledAsync(token,
+            runProcess: (fileName, args, t) => processRunner(fileName, args, Path.GetTempPath(), null, t));
 
         if (!await claudeInstaller(ct))
             return 2;
