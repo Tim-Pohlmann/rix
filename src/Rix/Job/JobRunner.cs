@@ -19,6 +19,7 @@ internal delegate Task<ProcessResult> RunProcessAsync(
     IEnumerable<string> arguments,
     string workingDirectory,
     IReadOnlyDictionary<string, string>? environmentOverrides,
+    Action<string>? onStdoutLine,
     CancellationToken cancellationToken);
 
 internal static class JobRunner
@@ -41,13 +42,14 @@ internal static class JobRunner
         var ct = timeoutCts.Token;
 
         host ??= new GitHubRepositoryHost(config.Repo, config.ReadToken);
-        processRunner ??= (fileName, arguments, workingDirectory, environmentOverrides, token) =>
+        processRunner ??= (fileName, arguments, workingDirectory, environmentOverrides, onStdoutLine, token) =>
             ProcessWrapper.RunAsync(fileName, arguments,
                 workingDirectory: workingDirectory,
                 environmentOverrides: environmentOverrides,
-                cancellationToken: token);
+                cancellationToken: token,
+                onStdoutLine: onStdoutLine);
         claudeInstaller ??= token => ClaudeInstaller.EnsureInstalledAsync(token,
-            runProcess: (fileName, args, t) => processRunner(fileName, args, Path.GetTempPath(), null, t));
+            runProcess: (fileName, args, t) => processRunner(fileName, args, Path.GetTempPath(), null, null, t));
 
         if (!await claudeInstaller(ct))
             return 2;
@@ -72,6 +74,7 @@ internal static class JobRunner
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
                     ["RIX_API_URL"] = apiServer.BaseUrl.ToString(),
                 },
+                Console.Error.WriteLine,
                 ct);
 
             if (claudeResult is ProcessFailure claudeFailure)
@@ -97,6 +100,7 @@ internal static class JobRunner
                     ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
                     cloneDir,
                     GitEnv,
+                    null,
                     ct);
 
                 if (bundleResult is ProcessFailure)

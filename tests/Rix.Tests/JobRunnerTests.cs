@@ -143,7 +143,7 @@ public class JobRunnerTests
     {
         string? capturedCloneDir = null;
 
-        RunProcessAsync tracker = async (f, a, d, e, ct) =>
+        RunProcessAsync tracker = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude") capturedCloneDir = d;
             return new ProcessSuccess();
@@ -162,7 +162,7 @@ public class JobRunnerTests
     {
         string? capturedCloneDir = null;
 
-        RunProcessAsync tracker = (f, a, d, e, ct) =>
+        RunProcessAsync tracker = (f, a, d, e, onLine, ct) =>
         {
             capturedCloneDir = d;
             return Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"));
@@ -177,13 +177,71 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_PassesNonNullOnStdoutLine_ToClaudeProcess()
+    {
+        Action<string>? claudeCallback = null;
+        Action<string>? gitCallback = _ => { }; // non-null sentinel; nulled out when git runs with null callback
+
+        RunProcessAsync capture = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                claudeCallback = onLine;
+                if (e is null || !e.TryGetValue("RIX_API_URL", out var apiUrl))
+                    throw new InvalidOperationException("RIX_API_URL not set in Claude env.");
+                var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+                {
+                    branch = "rix/test", baseBranch = "main", title = "T", body = "b",
+                }, ct);
+                response.EnsureSuccessStatusCode();
+            }
+            else if (f == "git") gitCallback = onLine;
+            return new ProcessSuccess();
+        };
+
+        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: capture,
+            claudeInstaller: _ => Task.FromResult(true));
+
+        Assert.IsNotNull(claudeCallback);
+        Assert.IsNull(gitCallback);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ForwardsClaudeOutputLines_ToStderr()
+    {
+        var stderr = new StringWriter();
+        var original = Console.Error;
+        Console.SetError(stderr);
+
+        try
+        {
+            RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+            {
+                if (f == "claude") onLine?.Invoke("test line");
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            };
+
+            await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+                host: new StubRepositoryHost(), processRunner: runner,
+                claudeInstaller: _ => Task.FromResult(true));
+
+            StringAssert.Contains(stderr.ToString(), "test line");
+        }
+        finally
+        {
+            Console.SetError(original);
+        }
+    }
+
+    [TestMethod]
     public async Task RunAsync_PassesApiUrlToClaudeEnv()
     {
         string? apiUrl = null;
 
-        RunProcessAsync capture = (f, a, d, e, ct) =>
+        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
         {
-            if (f == "claude") apiUrl = e?["RIX_API_URL"];
+            if (f == "claude") e?.TryGetValue("RIX_API_URL", out apiUrl);
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
@@ -219,7 +277,7 @@ public class JobRunnerTests
         int claudeExitCode = 0,
         bool claudeTimedOut = false,
         QueuedPrSpec? pr = null) =>
-        async (fileName, args, workDir, envOverrides, ct) => fileName switch
+        async (fileName, args, workDir, envOverrides, onLine, ct) => fileName switch
         {
             "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, envOverrides),
             "git" => await SimulateGitBundleAsync(args),
@@ -237,7 +295,7 @@ public class JobRunnerTests
                 title = pr.Title,
                 body = pr.Body,
                 baseBranch = pr.BaseBranch,
-            });
+            }, CancellationToken.None);
         }
         return timedOut ? new ProcessFailure("timed out") : (exitCode == 0 ? new ProcessSuccess() : new ProcessFailure($"exited with code {exitCode}"));
     }
