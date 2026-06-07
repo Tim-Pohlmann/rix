@@ -74,7 +74,7 @@ internal static class JobRunner
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
                     ["RIX_API_URL"] = apiServer.BaseUrl.ToString(),
                 },
-                Console.Error.WriteLine,
+                line => Console.Error.WriteLine(line),
                 ct);
 
             if (claudeResult is ProcessFailure claudeFailure)
