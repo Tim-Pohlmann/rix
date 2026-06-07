@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Rix.Api;
+using Rix.Claude;
 using Rix.Process;
 using Rix.Repository;
 
@@ -28,21 +29,28 @@ internal static class JobRunner
         ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
     };
 
-    internal static async Task<int> RunAsync(JobConfig config, CancellationToken cancellationToken)
-    {
-        var host = new GitHubRepositoryHost(config.Repo, config.ReadToken);
-        return await RunAsync(config, host, (f, a, d, e, ct) => ProcessWrapper.RunAsync(f, a, d, e, ct), cancellationToken);
-    }
-
     internal static async Task<int> RunAsync(
         JobConfig config,
-        IRepositoryHost host,
-        RunProcessAsync processRunner,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IRepositoryHost? host = null,
+        RunProcessAsync? processRunner = null,
+        Func<CancellationToken, Task<bool>>? claudeInstaller = null)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
+
+        host ??= new GitHubRepositoryHost(config.Repo, config.ReadToken);
+        processRunner ??= (fileName, arguments, workingDirectory, environmentOverrides, token) =>
+            ProcessWrapper.RunAsync(fileName, arguments,
+                workingDirectory: workingDirectory,
+                environmentOverrides: environmentOverrides,
+                cancellationToken: token);
+        claudeInstaller ??= token => ClaudeInstaller.EnsureInstalledAsync(token,
+            runProcess: (fileName, args, t) => processRunner(fileName, args, Path.GetTempPath(), null, t));
+
+        if (!await claudeInstaller(ct))
+            return 2;
 
         var stopwatch = Stopwatch.StartNew();
 
