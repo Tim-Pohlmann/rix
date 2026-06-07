@@ -400,7 +400,7 @@ public class JobRunnerTests
         QueuedPrSpec? pr = null) =>
         async (fileName, args, workDir, envOverrides, onLine, ct) => fileName switch
         {
-            "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, args),
+            "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, args, ct),
             "git" => await SimulateGitBundleAsync(args),
             _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
         };
@@ -422,7 +422,7 @@ public class JobRunnerTests
     }
 
     private static async Task<ProcessResult> SimulateClaudeAsync(
-        int exitCode, bool timedOut, QueuedPrSpec? pr, IEnumerable<string> args)
+        int exitCode, bool timedOut, QueuedPrSpec? pr, IEnumerable<string> args, CancellationToken cancellationToken)
     {
         if (pr is not null)
         {
@@ -433,7 +433,7 @@ public class JobRunnerTests
                 title = pr.Title,
                 body = pr.Body,
                 baseBranch = pr.BaseBranch,
-            }, CancellationToken.None);
+            }, cancellationToken);
             response.EnsureSuccessStatusCode();
         }
         if (timedOut) return new ProcessFailure("timed out");
