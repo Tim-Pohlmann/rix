@@ -135,13 +135,14 @@ internal static class JobRunner
     }
 
     private static string BuildSystemPrompt(Uri apiBaseUrl) => $$"""
+        You are `rix job`, an autonomous coding agent and part of the `rix` autonomous software factory.
+
         A local API is available at {{apiBaseUrl}}.
 
         Endpoints:
-        - GET {{new Uri(apiBaseUrl, "/health")}}  — verify the API is reachable before starting work
         - POST {{new Uri(apiBaseUrl, "/pr")}}     — create a pull request when satisfied with your changes
 
-        When making changes:
+        Split your work in multiple PRs if applicable. For each:
         1. Create a branch named rix/<short-description> for your work
         2. When done, call POST {{new Uri(apiBaseUrl, "/pr")}} with JSON body:
            {"branch":"rix/<name>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}

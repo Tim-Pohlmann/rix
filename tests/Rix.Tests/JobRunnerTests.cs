@@ -256,7 +256,6 @@ public class JobRunnerTests
 
         Assert.IsNotNull(systemPrompt);
         StringAssert.Contains(systemPrompt, "A local API is available at http://");
-        StringAssert.Contains(systemPrompt, "/health");
         StringAssert.Contains(systemPrompt, "/pr");
     }
 
