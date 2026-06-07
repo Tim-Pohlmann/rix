@@ -208,6 +208,7 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    [DoNotParallelize]
     public async Task RunAsync_ForwardsClaudeOutputLines_ToStderr()
     {
         var stderr = new StringWriter();
