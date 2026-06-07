@@ -66,15 +66,15 @@ internal static class JobRunner
             await using var apiServer = await LocalApiServer.StartAsync(host, ct);
 
             var tokensUsed = 0;
+            var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
 
             var claudeResult = await processRunner(
                 "claude",
-                ["--output-format", "stream-json", "--print", config.Prompt],
+                ["--output-format", "stream-json", "--print", config.Prompt, "--append-system-prompt", systemPrompt],
                 cloneDir,
                 new Dictionary<string, string>
                 {
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
-                    ["RIX_API_URL"] = apiServer.BaseUrl.ToString(),
                 },
                 line =>
                 {
@@ -134,6 +134,20 @@ internal static class JobRunner
         }
     }
 
+    private static string BuildSystemPrompt(Uri apiBaseUrl) => $$"""
+        You are `rix job`, an autonomous coding agent and part of the `rix` autonomous software factory.
+
+        A local API is available at {{apiBaseUrl}}.
+
+        Endpoints:
+        - POST {{new Uri(apiBaseUrl, "/pr")}}     — create a pull request when satisfied with your changes
+
+        Split your work in multiple PRs if applicable. For each:
+        1. Create a branch named rix/<short-description> for your work
+        2. When done, call POST {{new Uri(apiBaseUrl, "/pr")}} with JSON body:
+           {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
+        """;
+
     private static void TryExtractTokenUsage(string line, ref int tokensUsed)
     {
         var trimmed = line.TrimStart();
@@ -147,12 +161,15 @@ internal static class JobRunner
                 !root.TryGetProperty("type", out var type) ||
                 type.ValueKind != JsonValueKind.String || type.GetString() != "result")
                 return;
-            var input = root.TryGetProperty("total_input_tokens", out var i) && i.ValueKind == JsonValueKind.Number && i.TryGetInt64(out var iv) ? iv : 0L;
-            var output = root.TryGetProperty("total_output_tokens", out var o) && o.ValueKind == JsonValueKind.Number && o.TryGetInt64(out var ov) ? ov : 0L;
+            var input = ReadTokenCount(root, "total_input_tokens");
+            var output = ReadTokenCount(root, "total_output_tokens");
             tokensUsed = (int)Math.Min((long)tokensUsed + input + output, int.MaxValue);
         }
-        catch (JsonException) { /* non-JSON line, skip */ }
+        catch (JsonException) { /* malformed JSON line — skip */ }
     }
+
+    private static long ReadTokenCount(JsonElement root, string property) =>
+        root.TryGetProperty(property, out var el) && el.ValueKind == JsonValueKind.Number && el.TryGetInt64(out var v) ? v : 0L;
 
     private static void WriteResult(IJobResult result)
     {

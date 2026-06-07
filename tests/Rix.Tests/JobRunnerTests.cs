@@ -187,8 +187,7 @@ public class JobRunnerTests
             if (f == "claude")
             {
                 claudeCallback = onLine;
-                if (e is null || !e.TryGetValue("RIX_API_URL", out var apiUrl))
-                    throw new InvalidOperationException("RIX_API_URL not set in Claude env.");
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
                 using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
                 {
                     branch = "rix/test", baseBranch = "main", title = "T", body = "b",
@@ -236,13 +235,19 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_PassesApiUrlToClaudeEnv()
+    public async Task RunAsync_PassesApiUrlInSystemPromptArg()
     {
-        string? apiUrl = null;
+        string? systemPrompt = null;
 
         RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
         {
-            if (f == "claude") e?.TryGetValue("RIX_API_URL", out apiUrl);
+            if (f == "claude")
+            {
+                var argList = a.ToList();
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 0 && idx + 1 < argList.Count)
+                    systemPrompt = argList[idx + 1];
+            }
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
@@ -250,8 +255,9 @@ public class JobRunnerTests
             host: new StubRepositoryHost(), processRunner: capture,
             claudeInstaller: _ => Task.FromResult(true));
 
-        Assert.IsNotNull(apiUrl);
-        StringAssert.StartsWith(apiUrl, "http://");
+        Assert.IsNotNull(systemPrompt);
+        StringAssert.Contains(systemPrompt, "A local API is available at http://");
+        StringAssert.Contains(systemPrompt, "/pr");
     }
 
     [TestMethod]
@@ -329,7 +335,7 @@ public class JobRunnerTests
         {
             if (f == "claude")
             {
-                var apiUrl = e?["RIX_API_URL"] ?? throw new InvalidOperationException("RIX_API_URL missing");
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
                 using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
                 {
                     branch = "rix/test", baseBranch = "main", title = "T", body = "b",
@@ -393,16 +399,33 @@ public class JobRunnerTests
         QueuedPrSpec? pr = null) =>
         async (fileName, args, workDir, envOverrides, onLine, ct) => fileName switch
         {
-            "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, envOverrides, ct),
+            "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, args, ct),
             "git" => await SimulateGitBundleAsync(args),
             _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
         };
 
-    private static async Task<ProcessResult> SimulateClaudeAsync(
-        int exitCode, bool timedOut, QueuedPrSpec? pr, IReadOnlyDictionary<string, string>? envOverrides, CancellationToken cancellationToken)
+    private static string ExtractApiUrlFromSystemPrompt(IEnumerable<string> args)
     {
-        if (pr is not null && envOverrides is not null && envOverrides.TryGetValue("RIX_API_URL", out var apiUrl))
+        var argList = args.ToList();
+        var idx = argList.IndexOf("--append-system-prompt");
+        if (idx < 0 || idx + 1 >= argList.Count)
+            throw new InvalidOperationException("Expected --append-system-prompt arg not found.");
+        const string marker = "A local API is available at ";
+        var prompt = argList[idx + 1];
+        var start = prompt.IndexOf(marker, StringComparison.Ordinal);
+        if (start < 0)
+            throw new InvalidOperationException($"Expected marker '{marker}' not found in system prompt.");
+        start += marker.Length;
+        var end = prompt.IndexOfAny(['\n', '\r'], start);
+        return (end < 0 ? prompt[start..] : prompt[start..end]).Trim();
+    }
+
+    private static async Task<ProcessResult> SimulateClaudeAsync(
+        int exitCode, bool timedOut, QueuedPrSpec? pr, IEnumerable<string> args, CancellationToken cancellationToken)
+    {
+        if (pr is not null)
         {
+            var apiUrl = ExtractApiUrlFromSystemPrompt(args);
             using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
             {
                 branch = pr.Branch,
@@ -412,7 +435,8 @@ public class JobRunnerTests
             }, cancellationToken);
             response.EnsureSuccessStatusCode();
         }
-        return timedOut ? new ProcessFailure("timed out") : (exitCode == 0 ? new ProcessSuccess() : new ProcessFailure($"exited with code {exitCode}"));
+        if (timedOut) return new ProcessFailure("timed out");
+        return exitCode == 0 ? new ProcessSuccess() : (ProcessResult)new ProcessFailure($"exited with code {exitCode}");
     }
 
     private static async Task<ProcessResult> SimulateGitBundleAsync(IEnumerable<string> args)
