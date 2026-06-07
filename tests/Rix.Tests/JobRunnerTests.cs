@@ -188,7 +188,7 @@ public class JobRunnerTests
             {
                 claudeCallback = onLine;
                 var apiUrl = ExtractApiUrlFromSystemPrompt(a);
-                var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
                 {
                     branch = "rix/test", baseBranch = "main", title = "T", body = "b",
                 }, ct);
@@ -335,7 +335,7 @@ public class JobRunnerTests
             if (f == "claude")
             {
                 var apiUrl = ExtractApiUrlFromSystemPrompt(a);
-                var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
                 {
                     branch = "rix/test", baseBranch = "main", title = "T", body = "b",
                 }, ct);
@@ -426,7 +426,7 @@ public class JobRunnerTests
         if (pr is not null)
         {
             var apiUrl = ExtractApiUrlFromSystemPrompt(args);
-            var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+            using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
             {
                 branch = pr.Branch,
                 title = pr.Title,
