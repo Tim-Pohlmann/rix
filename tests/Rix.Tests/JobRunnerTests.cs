@@ -329,7 +329,7 @@ public class JobRunnerTests
             if (f == "claude")
             {
                 var apiUrl = e?["RIX_API_URL"] ?? throw new InvalidOperationException("RIX_API_URL missing");
-                var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
                 {
                     branch = "rix/test", baseBranch = "main", title = "T", body = "b",
                 }, ct);
