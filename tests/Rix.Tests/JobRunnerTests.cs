@@ -254,6 +254,119 @@ public class JobRunnerTests
         StringAssert.StartsWith(apiUrl, "http://");
     }
 
+    [TestMethod]
+    public async Task RunAsync_ExtractsTokensUsed_FromClaudeResultLine()
+    {
+        const string resultLine = """{"type":"result","subtype":"success","total_input_tokens":1000,"total_output_tokens":500}""";
+
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") onLine?.Invoke(resultLine);
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: runner,
+            claudeInstaller: _ => Task.FromResult(true));
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(1500, doc.RootElement.GetProperty("tokensUsed").GetInt32());
+    }
+
+    [TestMethod]
+    public async Task RunAsync_AccumulatesTokensUsed_AcrossMultipleResultLines()
+    {
+        const string line1 = """{"type":"result","total_input_tokens":1000,"total_output_tokens":500}""";
+        const string line2 = """{"type":"result","total_input_tokens":200,"total_output_tokens":100}""";
+
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") { onLine?.Invoke(line1); onLine?.Invoke(line2); }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: runner,
+            claudeInstaller: _ => Task.FromResult(true));
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(1800, doc.RootElement.GetProperty("tokensUsed").GetInt32());
+    }
+
+    [TestMethod]
+    public async Task RunAsync_IgnoresNonResultJsonLines()
+    {
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                onLine?.Invoke("not json at all");
+                onLine?.Invoke("""{"type":"assistant","message":"hello"}""");
+                onLine?.Invoke("{invalid json}");
+                onLine?.Invoke("""{"type":123}""");
+                onLine?.Invoke("[]");
+                onLine?.Invoke("null");
+                onLine?.Invoke("42");
+            }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: runner,
+            claudeInstaller: _ => Task.FromResult(true));
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(0, doc.RootElement.GetProperty("tokensUsed").GetInt32());
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Returns1_WhenGitBundleFails()
+    {
+        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var apiUrl = e?["RIX_API_URL"] ?? throw new InvalidOperationException("RIX_API_URL missing");
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+                {
+                    branch = "rix/test", baseBranch = "main", title = "T", body = "b",
+                }, ct);
+                response.EnsureSuccessStatusCode();
+                return new ProcessSuccess();
+            }
+            return new ProcessFailure("exited with code 1");
+        };
+
+        var result = await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: runner,
+            claudeInstaller: _ => Task.FromResult(true));
+
+        Assert.AreEqual(1, result);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_TreatsNonIntegerTokenFields_AsZero()
+    {
+        const string resultLine = """{"type":"result","total_input_tokens":"not-a-number","total_output_tokens":null}""";
+
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") onLine?.Invoke(resultLine);
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: runner,
+            claudeInstaller: _ => Task.FromResult(true));
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(0, doc.RootElement.GetProperty("tokensUsed").GetInt32());
+    }
+
     // ---- helpers ----
 
     private Task<int> Run(
