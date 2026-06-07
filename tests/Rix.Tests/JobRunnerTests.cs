@@ -280,13 +280,13 @@ public class JobRunnerTests
         QueuedPrSpec? pr = null) =>
         async (fileName, args, workDir, envOverrides, onLine, ct) => fileName switch
         {
-            "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, envOverrides),
+            "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, envOverrides, ct),
             "git" => await SimulateGitBundleAsync(args),
             _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
         };
 
     private static async Task<ProcessResult> SimulateClaudeAsync(
-        int exitCode, bool timedOut, QueuedPrSpec? pr, IReadOnlyDictionary<string, string>? envOverrides)
+        int exitCode, bool timedOut, QueuedPrSpec? pr, IReadOnlyDictionary<string, string>? envOverrides, CancellationToken cancellationToken)
     {
         if (pr is not null && envOverrides is not null && envOverrides.TryGetValue("RIX_API_URL", out var apiUrl))
         {
@@ -296,7 +296,7 @@ public class JobRunnerTests
                 title = pr.Title,
                 body = pr.Body,
                 baseBranch = pr.BaseBranch,
-            }, CancellationToken.None);
+            }, cancellationToken);
             response.EnsureSuccessStatusCode();
         }
         return timedOut ? new ProcessFailure("timed out") : (exitCode == 0 ? new ProcessSuccess() : new ProcessFailure($"exited with code {exitCode}"));
