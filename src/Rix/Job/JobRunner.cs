@@ -145,7 +145,7 @@ internal static class JobRunner
         Split your work in multiple PRs if applicable. For each:
         1. Create a branch named rix/<short-description> for your work
         2. When done, call POST {{new Uri(apiBaseUrl, "/pr")}} with JSON body:
-           {"branch":"rix/<name>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
+           {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
         """;
 
     private static void TryExtractTokenUsage(string line, ref int tokensUsed)
