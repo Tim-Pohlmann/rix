@@ -189,7 +189,7 @@ public class JobRunnerTests
                 claudeCallback = onLine;
                 if (e is null || !e.TryGetValue("RIX_API_URL", out var apiUrl))
                     throw new InvalidOperationException("RIX_API_URL not set in Claude env.");
-                var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
                 {
                     branch = "rix/test", baseBranch = "main", title = "T", body = "b",
                 }, ct);
@@ -402,13 +402,14 @@ public class JobRunnerTests
     {
         if (pr is not null && envOverrides is not null && envOverrides.TryGetValue("RIX_API_URL", out var apiUrl))
         {
-            await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+            using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
             {
                 branch = pr.Branch,
                 title = pr.Title,
                 body = pr.Body,
                 baseBranch = pr.BaseBranch,
             }, CancellationToken.None);
+            response.EnsureSuccessStatusCode();
         }
         return timedOut ? new ProcessFailure("timed out") : (exitCode == 0 ? new ProcessSuccess() : new ProcessFailure($"exited with code {exitCode}"));
     }
