@@ -372,7 +372,6 @@ public class JobRunnerTests
         Assert.AreEqual(0, doc.RootElement.GetProperty("tokensUsed").GetInt32());
     }
 
-
     // ---- helpers ----
 
     private Task<int> Run(
