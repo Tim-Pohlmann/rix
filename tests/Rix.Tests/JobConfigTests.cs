@@ -89,10 +89,26 @@ public class JobConfigTests
     }
 
     [TestMethod]
-    public void ValidationErrors_RejectsNonExistentWorkDir()
+    public void FilesystemValidationErrors_RejectsNonExistentWorkDir()
     {
-        var errors = (ValidConfig() with { WorkDir = "/nonexistent/path/xyz" }).ValidationErrors;
-        Assert.IsTrue(errors.Count > 0);
+        var errors = (ValidConfig() with { WorkDir = "/nonexistent/path/xyz" })
+            .FilesystemValidationErrors(_ => false);
+        Assert.IsTrue(errors.Any(e => e.Contains("--work-dir")));
+    }
+
+    [TestMethod]
+    public void FilesystemValidationErrors_ReturnsNoErrors_WhenDirectoriesExist()
+    {
+        var errors = ValidConfig().FilesystemValidationErrors(_ => true);
+        Assert.AreEqual(0, errors.Count);
+    }
+
+    [TestMethod]
+    public void FilesystemValidationErrors_SkipsExistenceCheck_ForEmptyDirNames()
+    {
+        var errors = (ValidConfig() with { WorkDir = "", OutputDir = "" })
+            .FilesystemValidationErrors(_ => false);
+        Assert.AreEqual(0, errors.Count);
     }
 
     [TestMethod]
@@ -110,9 +126,10 @@ public class JobConfigTests
     }
 
     [TestMethod]
-    public void ValidationErrors_RejectsNonExistentOutputDir()
+    public void FilesystemValidationErrors_RejectsNonExistentOutputDir()
     {
-        var errors = (ValidConfig() with { OutputDir = "/nonexistent/out" }).ValidationErrors;
+        var errors = (ValidConfig() with { OutputDir = "/nonexistent/out" })
+            .FilesystemValidationErrors(_ => false);
         Assert.IsTrue(errors.Any(e => e.Contains("--output-dir")));
     }
 

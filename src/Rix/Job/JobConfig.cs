@@ -36,6 +36,11 @@ internal static class JobConfigExtensions
 {
     extension(JobConfig config)
     {
+        /// <summary>
+        /// Pure validation: checks that only depend on the config values themselves
+        /// (no filesystem or other I/O). Filesystem existence is checked separately by
+        /// <see cref="FilesystemValidationErrors"/> at the imperative shell.
+        /// </summary>
         public IReadOnlyList<string> ValidationErrors
         {
             get
@@ -56,16 +61,30 @@ internal static class JobConfigExtensions
 
                 if (string.IsNullOrWhiteSpace(config.WorkDir))
                     errors.Add("--work-dir must not be empty");
-                else if (!Directory.Exists(config.WorkDir))
-                    errors.Add($"--work-dir does not exist: {config.WorkDir}");
 
                 if (string.IsNullOrWhiteSpace(config.OutputDir))
                     errors.Add("--output-dir is required");
-                else if (!Directory.Exists(config.OutputDir))
-                    errors.Add($"--output-dir does not exist: {config.OutputDir}");
 
                 return errors;
             }
+        }
+
+        /// <summary>
+        /// Filesystem-dependent validation. The existence probe is injected so the logic
+        /// stays pure and testable; the shell passes <see cref="Directory.Exists"/>.
+        /// Directories whose names are empty are left to <see cref="ValidationErrors"/>.
+        /// </summary>
+        public IReadOnlyList<string> FilesystemValidationErrors(Func<string, bool> directoryExists)
+        {
+            var errors = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(config.WorkDir) && !directoryExists(config.WorkDir))
+                errors.Add($"--work-dir does not exist: {config.WorkDir}");
+
+            if (!string.IsNullOrWhiteSpace(config.OutputDir) && !directoryExists(config.OutputDir))
+                errors.Add($"--output-dir does not exist: {config.OutputDir}");
+
+            return errors;
         }
     }
 }

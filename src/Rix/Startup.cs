@@ -27,7 +27,11 @@ internal static class Startup
 
     private static async Task<int> RunJobAsync(JobConfig config)
     {
-        if (config.ValidationErrors is { Count: > 0 } errors)
+        var errors = config.ValidationErrors
+            .Concat(config.FilesystemValidationErrors(Directory.Exists))
+            .ToList();
+
+        if (errors.Count > 0)
         {
             foreach (var error in errors)
                 Console.Error.WriteLine($"error: {error}");
