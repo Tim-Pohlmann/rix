@@ -58,21 +58,16 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
         {
-            switch (ValidatePr(req))
-            {
-                case InvalidPr(var reason):
-                    return Results.BadRequest(new ErrorResponse(reason));
+            var validation = ValidatePr(req);
+            if (validation is InvalidPr invalid)
+                return Results.BadRequest(new ErrorResponse(invalid.Reason));
 
-                case ValidPr(var queuedPr):
-                    if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
-                        return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
+            var queuedPr = ((ValidPr)validation).Pr;
+            if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
+                return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
 
-                    pendingPrRequests.Enqueue(queuedPr);
-                    return Results.Ok(new PrQueuedResponse("queued"));
-
-                default:
-                    throw new InvalidOperationException("Unreachable: unhandled PrValidation case.");
-            }
+            pendingPrRequests.Enqueue(queuedPr);
+            return Results.Ok(new PrQueuedResponse("queued"));
         });
     }
 
@@ -87,19 +82,9 @@ internal sealed class LocalApiServer : IAsyncDisposable
         try { branch = new RixBranchName(req.Branch); }
         catch (ArgumentException ex) { return new InvalidPr($"{nameof(RixBranchName)}: {ex.Message}"); }
 
-        BranchName baseBranch;
-        try { baseBranch = new BranchName(req.BaseBranch); }
-        catch (ArgumentException ex) { return new InvalidPr($"{nameof(BranchName)}: {ex.Message}"); }
-
-        PrTitle title;
-        try { title = new PrTitle(req.Title); }
-        catch (ArgumentException ex) { return new InvalidPr($"{nameof(PrTitle)}: {ex.Message}"); }
-
-        PrBody body;
-        try { body = new PrBody(req.Body); }
-        catch (ArgumentException ex) { return new InvalidPr($"{nameof(PrBody)}: {ex.Message}"); }
-
-        return new ValidPr(new QueuedPr(branch, baseBranch, title, body));
+        // BranchName, PrTitle and PrBody perform no validation, so they cannot throw here.
+        var queuedPr = new QueuedPr(branch, new BranchName(req.BaseBranch), new PrTitle(req.Title), new PrBody(req.Body));
+        return new ValidPr(queuedPr);
     }
 
     public async ValueTask DisposeAsync()

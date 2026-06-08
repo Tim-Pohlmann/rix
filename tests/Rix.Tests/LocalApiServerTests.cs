@@ -84,6 +84,28 @@ public class LocalApiServerTests
         StringAssert.Contains(result["error"], "rix/*");
     }
 
+    [DataTestMethod]
+    [DataRow("", "main", "Title", "body", "branch is required")]
+    [DataRow("rix/x", "", "Title", "body", "baseBranch is required")]
+    [DataRow("rix/x", "main", "", "body", "title is required")]
+    [DataRow("rix/x", "main", "Title", "", "body is required")]
+    public async Task PostPr_Returns400_ForMissingRequiredField(
+        string branch, string baseBranch, string title, string body, string expectedError)
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch, title, body, baseBranch,
+        });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        Assert.AreEqual(expectedError, result["error"]);
+    }
+
     [TestMethod]
     public async Task PostPr_Returns409_WhenBranchAlreadyExists()
     {
