@@ -9,18 +9,18 @@ public class ClaudeInstallerTests
     // ---- EnsureInstalledAsync ----
 
     [TestMethod]
-    public async Task EnsureInstalled_ReturnsTrue_WhenClaudeAlreadyInstalled()
+    public async Task EnsureInstalled_ReturnsInstalled_WhenClaudeAlreadyInstalled()
     {
         var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
             runProcess: (f, _, _) => Task.FromResult<ProcessResult>(f == "claude"
                 ? new ProcessSuccess()
                 : new ProcessFailure("exited with code 1")));
 
-        Assert.IsTrue(result);
+        Assert.IsInstanceOfType<Installed>(result);
     }
 
     [TestMethod]
-    public async Task EnsureInstalled_ReturnsTrue_WhenInstallSucceeds()
+    public async Task EnsureInstalled_ReturnsInstalled_WhenInstallSucceeds()
     {
         int claudeCallCount = 0;
         var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
@@ -33,25 +33,23 @@ public class ClaudeInstallerTests
                 _ => throw new NotSupportedException(f),
             });
 
-        Assert.IsTrue(result);
+        Assert.IsInstanceOfType<Installed>(result);
     }
 
     [TestMethod]
-    public async Task EnsureInstalled_ReturnsFalse_WhenNpmUnavailable()
+    public async Task EnsureInstalled_Fails_WhenNpmUnavailable()
     {
-        var error = new StringWriter();
-        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None, error: error,
+        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
             runProcess: (_, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
 
-        Assert.IsFalse(result);
-        StringAssert.Contains(error.ToString(), "npm");
+        Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
+        StringAssert.Contains(failed.Reason, "npm");
     }
 
     [TestMethod]
-    public async Task EnsureInstalled_ReturnsFalse_WhenNpmInstallFails()
+    public async Task EnsureInstalled_Fails_WhenNpmInstallFails()
     {
-        var error = new StringWriter();
-        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None, error: error,
+        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
             runProcess: (f, args, _) => f switch
             {
                 "claude" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
@@ -60,8 +58,8 @@ public class ClaudeInstallerTests
                 _ => throw new NotSupportedException(f),
             });
 
-        Assert.IsFalse(result);
-        StringAssert.Contains(error.ToString(), "npm install");
+        Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
+        StringAssert.Contains(failed.Reason, "npm install");
     }
 
     [TestMethod]
@@ -89,21 +87,19 @@ public class ClaudeInstallerTests
     }
 
     [TestMethod]
-    public async Task EnsureInstalled_ReturnsFalse_WhenTimesOut()
+    public async Task EnsureInstalled_Fails_WhenTimesOut()
     {
-        var error = new StringWriter();
-        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None, error: error,
+        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
             runProcess: (_, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("timed out")));
 
-        Assert.IsFalse(result);
-        StringAssert.Contains(error.ToString(), "timed out");
+        Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
+        StringAssert.Contains(failed.Reason, "timed out");
     }
 
     [TestMethod]
-    public async Task EnsureInstalled_ReturnsFalse_WhenPostInstallClaudeCheckFails()
+    public async Task EnsureInstalled_Fails_WhenPostInstallClaudeCheckFails()
     {
-        var error = new StringWriter();
-        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None, error: error,
+        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
             runProcess: (f, args, _) => f switch
             {
                 "claude" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
@@ -111,7 +107,7 @@ public class ClaudeInstallerTests
                 _ => throw new NotSupportedException(f),
             });
 
-        Assert.IsFalse(result);
-        StringAssert.Contains(error.ToString(), "could not be verified");
+        Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
+        StringAssert.Contains(failed.Reason, "could not be verified");
     }
 }

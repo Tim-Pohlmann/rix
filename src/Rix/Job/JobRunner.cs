@@ -35,7 +35,7 @@ internal static class JobRunner
         CancellationToken cancellationToken,
         IRepositoryHost? host = null,
         RunProcessAsync? processRunner = null,
-        Func<CancellationToken, Task<bool>>? claudeInstaller = null)
+        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
@@ -51,8 +51,11 @@ internal static class JobRunner
         claudeInstaller ??= token => ClaudeInstaller.EnsureInstalledAsync(token,
             runProcess: (fileName, args, t) => processRunner(fileName, args, Path.GetTempPath(), null, null, t));
 
-        if (!await claudeInstaller(ct))
+        if (await claudeInstaller(ct) is InstallFailed installFailed)
+        {
+            WriteResult(new JobFailure($"Claude install failed: {installFailed.Reason}", TokensUsed: 0, Duration: TimeSpan.Zero));
             return 2;
+        }
 
         var stopwatch = Stopwatch.StartNew();
 
