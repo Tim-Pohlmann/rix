@@ -58,16 +58,21 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
         {
-            var validation = ValidatePr(req);
-            if (validation is InvalidPr invalid)
-                return Results.BadRequest(new ErrorResponse(invalid.Reason));
+            switch (ValidatePr(req))
+            {
+                case InvalidPr invalid:
+                    return Results.BadRequest(new ErrorResponse(invalid.Reason));
 
-            var queuedPr = ((ValidPr)validation).Pr;
-            if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
-                return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
+                case ValidPr(var queuedPr):
+                    if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
+                        return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
 
-            pendingPrRequests.Enqueue(queuedPr);
-            return Results.Ok(new PrQueuedResponse("queued"));
+                    pendingPrRequests.Enqueue(queuedPr);
+                    return Results.Ok(new PrQueuedResponse("queued"));
+
+                default:
+                    throw new InvalidOperationException("Unreachable: PrValidation has only ValidPr and InvalidPr cases.");
+            }
         });
     }
 
