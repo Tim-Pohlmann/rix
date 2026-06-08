@@ -76,7 +76,7 @@ internal static class JobCommand
             catch (ArgumentException ex)
             {
                 Console.Error.WriteLine($"error: {ex.Message}");
-                ctx.ExitCode = ExitCodes.SetupFailed;
+                ctx.ExitCode = 2;
                 return;
             }
             ctx.ExitCode = await handler(config);
