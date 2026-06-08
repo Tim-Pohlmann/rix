@@ -54,7 +54,7 @@ internal static class JobRunner
         if (await claudeInstaller(ct) is InstallFailed installFailed)
         {
             WriteResult(new JobFailure($"Claude install failed: {installFailed.Reason}", TokensUsed: 0, Duration: TimeSpan.Zero));
-            return 2;
+            return ExitCodes.SetupFailed;
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -94,7 +94,7 @@ internal static class JobRunner
                     TokensUsed: tokensUsed,
                     Duration: stopwatch.Elapsed);
                 WriteResult(failure);
-                return 1;
+                return ExitCodes.JobFailed;
             }
 
             var pendingPrs = new List<PendingPr>();
@@ -116,7 +116,7 @@ internal static class JobRunner
                 {
                     stopwatch.Stop();
                     WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: tokensUsed, stopwatch.Elapsed));
-                    return 1;
+                    return ExitCodes.JobFailed;
                 }
 
                 pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
@@ -128,7 +128,7 @@ internal static class JobRunner
             var resultJson = JsonSerializer.Serialize<IJobResult>(success, JobJsonContext.Default.IJobResult);
             await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, ct);
             Console.WriteLine(resultJson);
-            return 0;
+            return ExitCodes.Success;
         }
         finally
         {

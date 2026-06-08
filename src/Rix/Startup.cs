@@ -27,7 +27,7 @@ internal static class Startup
         {
             foreach (var error in errors)
                 Console.Error.WriteLine($"error: {error}");
-            return 2;
+            return ExitCodes.SetupFailed;
         }
 
         return await JobRunner.RunAsync(config, CancellationToken.None);
