@@ -82,7 +82,7 @@ internal static class JobRunner
                 line =>
                 {
                     Console.Error.WriteLine(line);
-                    TryExtractTokenUsage(line, ref tokensUsed);
+                    tokensUsed = TokenUsage.Accumulate(tokensUsed, line);
                 },
                 ct);
 
@@ -150,29 +150,6 @@ internal static class JobRunner
         2. When done, call POST {{new Uri(apiBaseUrl, "/pr")}} with JSON body:
            {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
         """;
-
-    private static void TryExtractTokenUsage(string line, ref int tokensUsed)
-    {
-        var trimmed = line.TrimStart();
-        if (trimmed.Length == 0 || trimmed[0] != '{') return;
-        if (!trimmed.Contains("\"total_input_tokens\"") && !trimmed.Contains("\"total_output_tokens\"")) return;
-        try
-        {
-            using var doc = JsonDocument.Parse(trimmed);
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("type", out var type) ||
-                type.ValueKind != JsonValueKind.String || type.GetString() != "result")
-                return;
-            var input = ReadTokenCount(root, "total_input_tokens");
-            var output = ReadTokenCount(root, "total_output_tokens");
-            tokensUsed = (int)Math.Min((long)tokensUsed + input + output, int.MaxValue);
-        }
-        catch (JsonException) { /* malformed JSON line — skip */ }
-    }
-
-    private static long ReadTokenCount(JsonElement root, string property) =>
-        root.TryGetProperty(property, out var el) && el.ValueKind == JsonValueKind.Number && el.TryGetInt64(out var v) ? v : 0L;
 
     private static void WriteResult(IJobResult result)
     {
