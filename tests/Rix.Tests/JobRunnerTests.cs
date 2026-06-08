@@ -56,7 +56,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_Returns2_WhenClaudeInstallerFails()
     {
-        var result = await JobRunner.RunAsync(
+        var result = await Startup.ExecuteJobAsync(
             MakeConfig(), CancellationToken.None,
             processRunner: FakeRunner(),
             claudeInstaller: _ => Task.FromResult<InstallResult>(new InstallFailed("install failed")));
@@ -223,7 +223,7 @@ public class JobRunnerTests
                 return Task.FromResult<ProcessResult>(new ProcessSuccess());
             };
 
-            await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
                 host: new StubRepositoryHost(), processRunner: runner,
                 claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
@@ -272,7 +272,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
             claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
@@ -293,7 +293,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
             claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
@@ -320,7 +320,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
             claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
@@ -347,7 +347,7 @@ public class JobRunnerTests
             return new ProcessFailure("exited with code 1");
         };
 
-        var result = await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+        var result = await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
             claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
@@ -365,7 +365,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
             claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
@@ -374,13 +374,37 @@ public class JobRunnerTests
         Assert.AreEqual(0, doc.RootElement.GetProperty("tokensUsed").GetInt32());
     }
 
+    [TestMethod]
+    public async Task RunAsync_ReturnsJobSuccessOutcome_WithoutWritingResultJson()
+    {
+        var outcome = await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: FakeRunner(),
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
+
+        Assert.AreEqual(ExitCodes.Success, outcome.ExitCode);
+        Assert.IsInstanceOfType<JobSuccess>(outcome.Result);
+        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")),
+            "JobRunner core must not perform the result.json write — that is the shell's job");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsSetupFailedOutcome_WhenInstallerFails()
+    {
+        var outcome = await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+            host: new StubRepositoryHost(), processRunner: FakeRunner(),
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new InstallFailed("nope")));
+
+        Assert.AreEqual(ExitCodes.SetupFailed, outcome.ExitCode);
+        Assert.IsInstanceOfType<JobFailure>(outcome.Result);
+    }
+
     // ---- helpers ----
 
     private Task<int> Run(
         int claudeExitCode = 0,
         bool claudeTimedOut = false,
         QueuedPrSpec? pr = null) =>
-        JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
+        Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(),
             processRunner: FakeRunner(claudeExitCode, claudeTimedOut, pr),
             claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));

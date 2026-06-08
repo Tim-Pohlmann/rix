@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using Rix.Api;
 using Rix.Claude;
@@ -30,13 +29,15 @@ internal static class JobRunner
         ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
     };
 
-    internal static async Task<int> RunAsync(
+    internal static async Task<JobOutcome> RunAsync(
         JobConfig config,
         CancellationToken cancellationToken,
         IRepositoryHost? host = null,
         RunProcessAsync? processRunner = null,
-        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null)
+        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null,
+        Action<string>? logLine = null)
     {
+        logLine ??= _ => { };
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
@@ -53,8 +54,8 @@ internal static class JobRunner
 
         if (await claudeInstaller(ct) is InstallFailed installFailed)
         {
-            WriteResult(new JobFailure($"Claude install failed: {installFailed.Reason}", TokensUsed: 0, Duration: TimeSpan.Zero));
-            return ExitCodes.SetupFailed;
+            var setupFailure = new JobFailure($"Claude install failed: {installFailed.Reason}", TokensUsed: 0, Duration: TimeSpan.Zero);
+            return new JobOutcome(setupFailure, ExitCodes.SetupFailed);
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -81,7 +82,7 @@ internal static class JobRunner
                 },
                 line =>
                 {
-                    Console.Error.WriteLine(line);
+                    logLine(line);
                     tokensUsed = TokenUsage.Accumulate(tokensUsed, line);
                 },
                 ct);
@@ -93,8 +94,7 @@ internal static class JobRunner
                     $"Claude failed: {claudeFailure.Reason}",
                     TokensUsed: tokensUsed,
                     Duration: stopwatch.Elapsed);
-                WriteResult(failure);
-                return ExitCodes.JobFailed;
+                return new JobOutcome(failure, ExitCodes.JobFailed);
             }
 
             var pendingPrs = new List<PendingPr>();
@@ -115,8 +115,8 @@ internal static class JobRunner
                 if (bundleResult is ProcessFailure)
                 {
                     stopwatch.Stop();
-                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: tokensUsed, stopwatch.Elapsed));
-                    return ExitCodes.JobFailed;
+                    var failure = new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: tokensUsed, stopwatch.Elapsed);
+                    return new JobOutcome(failure, ExitCodes.JobFailed);
                 }
 
                 pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
@@ -125,10 +125,7 @@ internal static class JobRunner
             stopwatch.Stop();
 
             var success = new JobSuccess(pendingPrs, TokensUsed: tokensUsed, Duration: stopwatch.Elapsed);
-            var resultJson = JsonSerializer.Serialize<IJobResult>(success, JobJsonContext.Default.IJobResult);
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, ct);
-            Console.WriteLine(resultJson);
-            return ExitCodes.Success;
+            return new JobOutcome(success, ExitCodes.Success);
         }
         finally
         {
@@ -150,10 +147,4 @@ internal static class JobRunner
         2. When done, call POST {{new Uri(apiBaseUrl, "/pr")}} with JSON body:
            {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
         """;
-
-    private static void WriteResult(IJobResult result)
-    {
-        var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
-        Console.WriteLine(json);
-    }
 }

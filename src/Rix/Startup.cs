@@ -1,8 +1,12 @@
 using System.CommandLine;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
+using System.Text.Json;
+using Rix.Claude;
 using Rix.Cli;
 using Rix.Job;
+using Rix.Process;
+using Rix.Repository;
 
 namespace Rix;
 
@@ -30,6 +34,31 @@ internal static class Startup
             return ExitCodes.SetupFailed;
         }
 
-        return await JobRunner.RunAsync(config, CancellationToken.None);
+        return await ExecuteJobAsync(config, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: runs the job,
+    /// then performs all output effects — forwards Claude's stream to stderr, writes the result
+    /// JSON to stdout, persists <c>result.json</c> on success, and maps the outcome to an exit code.
+    /// </summary>
+    internal static async Task<int> ExecuteJobAsync(
+        JobConfig config,
+        CancellationToken cancellationToken,
+        IRepositoryHost? host = null,
+        RunProcessAsync? processRunner = null,
+        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null)
+    {
+        var outcome = await JobRunner.RunAsync(
+            config, cancellationToken, host, processRunner, claudeInstaller,
+            logLine: Console.Error.WriteLine);
+
+        var json = JsonSerializer.Serialize(outcome.Result, JobJsonContext.Default.IJobResult);
+        Console.WriteLine(json);
+
+        if (outcome.Result is JobSuccess)
+            await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), json, cancellationToken);
+
+        return outcome.ExitCode;
     }
 }
