@@ -70,8 +70,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
                     pendingPrRequests.Enqueue(queuedPr);
                     return Results.Ok(new PrQueuedResponse("queued"));
 
-                default:
-                    throw new InvalidOperationException("Unreachable: PrValidation has only ValidPr and InvalidPr cases.");
+                case var other:
+                    throw new NotSupportedException($"Unexpected PR validation {other.GetType()}");
             }
         });
     }
