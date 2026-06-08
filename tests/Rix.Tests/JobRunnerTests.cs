@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Rix.Claude;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
@@ -58,7 +59,7 @@ public class JobRunnerTests
         var result = await JobRunner.RunAsync(
             MakeConfig(), CancellationToken.None,
             processRunner: FakeRunner(),
-            claudeInstaller: _ => Task.FromResult(false));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new InstallFailed("install failed")));
 
         Assert.AreEqual(2, result);
     }
@@ -70,7 +71,7 @@ public class JobRunnerTests
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: host, processRunner: FakeRunner(),
-            claudeInstaller: _ => Task.FromResult(false));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new InstallFailed("install failed")));
 
         Assert.IsFalse(host.CloneCalled);
     }
@@ -133,7 +134,7 @@ public class JobRunnerTests
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: host, processRunner: FakeRunner(),
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
         Assert.IsTrue(host.CloneCalled);
     }
@@ -151,7 +152,7 @@ public class JobRunnerTests
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: tracker,
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
         Assert.IsNotNull(capturedCloneDir);
         Assert.IsFalse(Directory.Exists(capturedCloneDir), "Clone dir should be deleted after run");
@@ -170,7 +171,7 @@ public class JobRunnerTests
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: tracker,
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
         Assert.IsNotNull(capturedCloneDir);
         Assert.IsFalse(Directory.Exists(capturedCloneDir));
@@ -200,7 +201,7 @@ public class JobRunnerTests
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: capture,
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
         Assert.IsNotNull(claudeCallback);
         Assert.IsNull(gitCallback);
@@ -224,7 +225,7 @@ public class JobRunnerTests
 
             await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
                 host: new StubRepositoryHost(), processRunner: runner,
-                claudeInstaller: _ => Task.FromResult(true));
+                claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
             StringAssert.Contains(stderr.ToString(), "test line");
         }
@@ -253,7 +254,7 @@ public class JobRunnerTests
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: capture,
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
         Assert.IsNotNull(systemPrompt);
         StringAssert.Contains(systemPrompt, "A local API is available at http://");
@@ -273,7 +274,7 @@ public class JobRunnerTests
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -294,7 +295,7 @@ public class JobRunnerTests
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -321,7 +322,7 @@ public class JobRunnerTests
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -348,7 +349,7 @@ public class JobRunnerTests
 
         var result = await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
         Assert.AreEqual(1, result);
     }
@@ -366,7 +367,7 @@ public class JobRunnerTests
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -382,7 +383,7 @@ public class JobRunnerTests
         JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(),
             processRunner: FakeRunner(claudeExitCode, claudeTimedOut, pr),
-            claudeInstaller: _ => Task.FromResult(true));
+            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
 
     private JobConfig MakeConfig() => JobConfig.FromInputs(
         repo: "owner/repo",
