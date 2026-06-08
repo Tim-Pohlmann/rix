@@ -57,39 +57,23 @@ internal sealed class LocalApiServer : IAsyncDisposable
         app.MapGet("/health", () => Results.Ok());
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
-        {
-            switch (ValidatePr(req))
+            req.Validate() switch
             {
-                case InvalidPr invalid:
-                    return Results.BadRequest(new ErrorResponse(invalid.Reason));
-
-                case ValidPr(var queuedPr):
-                    if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
-                        return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
-
-                    pendingPrRequests.Enqueue(queuedPr);
-                    return Results.Ok(new PrQueuedResponse("queued"));
-
-                case var other:
-                    throw new NotSupportedException($"Unexpected PR validation {other.GetType()}");
-            }
-        });
+                ValidPr(var queuedPr) when !await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
+                    => EnqueuePr(pendingPrRequests, queuedPr),
+                ValidPr(var queuedPr)
+                    => Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote.")),
+                InvalidPr invalid
+                    => Results.BadRequest(new ErrorResponse(invalid.Reason)),
+                var other
+                    => throw new NotSupportedException($"Unexpected PR validation {other.GetType()}"),
+            });
     }
 
-    private static PrValidation ValidatePr(PrRequest req)
+    private static IResult EnqueuePr(ConcurrentQueue<QueuedPr> pendingPrRequests, QueuedPr queuedPr)
     {
-        if (string.IsNullOrWhiteSpace(req.Branch)) return new InvalidPr("branch is required");
-        if (string.IsNullOrWhiteSpace(req.BaseBranch)) return new InvalidPr("baseBranch is required");
-        if (string.IsNullOrWhiteSpace(req.Title)) return new InvalidPr("title is required");
-        if (string.IsNullOrWhiteSpace(req.Body)) return new InvalidPr("body is required");
-
-        RixBranchName branch;
-        try { branch = new RixBranchName(req.Branch); }
-        catch (ArgumentException ex) { return new InvalidPr($"{nameof(RixBranchName)}: {ex.Message}"); }
-
-        // BranchName, PrTitle and PrBody perform no validation, so they cannot throw here.
-        var queuedPr = new QueuedPr(branch, new BranchName(req.BaseBranch), new PrTitle(req.Title), new PrBody(req.Body));
-        return new ValidPr(queuedPr);
+        pendingPrRequests.Enqueue(queuedPr);
+        return Results.Ok(new PrQueuedResponse("queued"));
     }
 
     public async ValueTask DisposeAsync()
