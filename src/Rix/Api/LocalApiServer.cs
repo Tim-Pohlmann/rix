@@ -57,45 +57,23 @@ internal sealed class LocalApiServer : IAsyncDisposable
         app.MapGet("/health", () => Results.Ok());
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
-        {
-            var validationError = TryBuildQueuedPr(req, out var queuedPr);
-            if (validationError is not null)
-                return Results.BadRequest(new ErrorResponse(validationError));
-
-            if (await host.BranchExistsOnRemoteAsync(queuedPr!.Branch, ct))
-                return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
-
-            pendingPrRequests.Enqueue(queuedPr!);
-            return Results.Ok(new PrQueuedResponse("queued"));
-        });
+            req.Validate() switch
+            {
+                ValidPr(var queuedPr) when !await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
+                    => EnqueuePr(pendingPrRequests, queuedPr),
+                ValidPr(var queuedPr)
+                    => Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote.")),
+                InvalidPr invalid
+                    => Results.BadRequest(new ErrorResponse(invalid.Reason)),
+                var other
+                    => throw new NotSupportedException($"Unexpected PR validation {other.GetType()}"),
+            });
     }
 
-    private static string? TryBuildQueuedPr(PrRequest req, out QueuedPr? pr)
+    private static IResult EnqueuePr(ConcurrentQueue<QueuedPr> pendingPrRequests, QueuedPr queuedPr)
     {
-        pr = null;
-        if (string.IsNullOrWhiteSpace(req.Branch)) return "branch is required";
-        if (string.IsNullOrWhiteSpace(req.BaseBranch)) return "baseBranch is required";
-        if (string.IsNullOrWhiteSpace(req.Title)) return "title is required";
-        if (string.IsNullOrWhiteSpace(req.Body)) return "body is required";
-
-        RixBranchName branch;
-        try { branch = new RixBranchName(req.Branch); }
-        catch (ArgumentException ex) { return $"{nameof(RixBranchName)}: {ex.Message}"; }
-
-        BranchName baseBranch;
-        try { baseBranch = new BranchName(req.BaseBranch); }
-        catch (ArgumentException ex) { return $"{nameof(BranchName)}: {ex.Message}"; }
-
-        PrTitle title;
-        try { title = new PrTitle(req.Title); }
-        catch (ArgumentException ex) { return $"{nameof(PrTitle)}: {ex.Message}"; }
-
-        PrBody body;
-        try { body = new PrBody(req.Body); }
-        catch (ArgumentException ex) { return $"{nameof(PrBody)}: {ex.Message}"; }
-
-        pr = new QueuedPr(branch, baseBranch, title, body);
-        return null;
+        pendingPrRequests.Enqueue(queuedPr);
+        return Results.Ok(new PrQueuedResponse("queued"));
     }
 
     public async ValueTask DisposeAsync()
