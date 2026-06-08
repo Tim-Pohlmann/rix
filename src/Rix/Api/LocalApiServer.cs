@@ -58,44 +58,48 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
         {
-            var validationError = TryBuildQueuedPr(req, out var queuedPr);
-            if (validationError is not null)
-                return Results.BadRequest(new ErrorResponse(validationError));
+            switch (ValidatePr(req))
+            {
+                case InvalidPr(var reason):
+                    return Results.BadRequest(new ErrorResponse(reason));
 
-            if (await host.BranchExistsOnRemoteAsync(queuedPr!.Branch, ct))
-                return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
+                case ValidPr(var queuedPr):
+                    if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
+                        return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
 
-            pendingPrRequests.Enqueue(queuedPr!);
-            return Results.Ok(new PrQueuedResponse("queued"));
+                    pendingPrRequests.Enqueue(queuedPr);
+                    return Results.Ok(new PrQueuedResponse("queued"));
+
+                default:
+                    throw new InvalidOperationException("Unreachable: unhandled PrValidation case.");
+            }
         });
     }
 
-    private static string? TryBuildQueuedPr(PrRequest req, out QueuedPr? pr)
+    private static PrValidation ValidatePr(PrRequest req)
     {
-        pr = null;
-        if (string.IsNullOrWhiteSpace(req.Branch)) return "branch is required";
-        if (string.IsNullOrWhiteSpace(req.BaseBranch)) return "baseBranch is required";
-        if (string.IsNullOrWhiteSpace(req.Title)) return "title is required";
-        if (string.IsNullOrWhiteSpace(req.Body)) return "body is required";
+        if (string.IsNullOrWhiteSpace(req.Branch)) return new InvalidPr("branch is required");
+        if (string.IsNullOrWhiteSpace(req.BaseBranch)) return new InvalidPr("baseBranch is required");
+        if (string.IsNullOrWhiteSpace(req.Title)) return new InvalidPr("title is required");
+        if (string.IsNullOrWhiteSpace(req.Body)) return new InvalidPr("body is required");
 
         RixBranchName branch;
         try { branch = new RixBranchName(req.Branch); }
-        catch (ArgumentException ex) { return $"{nameof(RixBranchName)}: {ex.Message}"; }
+        catch (ArgumentException ex) { return new InvalidPr($"{nameof(RixBranchName)}: {ex.Message}"); }
 
         BranchName baseBranch;
         try { baseBranch = new BranchName(req.BaseBranch); }
-        catch (ArgumentException ex) { return $"{nameof(BranchName)}: {ex.Message}"; }
+        catch (ArgumentException ex) { return new InvalidPr($"{nameof(BranchName)}: {ex.Message}"); }
 
         PrTitle title;
         try { title = new PrTitle(req.Title); }
-        catch (ArgumentException ex) { return $"{nameof(PrTitle)}: {ex.Message}"; }
+        catch (ArgumentException ex) { return new InvalidPr($"{nameof(PrTitle)}: {ex.Message}"); }
 
         PrBody body;
         try { body = new PrBody(req.Body); }
-        catch (ArgumentException ex) { return $"{nameof(PrBody)}: {ex.Message}"; }
+        catch (ArgumentException ex) { return new InvalidPr($"{nameof(PrBody)}: {ex.Message}"); }
 
-        pr = new QueuedPr(branch, baseBranch, title, body);
-        return null;
+        return new ValidPr(new QueuedPr(branch, baseBranch, title, body));
     }
 
     public async ValueTask DisposeAsync()
