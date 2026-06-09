@@ -53,7 +53,7 @@ internal static class JobRunner
 
         if (await claudeInstaller(ct) is InstallFailed installFailed)
         {
-            WriteResult(new JobFailure($"Claude install failed: {installFailed.Reason}", TokensUsed: 0, Duration: TimeSpan.Zero));
+            WriteResult(new JobFailure($"Claude install failed: {installFailed.Reason}", CostUsd: 0m, Duration: TimeSpan.Zero));
             return ExitCodes.SetupFailed;
         }
 
@@ -68,7 +68,7 @@ internal static class JobRunner
 
             await using var apiServer = await LocalApiServer.StartAsync(host, ct);
 
-            var tokensUsed = 0;
+            var costUsd = 0m;
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
 
             var claudeResult = await processRunner(
@@ -82,7 +82,7 @@ internal static class JobRunner
                 line =>
                 {
                     Console.Error.WriteLine(line);
-                    tokensUsed = TokenUsage.Accumulate(tokensUsed, line);
+                    if (JobCost.FromResultLine(line) is { } cost) costUsd = cost;
                 },
                 ct);
 
@@ -91,7 +91,7 @@ internal static class JobRunner
                 stopwatch.Stop();
                 var failure = new JobFailure(
                     $"Claude failed: {claudeFailure.Reason}",
-                    TokensUsed: tokensUsed,
+                    CostUsd: costUsd,
                     Duration: stopwatch.Elapsed);
                 WriteResult(failure);
                 return ExitCodes.JobFailed;
@@ -115,7 +115,7 @@ internal static class JobRunner
                 if (bundleResult is ProcessFailure)
                 {
                     stopwatch.Stop();
-                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: tokensUsed, stopwatch.Elapsed));
+                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed));
                     return ExitCodes.JobFailed;
                 }
 
@@ -124,7 +124,7 @@ internal static class JobRunner
 
             stopwatch.Stop();
 
-            var success = new JobSuccess(pendingPrs, TokensUsed: tokensUsed, Duration: stopwatch.Elapsed);
+            var success = new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
             var resultJson = JsonSerializer.Serialize<IJobResult>(success, JobJsonContext.Default.IJobResult);
             await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, ct);
             Console.WriteLine(resultJson);
