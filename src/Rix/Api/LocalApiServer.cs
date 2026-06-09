@@ -57,17 +57,22 @@ internal sealed class LocalApiServer : IAsyncDisposable
         app.MapGet("/health", () => Results.Ok());
 
         app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
-            req.Validate() switch
+        {
+            // Pure validation first; the remote-branch lookup (the only I/O here) is then
+            // performed explicitly for a valid request rather than hidden in a switch guard.
+            var validation = req.Validate();
+            switch (validation)
             {
-                ValidPr(var queuedPr) when !await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
-                    => EnqueuePr(pendingPrRequests, queuedPr),
-                ValidPr(var queuedPr)
-                    => Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote.")),
-                InvalidPr invalid
-                    => Results.BadRequest(new ErrorResponse(invalid.Reason)),
-                var other
-                    => throw new NotSupportedException($"Unexpected PR validation {other.GetType()}"),
-            });
+                case InvalidPr invalid:
+                    return Results.BadRequest(new ErrorResponse(invalid.Reason));
+                case ValidPr(var queuedPr):
+                    return await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
+                        ? Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."))
+                        : EnqueuePr(pendingPrRequests, queuedPr);
+                default:
+                    throw new NotSupportedException($"Unexpected PR validation {validation.GetType()}");
+            }
+        });
     }
 
     private static IResult EnqueuePr(ConcurrentQueue<QueuedPr> pendingPrRequests, QueuedPr queuedPr)
