@@ -24,7 +24,7 @@ internal static class Startup
     {
         var rootCommand = new RootCommand("RIX - AI-powered code automation");
 
-        rootCommand.AddCommand(JobCommand.Build(RunJobAsync));
+        rootCommand.AddCommand(JobCommand.Build(config => RunJobAsync(config)));
 
         var parser = new CommandLineBuilder(rootCommand)
             .UseDefaults()
@@ -33,7 +33,11 @@ internal static class Startup
         return await parser.InvokeAsync(args);
     }
 
-    private static async Task<int> RunJobAsync(JobConfig config)
+    internal static async Task<int> RunJobAsync(
+        JobConfig config,
+        IRepositoryHost? host = null,
+        RunProcessAsync? processRunner = null,
+        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null)
     {
         var errors = config.ValidationErrors
             .Concat(config.FilesystemValidationErrors(Directory.Exists))
@@ -46,7 +50,7 @@ internal static class Startup
             return ExitCodes.SetupFailed;
         }
 
-        return await ExecuteJobAsync(config, CancellationToken.None);
+        return await ExecuteJobAsync(config, CancellationToken.None, host, processRunner, claudeInstaller);
     }
 
     /// <summary>
