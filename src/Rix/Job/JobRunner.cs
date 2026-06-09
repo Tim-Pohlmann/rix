@@ -37,8 +37,6 @@ internal static class JobRunner
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
 
-        var processRunner = effects.RunProcess;
-
         if (await effects.InstallClaude(ct) is InstallFailed installFailed)
         {
             var setupFailure = new JobFailure($"Claude install failed: {installFailed.Reason}", TokensUsed: 0, Duration: TimeSpan.Zero);
@@ -59,7 +57,7 @@ internal static class JobRunner
             var tokensUsed = 0;
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
 
-            var claudeResult = await processRunner(
+            var claudeResult = await effects.RunProcess(
                 "claude",
                 ["--output-format", "stream-json", "--print", config.Prompt, "--append-system-prompt", systemPrompt],
                 cloneDir,
@@ -90,7 +88,7 @@ internal static class JobRunner
                 var bundleFile = BundleFile.ForBranch(req.Branch);
                 var bundlePath = Path.Combine(config.OutputDir, bundleFile);
 
-                var bundleResult = await processRunner(
+                var bundleResult = await effects.RunProcess(
                     "git",
                     ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
                     cloneDir,

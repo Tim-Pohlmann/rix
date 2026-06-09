@@ -33,11 +33,18 @@ internal static class Startup
         return await parser.InvokeAsync(args);
     }
 
+    /// <summary>
+    /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: validates the
+    /// config, runs the job, then performs all output effects — forwards Claude's stream to stderr,
+    /// writes the result JSON to stdout, persists <c>result.json</c> on success, and maps the
+    /// outcome to an exit code.
+    /// </summary>
     internal static async Task<int> RunJobAsync(
         JobConfig config,
         IRepositoryHost? host = null,
         RunProcessAsync? processRunner = null,
-        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null)
+        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null,
+        CancellationToken cancellationToken = default)
     {
         var errors = config.ValidationErrors
             .Concat(config.FilesystemValidationErrors(Directory.Exists))
@@ -50,21 +57,6 @@ internal static class Startup
             return ExitCodes.SetupFailed;
         }
 
-        return await ExecuteJobAsync(config, CancellationToken.None, host, processRunner, claudeInstaller);
-    }
-
-    /// <summary>
-    /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: runs the job,
-    /// then performs all output effects — forwards Claude's stream to stderr, writes the result
-    /// JSON to stdout, persists <c>result.json</c> on success, and maps the outcome to an exit code.
-    /// </summary>
-    internal static async Task<int> ExecuteJobAsync(
-        JobConfig config,
-        CancellationToken cancellationToken,
-        IRepositoryHost? host = null,
-        RunProcessAsync? processRunner = null,
-        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null)
-    {
         var runProcess = processRunner ?? DefaultRunProcess;
         var installClaude = claudeInstaller ?? (token => ClaudeInstaller.EnsureInstalledAsync(token,
             runProcess: (fileName, args, t) => runProcess(fileName, args, Path.GetTempPath(), null, null, t)));
