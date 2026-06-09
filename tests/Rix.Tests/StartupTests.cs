@@ -22,6 +22,17 @@ public class StartupTests
     }
 
     [TestMethod]
+    public async Task DefaultRunProcess_ExecutesRealProcess()
+    {
+        // `dotnet` is available on every build/CI runner; exercises the default
+        // ProcessWrapper-backed runner the shell wires up when none is injected.
+        var result = await Startup.DefaultRunProcess(
+            "dotnet", ["--version"], Path.GetTempPath(), null, null, CancellationToken.None);
+
+        Assert.IsInstanceOfType<ProcessSuccess>(result);
+    }
+
+    [TestMethod]
     [DoNotParallelize]
     public async Task RunJobAsync_PrintsErrorsAndReturns2_WhenValidationFails()
     {

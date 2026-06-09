@@ -12,7 +12,7 @@ namespace Rix;
 
 internal static class Startup
 {
-    private static readonly RunProcessAsync DefaultRunProcess =
+    internal static readonly RunProcessAsync DefaultRunProcess =
         (fileName, arguments, workingDirectory, environmentOverrides, onStdoutLine, token) =>
             ProcessWrapper.RunAsync(fileName, arguments,
                 workingDirectory: workingDirectory,
