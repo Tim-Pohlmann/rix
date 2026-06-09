@@ -50,14 +50,14 @@ public class TypesTests
     public void JobSuccess_SerializesCorrectly()
     {
         var prs = new[] { new PendingPr(new RixBranchName("rix/fix"), new BranchName("main"), new PrTitle("Fix bug"), new PrBody("body"), "rix-fix.bundle") };
-        var outcome = new JobSuccess(prs, TokensUsed: 1000, Duration: TimeSpan.FromSeconds(42));
+        var outcome = new JobSuccess(prs, CostUsd: 0.0125m, Duration: TimeSpan.FromSeconds(42));
 
         var json = JsonSerializer.Serialize<IJobResult>(outcome);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
         Assert.AreEqual("success", root.GetProperty("status").GetString());
-        Assert.AreEqual(1000, root.GetProperty("tokensUsed").GetInt32());
+        Assert.AreEqual(0.0125m, root.GetProperty("costUsd").GetDecimal());
         Assert.AreEqual(42, root.GetProperty("durationSeconds").GetInt32());
         Assert.AreEqual(1, root.GetProperty("pendingPrRequests").GetArrayLength());
         Assert.AreEqual("rix/fix", root.GetProperty("pendingPrRequests")[0].GetProperty("branch").GetString());
@@ -67,7 +67,7 @@ public class TypesTests
     [TestMethod]
     public void JobFailure_SerializesCorrectly()
     {
-        var outcome = new JobFailure("Something went wrong", TokensUsed: 500, Duration: TimeSpan.FromSeconds(10));
+        var outcome = new JobFailure("Something went wrong", CostUsd: 0.005m, Duration: TimeSpan.FromSeconds(10));
 
         var json = JsonSerializer.Serialize<IJobResult>(outcome);
         using var doc = JsonDocument.Parse(json);
@@ -75,7 +75,7 @@ public class TypesTests
 
         Assert.AreEqual("failure", root.GetProperty("status").GetString());
         Assert.AreEqual("Something went wrong", root.GetProperty("error").GetString());
-        Assert.AreEqual(500, root.GetProperty("tokensUsed").GetInt32());
+        Assert.AreEqual(0.005m, root.GetProperty("costUsd").GetDecimal());
         Assert.AreEqual(10, root.GetProperty("durationSeconds").GetInt32());
     }
 }
