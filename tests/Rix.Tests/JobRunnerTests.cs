@@ -262,9 +262,9 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_ExtractsTokensUsed_FromClaudeResultLine()
+    public async Task RunAsync_ExtractsCostUsd_FromClaudeResultLine()
     {
-        const string resultLine = """{"type":"result","subtype":"success","total_input_tokens":1000,"total_output_tokens":500}""";
+        const string resultLine = """{"type":"result","subtype":"success","total_cost_usd":0.028521,"usage":{"input_tokens":2036,"output_tokens":14}}""";
 
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
         {
@@ -278,14 +278,14 @@ public class JobRunnerTests
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
-        Assert.AreEqual(1500, doc.RootElement.GetProperty("tokensUsed").GetInt32());
+        Assert.AreEqual(0.028521m, doc.RootElement.GetProperty("costUsd").GetDecimal());
     }
 
     [TestMethod]
-    public async Task RunAsync_AccumulatesTokensUsed_AcrossMultipleResultLines()
+    public async Task RunAsync_UsesLastResultLine_ForCostUsd()
     {
-        const string line1 = """{"type":"result","total_input_tokens":1000,"total_output_tokens":500}""";
-        const string line2 = """{"type":"result","total_input_tokens":200,"total_output_tokens":100}""";
+        const string line1 = """{"type":"result","total_cost_usd":0.01}""";
+        const string line2 = """{"type":"result","total_cost_usd":0.05}""";
 
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
         {
@@ -299,7 +299,7 @@ public class JobRunnerTests
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
-        Assert.AreEqual(1800, doc.RootElement.GetProperty("tokensUsed").GetInt32());
+        Assert.AreEqual(0.05m, doc.RootElement.GetProperty("costUsd").GetDecimal());
     }
 
     [TestMethod]
@@ -326,7 +326,7 @@ public class JobRunnerTests
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
-        Assert.AreEqual(0, doc.RootElement.GetProperty("tokensUsed").GetInt32());
+        Assert.AreEqual(0m, doc.RootElement.GetProperty("costUsd").GetDecimal());
     }
 
     [TestMethod]
@@ -355,9 +355,9 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_TreatsNonIntegerTokenFields_AsZero()
+    public async Task RunAsync_TreatsNonNumericCost_AsZero()
     {
-        const string resultLine = """{"type":"result","total_input_tokens":"not-a-number","total_output_tokens":null}""";
+        const string resultLine = """{"type":"result","total_cost_usd":"not-a-number"}""";
 
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
         {
@@ -371,7 +371,7 @@ public class JobRunnerTests
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
-        Assert.AreEqual(0, doc.RootElement.GetProperty("tokensUsed").GetInt32());
+        Assert.AreEqual(0m, doc.RootElement.GetProperty("costUsd").GetDecimal());
     }
 
     [TestMethod]
