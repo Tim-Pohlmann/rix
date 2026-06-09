@@ -68,7 +68,6 @@ internal static class JobRunner
 
             await using var apiServer = await LocalApiServer.StartAsync(host, ct);
 
-            var costUsd = 0m;
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
 
             var claudeResult = await processRunner(
@@ -79,11 +78,7 @@ internal static class JobRunner
                 {
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
                 },
-                line =>
-                {
-                    Console.Error.WriteLine(line);
-                    if (JobCost.FromResultLine(line) is { } cost) costUsd = cost;
-                },
+                Console.Error.WriteLine,
                 ct);
 
             if (claudeResult is ProcessFailure claudeFailure)
@@ -91,11 +86,15 @@ internal static class JobRunner
                 stopwatch.Stop();
                 var failure = new JobFailure(
                     $"Claude failed: {claudeFailure.Reason}",
-                    CostUsd: costUsd,
+                    CostUsd: 0m,
                     Duration: stopwatch.Elapsed);
                 WriteResult(failure);
                 return ExitCodes.JobFailed;
             }
+
+            var costUsd = claudeResult is ProcessSuccess { Output: { } resultLine }
+                ? JobCost.FromResultLine(resultLine) ?? 0m
+                : 0m;
 
             var pendingPrs = new List<PendingPr>();
             foreach (var req in apiServer.QueuedPrRequests)

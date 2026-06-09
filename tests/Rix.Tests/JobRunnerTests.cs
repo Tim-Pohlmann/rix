@@ -262,15 +262,12 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_ExtractsCostUsd_FromClaudeResultLine()
+    public async Task RunAsync_ExtractsCostUsd_FromClaudeResultOutput()
     {
         const string resultLine = """{"type":"result","subtype":"success","total_cost_usd":0.028521,"usage":{"input_tokens":2036,"output_tokens":14}}""";
 
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude") onLine?.Invoke(resultLine);
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
+            Task.FromResult<ProcessResult>(new ProcessSuccess(f == "claude" ? resultLine : null));
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
@@ -282,43 +279,10 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_UsesLastResultLine_ForCostUsd()
-    {
-        const string line1 = """{"type":"result","total_cost_usd":0.01}""";
-        const string line2 = """{"type":"result","total_cost_usd":0.05}""";
-
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude") { onLine?.Invoke(line1); onLine?.Invoke(line2); }
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
-            host: new StubRepositoryHost(), processRunner: runner,
-            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
-
-        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
-        var doc = JsonDocument.Parse(json);
-        Assert.AreEqual(0.05m, doc.RootElement.GetProperty("costUsd").GetDecimal());
-    }
-
-    [TestMethod]
-    public async Task RunAsync_IgnoresNonResultJsonLines()
+    public async Task RunAsync_CostIsZero_WhenClaudeOutputIsNotAResultLine()
     {
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude")
-            {
-                onLine?.Invoke("not json at all");
-                onLine?.Invoke("""{"type":"assistant","message":"hello"}""");
-                onLine?.Invoke("{invalid json}");
-                onLine?.Invoke("""{"type":123}""");
-                onLine?.Invoke("[]");
-                onLine?.Invoke("null");
-                onLine?.Invoke("42");
-            }
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
+            Task.FromResult<ProcessResult>(new ProcessSuccess(f == "claude" ? "thinking..." : null));
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
@@ -360,10 +324,7 @@ public class JobRunnerTests
         const string resultLine = """{"type":"result","total_cost_usd":"not-a-number"}""";
 
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude") onLine?.Invoke(resultLine);
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
+            Task.FromResult<ProcessResult>(new ProcessSuccess(f == "claude" ? resultLine : null));
 
         await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
             host: new StubRepositoryHost(), processRunner: runner,
