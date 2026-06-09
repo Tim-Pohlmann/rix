@@ -12,6 +12,14 @@ namespace Rix;
 
 internal static class Startup
 {
+    private static readonly RunProcessAsync DefaultRunProcess =
+        (fileName, arguments, workingDirectory, environmentOverrides, onStdoutLine, token) =>
+            ProcessWrapper.RunAsync(fileName, arguments,
+                workingDirectory: workingDirectory,
+                environmentOverrides: environmentOverrides,
+                cancellationToken: token,
+                onStdoutLine: onStdoutLine);
+
     internal static async Task<int> RunAsync(string[] args)
     {
         var rootCommand = new RootCommand("RIX - AI-powered code automation");
@@ -53,9 +61,16 @@ internal static class Startup
         RunProcessAsync? processRunner = null,
         Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null)
     {
-        var outcome = await JobRunner.RunAsync(
-            config, cancellationToken, host, processRunner, claudeInstaller,
-            logLine: Console.Error.WriteLine);
+        var runProcess = processRunner ?? DefaultRunProcess;
+        var installClaude = claudeInstaller ?? (token => ClaudeInstaller.EnsureInstalledAsync(token,
+            runProcess: (fileName, args, t) => runProcess(fileName, args, Path.GetTempPath(), null, null, t)));
+        var effects = new JobEffects(
+            Host: host ?? new GitHubRepositoryHost(config.Repo, config.ReadToken),
+            RunProcess: runProcess,
+            InstallClaude: installClaude,
+            LogLine: Console.Error.WriteLine);
+
+        var outcome = await JobRunner.RunAsync(config, effects, cancellationToken);
 
         var json = JsonSerializer.Serialize(outcome.Result, JobJsonContext.Default.IJobResult);
         Console.WriteLine(json);

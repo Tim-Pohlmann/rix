@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 using Rix.Api;
 using Rix.Claude;
 using Rix.Process;
-using Rix.Repository;
 
 namespace Rix.Job;
 
@@ -31,28 +30,16 @@ internal static class JobRunner
 
     internal static async Task<JobOutcome> RunAsync(
         JobConfig config,
-        CancellationToken cancellationToken,
-        IRepositoryHost? host = null,
-        RunProcessAsync? processRunner = null,
-        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null,
-        Action<string>? logLine = null)
+        JobEffects effects,
+        CancellationToken cancellationToken)
     {
-        logLine ??= _ => { };
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
 
-        host ??= new GitHubRepositoryHost(config.Repo, config.ReadToken);
-        processRunner ??= (fileName, arguments, workingDirectory, environmentOverrides, onStdoutLine, token) =>
-            ProcessWrapper.RunAsync(fileName, arguments,
-                workingDirectory: workingDirectory,
-                environmentOverrides: environmentOverrides,
-                cancellationToken: token,
-                onStdoutLine: onStdoutLine);
-        claudeInstaller ??= token => ClaudeInstaller.EnsureInstalledAsync(token,
-            runProcess: (fileName, args, t) => processRunner(fileName, args, Path.GetTempPath(), null, null, t));
+        var processRunner = effects.RunProcess;
 
-        if (await claudeInstaller(ct) is InstallFailed installFailed)
+        if (await effects.InstallClaude(ct) is InstallFailed installFailed)
         {
             var setupFailure = new JobFailure($"Claude install failed: {installFailed.Reason}", TokensUsed: 0, Duration: TimeSpan.Zero);
             return new JobOutcome(setupFailure, ExitCodes.SetupFailed);
@@ -65,9 +52,9 @@ internal static class JobRunner
 
         try
         {
-            await host.CloneAsync(cloneDir, ct);
+            await effects.Host.CloneAsync(cloneDir, ct);
 
-            await using var apiServer = await LocalApiServer.StartAsync(host, ct);
+            await using var apiServer = await LocalApiServer.StartAsync(effects.Host, ct);
 
             var tokensUsed = 0;
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
@@ -82,7 +69,7 @@ internal static class JobRunner
                 },
                 line =>
                 {
-                    logLine(line);
+                    effects.LogLine(line);
                     tokensUsed = TokenUsage.Accumulate(tokensUsed, line);
                 },
                 ct);
@@ -100,8 +87,7 @@ internal static class JobRunner
             var pendingPrs = new List<PendingPr>();
             foreach (var req in apiServer.QueuedPrRequests)
             {
-                var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
-                var bundleFile = $"{safeName}.bundle";
+                var bundleFile = BundleFile.ForBranch(req.Branch);
                 var bundlePath = Path.Combine(config.OutputDir, bundleFile);
 
                 var bundleResult = await processRunner(
