@@ -7,13 +7,13 @@ namespace Rix.Job;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "status")]
 internal interface IJobResult
 {
-    int TokensUsed { get; }
+    decimal CostUsd { get; }
     TimeSpan Duration { get; }
     int DurationSeconds { get; }
 }
 
 internal abstract record JobResultBase(
-    [property: JsonPropertyName("tokensUsed")] int TokensUsed,
+    [property: JsonPropertyName("costUsd")] decimal CostUsd,
     [property: JsonIgnore] TimeSpan Duration
 ) : IJobResult
 {
@@ -23,15 +23,15 @@ internal abstract record JobResultBase(
 
 internal record JobSuccess(
     [property: JsonPropertyName("pendingPrRequests")] IReadOnlyList<PendingPr> PendingPrRequests,
-    int TokensUsed,
+    decimal CostUsd,
     TimeSpan Duration
-) : JobResultBase(TokensUsed, Duration);
+) : JobResultBase(CostUsd, Duration);
 
 internal record JobFailure(
     [property: JsonPropertyName("error")] string Error,
-    int TokensUsed,
+    decimal CostUsd,
     TimeSpan Duration
-) : JobResultBase(TokensUsed, Duration);
+) : JobResultBase(CostUsd, Duration);
 
 /// <summary>
 /// The outcome of a job run: the result to report plus the process exit code.

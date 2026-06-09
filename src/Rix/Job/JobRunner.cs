@@ -54,7 +54,7 @@ internal static class JobRunner
 
         if (await claudeInstaller(ct) is InstallFailed installFailed)
         {
-            var setupFailure = new JobFailure($"Claude install failed: {installFailed.Reason}", TokensUsed: 0, Duration: TimeSpan.Zero);
+            var setupFailure = new JobFailure($"Claude install failed: {installFailed.Reason}", CostUsd: 0m, Duration: TimeSpan.Zero);
             return new JobOutcome(setupFailure, ExitCodes.SetupFailed);
         }
 
@@ -69,7 +69,7 @@ internal static class JobRunner
 
             await using var apiServer = await LocalApiServer.StartAsync(host, ct);
 
-            var tokensUsed = 0;
+            var costUsd = 0m;
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
 
             var claudeResult = await processRunner(
@@ -83,7 +83,7 @@ internal static class JobRunner
                 line =>
                 {
                     logLine(line);
-                    tokensUsed = TokenUsage.Accumulate(tokensUsed, line);
+                    if (JobCost.FromResultLine(line) is { } cost) costUsd = cost;
                 },
                 ct);
 
@@ -92,7 +92,7 @@ internal static class JobRunner
                 stopwatch.Stop();
                 var failure = new JobFailure(
                     $"Claude failed: {claudeFailure.Reason}",
-                    TokensUsed: tokensUsed,
+                    CostUsd: costUsd,
                     Duration: stopwatch.Elapsed);
                 return new JobOutcome(failure, ExitCodes.JobFailed);
             }
@@ -115,7 +115,7 @@ internal static class JobRunner
                 if (bundleResult is ProcessFailure)
                 {
                     stopwatch.Stop();
-                    var failure = new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: tokensUsed, stopwatch.Elapsed);
+                    var failure = new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed);
                     return new JobOutcome(failure, ExitCodes.JobFailed);
                 }
 
@@ -124,7 +124,7 @@ internal static class JobRunner
 
             stopwatch.Stop();
 
-            var success = new JobSuccess(pendingPrs, TokensUsed: tokensUsed, Duration: stopwatch.Elapsed);
+            var success = new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
             return new JobOutcome(success, ExitCodes.Success);
         }
         finally
