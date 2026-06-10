@@ -37,7 +37,7 @@ internal static class Startup
     /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: validates the
     /// config, runs the job, then performs all output effects — forwards Claude's stream to stderr,
     /// writes the result JSON to stdout, persists <c>result.json</c> on success, and maps the
-    /// outcome to an exit code.
+    /// result to an exit code.
     /// </summary>
     internal static async Task<int> RunJobAsync(
         JobConfig config,
@@ -66,14 +66,19 @@ internal static class Startup
             InstallClaude: installClaude,
             LogLine: Console.Error.WriteLine);
 
-        var outcome = await JobRunner.RunAsync(config, effects, cancellationToken);
+        var result = await JobRunner.RunAsync(config, effects, cancellationToken);
 
-        var json = JsonSerializer.Serialize(outcome.Result, JobJsonContext.Default.IJobResult);
+        var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
         Console.WriteLine(json);
 
-        if (outcome.Result is JobSuccess)
+        if (result is JobSuccess)
             await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), json, cancellationToken);
 
-        return outcome.ExitCode;
+        return result switch
+        {
+            JobSuccess => ExitCodes.Success,
+            SetupFailure => ExitCodes.SetupFailed,
+            _ => ExitCodes.JobFailed,
+        };
     }
 }

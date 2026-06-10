@@ -9,6 +9,7 @@ namespace Rix.Job;
 [JsonSerializable(typeof(IJobResult))]
 [JsonSerializable(typeof(JobSuccess))]
 [JsonSerializable(typeof(JobFailure))]
+[JsonSerializable(typeof(SetupFailure))]
 [JsonSerializable(typeof(PendingPr))]
 internal partial class JobJsonContext : JsonSerializerContext { }
 
@@ -28,7 +29,7 @@ internal static class JobRunner
         ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
     };
 
-    internal static async Task<JobOutcome> RunAsync(
+    internal static async Task<IJobResult> RunAsync(
         JobConfig config,
         JobEffects effects,
         CancellationToken cancellationToken)
@@ -39,8 +40,7 @@ internal static class JobRunner
 
         if (await effects.InstallClaude(ct) is InstallFailed installFailed)
         {
-            var setupFailure = new JobFailure($"Claude install failed: {installFailed.Reason}", CostUsd: 0m, Duration: TimeSpan.Zero);
-            return new JobOutcome(setupFailure, ExitCodes.SetupFailed);
+            return new SetupFailure($"Claude install failed: {installFailed.Reason}");
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -74,7 +74,7 @@ internal static class JobRunner
                     $"Claude failed: {claudeFailure.Reason}",
                     CostUsd: 0m,
                     Duration: stopwatch.Elapsed);
-                return new JobOutcome(failure, ExitCodes.JobFailed);
+                return failure;
             }
 
             var costUsd = claudeResult is ProcessSuccess { Output: { } resultLine }
@@ -98,8 +98,7 @@ internal static class JobRunner
                 if (bundleResult is ProcessFailure)
                 {
                     stopwatch.Stop();
-                    var failure = new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed);
-                    return new JobOutcome(failure, ExitCodes.JobFailed);
+                    return new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed);
                 }
 
                 pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
@@ -107,8 +106,7 @@ internal static class JobRunner
 
             stopwatch.Stop();
 
-            var success = new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
-            return new JobOutcome(success, ExitCodes.Success);
+            return new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
         }
         finally
         {

@@ -336,27 +336,25 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_ReturnsJobSuccessOutcome_WithoutWritingResultJson()
+    public async Task RunAsync_ReturnsJobSuccess_WithoutWritingResultJson()
     {
-        var outcome = await JobRunner.RunAsync(MakeConfig(),
+        var result = await JobRunner.RunAsync(MakeConfig(),
             Effects(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
-        Assert.AreEqual(ExitCodes.Success, outcome.ExitCode);
-        Assert.IsInstanceOfType<JobSuccess>(outcome.Result);
+        Assert.IsInstanceOfType<JobSuccess>(result);
         Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")),
             "JobRunner core must not perform the result.json write — that is the shell's job");
     }
 
     [TestMethod]
-    public async Task RunAsync_ReturnsSetupFailedOutcome_WhenInstallerFails()
+    public async Task RunAsync_ReturnsSetupFailure_WhenInstallerFails()
     {
-        var outcome = await JobRunner.RunAsync(MakeConfig(),
+        var result = await JobRunner.RunAsync(MakeConfig(),
             Effects(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("nope"))),
             CancellationToken.None);
 
-        Assert.AreEqual(ExitCodes.SetupFailed, outcome.ExitCode);
-        Assert.IsInstanceOfType<JobFailure>(outcome.Result);
+        Assert.IsInstanceOfType<SetupFailure>(result);
     }
 
     // ---- helpers ----

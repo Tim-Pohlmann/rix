@@ -78,4 +78,19 @@ public class TypesTests
         Assert.AreEqual(0.005m, root.GetProperty("costUsd").GetDecimal());
         Assert.AreEqual(10, root.GetProperty("durationSeconds").GetInt32());
     }
+
+    [TestMethod]
+    public void SetupFailure_SerializesWithSetupFailureStatus()
+    {
+        var outcome = new SetupFailure("Claude install failed: nope");
+
+        var json = JsonSerializer.Serialize<IJobResult>(outcome);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.AreEqual("setupFailure", root.GetProperty("status").GetString());
+        Assert.AreEqual("Claude install failed: nope", root.GetProperty("error").GetString());
+        Assert.AreEqual(0m, root.GetProperty("costUsd").GetDecimal());
+        Assert.AreEqual(0, root.GetProperty("durationSeconds").GetInt32());
+    }
 }
