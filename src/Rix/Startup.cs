@@ -63,7 +63,8 @@ internal static class Startup
         {
             JobSuccess => ExitCodes.Success,
             SetupFailure => ExitCodes.SetupFailed,
-            _ => ExitCodes.JobFailed,
+            JobFailure => ExitCodes.JobFailed,
+            _ => throw new NotSupportedException($"Unexpected job result type: {result.GetType()}"),
         };
     }
 }
