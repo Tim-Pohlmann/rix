@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 using Rix.Api;
 using Rix.Claude;
 using Rix.Process;
-using Rix.Repository;
 
 namespace Rix.Job;
 
@@ -32,28 +31,14 @@ internal static class JobRunner
 
     internal static async Task<IJobResult> RunAsync(
         JobConfig config,
-        CancellationToken cancellationToken,
-        IRepositoryHost? host = null,
-        RunProcessAsync? processRunner = null,
-        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null,
-        Action<string>? logLine = null)
+        JobContext context,
+        CancellationToken cancellationToken)
     {
-        logLine ??= _ => { };
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
 
-        host ??= new GitHubRepositoryHost(config.Repo, config.ReadToken);
-        processRunner ??= (fileName, arguments, workingDirectory, environmentOverrides, onStdoutLine, token) =>
-            ProcessWrapper.RunAsync(fileName, arguments,
-                workingDirectory: workingDirectory,
-                environmentOverrides: environmentOverrides,
-                cancellationToken: token,
-                onStdoutLine: onStdoutLine);
-        claudeInstaller ??= token => ClaudeInstaller.EnsureInstalledAsync(token,
-            runProcess: (fileName, args, t) => processRunner(fileName, args, Path.GetTempPath(), null, null, t));
-
-        if (await claudeInstaller(ct) is InstallFailed installFailed)
+        if (await context.InstallClaude(ct) is InstallFailed installFailed)
         {
             return new SetupFailure($"Claude install failed: {installFailed.Reason}");
         }
@@ -65,13 +50,13 @@ internal static class JobRunner
 
         try
         {
-            await host.CloneAsync(cloneDir, ct);
+            await context.Host.CloneAsync(cloneDir, ct);
 
-            await using var apiServer = await LocalApiServer.StartAsync(host, ct);
+            await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct);
 
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
 
-            var claudeResult = await processRunner(
+            var claudeResult = await context.RunProcess(
                 "claude",
                 ["--output-format", "stream-json", "--print", config.Prompt, "--append-system-prompt", systemPrompt],
                 cloneDir,
@@ -79,7 +64,7 @@ internal static class JobRunner
                 {
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
                 },
-                logLine,
+                context.LogLine,
                 ct);
 
             if (claudeResult is ProcessFailure claudeFailure)
@@ -103,7 +88,7 @@ internal static class JobRunner
                 var bundleFile = $"{safeName}.bundle";
                 var bundlePath = Path.Combine(config.OutputDir, bundleFile);
 
-                var bundleResult = await processRunner(
+                var bundleResult = await context.RunProcess(
                     "git",
                     ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
                     cloneDir,

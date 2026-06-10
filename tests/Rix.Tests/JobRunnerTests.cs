@@ -69,9 +69,9 @@ public class JobRunnerTests
     {
         var host = new TrackingRepositoryHost();
 
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
-            host: host, processRunner: FakeRunner(),
-            claudeInstaller: _ => Task.FromResult<InstallResult>(new InstallFailed("install failed")));
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))),
+            CancellationToken.None);
 
         Assert.IsFalse(host.CloneCalled);
     }
@@ -132,9 +132,9 @@ public class JobRunnerTests
     {
         var host = new TrackingRepositoryHost();
 
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
-            host: host, processRunner: FakeRunner(),
-            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
 
         Assert.IsTrue(host.CloneCalled);
     }
@@ -150,9 +150,9 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
-            host: new StubRepositoryHost(), processRunner: tracker,
-            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), tracker, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
 
         Assert.IsNotNull(capturedCloneDir);
         Assert.IsFalse(Directory.Exists(capturedCloneDir), "Clone dir should be deleted after run");
@@ -169,9 +169,9 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"));
         };
 
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
-            host: new StubRepositoryHost(), processRunner: tracker,
-            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), tracker, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
 
         Assert.IsNotNull(capturedCloneDir);
         Assert.IsFalse(Directory.Exists(capturedCloneDir));
@@ -199,9 +199,9 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
-            host: new StubRepositoryHost(), processRunner: capture,
-            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
 
         Assert.IsNotNull(claudeCallback);
         Assert.IsNull(gitCallback);
@@ -252,9 +252,9 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
-            host: new StubRepositoryHost(), processRunner: capture,
-            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
 
         Assert.IsNotNull(systemPrompt);
         StringAssert.Contains(systemPrompt, "A local API is available at http://");
@@ -338,9 +338,9 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsJobSuccess_WithoutWritingResultJson()
     {
-        var result = await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
-            host: new StubRepositoryHost(), processRunner: FakeRunner(),
-            claudeInstaller: _ => Task.FromResult<InstallResult>(new Installed()));
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
 
         Assert.IsInstanceOfType<JobSuccess>(result);
         Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")),
@@ -350,14 +350,21 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsSetupFailure_WhenInstallerFails()
     {
-        var result = await JobRunner.RunAsync(MakeConfig(), CancellationToken.None,
-            host: new StubRepositoryHost(), processRunner: FakeRunner(),
-            claudeInstaller: _ => Task.FromResult<InstallResult>(new InstallFailed("nope")));
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("nope"))),
+            CancellationToken.None);
 
         Assert.IsInstanceOfType<SetupFailure>(result);
     }
 
     // ---- helpers ----
+
+    private static JobContext Context(
+        IRepositoryHost host,
+        RunProcessAsync processRunner,
+        Func<CancellationToken, Task<InstallResult>> claudeInstaller,
+        Action<string>? logLine = null) =>
+        new(host, processRunner, claudeInstaller, logLine ?? (_ => { }));
 
     private Task<int> Run(
         int claudeExitCode = 0,
