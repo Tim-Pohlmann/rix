@@ -7,6 +7,9 @@ internal abstract record ProcessResult
 {
     private protected ProcessResult() { }
 }
+/// <summary>A successful run. <paramref name="Output"/> is the final non-empty stdout line, or
+/// <c>null</c> if the process wrote nothing — enough to read a terminal summary line without
+/// buffering the whole stream.</summary>
 internal sealed record ProcessSuccess(string? Output = null) : ProcessResult;
 internal sealed record ProcessFailure(string Reason) : ProcessResult;
 
@@ -63,21 +66,25 @@ internal static class ProcessWrapper
             return new ProcessFailure("timed out");
         }
 
-        await stdoutTask;
-        return process.ExitCode == 0 ? new ProcessSuccess() : new ProcessFailure($"exited with code {process.ExitCode}");
+        var lastLine = await stdoutTask;
+        return process.ExitCode == 0 ? new ProcessSuccess(lastLine) : new ProcessFailure($"exited with code {process.ExitCode}");
     }
 
-    private static async Task ReadLinesAsync(
+    /// <summary>Forwards each stdout line to <paramref name="onLine"/> and returns the final
+    /// non-empty line read (or <c>null</c>).</summary>
+    private static async Task<string?> ReadLinesAsync(
         StreamReader reader,
         Action<string>? onLine,
         CancellationToken cancellationToken)
     {
+        string? lastLine = null;
         while (true)
         {
             string? line;
             try { line = await reader.ReadLineAsync(cancellationToken); }
-            catch (OperationCanceledException) { return; }
-            if (line is null) return;
+            catch (OperationCanceledException) { return lastLine; }
+            if (line is null) return lastLine;
+            if (line.Length > 0) lastLine = line;
             onLine?.Invoke(line);
         }
     }
