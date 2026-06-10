@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using Rix.Api;
 using Rix.Claude;
@@ -11,6 +10,7 @@ namespace Rix.Job;
 [JsonSerializable(typeof(IJobResult))]
 [JsonSerializable(typeof(JobSuccess))]
 [JsonSerializable(typeof(JobFailure))]
+[JsonSerializable(typeof(SetupFailure))]
 [JsonSerializable(typeof(PendingPr))]
 internal partial class JobJsonContext : JsonSerializerContext { }
 
@@ -30,13 +30,15 @@ internal static class JobRunner
         ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
     };
 
-    internal static async Task<int> RunAsync(
+    internal static async Task<IJobResult> RunAsync(
         JobConfig config,
         CancellationToken cancellationToken,
         IRepositoryHost? host = null,
         RunProcessAsync? processRunner = null,
-        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null)
+        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null,
+        Action<string>? logLine = null)
     {
+        logLine ??= _ => { };
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
@@ -53,8 +55,7 @@ internal static class JobRunner
 
         if (await claudeInstaller(ct) is InstallFailed installFailed)
         {
-            WriteResult(new JobFailure($"Claude install failed: {installFailed.Reason}", CostUsd: 0m, Duration: TimeSpan.Zero));
-            return ExitCodes.SetupFailed;
+            return new SetupFailure($"Claude install failed: {installFailed.Reason}");
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -78,7 +79,7 @@ internal static class JobRunner
                 {
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
                 },
-                Console.Error.WriteLine,
+                logLine,
                 ct);
 
             if (claudeResult is ProcessFailure claudeFailure)
@@ -88,8 +89,7 @@ internal static class JobRunner
                     $"Claude failed: {claudeFailure.Reason}",
                     CostUsd: 0m,
                     Duration: stopwatch.Elapsed);
-                WriteResult(failure);
-                return ExitCodes.JobFailed;
+                return failure;
             }
 
             var costUsd = claudeResult is ProcessSuccess { Output: { } resultLine }
@@ -114,8 +114,7 @@ internal static class JobRunner
                 if (bundleResult is ProcessFailure)
                 {
                     stopwatch.Stop();
-                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed));
-                    return ExitCodes.JobFailed;
+                    return new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed);
                 }
 
                 pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
@@ -123,11 +122,7 @@ internal static class JobRunner
 
             stopwatch.Stop();
 
-            var success = new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
-            var resultJson = JsonSerializer.Serialize<IJobResult>(success, JobJsonContext.Default.IJobResult);
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, ct);
-            Console.WriteLine(resultJson);
-            return ExitCodes.Success;
+            return new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
         }
         finally
         {
@@ -149,10 +144,4 @@ internal static class JobRunner
         2. When done, call POST {{new Uri(apiBaseUrl, "/pr")}} with JSON body:
            {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
         """;
-
-    private static void WriteResult(IJobResult result)
-    {
-        var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
-        Console.WriteLine(json);
-    }
 }
