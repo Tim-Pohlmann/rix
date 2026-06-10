@@ -53,7 +53,7 @@ internal static class JobRunner
 
         if (await claudeInstaller(ct) is InstallFailed installFailed)
         {
-            WriteResult(new JobFailure($"Claude install failed: {installFailed.Reason}", TokensUsed: 0, Duration: TimeSpan.Zero));
+            WriteResult(new JobFailure($"Claude install failed: {installFailed.Reason}", CostUsd: 0m, Duration: TimeSpan.Zero));
             return ExitCodes.SetupFailed;
         }
 
@@ -68,7 +68,6 @@ internal static class JobRunner
 
             await using var apiServer = await LocalApiServer.StartAsync(host, ct);
 
-            var tokensUsed = 0;
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
 
             var claudeResult = await processRunner(
@@ -79,11 +78,7 @@ internal static class JobRunner
                 {
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
                 },
-                line =>
-                {
-                    Console.Error.WriteLine(line);
-                    TryExtractTokenUsage(line, ref tokensUsed);
-                },
+                Console.Error.WriteLine,
                 ct);
 
             if (claudeResult is ProcessFailure claudeFailure)
@@ -91,11 +86,15 @@ internal static class JobRunner
                 stopwatch.Stop();
                 var failure = new JobFailure(
                     $"Claude failed: {claudeFailure.Reason}",
-                    TokensUsed: tokensUsed,
+                    CostUsd: 0m,
                     Duration: stopwatch.Elapsed);
                 WriteResult(failure);
                 return ExitCodes.JobFailed;
             }
+
+            var costUsd = claudeResult is ProcessSuccess { Output: { } resultLine }
+                ? JobCost.FromResultLine(resultLine) ?? 0m
+                : 0m;
 
             var pendingPrs = new List<PendingPr>();
             foreach (var req in apiServer.QueuedPrRequests)
@@ -115,7 +114,7 @@ internal static class JobRunner
                 if (bundleResult is ProcessFailure)
                 {
                     stopwatch.Stop();
-                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", TokensUsed: tokensUsed, stopwatch.Elapsed));
+                    WriteResult(new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed));
                     return ExitCodes.JobFailed;
                 }
 
@@ -124,7 +123,7 @@ internal static class JobRunner
 
             stopwatch.Stop();
 
-            var success = new JobSuccess(pendingPrs, TokensUsed: tokensUsed, Duration: stopwatch.Elapsed);
+            var success = new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
             var resultJson = JsonSerializer.Serialize<IJobResult>(success, JobJsonContext.Default.IJobResult);
             await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), resultJson, ct);
             Console.WriteLine(resultJson);
@@ -150,29 +149,6 @@ internal static class JobRunner
         2. When done, call POST {{new Uri(apiBaseUrl, "/pr")}} with JSON body:
            {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
         """;
-
-    private static void TryExtractTokenUsage(string line, ref int tokensUsed)
-    {
-        var trimmed = line.TrimStart();
-        if (trimmed.Length == 0 || trimmed[0] != '{') return;
-        if (!trimmed.Contains("\"total_input_tokens\"") && !trimmed.Contains("\"total_output_tokens\"")) return;
-        try
-        {
-            using var doc = JsonDocument.Parse(trimmed);
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("type", out var type) ||
-                type.ValueKind != JsonValueKind.String || type.GetString() != "result")
-                return;
-            var input = ReadTokenCount(root, "total_input_tokens");
-            var output = ReadTokenCount(root, "total_output_tokens");
-            tokensUsed = (int)Math.Min((long)tokensUsed + input + output, int.MaxValue);
-        }
-        catch (JsonException) { /* malformed JSON line — skip */ }
-    }
-
-    private static long ReadTokenCount(JsonElement root, string property) =>
-        root.TryGetProperty(property, out var el) && el.ValueKind == JsonValueKind.Number && el.TryGetInt64(out var v) ? v : 0L;
 
     private static void WriteResult(IJobResult result)
     {
