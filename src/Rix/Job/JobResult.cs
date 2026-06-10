@@ -4,6 +4,7 @@ namespace Rix.Job;
 
 [JsonDerivedType(typeof(JobSuccess), "success")]
 [JsonDerivedType(typeof(JobFailure), "failure")]
+[JsonDerivedType(typeof(SetupFailure), "setupFailure")]
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "status")]
 internal interface IJobResult
 {
@@ -34,8 +35,9 @@ internal record JobFailure(
 ) : JobResultBase(CostUsd, Duration);
 
 /// <summary>
-/// The outcome of a job run: the result to report plus the process exit code.
-/// The exit code is carried explicitly because a setup failure and a job failure
-/// share the same <see cref="JobFailure"/> JSON shape but map to different codes.
+/// A failure before the job proper could run (e.g. Claude install failed). Serializes as
+/// <c>"status": "setupFailure"</c> so the shell can map it to a distinct exit code, while still
+/// being a <see cref="JobFailure"/> with no cost or duration.
 /// </summary>
-internal sealed record JobOutcome(IJobResult Result, int ExitCode);
+internal sealed record SetupFailure(string Error)
+    : JobFailure(Error, CostUsd: 0m, Duration: TimeSpan.Zero);
