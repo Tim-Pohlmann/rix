@@ -6,9 +6,9 @@ internal static class ExitCodes
     /// <summary>The job completed successfully.</summary>
     internal const int Success = 0;
 
-    /// <summary>The job ran but failed (e.g. Claude or git reported an error).</summary>
+    /// <summary>The job ran but failed (e.g. the agent or git reported an error).</summary>
     internal const int JobFailed = 1;
 
-    /// <summary>Setup failed before the job could run (invalid config or Claude install).</summary>
+    /// <summary>Setup failed before the job could run (invalid config or agent install).</summary>
     internal const int SetupFailed = 2;
 }

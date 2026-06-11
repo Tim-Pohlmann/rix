@@ -1,20 +1,28 @@
-using Rix.Claude;
+using Rix.Agents;
+using Rix.Job;
 using Rix.Process;
 
 namespace Rix.Tests;
 
 [TestClass]
-public class ClaudeInstallerTests
+public class ClaudeAgentTests
 {
+    private static readonly ClaudeAgent Agent = new();
+
+    // Adapts a simple (fileName, args) -> ProcessResult stub to the full RunProcessAsync shape.
+    private static RunProcessAsync Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run) =>
+        (fileName, args, _, _, _, _) => run(fileName, args);
+
     // ---- EnsureInstalledAsync ----
 
     [TestMethod]
     public async Task EnsureInstalled_ReturnsInstalled_WhenClaudeAlreadyInstalled()
     {
-        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
-            runProcess: (f, _, _) => Task.FromResult<ProcessResult>(f == "claude"
+        var result = await Agent.EnsureInstalledAsync(
+            Runner((f, _) => Task.FromResult<ProcessResult>(f == "claude"
                 ? new ProcessSuccess()
-                : new ProcessFailure("exited with code 1")));
+                : new ProcessFailure("exited with code 1"))),
+            CancellationToken.None);
 
         Assert.IsInstanceOfType<Installed>(result);
     }
@@ -23,15 +31,16 @@ public class ClaudeInstallerTests
     public async Task EnsureInstalled_ReturnsInstalled_WhenInstallSucceeds()
     {
         int claudeCallCount = 0;
-        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
-            runProcess: (f, args, _) => f switch
+        var result = await Agent.EnsureInstalledAsync(
+            Runner((f, args) => f switch
             {
                 "claude" => Task.FromResult<ProcessResult>(++claudeCallCount == 1
                     ? new ProcessFailure("exited with code 1")
                     : new ProcessSuccess()),
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
-            });
+            }),
+            CancellationToken.None);
 
         Assert.IsInstanceOfType<Installed>(result);
     }
@@ -39,8 +48,9 @@ public class ClaudeInstallerTests
     [TestMethod]
     public async Task EnsureInstalled_Fails_WhenNpmUnavailable()
     {
-        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
-            runProcess: (_, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
+        var result = await Agent.EnsureInstalledAsync(
+            Runner((_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"))),
+            CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "npm");
@@ -49,14 +59,15 @@ public class ClaudeInstallerTests
     [TestMethod]
     public async Task EnsureInstalled_Fails_WhenNpmInstallFails()
     {
-        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
-            runProcess: (f, args, _) => f switch
+        var result = await Agent.EnsureInstalledAsync(
+            Runner((f, args) => f switch
             {
                 "claude" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
                 "npm" when args.Contains("--version") => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 "npm" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
                 _ => throw new NotSupportedException(f),
-            });
+            }),
+            CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "npm install");
@@ -68,8 +79,8 @@ public class ClaudeInstallerTests
         string? installedPackage = null;
         int claudeCallCount = 0;
 
-        await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
-            runProcess: (f, args, _) =>
+        await Agent.EnsureInstalledAsync(
+            Runner((f, args) =>
             {
                 if (f == "npm" && args.Contains("install"))
                     installedPackage = args.FirstOrDefault(a => a.StartsWith("@anthropic-ai/claude-code"));
@@ -81,7 +92,8 @@ public class ClaudeInstallerTests
                     "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                     _ => throw new NotSupportedException(f),
                 };
-            });
+            }),
+            CancellationToken.None);
 
         Assert.AreEqual("@anthropic-ai/claude-code", installedPackage);
     }
@@ -89,8 +101,9 @@ public class ClaudeInstallerTests
     [TestMethod]
     public async Task EnsureInstalled_Fails_WhenTimesOut()
     {
-        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
-            runProcess: (_, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("timed out")));
+        var result = await Agent.EnsureInstalledAsync(
+            Runner((_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("timed out"))),
+            CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "timed out");
@@ -99,15 +112,39 @@ public class ClaudeInstallerTests
     [TestMethod]
     public async Task EnsureInstalled_Fails_WhenPostInstallClaudeCheckFails()
     {
-        var result = await ClaudeInstaller.EnsureInstalledAsync(CancellationToken.None,
-            runProcess: (f, args, _) => f switch
+        var result = await Agent.EnsureInstalledAsync(
+            Runner((f, args) => f switch
             {
                 "claude" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
-            });
+            }),
+            CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "could not be verified");
+    }
+
+    // ---- BuildInvocation / ParseCost ----
+
+    [TestMethod]
+    public void BuildInvocation_ProducesClaudePrintInvocation()
+    {
+        var config = JobConfig.FromInputs("owner/repo", "do it", "tok",
+            maxTokens: 1234, timeoutMinutes: null, workDir: Path.GetTempPath(), outputDir: Path.GetTempPath());
+
+        var invocation = Agent.BuildInvocation(config, "SYSTEM");
+
+        Assert.AreEqual("claude", invocation.FileName);
+        CollectionAssert.Contains(invocation.Arguments.ToList(), "--append-system-prompt");
+        CollectionAssert.Contains(invocation.Arguments.ToList(), "SYSTEM");
+        Assert.AreEqual("1234", invocation.EnvironmentOverrides["CLAUDE_CODE_MAX_OUTPUT_TOKENS"]);
+    }
+
+    [TestMethod]
+    public void ParseCost_ForwardsToJobCost()
+    {
+        Assert.AreEqual(0.5m, Agent.ParseCost("""{"type":"result","total_cost_usd":0.5}"""));
+        Assert.IsNull(Agent.ParseCost("not json"));
     }
 }

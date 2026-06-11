@@ -49,7 +49,7 @@ public class StartupTests
 
         Assert.IsNotNull(context.Host);
         Assert.IsNotNull(context.RunProcess);
-        Assert.IsNotNull(context.InstallClaude);
+        Assert.IsNotNull(context.Agent);
         Assert.IsNotNull(context.LogLine);
     }
 }

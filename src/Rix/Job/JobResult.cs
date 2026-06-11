@@ -35,7 +35,7 @@ internal record JobFailure(
 ) : JobResultBase(CostUsd, Duration);
 
 /// <summary>
-/// A failure before the job proper could run (e.g. Claude install failed). Serializes as
+/// A failure before the job proper could run (e.g. agent install failed). Serializes as
 /// <c>"status": "setupFailure"</c> so the shell can map it to a distinct exit code, while still
 /// being a <see cref="JobFailure"/> with no cost or duration.
 /// </summary>

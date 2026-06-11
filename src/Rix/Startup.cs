@@ -2,7 +2,7 @@ using System.CommandLine;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
 using System.Text.Json;
-using Rix.Claude;
+using Rix.Agents;
 using Rix.Cli;
 using Rix.Job;
 using Rix.Process;
@@ -21,13 +21,12 @@ internal static class Startup
                 onStdoutLine: onStdoutLine);
 
     /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
-    /// Claude installer, and stderr log sink, all wired from <paramref name="config"/>.</summary>
+    /// Claude coding agent, and stderr log sink, all wired from <paramref name="config"/>.</summary>
     internal static JobContext DefaultContext(JobConfig config) =>
         new(
             Host: new GitHubRepositoryHost(config.Repo, config.ReadToken),
             RunProcess: DefaultRunProcess,
-            InstallClaude: token => ClaudeInstaller.EnsureInstalledAsync(token,
-                runProcess: (fileName, args, t) => DefaultRunProcess(fileName, args, Path.GetTempPath(), null, null, t)),
+            Agent: new ClaudeAgent(),
             LogLine: Console.Error.WriteLine);
 
     internal static async Task<int> RunAsync(string[] args)
@@ -57,7 +56,7 @@ internal static class Startup
 
     /// <summary>
     /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: runs the job,
-    /// then performs all output effects — forwards Claude's stream to stderr, writes the result
+    /// then performs all output effects — forwards the agent's stream to stderr, writes the result
     /// JSON to stdout, persists <c>result.json</c> on success, and maps the result to an exit code.
     /// </summary>
     internal static async Task<int> ExecuteJobAsync(
