@@ -39,7 +39,7 @@ public class StartupTests
     }
 
     [TestMethod]
-    public void DefaultContext_WiresAllCollaborators()
+    public void DefaultContext_UsesGitHubHostAndDefaultRunProcess()
     {
         var config = JobConfig.FromInputs(
             repo: "owner/repo", prompt: "do it", readToken: "tok",
