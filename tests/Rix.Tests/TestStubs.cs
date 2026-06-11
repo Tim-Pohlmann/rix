@@ -21,7 +21,7 @@ internal sealed class StubAgent(Func<CancellationToken, Task<InstallResult>> ins
 {
     private readonly ClaudeAgent _real = new();
 
-    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync runProcess, CancellationToken cancellationToken) =>
+    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync _, CancellationToken cancellationToken) =>
         install(cancellationToken);
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt) =>

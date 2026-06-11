@@ -21,7 +21,8 @@ internal static class Startup
                 onStdoutLine: onStdoutLine);
 
     /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
-    /// Claude coding agent, and stderr log sink, all wired from <paramref name="config"/>.</summary>
+    /// the default coding agent (<see cref="ClaudeAgent"/>), and stderr log sink, all wired from
+    /// <paramref name="config"/>.</summary>
     internal static JobContext DefaultContext(JobConfig config) =>
         new(
             Host: new GitHubRepositoryHost(config.Repo, config.ReadToken),
