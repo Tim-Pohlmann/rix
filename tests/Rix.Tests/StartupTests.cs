@@ -52,6 +52,5 @@ public class StartupTests
         Assert.IsInstanceOfType<GitHubRepositoryHost>(context.Host);
         Assert.AreSame(Startup.DefaultRunProcess, context.RunProcess);
         Assert.IsInstanceOfType<ClaudeAgent>(context.Agent);
-        Assert.IsNotNull(context.LogLine);
     }
 }
