@@ -1,5 +1,6 @@
 using Rix.Job;
 using Rix.Process;
+using Rix.Repository;
 
 namespace Rix.Tests;
 
@@ -47,9 +48,7 @@ public class StartupTests
 
         var context = Startup.DefaultContext(config);
 
-        Assert.IsNotNull(context.Host);
-        Assert.IsNotNull(context.RunProcess);
-        Assert.IsNotNull(context.InstallClaude);
-        Assert.IsNotNull(context.LogLine);
+        Assert.IsInstanceOfType<GitHubRepositoryHost>(context.Host);
+        Assert.AreSame(Startup.DefaultRunProcess, context.RunProcess);
     }
 }
