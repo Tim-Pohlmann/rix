@@ -20,6 +20,16 @@ internal static class Startup
                 cancellationToken: token,
                 onStdoutLine: onStdoutLine);
 
+    /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
+    /// Claude installer, and stderr log sink, all wired from <paramref name="config"/>.</summary>
+    internal static JobContext DefaultContext(JobConfig config) =>
+        new(
+            Host: new GitHubRepositoryHost(config.Repo, config.ReadToken),
+            RunProcess: DefaultRunProcess,
+            InstallClaude: token => ClaudeInstaller.EnsureInstalledAsync(token,
+                runProcess: (fileName, args, t) => DefaultRunProcess(fileName, args, Path.GetTempPath(), null, null, t)),
+            LogLine: Console.Error.WriteLine);
+
     internal static async Task<int> RunAsync(string[] args)
     {
         var rootCommand = new RootCommand("RIX - AI-powered code automation");
@@ -53,18 +63,9 @@ internal static class Startup
     internal static async Task<int> ExecuteJobAsync(
         JobConfig config,
         CancellationToken cancellationToken,
-        IRepositoryHost? host = null,
-        RunProcessAsync? processRunner = null,
-        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null)
+        JobContext? context = null)
     {
-        var runProcess = processRunner ?? DefaultRunProcess;
-        var installClaude = claudeInstaller ?? (token => ClaudeInstaller.EnsureInstalledAsync(token,
-            runProcess: (fileName, args, t) => runProcess(fileName, args, Path.GetTempPath(), null, null, t)));
-        var context = new JobContext(
-            Host: host ?? new GitHubRepositoryHost(config.Repo, config.ReadToken),
-            RunProcess: runProcess,
-            InstallClaude: installClaude,
-            LogLine: Console.Error.WriteLine);
+        context ??= DefaultContext(config);
 
         var result = await JobRunner.RunAsync(config, context, cancellationToken);
 

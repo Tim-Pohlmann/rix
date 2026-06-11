@@ -1,3 +1,4 @@
+using Rix.Job;
 using Rix.Process;
 
 namespace Rix.Tests;
@@ -34,5 +35,21 @@ public class StartupTests
 
         Assert.IsInstanceOfType<ProcessSuccess>(result);
         Assert.IsTrue(lines.Any(l => l.Contains("hi")), $"Got: [{string.Join(", ", lines)}]");
+    }
+
+    [TestMethod]
+    public void DefaultContext_WiresAllCollaborators()
+    {
+        var config = JobConfig.FromInputs(
+            repo: "owner/repo", prompt: "do it", readToken: "tok",
+            maxTokens: null, timeoutMinutes: null,
+            workDir: Path.GetTempPath(), outputDir: Path.GetTempPath());
+
+        var context = Startup.DefaultContext(config);
+
+        Assert.IsNotNull(context.Host);
+        Assert.IsNotNull(context.RunProcess);
+        Assert.IsNotNull(context.InstallClaude);
+        Assert.IsNotNull(context.LogLine);
     }
 }

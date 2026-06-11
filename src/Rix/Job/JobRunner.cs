@@ -64,7 +64,7 @@ internal static class JobRunner
                 {
                     ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
                 },
-                context.LogLine,
+                context.LogLine.Invoke,
                 ct);
 
             if (claudeResult is ProcessFailure claudeFailure)
