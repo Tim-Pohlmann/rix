@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json.Serialization;
+using Rix.Agents;
 using Rix.Api;
-using Rix.Claude;
 using Rix.Process;
 
 namespace Rix.Job;
@@ -38,9 +38,9 @@ internal static class JobRunner
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
 
-        if (await context.InstallClaude(ct) is InstallFailed installFailed)
+        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, ct) is InstallFailed installFailed)
         {
-            return new SetupFailure($"Claude install failed: {installFailed.Reason}");
+            return new SetupFailure($"agent install failed: {installFailed.Reason}");
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -55,30 +55,28 @@ internal static class JobRunner
             await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct);
 
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
+            var invocation = context.Agent.BuildInvocation(config, systemPrompt);
 
-            var claudeResult = await context.RunProcess(
-                "claude",
-                ["--output-format", "stream-json", "--print", config.Prompt, "--append-system-prompt", systemPrompt],
+            var agentResult = await context.RunProcess(
+                invocation.FileName,
+                invocation.Arguments,
                 cloneDir,
-                new Dictionary<string, string>
-                {
-                    ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
-                },
+                invocation.EnvironmentOverrides,
                 context.LogLine.Invoke,
                 ct);
 
-            if (claudeResult is ProcessFailure claudeFailure)
+            if (agentResult is ProcessFailure agentFailure)
             {
                 stopwatch.Stop();
                 var failure = new JobFailure(
-                    $"Claude failed: {claudeFailure.Reason}",
+                    $"agent failed: {agentFailure.Reason}",
                     CostUsd: 0m,
                     Duration: stopwatch.Elapsed);
                 return failure;
             }
 
-            var costUsd = claudeResult is ProcessSuccess { Output: { } resultLine }
-                ? JobCost.FromResultLine(resultLine) ?? 0m
+            var costUsd = agentResult is ProcessSuccess { Output: { } resultLine }
+                ? context.Agent.ParseCost(resultLine) ?? 0m
                 : 0m;
 
             var pendingPrs = new List<PendingPr>();

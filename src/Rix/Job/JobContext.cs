@@ -1,12 +1,9 @@
-using Rix.Claude;
+using Rix.Agents;
 using Rix.Repository;
 
 namespace Rix.Job;
 
-/// <summary>Installs Claude (or confirms it is present), returning the outcome.</summary>
-internal delegate Task<InstallResult> InstallClaudeAsync(CancellationToken cancellationToken);
-
-/// <summary>Writes a single diagnostic line (e.g. a forwarded Claude stdout line) to the log sink.</summary>
+/// <summary>Writes a single diagnostic line (e.g. a forwarded agent stdout line) to the log sink.</summary>
 internal delegate void LogLine(string line);
 
 /// <summary>
@@ -17,5 +14,5 @@ internal delegate void LogLine(string line);
 internal sealed record JobContext(
     IRepositoryHost Host,
     RunProcessAsync RunProcess,
-    InstallClaudeAsync InstallClaude,
+    ICodingAgent Agent,
     LogLine LogLine);

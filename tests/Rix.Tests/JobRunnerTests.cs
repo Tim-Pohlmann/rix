@@ -1,6 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Rix.Claude;
+using Rix.Agents;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
@@ -354,9 +354,9 @@ public class JobRunnerTests
     private static JobContext Context(
         IRepositoryHost host,
         RunProcessAsync processRunner,
-        InstallClaudeAsync claudeInstaller,
+        Func<CancellationToken, Task<InstallResult>> install,
         LogLine? logLine = null) =>
-        new(host, processRunner, claudeInstaller, logLine ?? (_ => { }));
+        new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }));
 
     private Task<int> Run(
         int claudeExitCode = 0,

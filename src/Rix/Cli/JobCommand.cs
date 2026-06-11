@@ -12,7 +12,7 @@ internal static class JobCommand
 
     private static readonly Option<string> PromptOption = new(
         name: "--prompt",
-        description: "Task prompt passed to Claude Code")
+        description: "Task prompt passed to the coding agent")
     { IsRequired = false };
 
     private static readonly Option<string> ReadTokenOption = new(
@@ -22,7 +22,7 @@ internal static class JobCommand
 
     private static readonly Option<int?> MaxTokensOption = new(
         name: "--max-tokens",
-        description: $"Claude Code token budget cap (default: {JobConfig.DefaultMaxTokens})")
+        description: $"Coding agent token budget cap (default: {JobConfig.DefaultMaxTokens})")
     { IsRequired = false };
 
     private static readonly Option<int?> TimeoutOption = new(
@@ -42,7 +42,7 @@ internal static class JobCommand
 
     internal static Command Build(Func<JobConfig, Task<int>> handler)
     {
-        var command = new Command("job", "Clone a repo, run Claude Code against it, and write output bundles");
+        var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
 
         command.AddOption(RepoOption);
         command.AddOption(PromptOption);

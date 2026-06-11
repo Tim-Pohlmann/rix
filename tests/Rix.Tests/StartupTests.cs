@@ -1,3 +1,4 @@
+using Rix.Agents;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
@@ -50,5 +51,6 @@ public class StartupTests
 
         Assert.IsInstanceOfType<GitHubRepositoryHost>(context.Host);
         Assert.AreSame(Startup.DefaultRunProcess, context.RunProcess);
+        Assert.IsInstanceOfType<ClaudeAgent>(context.Agent);
     }
 }
