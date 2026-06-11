@@ -12,6 +12,24 @@ namespace Rix;
 
 internal static class Startup
 {
+    internal static readonly RunProcessAsync DefaultRunProcess =
+        (fileName, arguments, workingDirectory, environmentOverrides, onStdoutLine, token) =>
+            ProcessWrapper.RunAsync(fileName, arguments,
+                workingDirectory: workingDirectory,
+                environmentOverrides: environmentOverrides,
+                cancellationToken: token,
+                onStdoutLine: onStdoutLine);
+
+    /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
+    /// Claude installer, and stderr log sink, all wired from <paramref name="config"/>.</summary>
+    internal static JobContext DefaultContext(JobConfig config) =>
+        new(
+            Host: new GitHubRepositoryHost(config.Repo, config.ReadToken),
+            RunProcess: DefaultRunProcess,
+            InstallClaude: token => ClaudeInstaller.EnsureInstalledAsync(token,
+                runProcess: (fileName, args, t) => DefaultRunProcess(fileName, args, Path.GetTempPath(), null, null, t)),
+            LogLine: Console.Error.WriteLine);
+
     internal static async Task<int> RunAsync(string[] args)
     {
         var rootCommand = new RootCommand("RIX - AI-powered code automation");
@@ -45,13 +63,11 @@ internal static class Startup
     internal static async Task<int> ExecuteJobAsync(
         JobConfig config,
         CancellationToken cancellationToken,
-        IRepositoryHost? host = null,
-        RunProcessAsync? processRunner = null,
-        Func<CancellationToken, Task<InstallResult>>? claudeInstaller = null)
+        JobContext? context = null)
     {
-        var result = await JobRunner.RunAsync(
-            config, cancellationToken, host, processRunner, claudeInstaller,
-            logLine: Console.Error.WriteLine);
+        context ??= DefaultContext(config);
+
+        var result = await JobRunner.RunAsync(config, context, cancellationToken);
 
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
         Console.WriteLine(json);
