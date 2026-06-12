@@ -65,39 +65,65 @@ internal static class JobRunner
                 ? context.Agent.ParseCost(resultLine) ?? 0m
                 : 0m;
 
-            var pendingPrs = new List<PendingPr>();
-            foreach (var req in apiServer.QueuedPrRequests)
-            {
-                var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
-                var bundleFile = $"{safeName}.bundle";
-                var bundlePath = Path.Combine(config.OutputDir, bundleFile);
-
-                var bundleResult = await context.RunProcess(
-                    "git",
-                    ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
-                    cloneDir,
-                    ProcessEnv.Inherited,
-                    null,
-                    ct);
-
-                if (bundleResult is ProcessFailure)
-                {
-                    stopwatch.Stop();
-                    return new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed);
-                }
-
-                pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
-            }
+            var delivery = await DeliverQueuedPrsAsync(apiServer.QueuedPrRequests, config, context, cloneDir, ct);
 
             stopwatch.Stop();
 
-            return new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
+            return delivery switch
+            {
+                Delivered { PendingPrs: var pendingPrs } =>
+                    new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed),
+                DeliveryFailed { Branch: var branch } =>
+                    new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
+                _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
+            };
         }
         finally
         {
             context.FileSystem.DeleteDirectory(cloneDir);
         }
     }
+
+    /// <summary>Turns the agent's queued PR requests into deliverables. Today every PR is
+    /// delivered as a git bundle written to <see cref="JobConfig.OutputDir"/>; isolating this here
+    /// keeps <see cref="RunAsync"/> a readable orchestration and leaves room for a second delivery
+    /// channel (e.g. direct push) to become an injected strategy later.</summary>
+    private static async Task<DeliveryOutcome> DeliverQueuedPrsAsync(
+        IReadOnlyList<QueuedPr> queuedPrs,
+        JobConfig config,
+        JobContext context,
+        string cloneDir,
+        CancellationToken cancellationToken)
+    {
+        var pendingPrs = new List<PendingPr>();
+        foreach (var req in queuedPrs)
+        {
+            var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
+            var bundleFile = $"{safeName}.bundle";
+            var bundlePath = Path.Combine(config.OutputDir, bundleFile);
+
+            var bundleResult = await context.RunProcess(
+                "git",
+                ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
+                cloneDir,
+                ProcessEnv.Inherited,
+                null,
+                cancellationToken);
+
+            if (bundleResult is ProcessFailure)
+                return new DeliveryFailed(req.Branch.Value);
+
+            pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
+        }
+
+        return new Delivered(pendingPrs);
+    }
+
+    /// <summary>The result of delivering the queued PRs: either all were turned into deliverables,
+    /// or one failed (identified by its branch).</summary>
+    private abstract record DeliveryOutcome;
+    private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs) : DeliveryOutcome;
+    private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
     private static string BuildSystemPrompt(Uri apiBaseUrl) => $$"""
         You are `rix job`, an autonomous coding agent and part of the `rix` autonomous software factory.
