@@ -57,4 +57,33 @@ internal static class CodingAgentHelper
         var result = await runProcess(fileName, args, Path.GetTempPath(), null, null, cancellationToken);
         return result is ProcessFailure failure ? failure.Reason : null;
     }
+
+    /// <summary>
+    /// Ensures a CLI tool is available by checking if it is already installed, and if not,
+    /// installing it via <c>npm install -g</c>. Returns <see cref="Installed"/> on success,
+    /// <see cref="InstallFailed"/> on any error.
+    /// </summary>
+    internal static async Task<InstallResult> EnsureInstalledViaNpmAsync(
+        RunProcessAsync runProcess,
+        string cliName,
+        string npmPackage,
+        CancellationToken cancellationToken)
+    {
+        Task<string?> Run(string fileName, IEnumerable<string> args) =>
+            RunCommandAsync(runProcess, fileName, args, cancellationToken);
+
+        if (await Run(cliName, ["--version"]) is null) return new Installed();
+
+        if (await Run("npm", ["--version"]) is { } npmReason)
+            return new InstallFailed($"{cliName} is not installed and npm could not be run ({npmReason}). Install Node.js to continue.");
+
+        if (await Run("npm", ["install", "-g", npmPackage]) is { } installReason)
+            return new InstallFailed($"npm install -g {npmPackage} failed ({installReason}).");
+
+        // Re-verify: npm install can succeed but the CLI may still not be on PATH.
+        if (await Run(cliName, ["--version"]) is { } verifyReason)
+            return new InstallFailed($"{cliName} was installed but could not be verified ({verifyReason}).");
+
+        return new Installed();
+    }
 }
