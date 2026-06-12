@@ -1,4 +1,5 @@
 using Rix.Job;
+using Rix.Process;
 
 namespace Rix.Agents;
 
@@ -40,3 +41,20 @@ internal abstract record InstallResult
 }
 internal sealed record Installed : InstallResult;
 internal sealed record InstallFailed(string Reason) : InstallResult;
+
+/// <summary>Shared helpers for <see cref="ICodingAgent"/> implementations.</summary>
+internal static class CodingAgentHelper
+{
+    /// <summary>
+    /// Runs a command and returns <c>null</c> on success, or the failure reason on error.
+    /// </summary>
+    internal static async Task<string?> RunCommandAsync(
+        RunProcessAsync runProcess,
+        string fileName,
+        IEnumerable<string> args,
+        CancellationToken cancellationToken)
+    {
+        var result = await runProcess(fileName, args, Path.GetTempPath(), null, null, cancellationToken);
+        return result is ProcessFailure failure ? failure.Reason : null;
+    }
+}

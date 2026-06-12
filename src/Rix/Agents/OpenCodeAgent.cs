@@ -25,7 +25,7 @@ internal sealed class OpenCodeAgent : ICodingAgent
     public async Task<InstallResult> EnsureInstalledAsync(RunProcessAsync runProcess, CancellationToken cancellationToken)
     {
         Task<string?> Run(string fileName, IEnumerable<string> args) =>
-            RunCommandAsync(runProcess, fileName, args, cancellationToken);
+            CodingAgentHelper.RunCommandAsync(runProcess, fileName, args, cancellationToken);
 
         if (await Run("opencode", ["--version"]) is null) return new Installed();
 
@@ -49,14 +49,4 @@ internal sealed class OpenCodeAgent : ICodingAgent
             EnvironmentOverrides: new Dictionary<string, string>());
 
     public decimal? ParseCost(string outputLine) => OpenCodeCost.FromEventLine(outputLine);
-
-    private static async Task<string?> RunCommandAsync(
-        RunProcessAsync runProcess,
-        string fileName,
-        IEnumerable<string> args,
-        CancellationToken cancellationToken)
-    {
-        var result = await runProcess(fileName, args, Path.GetTempPath(), null, null, cancellationToken);
-        return result is ProcessFailure failure ? failure.Reason : null;
-    }
 }
