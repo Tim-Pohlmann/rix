@@ -1,3 +1,5 @@
+using Rix.Agents;
+
 namespace Rix.Job;
 
 internal record JobConfig(
@@ -7,7 +9,8 @@ internal record JobConfig(
     MaxTokens MaxTokens,
     TimeoutMinutes TimeoutMinutes,
     string WorkDir,
-    string OutputDir
+    string OutputDir,
+    AgentKind Agent = AgentKind.Claude
 )
 {
     internal const int DefaultMaxTokens = 50_000;
@@ -20,7 +23,8 @@ internal record JobConfig(
         int? maxTokens,
         int? timeoutMinutes,
         string? workDir,
-        string? outputDir) =>
+        string? outputDir,
+        string? agent = null) =>
         new(
             Repo: new RepoIdentifier(repo),
             Prompt: prompt,
@@ -28,7 +32,8 @@ internal record JobConfig(
             MaxTokens: new MaxTokens(maxTokens ?? DefaultMaxTokens),
             TimeoutMinutes: new TimeoutMinutes(timeoutMinutes ?? DefaultTimeoutMinutes),
             WorkDir: string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir,
-            OutputDir: outputDir ?? string.Empty
+            OutputDir: outputDir ?? string.Empty,
+            Agent: AgentKindParser.Parse(agent)
         );
 }
 

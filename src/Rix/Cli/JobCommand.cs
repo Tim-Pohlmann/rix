@@ -40,6 +40,11 @@ internal static class JobCommand
         description: "Directory where result.json and git bundles are written")
     { IsRequired = false };
 
+    private static readonly Option<string?> AgentOption = new(
+        name: "--agent",
+        description: "Coding agent to run: 'claude' (default) or 'opencode'")
+    { IsRequired = false };
+
     internal static Command Build(Func<JobConfig, Task<int>> handler)
     {
         var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
@@ -51,6 +56,7 @@ internal static class JobCommand
         command.AddOption(TimeoutOption);
         command.AddOption(WorkDirOption);
         command.AddOption(OutputDirOption);
+        command.AddOption(AgentOption);
 
         command.SetHandler(async ctx =>
         {
@@ -71,7 +77,9 @@ internal static class JobCommand
                     workDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
                                     ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"),
                     outputDir:      ctx.ParseResult.GetValueForOption(OutputDirOption)
-                                    ?? Environment.GetEnvironmentVariable("RIX_OUTPUT_DIR"));
+                                    ?? Environment.GetEnvironmentVariable("RIX_OUTPUT_DIR"),
+                    agent:          ctx.ParseResult.GetValueForOption(AgentOption)
+                                    ?? Environment.GetEnvironmentVariable("RIX_AGENT"));
             }
             catch (ArgumentException ex)
             {
