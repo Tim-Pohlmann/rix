@@ -181,7 +181,6 @@ public class JobRunnerTests
     public async Task RunAsync_PassesNonNullOnStdoutLine_ToClaudeProcess()
     {
         Action<string>? claudeCallback = null;
-        Action<string>? gitCallback = _ => { }; // non-null sentinel; nulled out when git runs with null callback
 
         RunProcessAsync capture = async (f, a, d, e, onLine, ct) =>
         {
@@ -195,7 +194,6 @@ public class JobRunnerTests
                 }, ct);
                 response.EnsureSuccessStatusCode();
             }
-            else if (f == "git") gitCallback = onLine;
             return new ProcessSuccess();
         };
 
@@ -204,7 +202,6 @@ public class JobRunnerTests
             CancellationToken.None);
 
         Assert.IsNotNull(claudeCallback);
-        Assert.IsNull(gitCallback);
     }
 
     [TestMethod]
@@ -290,21 +287,20 @@ public class JobRunnerTests
     {
         RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
         {
-            if (f == "claude")
+            var apiUrl = ExtractApiUrlFromSystemPrompt(a);
+            using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
             {
-                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
-                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
-                {
-                    branch = "rix/test", baseBranch = "main", title = "T", body = "b",
-                }, ct);
-                response.EnsureSuccessStatusCode();
-                return new ProcessSuccess();
-            }
-            return new ProcessFailure("exited with code 1");
+                branch = "rix/test", baseBranch = "main", title = "T", body = "b",
+            }, ct);
+            response.EnsureSuccessStatusCode();
+            return new ProcessSuccess();
         };
 
+        var hostWithFailingBundle = new StubRepositoryHost(
+            createBundle: _ => throw new InvalidOperationException("git bundle failed: exited with code 128"));
+
         var result = await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
-            Context(new StubRepositoryHost(), runner,
+            Context(hostWithFailingBundle, runner,
                 _ => Task.FromResult<InstallResult>(new Installed())));
 
         Assert.AreEqual(1, result);
@@ -383,7 +379,6 @@ public class JobRunnerTests
         async (fileName, args, workDir, envOverrides, onLine, ct) => fileName switch
         {
             "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, args, ct),
-            "git" => await SimulateGitBundleAsync(args),
             _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
         };
 
@@ -422,13 +417,6 @@ public class JobRunnerTests
         return exitCode == 0 ? new ProcessSuccess() : (ProcessResult)new ProcessFailure($"exited with code {exitCode}");
     }
 
-    private static async Task<ProcessResult> SimulateGitBundleAsync(IEnumerable<string> args)
-    {
-        var bundlePath = args.ElementAt(2); // git bundle create <path> <range>
-        await File.WriteAllTextAsync(bundlePath, "fake-bundle");
-        return new ProcessSuccess();
-    }
-
     private record QueuedPrSpec(string Branch, string BaseBranch, string Title, string Body);
 
     private sealed class TrackingRepositoryHost : IRepositoryHost
@@ -441,5 +429,8 @@ public class JobRunnerTests
         }
         public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken) =>
             Task.FromResult(false);
+        public Task CreateBundleAsync(
+            string repoDirectory, string bundlePath, BranchName baseBranch, BranchName branch, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 }

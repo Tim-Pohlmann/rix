@@ -9,7 +9,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     private readonly RepoIdentifier _repo;
     private readonly ReadToken _readToken;
     private readonly HttpClient _http;
-    private readonly Func<string[], CancellationToken, Task<ProcessResult>> _gitRunner;
+    private readonly Func<string[], string, CancellationToken, Task<ProcessResult>> _gitRunner;
 
     internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken)
         : this(repo, readToken, handler: null, gitRunner: null) { }
@@ -18,7 +18,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         RepoIdentifier repo,
         ReadToken readToken,
         HttpMessageHandler? handler,
-        Func<string[], CancellationToken, Task<ProcessResult>>? gitRunner)
+        Func<string[], string, CancellationToken, Task<ProcessResult>>? gitRunner)
     {
         _repo = repo;
         _readToken = readToken;
@@ -38,7 +38,16 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
         RunGitAsync(["clone", $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Value}.git", targetDirectory],
-            cancellationToken);
+            workingDirectory: Path.GetTempPath(), cancellationToken);
+
+    public Task CreateBundleAsync(
+        string repoDirectory,
+        string bundlePath,
+        BranchName baseBranch,
+        BranchName branch,
+        CancellationToken cancellationToken) =>
+        RunGitAsync(["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
+            workingDirectory: repoDirectory, cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
@@ -50,22 +59,18 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return true;
     }
 
-    private async Task RunGitAsync(string[] args, CancellationToken cancellationToken)
+    private async Task RunGitAsync(string[] args, string workingDirectory, CancellationToken cancellationToken)
     {
-        var result = await _gitRunner(args, cancellationToken);
+        var result = await _gitRunner(args, workingDirectory, cancellationToken);
         if (result is ProcessFailure f)
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
     }
 
     [ExcludeFromCodeCoverage]
-    private static Task<ProcessResult> DefaultGitRunner(string[] args, CancellationToken cancellationToken) =>
+    private static Task<ProcessResult> DefaultGitRunner(string[] args, string workingDirectory, CancellationToken cancellationToken) =>
         ProcessWrapper.RunAsync(
             "git", args,
-            workingDirectory: Path.GetTempPath(),
-            environmentOverrides: new Dictionary<string, string>
-            {
-                ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
-                ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
-            },
+            workingDirectory: workingDirectory,
+            environmentOverrides: GitEnvironment.Current,
             cancellationToken: cancellationToken);
 }

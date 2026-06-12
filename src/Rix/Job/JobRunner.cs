@@ -23,12 +23,6 @@ internal delegate Task<ProcessResult> RunProcessAsync(
 
 internal static class JobRunner
 {
-    private static readonly IReadOnlyDictionary<string, string> GitEnv = new Dictionary<string, string>
-    {
-        ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
-        ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
-    };
-
     internal static async Task<IJobResult> RunAsync(
         JobConfig config,
         JobContext context,
@@ -86,15 +80,11 @@ internal static class JobRunner
                 var bundleFile = $"{safeName}.bundle";
                 var bundlePath = Path.Combine(config.OutputDir, bundleFile);
 
-                var bundleResult = await context.RunProcess(
-                    "git",
-                    ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
-                    cloneDir,
-                    GitEnv,
-                    null,
-                    ct);
-
-                if (bundleResult is ProcessFailure)
+                try
+                {
+                    await context.Host.CreateBundleAsync(cloneDir, bundlePath, req.BaseBranch, req.Branch, ct);
+                }
+                catch (InvalidOperationException)
                 {
                     stopwatch.Stop();
                     return new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed);
