@@ -25,17 +25,32 @@ internal record JobConfig(
         string? workDir,
         string? outputDir,
         string? agent = null) =>
+        FromInputs(repo, prompt, readToken, new JobInputOptions(maxTokens, timeoutMinutes, workDir, outputDir, agent));
+
+    internal static JobConfig FromInputs(
+        string repo,
+        string prompt,
+        string readToken,
+        JobInputOptions options) =>
         new(
             Repo: new RepoIdentifier(repo),
             Prompt: prompt,
             ReadToken: new ReadToken(readToken),
-            MaxTokens: new MaxTokens(maxTokens ?? DefaultMaxTokens),
-            TimeoutMinutes: new TimeoutMinutes(timeoutMinutes ?? DefaultTimeoutMinutes),
-            WorkDir: string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir,
-            OutputDir: outputDir ?? string.Empty,
-            Agent: AgentKindParser.Parse(agent)
+            MaxTokens: new MaxTokens(options.MaxTokens ?? DefaultMaxTokens),
+            TimeoutMinutes: new TimeoutMinutes(options.TimeoutMinutes ?? DefaultTimeoutMinutes),
+            WorkDir: string.IsNullOrWhiteSpace(options.WorkDir) ? Path.GetTempPath() : options.WorkDir,
+            OutputDir: options.OutputDir ?? string.Empty,
+            Agent: AgentKindParser.Parse(options.Agent)
         );
 }
+
+internal record JobInputOptions(
+    int? MaxTokens = null,
+    int? TimeoutMinutes = null,
+    string? WorkDir = null,
+    string? OutputDir = null,
+    string? Agent = null
+);
 
 internal static class JobConfigExtensions
 {
