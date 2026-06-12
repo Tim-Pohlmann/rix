@@ -120,7 +120,10 @@ internal static class JobRunner
         return new BundlesCreated(pendingPrs);
     }
 
-    private abstract record BundleOutcome;
+    private abstract record BundleOutcome
+    {
+        private protected BundleOutcome() { }
+    }
     private sealed record BundlesCreated(IReadOnlyList<PendingPr> PendingPrs) : BundleOutcome;
     private sealed record BundleFailed(string Error) : BundleOutcome;
 

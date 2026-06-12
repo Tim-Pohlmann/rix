@@ -10,6 +10,9 @@ public class GitHubRepositoryHostTests
     private static readonly Func<string[], string, CancellationToken, Task<ProcessResult>> SuccessGitRunner =
         (_, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
 
+    private static readonly string[] ExpectedBundleArgs =
+        ["bundle", "create", "/tmp/out/fix.bundle", "main..rix/fix"];
+
     private static GitHubRepositoryHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
@@ -79,8 +82,7 @@ public class GitHubRepositoryHostTests
 
         Assert.IsNotNull(capturedArgs);
         Assert.AreEqual("/tmp/clone", capturedWorkingDir);
-        CollectionAssert.AreEqual(
-            new[] { "bundle", "create", "/tmp/out/fix.bundle", "main..rix/fix" }, capturedArgs);
+        CollectionAssert.AreEqual(ExpectedBundleArgs, capturedArgs);
     }
 
     [TestMethod]
