@@ -44,8 +44,7 @@ public class StartupTests
     {
         var config = JobConfig.FromInputs(
             repo: "owner/repo", prompt: "do it", readToken: "tok",
-            maxTokens: null, timeoutMinutes: null,
-            workDir: Path.GetTempPath(), outputDir: Path.GetTempPath());
+            options: new JobInputOptions(WorkDir: Path.GetTempPath(), OutputDir: Path.GetTempPath()));
 
         var context = Startup.DefaultContext(config);
 

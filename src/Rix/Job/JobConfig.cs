@@ -20,17 +20,6 @@ internal record JobConfig(
         string repo,
         string prompt,
         string readToken,
-        int? maxTokens,
-        int? timeoutMinutes,
-        string? workDir,
-        string? outputDir,
-        string? agent = null) =>
-        FromInputs(repo, prompt, readToken, new JobInputOptions(maxTokens, timeoutMinutes, workDir, outputDir, agent));
-
-    internal static JobConfig FromInputs(
-        string repo,
-        string prompt,
-        string readToken,
         JobInputOptions options) =>
         new(
             Repo: new RepoIdentifier(repo),

@@ -31,8 +31,7 @@ public class AgentKindParserTests
     public void FromInputs_SelectsOpenCode_FromAgentArgument()
     {
         var config = JobConfig.FromInputs("owner/repo", "do it", "tok",
-            maxTokens: null, timeoutMinutes: null, workDir: Path.GetTempPath(),
-            outputDir: Path.GetTempPath(), agent: "opencode");
+            new JobInputOptions(WorkDir: Path.GetTempPath(), OutputDir: Path.GetTempPath(), Agent: "opencode"));
 
         Assert.AreEqual(AgentKind.OpenCode, config.Agent);
     }
@@ -41,8 +40,7 @@ public class AgentKindParserTests
     public void FromInputs_DefaultsToClaude_WhenAgentOmitted()
     {
         var config = JobConfig.FromInputs("owner/repo", "do it", "tok",
-            maxTokens: null, timeoutMinutes: null, workDir: Path.GetTempPath(),
-            outputDir: Path.GetTempPath());
+            new JobInputOptions(WorkDir: Path.GetTempPath(), OutputDir: Path.GetTempPath()));
 
         Assert.AreEqual(AgentKind.Claude, config.Agent);
     }

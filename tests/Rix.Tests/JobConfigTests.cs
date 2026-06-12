@@ -11,10 +11,7 @@ public class JobConfigTests
         repo: "owner/repo",
         prompt: "Fix the bug",
         readToken: "read-tok",
-        maxTokens: null,
-        timeoutMinutes: null,
-        workDir: null,
-        outputDir: ExistingDir);
+        options: new JobInputOptions(OutputDir: ExistingDir));
 
     [TestMethod]
     public void FromInputs_AppliesDefaults()
@@ -33,10 +30,7 @@ public class JobConfigTests
             repo: "owner/repo",
             prompt: "Fix",
             readToken: "r",
-            maxTokens: 1000,
-            timeoutMinutes: 5,
-            workDir: Path.GetTempPath(),
-            outputDir: ExistingDir);
+            options: new JobInputOptions(MaxTokens: 1000, TimeoutMinutes: 5, WorkDir: Path.GetTempPath(), OutputDir: ExistingDir));
 
         Assert.AreEqual(1000, config.MaxTokens.Value);
         Assert.AreEqual(5, config.TimeoutMinutes.Value);
@@ -119,8 +113,8 @@ public class JobConfigTests
     [TestMethod]
     public void FromInputs_DefaultsWorkDirToTemp_WhenNullOrWhitespace()
     {
-        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", null, null, null, ExistingDir).WorkDir);
-        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", null, null, "", ExistingDir).WorkDir);
-        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", null, null, "   ", ExistingDir).WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", new JobInputOptions(WorkDir: null, OutputDir: ExistingDir)).WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", new JobInputOptions(WorkDir: "", OutputDir: ExistingDir)).WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), JobConfig.FromInputs("o/r", "p", "r", new JobInputOptions(WorkDir: "   ", OutputDir: ExistingDir)).WorkDir);
     }
 }

@@ -371,10 +371,7 @@ public class JobRunnerTests
         repo: "owner/repo",
         prompt: "Do something",
         readToken: "tok",
-        maxTokens: null,
-        timeoutMinutes: null,
-        workDir: _workDir,
-        outputDir: _outputDir);
+        options: new JobInputOptions(WorkDir: _workDir, OutputDir: _outputDir));
 
     private static RunProcessAsync FakeRunner(
         int claudeExitCode = 0,

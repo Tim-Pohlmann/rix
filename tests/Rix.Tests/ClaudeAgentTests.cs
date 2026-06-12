@@ -131,7 +131,7 @@ public class ClaudeAgentTests
     public void BuildInvocation_ProducesClaudePrintInvocation()
     {
         var config = JobConfig.FromInputs("owner/repo", "do it", "tok",
-            maxTokens: 1234, timeoutMinutes: null, workDir: Path.GetTempPath(), outputDir: Path.GetTempPath());
+            new JobInputOptions(MaxTokens: 1234, WorkDir: Path.GetTempPath(), OutputDir: Path.GetTempPath()));
 
         var invocation = Agent.BuildInvocation(config, "SYSTEM");
 

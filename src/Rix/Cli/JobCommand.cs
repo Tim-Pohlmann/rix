@@ -69,17 +69,18 @@ internal static class JobCommand
             try
             {
                 config = JobConfig.FromInputs(
-                    repo:           Str(RepoOption,      "RIX_REPO"),
-                    prompt:         Str(PromptOption,    "RIX_PROMPT"),
-                    readToken:      Str(ReadTokenOption, "RIX_READ_TOKEN"),
-                    maxTokens:      Int(MaxTokensOption, "RIX_MAX_TOKENS"),
-                    timeoutMinutes: Int(TimeoutOption,   "RIX_TIMEOUT"),
-                    workDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
-                                    ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"),
-                    outputDir:      ctx.ParseResult.GetValueForOption(OutputDirOption)
-                                    ?? Environment.GetEnvironmentVariable("RIX_OUTPUT_DIR"),
-                    agent:          ctx.ParseResult.GetValueForOption(AgentOption)
-                                    ?? Environment.GetEnvironmentVariable("RIX_AGENT"));
+                    repo:    Str(RepoOption,      "RIX_REPO"),
+                    prompt:  Str(PromptOption,    "RIX_PROMPT"),
+                    readToken: Str(ReadTokenOption, "RIX_READ_TOKEN"),
+                    options: new JobInputOptions(
+                        MaxTokens:      Int(MaxTokensOption, "RIX_MAX_TOKENS"),
+                        TimeoutMinutes: Int(TimeoutOption,   "RIX_TIMEOUT"),
+                        WorkDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
+                                        ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"),
+                        OutputDir:      ctx.ParseResult.GetValueForOption(OutputDirOption)
+                                        ?? Environment.GetEnvironmentVariable("RIX_OUTPUT_DIR"),
+                        Agent:          ctx.ParseResult.GetValueForOption(AgentOption)
+                                        ?? Environment.GetEnvironmentVariable("RIX_AGENT")));
             }
             catch (ArgumentException ex)
             {
