@@ -13,22 +13,8 @@ namespace Rix.Job;
 [JsonSerializable(typeof(PendingPr))]
 internal partial class JobJsonContext : JsonSerializerContext { }
 
-internal delegate Task<ProcessResult> RunProcessAsync(
-    string fileName,
-    IEnumerable<string> arguments,
-    string workingDirectory,
-    IReadOnlyDictionary<string, string>? environmentOverrides,
-    Action<string>? onStdoutLine,
-    CancellationToken cancellationToken);
-
 internal static class JobRunner
 {
-    private static readonly IReadOnlyDictionary<string, string> GitEnv = new Dictionary<string, string>
-    {
-        ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
-        ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
-    };
-
     internal static async Task<IJobResult> RunAsync(
         JobConfig config,
         JobContext context,
@@ -90,7 +76,7 @@ internal static class JobRunner
                     "git",
                     ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
                     cloneDir,
-                    GitEnv,
+                    ProcessEnv.Inherited,
                     null,
                     ct);
 
