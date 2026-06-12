@@ -1,9 +1,21 @@
 using Rix.Agents;
+using Rix.FileSystem;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
 
 namespace Rix.Tests;
+
+/// <summary>An <see cref="IFileSystem"/> that records the directories it was asked to create and
+/// delete instead of touching disk — lets tests assert the clone/cleanup lifecycle.</summary>
+internal sealed class RecordingFileSystem : IFileSystem
+{
+    public List<string> Created { get; } = [];
+    public List<string> Deleted { get; } = [];
+
+    public void CreateDirectory(string path) => Created.Add(path);
+    public void DeleteDirectory(string path) => Deleted.Add(path);
+}
 
 internal sealed class StubRepositoryHost(Func<BranchName, Task<bool>>? branchExists = null) : IRepositoryHost
 {

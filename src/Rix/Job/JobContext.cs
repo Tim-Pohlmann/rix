@@ -1,4 +1,5 @@
 using Rix.Agents;
+using Rix.FileSystem;
 using Rix.Process;
 using Rix.Repository;
 
@@ -16,4 +17,5 @@ internal sealed record JobContext(
     IRepositoryHost Host,
     RunProcessAsync RunProcess,
     ICodingAgent Agent,
+    IFileSystem FileSystem,
     LogLine LogLine);

@@ -4,6 +4,7 @@ using System.CommandLine.Parsing;
 using System.Text.Json;
 using Rix.Agents;
 using Rix.Cli;
+using Rix.FileSystem;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
@@ -21,13 +22,14 @@ internal static class Startup
                 onStdoutLine: onStdoutLine);
 
     /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
-    /// the default coding agent (<see cref="ClaudeAgent"/>), and stderr log sink, all wired from
-    /// <paramref name="config"/>.</summary>
+    /// the default coding agent (<see cref="ClaudeAgent"/>), the local filesystem, and stderr log
+    /// sink, all wired from <paramref name="config"/>.</summary>
     internal static JobContext DefaultContext(JobConfig config) =>
         new(
             Host: new GitHubRepositoryHost(config.Repo, config.ReadToken, DefaultRunProcess),
             RunProcess: DefaultRunProcess,
             Agent: new ClaudeAgent(),
+            FileSystem: new LocalFileSystem(),
             LogLine: Console.Error.WriteLine);
 
     internal static async Task<int> RunAsync(string[] args)

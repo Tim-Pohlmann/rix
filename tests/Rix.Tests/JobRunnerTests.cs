@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Rix.Agents;
+using Rix.FileSystem;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
@@ -175,6 +176,20 @@ public class JobRunnerTests
 
         Assert.IsNotNull(capturedCloneDir);
         Assert.IsFalse(Directory.Exists(capturedCloneDir));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DeletesTheCloneDirItCreated_ThroughTheFileSystemEffect()
+    {
+        var fs = new RecordingFileSystem();
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()),
+                fileSystem: fs),
+            CancellationToken.None);
+
+        Assert.AreEqual(1, fs.Created.Count);
+        CollectionAssert.AreEqual(fs.Created, fs.Deleted, "The created clone dir should be the one deleted.");
     }
 
     [TestMethod]
@@ -355,8 +370,9 @@ public class JobRunnerTests
         IRepositoryHost host,
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
-        LogLine? logLine = null) =>
-        new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }));
+        LogLine? logLine = null,
+        IFileSystem? fileSystem = null) =>
+        new(host, processRunner, new StubAgent(install), fileSystem ?? new LocalFileSystem(), logLine ?? (_ => { }));
 
     private Task<int> Run(
         int claudeExitCode = 0,

@@ -32,7 +32,7 @@ internal static class JobRunner
         var stopwatch = Stopwatch.StartNew();
 
         var cloneDir = Path.Combine(config.WorkDir, $"rix-clone-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(cloneDir);
+        context.FileSystem.CreateDirectory(cloneDir);
 
         try
         {
@@ -95,8 +95,7 @@ internal static class JobRunner
         }
         finally
         {
-            try { Directory.Delete(cloneDir, recursive: true); }
-            catch (DirectoryNotFoundException) { /* already cleaned up */ }
+            context.FileSystem.DeleteDirectory(cloneDir);
         }
     }
 
