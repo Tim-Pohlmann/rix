@@ -121,7 +121,10 @@ internal static class JobRunner
 
     /// <summary>The result of delivering the queued PRs: either all were turned into deliverables,
     /// or one failed (identified by its branch).</summary>
-    private abstract record DeliveryOutcome;
+    private abstract record DeliveryOutcome
+    {
+        private protected DeliveryOutcome() { }
+    }
     private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs) : DeliveryOutcome;
     private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
