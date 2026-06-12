@@ -61,6 +61,24 @@ public class JobConfigTests
     }
 
     [TestMethod]
+    [DataRow("noslash")]
+    [DataRow("owner/repo/extra")]
+    [DataRow("/repo")]
+    [DataRow("owner/")]
+    public void ValidationErrors_RejectsMalformedRepo(string repo)
+    {
+        var errors = (ValidConfig() with { Repo = repo }).ValidationErrors;
+        Assert.IsTrue(errors.Any(e => e.Contains("repo identifier")), $"expected a repo-format error, got: {string.Join("; ", errors)}");
+    }
+
+    [TestMethod]
+    public void ValidationErrors_RejectsEmptyRepo()
+    {
+        var errors = (ValidConfig() with { Repo = "" }).ValidationErrors;
+        Assert.IsTrue(errors.Any(e => e.Contains("--repo is required")));
+    }
+
+    [TestMethod]
     public void ValidationErrors_RejectsEmptyPrompt()
     {
         var errors = (ValidConfig() with { Prompt = "" }).ValidationErrors;

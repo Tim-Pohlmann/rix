@@ -1,7 +1,7 @@
 namespace Rix.Job;
 
 internal record JobConfig(
-    RepoIdentifier Repo,
+    string Repo,
     string Prompt,
     ReadToken ReadToken,
     MaxTokens MaxTokens,
@@ -22,7 +22,7 @@ internal record JobConfig(
         string? workDir,
         string? outputDir) =>
         new(
-            Repo: new RepoIdentifier(repo),
+            Repo: repo,
             Prompt: prompt,
             ReadToken: new ReadToken(readToken),
             MaxTokens: new MaxTokens(maxTokens ?? DefaultMaxTokens),
@@ -41,6 +41,11 @@ internal static class JobConfigExtensions
             get
             {
                 var errors = new List<string>();
+
+                if (string.IsNullOrWhiteSpace(config.Repo))
+                    errors.Add("--repo is required");
+                else if (!RepoIdentifier.TryCreate(config.Repo, out _, out var repoError))
+                    errors.Add(repoError!);
 
                 if (string.IsNullOrWhiteSpace(config.Prompt))
                     errors.Add("--prompt is required");

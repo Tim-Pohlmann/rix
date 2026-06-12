@@ -59,26 +59,17 @@ internal static class JobCommand
             int? Int(Option<int?> opt, string env) =>
                 ctx.ParseResult.GetValueForOption(opt) ?? (int.TryParse(Environment.GetEnvironmentVariable(env), out var n) ? n : null);
 
-            JobConfig config;
-            try
-            {
-                config = JobConfig.FromInputs(
-                    repo:           Str(RepoOption,      "RIX_REPO"),
-                    prompt:         Str(PromptOption,    "RIX_PROMPT"),
-                    readToken:      Str(ReadTokenOption, "RIX_READ_TOKEN"),
-                    maxTokens:      Int(MaxTokensOption, "RIX_MAX_TOKENS"),
-                    timeoutMinutes: Int(TimeoutOption,   "RIX_TIMEOUT"),
-                    workDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
-                                    ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"),
-                    outputDir:      ctx.ParseResult.GetValueForOption(OutputDirOption)
-                                    ?? Environment.GetEnvironmentVariable("RIX_OUTPUT_DIR"));
-            }
-            catch (ArgumentException ex)
-            {
-                Console.Error.WriteLine($"error: {ex.Message}");
-                ctx.ExitCode = ExitCodes.SetupFailed;
-                return;
-            }
+            var config = JobConfig.FromInputs(
+                repo:           Str(RepoOption,      "RIX_REPO"),
+                prompt:         Str(PromptOption,    "RIX_PROMPT"),
+                readToken:      Str(ReadTokenOption, "RIX_READ_TOKEN"),
+                maxTokens:      Int(MaxTokensOption, "RIX_MAX_TOKENS"),
+                timeoutMinutes: Int(TimeoutOption,   "RIX_TIMEOUT"),
+                workDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
+                                ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"),
+                outputDir:      ctx.ParseResult.GetValueForOption(OutputDirOption)
+                                ?? Environment.GetEnvironmentVariable("RIX_OUTPUT_DIR"));
+
             ctx.ExitCode = await handler(config);
         });
 

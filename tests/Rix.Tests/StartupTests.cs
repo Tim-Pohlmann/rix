@@ -28,6 +28,14 @@ public class StartupTests
     }
 
     [TestMethod]
+    public async Task RunJobAsync_Returns2_WhenRepoFormatIsInvalid()
+    {
+        var exitCode = await Startup.RunAsync(
+            ["job", "--repo", "invalid-no-slash", "--prompt", "p", "--read-token", "r"]);
+        Assert.AreEqual(2, exitCode);
+    }
+
+    [TestMethod]
     public async Task DefaultRunProcess_RunsRealProcess_AndCapturesOutput()
     {
         var lines = new List<string>();

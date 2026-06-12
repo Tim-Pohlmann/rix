@@ -63,12 +63,4 @@ public class JobCommandTests
         Assert.IsNotNull(captured);
         Assert.AreEqual("flag/repo", captured.Repo.ToString());
     }
-
-    [TestMethod]
-    public async Task Command_Returns2_WhenRepoFormatIsInvalid()
-    {
-        var parser = BuildParser(_ => Task.FromResult(0));
-        var exitCode = await parser.InvokeAsync("job --repo invalid-no-slash --prompt p --read-token r");
-        Assert.AreEqual(2, exitCode);
-    }
 }
