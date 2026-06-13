@@ -1,5 +1,6 @@
 using Rix.Agents;
 using Rix.Job;
+using Rix.Process;
 using Rix.Repository;
 
 namespace Rix.Tests;
