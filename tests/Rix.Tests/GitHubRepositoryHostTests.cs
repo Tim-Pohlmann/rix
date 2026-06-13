@@ -7,8 +7,8 @@ namespace Rix.Tests;
 [TestClass]
 public class GitHubRepositoryHostTests
 {
-    private static readonly Func<string[], string, CancellationToken, Task<ProcessResult>> SuccessGitRunner =
-        (_, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
+    private static readonly Func<GitCommand, CancellationToken, Task<ProcessResult>> SuccessGitRunner =
+        (_, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
 
     private static readonly string[] ExpectedBundleArgs =
         ["bundle", "create", "/tmp/out/fix.bundle", "main..rix/fix"];
@@ -17,7 +17,7 @@ public class GitHubRepositoryHostTests
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string readToken = "read-tok",
-        Func<string[], string, CancellationToken, Task<ProcessResult>>? gitRunner = null) =>
+        Func<GitCommand, CancellationToken, Task<ProcessResult>>? gitRunner = null) =>
         new(
             new RepoIdentifier(repo),
             new ReadToken(readToken),
@@ -53,7 +53,7 @@ public class GitHubRepositoryHostTests
         var host = BuildHost(
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             readToken: "my-read-token",
-            gitRunner: (args, _, _) => { capturedArgs = args; return Task.FromResult<ProcessResult>(new ProcessSuccess()); });
+            gitRunner: (cmd, _) => { capturedArgs = cmd.Args; return Task.FromResult<ProcessResult>(new ProcessSuccess()); });
 
         await host.CloneAsync("/tmp/target", CancellationToken.None);
 
@@ -70,10 +70,10 @@ public class GitHubRepositoryHostTests
         string? capturedWorkingDir = null;
         var host = BuildHost(
             _ => new HttpResponseMessage(HttpStatusCode.OK),
-            gitRunner: (args, workingDir, _) =>
+            gitRunner: (cmd, _) =>
             {
-                capturedArgs = args;
-                capturedWorkingDir = workingDir;
+                capturedArgs = cmd.Args;
+                capturedWorkingDir = cmd.WorkingDirectory;
                 return Task.FromResult<ProcessResult>(new ProcessSuccess());
             });
 
@@ -90,7 +90,7 @@ public class GitHubRepositoryHostTests
     {
         var host = BuildHost(
             _ => new HttpResponseMessage(HttpStatusCode.OK),
-            gitRunner: (_, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
+            gitRunner: (_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
         var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => host.CreateBundleAsync("/tmp/clone", "/tmp/out/fix.bundle",
@@ -103,7 +103,7 @@ public class GitHubRepositoryHostTests
     {
         var host = BuildHost(
             _ => new HttpResponseMessage(HttpStatusCode.OK),
-            gitRunner: (_, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
+            gitRunner: (_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
         var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => host.CloneAsync("/tmp/target", CancellationToken.None));
