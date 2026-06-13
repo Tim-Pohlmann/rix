@@ -47,6 +47,79 @@ public class TypesTests
     }
 
     [TestMethod]
+    public void BranchName_DeserializeNonString_ThrowsJsonException()
+    {
+        Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<BranchName>("42"));
+    }
+
+    [TestMethod]
+    public void RixBranchName_SerializesAsString()
+    {
+        var json = JsonSerializer.Serialize(new RixBranchName("rix/fix"));
+        Assert.AreEqual("\"rix/fix\"", json);
+    }
+
+    [TestMethod]
+    public void RixBranchName_DeserializesFromString()
+    {
+        var branch = JsonSerializer.Deserialize<RixBranchName>("\"rix/fix\"");
+        Assert.AreEqual(new RixBranchName("rix/fix"), branch);
+    }
+
+    [TestMethod]
+    public void RixBranchName_DeserializeInvalidValue_ThrowsJsonException()
+    {
+        // ArgumentException from RixBranchName ctor should be wrapped as JsonException
+        Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<RixBranchName>("\"main\""));
+    }
+
+    [TestMethod]
+    public void RixBranchName_DeserializeNonString_ThrowsJsonException()
+    {
+        Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<RixBranchName>("42"));
+    }
+
+    [TestMethod]
+    public void PrTitle_SerializesAsString()
+    {
+        var json = JsonSerializer.Serialize(new PrTitle("Fix bug"));
+        Assert.AreEqual("\"Fix bug\"", json);
+    }
+
+    [TestMethod]
+    public void PrTitle_DeserializesFromString()
+    {
+        var title = JsonSerializer.Deserialize<PrTitle>("\"Fix bug\"");
+        Assert.AreEqual(new PrTitle("Fix bug"), title);
+    }
+
+    [TestMethod]
+    public void PrTitle_DeserializeNonString_ThrowsJsonException()
+    {
+        Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<PrTitle>("42"));
+    }
+
+    [TestMethod]
+    public void PrBody_SerializesAsString()
+    {
+        var json = JsonSerializer.Serialize(new PrBody("body text"));
+        Assert.AreEqual("\"body text\"", json);
+    }
+
+    [TestMethod]
+    public void PrBody_DeserializesFromString()
+    {
+        var body = JsonSerializer.Deserialize<PrBody>("\"body text\"");
+        Assert.AreEqual(new PrBody("body text"), body);
+    }
+
+    [TestMethod]
+    public void PrBody_DeserializeNonString_ThrowsJsonException()
+    {
+        Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<PrBody>("42"));
+    }
+
+    [TestMethod]
     public void JobSuccess_SerializesCorrectly()
     {
         var prs = new[] { new PendingPr(new RixBranchName("rix/fix"), new BranchName("main"), new PrTitle("Fix bug"), new PrBody("body"), "rix-fix.bundle") };
