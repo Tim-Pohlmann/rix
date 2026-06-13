@@ -41,31 +41,22 @@ internal static class JobRunner
             await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct);
 
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
-            var invocation = context.Agent.BuildInvocation(config, systemPrompt);
-
-            var agentResult = await context.RunProcess(
-                invocation.FileName,
-                invocation.Arguments,
-                cloneDir,
-                invocation.EnvironmentOverrides,
-                context.LogLine.Invoke,
-                ct);
+            var agentResult = await RunAgentAsync(config, context, systemPrompt, cloneDir, ct);
 
             if (agentResult is ProcessFailure agentFailure)
             {
                 stopwatch.Stop();
-                var failure = new JobFailure(
+                return new JobFailure(
                     $"agent failed: {agentFailure.Reason}",
                     CostUsd: 0m,
                     Duration: stopwatch.Elapsed);
-                return failure;
             }
 
             var costUsd = agentResult is ProcessSuccess { Output: { } resultLine }
                 ? context.Agent.ParseCost(resultLine) ?? 0m
                 : 0m;
 
-            var delivery = await DeliverQueuedPrsAsync(apiServer.QueuedPrRequests, config, context, cloneDir, ct);
+            var delivery = await BundlePendingPrsAsync(config, context, apiServer.QueuedPrRequests, cloneDir, ct);
 
             stopwatch.Stop();
 
@@ -84,16 +75,26 @@ internal static class JobRunner
         }
     }
 
+    /// <summary>Runs the coding agent in the cloned repo and returns its raw process result.</summary>
+    private static Task<ProcessResult> RunAgentAsync(
+        JobConfig config, JobContext context, string systemPrompt, string cloneDir, CancellationToken ct)
+    {
+        var invocation = context.Agent.BuildInvocation(config, systemPrompt);
+        return context.RunProcess(
+            invocation.FileName,
+            invocation.Arguments,
+            cloneDir,
+            invocation.EnvironmentOverrides,
+            context.LogLine.Invoke,
+            ct);
+    }
+
     /// <summary>Turns the agent's queued PR requests into deliverables. Today every PR is
     /// delivered as a git bundle written to <see cref="JobConfig.OutputDir"/>; isolating this here
     /// keeps <see cref="RunAsync"/> a readable orchestration and leaves room for a second delivery
     /// channel (e.g. direct push) to become an injected strategy later.</summary>
-    private static async Task<DeliveryOutcome> DeliverQueuedPrsAsync(
-        IReadOnlyList<QueuedPr> queuedPrs,
-        JobConfig config,
-        JobContext context,
-        string cloneDir,
-        CancellationToken cancellationToken)
+    private static async Task<DeliveryOutcome> BundlePendingPrsAsync(
+        JobConfig config, JobContext context, IEnumerable<QueuedPr> queuedPrs, string cloneDir, CancellationToken ct)
     {
         var pendingPrs = new List<PendingPr>();
         foreach (var req in queuedPrs)
@@ -108,7 +109,7 @@ internal static class JobRunner
                 cloneDir,
                 ProcessEnv.Inherited,
                 null,
-                cancellationToken);
+                ct);
 
             if (bundleResult is ProcessFailure)
                 return new DeliveryFailed(req.Branch.Value);
