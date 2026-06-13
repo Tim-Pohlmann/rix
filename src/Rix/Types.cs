@@ -48,53 +48,51 @@ internal record RixBranchName : BranchName
     }
 }
 
-internal sealed class BranchNameJsonConverter : JsonConverter<BranchName>
+/// <summary>
+/// Base converter for value objects that serialize as a single JSON string. Subclasses supply
+/// how to build the wrapper from a string and how to read the string back out. Construction-time
+/// validation (an <see cref="ArgumentException"/> from <see cref="Create"/>) is surfaced as a
+/// <see cref="JsonException"/> so malformed input fails as a parse error, not an unhandled throw.
+/// </summary>
+internal abstract class StringValueJsonConverter<T> : JsonConverter<T>
 {
-    public override BranchName Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        if (reader.TokenType != JsonTokenType.String)
-            throw new JsonException($"Expected string token for BranchName, got {reader.TokenType}");
-        return new(reader.GetString()!);
-    }
-    public override void Write(Utf8JsonWriter writer, BranchName value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.Value);
-}
+    protected abstract T Create(string value);
+    protected abstract string Extract(T value);
 
-internal sealed class RixBranchNameJsonConverter : JsonConverter<RixBranchName>
-{
-    public override RixBranchName Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType != JsonTokenType.String)
-            throw new JsonException($"Expected string token for RixBranchName, got {reader.TokenType}");
-        try { return new(reader.GetString()!); }
+            throw new JsonException($"Expected string token for {typeof(T).Name}, got {reader.TokenType}");
+        try { return Create(reader.GetString()!); }
         catch (ArgumentException ex) { throw new JsonException(ex.Message, ex); }
     }
-    public override void Write(Utf8JsonWriter writer, RixBranchName value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.Value);
+
+    public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
+        => writer.WriteStringValue(Extract(value));
 }
 
-internal sealed class PrTitleJsonConverter : JsonConverter<PrTitle>
+internal sealed class BranchNameJsonConverter : StringValueJsonConverter<BranchName>
 {
-    public override PrTitle Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        if (reader.TokenType != JsonTokenType.String)
-            throw new JsonException($"Expected string token for PrTitle, got {reader.TokenType}");
-        return new(reader.GetString()!);
-    }
-    public override void Write(Utf8JsonWriter writer, PrTitle value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.Value);
+    protected override BranchName Create(string value) => new(value);
+    protected override string Extract(BranchName value) => value.Value;
 }
 
-internal sealed class PrBodyJsonConverter : JsonConverter<PrBody>
+internal sealed class RixBranchNameJsonConverter : StringValueJsonConverter<RixBranchName>
 {
-    public override PrBody Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        if (reader.TokenType != JsonTokenType.String)
-            throw new JsonException($"Expected string token for PrBody, got {reader.TokenType}");
-        return new(reader.GetString()!);
-    }
-    public override void Write(Utf8JsonWriter writer, PrBody value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.Value);
+    protected override RixBranchName Create(string value) => new(value);
+    protected override string Extract(RixBranchName value) => value.Value;
+}
+
+internal sealed class PrTitleJsonConverter : StringValueJsonConverter<PrTitle>
+{
+    protected override PrTitle Create(string value) => new(value);
+    protected override string Extract(PrTitle value) => value.Value;
+}
+
+internal sealed class PrBodyJsonConverter : StringValueJsonConverter<PrBody>
+{
+    protected override PrBody Create(string value) => new(value);
+    protected override string Extract(PrBody value) => value.Value;
 }
 
 internal record QueuedPr(RixBranchName Branch, BranchName BaseBranch, PrTitle Title, PrBody Body);

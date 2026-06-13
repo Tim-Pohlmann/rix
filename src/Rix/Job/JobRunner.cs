@@ -49,59 +49,79 @@ internal static class JobRunner
             await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct);
 
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
-            var invocation = context.Agent.BuildInvocation(config, systemPrompt);
-
-            var agentResult = await context.RunProcess(
-                invocation.FileName,
-                invocation.Arguments,
-                cloneDir,
-                invocation.EnvironmentOverrides,
-                context.LogLine.Invoke,
-                ct);
+            var agentResult = await RunAgentAsync(config, context, systemPrompt, cloneDir, ct);
 
             if (agentResult is ProcessFailure agentFailure)
             {
                 stopwatch.Stop();
-                var failure = new JobFailure(
+                return new JobFailure(
                     $"agent failed: {agentFailure.Reason}",
                     CostUsd: 0m,
                     Duration: stopwatch.Elapsed);
-                return failure;
             }
 
             var costUsd = agentResult is ProcessSuccess { Output: { } resultLine }
                 ? context.Agent.ParseCost(resultLine) ?? 0m
                 : 0m;
 
-            var pendingPrs = new List<PendingPr>();
-            foreach (var req in apiServer.QueuedPrRequests)
-            {
-                var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
-                var bundleFile = $"{safeName}.bundle";
-                var bundlePath = Path.Combine(config.OutputDir, bundleFile);
-
-                try
-                {
-                    await context.Host.CreateBundleAsync(cloneDir, bundlePath, req.BaseBranch, req.Branch, ct);
-                }
-                catch (InvalidOperationException)
-                {
-                    stopwatch.Stop();
-                    return new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed);
-                }
-
-                pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
-            }
+            var (pendingPrs, failedBranch) =
+                await BundlePendingPrsAsync(config, context, apiServer.QueuedPrRequests, cloneDir, ct);
 
             stopwatch.Stop();
 
-            return new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
+            return failedBranch is not null
+                ? new JobFailure($"git bundle failed for branch {failedBranch}", CostUsd: costUsd, stopwatch.Elapsed)
+                : new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
         }
         finally
         {
             try { Directory.Delete(cloneDir, recursive: true); }
             catch (DirectoryNotFoundException) { /* already cleaned up */ }
         }
+    }
+
+    /// <summary>Runs the coding agent in the cloned repo and returns its raw process result.</summary>
+    private static Task<ProcessResult> RunAgentAsync(
+        JobConfig config, JobContext context, string systemPrompt, string cloneDir, CancellationToken ct)
+    {
+        var invocation = context.Agent.BuildInvocation(config, systemPrompt);
+        return context.RunProcess(
+            invocation.FileName,
+            invocation.Arguments,
+            cloneDir,
+            invocation.EnvironmentOverrides,
+            context.LogLine.Invoke,
+            ct);
+    }
+
+    /// <summary>
+    /// Creates a git bundle for each queued PR. Returns the bundled PRs, or — if a bundle
+    /// fails — the partial list plus the branch name that failed, so the caller can map it
+    /// to a <see cref="JobFailure"/> while preserving the accumulated cost.
+    /// </summary>
+    private static async Task<(List<PendingPr> Prs, string? FailedBranch)> BundlePendingPrsAsync(
+        JobConfig config, JobContext context, IEnumerable<QueuedPr> queuedPrs, string cloneDir, CancellationToken ct)
+    {
+        var pendingPrs = new List<PendingPr>();
+        foreach (var req in queuedPrs)
+        {
+            var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
+            var bundleFile = $"{safeName}.bundle";
+            var bundlePath = Path.Combine(config.OutputDir, bundleFile);
+
+            try
+            {
+                await context.Host.CreateBundleAsync(cloneDir, bundlePath, req.BaseBranch, req.Branch, ct);
+            }
+            catch (InvalidOperationException)
+            {
+                return (pendingPrs, req.Branch.Value);
+            }
+
+            pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
+        }
+
+        return (pendingPrs, null);
     }
 
     private static string BuildSystemPrompt(Uri apiBaseUrl) => $$"""
