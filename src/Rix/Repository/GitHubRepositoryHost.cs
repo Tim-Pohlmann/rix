@@ -1,34 +1,28 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Headers;
 using Rix.Process;
 
 namespace Rix.Repository;
-
-/// <summary>A single git invocation: its <paramref name="Args"/> and the
-/// <paramref name="WorkingDirectory"/> it runs in (a neutral temp dir for clone, the clone itself
-/// for bundle).</summary>
-internal sealed record GitCommand(string[] Args, string WorkingDirectory);
 
 internal sealed class GitHubRepositoryHost : IRepositoryHost
 {
     private readonly RepoIdentifier _repo;
     private readonly ReadToken _readToken;
     private readonly HttpClient _http;
-    private readonly Func<GitCommand, CancellationToken, Task<ProcessResult>> _gitRunner;
+    private readonly RunProcessAsync _runProcess;
 
-    internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken)
-        : this(repo, readToken, handler: null, gitRunner: null) { }
+    internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken, RunProcessAsync runProcess)
+        : this(repo, readToken, runProcess, handler: null) { }
 
     internal GitHubRepositoryHost(
         RepoIdentifier repo,
         ReadToken readToken,
-        HttpMessageHandler? handler,
-        Func<GitCommand, CancellationToken, Task<ProcessResult>>? gitRunner)
+        RunProcessAsync runProcess,
+        HttpMessageHandler? handler)
     {
         _repo = repo;
         _readToken = readToken;
         _http = BuildHttpClient(readToken, handler);
-        _gitRunner = gitRunner ?? DefaultGitRunner;
+        _runProcess = runProcess;
     }
 
     private static HttpClient BuildHttpClient(ReadToken token, HttpMessageHandler? handler)
@@ -42,11 +36,8 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-        RunGitAsync(
-            new GitCommand(
-                ["clone", $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Value}.git", targetDirectory],
-                WorkingDirectory: Path.GetTempPath()),
-            cancellationToken);
+        RunGitAsync(["clone", $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Value}.git", targetDirectory],
+            workingDirectory: Path.GetTempPath(), cancellationToken);
 
     public Task CreateBundleAsync(
         string repoDirectory,
@@ -54,11 +45,8 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         BranchName baseBranch,
         BranchName branch,
         CancellationToken cancellationToken) =>
-        RunGitAsync(
-            new GitCommand(
-                ["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
-                WorkingDirectory: repoDirectory),
-            cancellationToken);
+        RunGitAsync(["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
+            workingDirectory: repoDirectory, cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
@@ -70,18 +58,10 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return true;
     }
 
-    private async Task RunGitAsync(GitCommand command, CancellationToken cancellationToken)
+    private async Task RunGitAsync(string[] args, string workingDirectory, CancellationToken cancellationToken)
     {
-        var result = await _gitRunner(command, cancellationToken);
+        var result = await _runProcess("git", args, workingDirectory, ProcessEnv.Inherited, null, cancellationToken);
         if (result is ProcessFailure f)
-            throw new InvalidOperationException($"git {command.Args[0]} failed: {f.Reason}");
+            throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
     }
-
-    [ExcludeFromCodeCoverage]
-    private static Task<ProcessResult> DefaultGitRunner(GitCommand command, CancellationToken cancellationToken) =>
-        ProcessWrapper.RunAsync(
-            "git", command.Args,
-            workingDirectory: command.WorkingDirectory,
-            environmentOverrides: GitEnvironment.Current,
-            cancellationToken: cancellationToken);
 }

@@ -25,7 +25,7 @@ internal static class Startup
     /// <paramref name="config"/>.</summary>
     internal static JobContext DefaultContext(JobConfig config) =>
         new(
-            Host: new GitHubRepositoryHost(config.Repo, config.ReadToken),
+            Host: new GitHubRepositoryHost(config.Repo, config.ReadToken, DefaultRunProcess),
             RunProcess: DefaultRunProcess,
             Agent: new ClaudeAgent(),
             LogLine: Console.Error.WriteLine);
