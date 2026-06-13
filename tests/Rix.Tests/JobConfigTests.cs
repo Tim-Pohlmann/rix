@@ -55,9 +55,9 @@ public class JobConfigTests
     [DataRow("owner/repo/extra")]
     [DataRow("/repo")]
     [DataRow("owner/")]
-    public void RepoIdentifier_ThrowsOnInvalidFormat(string repo)
+    public void RepoIdentifier_FormatError_RejectsInvalidFormat(string repo)
     {
-        Assert.ThrowsExactly<ArgumentException>(() => new RepoIdentifier(repo));
+        Assert.IsNotNull(RepoIdentifier.FormatError(repo));
     }
 
     [TestMethod]
@@ -67,14 +67,14 @@ public class JobConfigTests
     [DataRow("owner/")]
     public void ValidationErrors_RejectsMalformedRepo(string repo)
     {
-        var errors = (ValidConfig() with { Repo = repo }).ValidationErrors;
+        var errors = (ValidConfig() with { Repo = new RepoIdentifier(repo) }).ValidationErrors;
         Assert.IsTrue(errors.Any(e => e.Contains("repo identifier")), $"expected a repo-format error, got: {string.Join("; ", errors)}");
     }
 
     [TestMethod]
     public void ValidationErrors_RejectsEmptyRepo()
     {
-        var errors = (ValidConfig() with { Repo = "" }).ValidationErrors;
+        var errors = (ValidConfig() with { Repo = new RepoIdentifier("") }).ValidationErrors;
         Assert.IsTrue(errors.Any(e => e.Contains("--repo is required")));
     }
 

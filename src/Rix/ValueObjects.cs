@@ -7,34 +7,18 @@ internal readonly record struct ReadToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 
-internal readonly record struct RepoIdentifier
+internal readonly record struct RepoIdentifier(string Value)
 {
-    internal string Value { get; }
-
-    internal RepoIdentifier(string value)
-    {
-        if (!TryCreate(value, out var result, out var error))
-            throw new ArgumentException(error, nameof(value));
-        Value = result.Value;
-    }
-
-    private RepoIdentifier(string value, bool _) => Value = value;
-
-    /// <summary>The single source of truth for the owner/name format rule. Returns
-    /// <c>false</c> with a human-readable <paramref name="error"/> instead of throwing,
-    /// so callers can surface malformed input as a validation error.</summary>
-    internal static bool TryCreate(string value, out RepoIdentifier result, out string? error)
+    /// <summary>The single source of truth for the owner/name format rule. Returns a
+    /// human-readable error message, or <c>null</c> when <paramref name="value"/> is well-formed.
+    /// Centralizing the check here lets <see cref="Rix.Job.JobConfig"/> surface a malformed repo
+    /// alongside its other validation errors instead of failing on construction.</summary>
+    internal static string? FormatError(string value)
     {
         var slash = value.IndexOf('/');
         if (slash <= 0 || slash == value.Length - 1 || value.IndexOf('/', slash + 1) >= 0)
-        {
-            result = default;
-            error = $"'{value}' is not a valid repo identifier; expected owner/name format.";
-            return false;
-        }
-        result = new RepoIdentifier(value, true);
-        error = null;
-        return true;
+            return $"'{value}' is not a valid repo identifier; expected owner/name format.";
+        return null;
     }
 
     public override string ToString() => Value;
