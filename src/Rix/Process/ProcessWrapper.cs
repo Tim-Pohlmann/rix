@@ -13,6 +13,29 @@ internal abstract record ProcessResult
 internal sealed record ProcessSuccess(string? Output = null) : ProcessResult;
 internal sealed record ProcessFailure(string Reason) : ProcessResult;
 
+/// <summary>The single side-effect seam for running a subprocess. Every part of a job — agent
+/// install, the agent run itself, and git operations — flows through one of these so effects stay
+/// in one place and can be stubbed in tests.</summary>
+internal delegate Task<ProcessResult> RunProcessAsync(
+    string fileName,
+    IEnumerable<string> arguments,
+    string workingDirectory,
+    IReadOnlyDictionary<string, string>? environmentOverrides,
+    Action<string>? onStdoutLine,
+    CancellationToken cancellationToken);
+
+internal static class ProcessEnv
+{
+    /// <summary>The host's <c>PATH</c> and <c>HOME</c> — the minimum a child CLI (git, npm) needs
+    /// to resolve executables and user config. Shared so the same environment is applied
+    /// everywhere a subprocess is launched with explicit overrides.</summary>
+    internal static readonly IReadOnlyDictionary<string, string> Inherited = new Dictionary<string, string>
+    {
+        ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
+        ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
+    };
+}
+
 internal static class ProcessWrapper
 {
     internal static async Task<ProcessResult> RunAsync(

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Headers;
 using Rix.Process;
 
@@ -9,21 +8,21 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     private readonly RepoIdentifier _repo;
     private readonly ReadToken _readToken;
     private readonly HttpClient _http;
-    private readonly Func<string[], string, CancellationToken, Task<ProcessResult>> _gitRunner;
+    private readonly RunProcessAsync _runProcess;
 
-    internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken)
-        : this(repo, readToken, handler: null, gitRunner: null) { }
+    internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken, RunProcessAsync runProcess)
+        : this(repo, readToken, runProcess, handler: null) { }
 
     internal GitHubRepositoryHost(
         RepoIdentifier repo,
         ReadToken readToken,
-        HttpMessageHandler? handler,
-        Func<string[], string, CancellationToken, Task<ProcessResult>>? gitRunner)
+        RunProcessAsync runProcess,
+        HttpMessageHandler? handler)
     {
         _repo = repo;
         _readToken = readToken;
         _http = BuildHttpClient(readToken, handler);
-        _gitRunner = gitRunner ?? DefaultGitRunner;
+        _runProcess = runProcess;
     }
 
     private static HttpClient BuildHttpClient(ReadToken token, HttpMessageHandler? handler)
@@ -61,16 +60,8 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
 
     private async Task RunGitAsync(string[] args, string workingDirectory, CancellationToken cancellationToken)
     {
-        var result = await _gitRunner(args, workingDirectory, cancellationToken);
+        var result = await _runProcess("git", args, workingDirectory, ProcessEnv.Inherited, null, cancellationToken);
         if (result is ProcessFailure f)
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
     }
-
-    [ExcludeFromCodeCoverage]
-    private static Task<ProcessResult> DefaultGitRunner(string[] args, string workingDirectory, CancellationToken cancellationToken) =>
-        ProcessWrapper.RunAsync(
-            "git", args,
-            workingDirectory: workingDirectory,
-            environmentOverrides: GitEnvironment.Current,
-            cancellationToken: cancellationToken);
 }

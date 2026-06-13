@@ -13,14 +13,6 @@ namespace Rix.Job;
 [JsonSerializable(typeof(PendingPr))]
 internal partial class JobJsonContext : JsonSerializerContext { }
 
-internal delegate Task<ProcessResult> RunProcessAsync(
-    string fileName,
-    IEnumerable<string> arguments,
-    string workingDirectory,
-    IReadOnlyDictionary<string, string>? environmentOverrides,
-    Action<string>? onStdoutLine,
-    CancellationToken cancellationToken);
-
 internal static class JobRunner
 {
     internal static async Task<IJobResult> RunAsync(
