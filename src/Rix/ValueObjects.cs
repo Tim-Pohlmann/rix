@@ -11,7 +11,10 @@ internal readonly record struct TimeoutMinutes(int Value);
 /// <summary>The outcome of parsing raw text into a strongly-typed value: either the parsed
 /// <see cref="ParseSuccess{T}"/> or a human-readable <see cref="ParseError{T}"/>. Pattern-matched at
 /// the validation boundary so malformed input becomes a collectable error rather than a thrown
-/// exception or an invalid instance.</summary>
+/// exception or an invalid instance. <typeparamref name="T"/> is unused in this base (Sonar S2326,
+/// accepted) — it exists only so the success and error cases share one generic union.</summary>
+[SuppressMessage("Major Code Smell", "S2326:Unused type parameters should be removed",
+    Justification = "T parameterises the success/error cases that derive from this union root.")]
 internal abstract record ParseResult<T>
 {
     private protected ParseResult() { }
