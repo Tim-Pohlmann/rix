@@ -61,11 +61,12 @@ internal record JobConfig(
         else if (!Directory.Exists(resolvedOutputDir))
             errors.Add($"--output-dir does not exist: {resolvedOutputDir}");
 
-        if (errors.Count > 0 || parsedRepo is not { } validRepo)
+        if (errors.Count > 0)
             return new JobConfigInvalid(errors);
 
+        // parsedRepo is non-null here: a blank or malformed repo would have added an error above.
         return new JobConfigValid(new JobConfig(
-            Repo: validRepo,
+            Repo: parsedRepo!.Value,
             Prompt: prompt,
             ReadToken: new ReadToken(readToken),
             MaxTokens: new MaxTokens(resolvedMaxTokens),
