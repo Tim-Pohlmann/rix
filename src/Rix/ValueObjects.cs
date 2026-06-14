@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -7,18 +8,23 @@ internal readonly record struct ReadToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 
-/// <summary>The outcome of parsing raw text into a <see cref="RepoIdentifier"/>: either the parsed
-/// value (<see cref="ParsedRepo"/>) or a human-readable error (<see cref="RepoParseError"/>).
-/// Pattern-matched at the validation boundary so a malformed input becomes a collectable error
-/// rather than a thrown exception.</summary>
-internal abstract record RepoParseResult
+/// <summary>The outcome of parsing raw text into a strongly-typed value: either the parsed
+/// <see cref="ParseSuccess{T}"/> or a human-readable <see cref="ParseError{T}"/>. Pattern-matched at
+/// the validation boundary so malformed input becomes a collectable error rather than a thrown
+/// exception or an invalid instance.</summary>
+internal abstract record ParseResult<T>
 {
-    private protected RepoParseResult() { }
+    private protected ParseResult() { }
 }
 
-internal sealed record ParsedRepo(RepoIdentifier Value) : RepoParseResult;
+internal sealed record ParseSuccess<T>(T Value) : ParseResult<T>;
 
-internal sealed record RepoParseError(string Error) : RepoParseResult;
+/// <summary>The failure case carries only a message; <typeparamref name="T"/> exists purely to keep
+/// it in the same union as <see cref="ParseSuccess{T}"/> so callers can switch over one type. The
+/// resulting "unused type parameter" smell (Sonar S2326) is accepted by design.</summary>
+[SuppressMessage("Major Code Smell", "S2326:Unused type parameters should be removed",
+    Justification = "T keeps the error case in the same ParseResult<T> union as the success case.")]
+internal sealed record ParseError<T>(string Error) : ParseResult<T>;
 
 /// <summary>A validated GitHub <c>owner/name</c> identifier. There is no public constructor: an
 /// instance can only be obtained through <see cref="Parse"/>, so any <c>RepoIdentifier</c> that
@@ -31,15 +37,34 @@ internal sealed record RepoIdentifier
     private RepoIdentifier(string value) => Value = value;
 
     /// <summary>The single source of truth for the owner/name format rule. Returns a
-    /// <see cref="RepoParseError"/> for malformed input instead of constructing an invalid instance,
+    /// <see cref="ParseError{T}"/> for malformed input instead of constructing an invalid instance,
     /// so callers can aggregate it with other validation errors.</summary>
-    internal static RepoParseResult Parse(string value)
+    internal static ParseResult<RepoIdentifier> Parse(string value)
     {
         var slash = value.IndexOf('/');
         if (slash <= 0 || slash == value.Length - 1 || value.IndexOf('/', slash + 1) >= 0)
-            return new RepoParseError($"'{value}' is not a valid repo identifier; expected owner/name format.");
-        return new ParsedRepo(new RepoIdentifier(value));
+            return new ParseError<RepoIdentifier>($"'{value}' is not a valid repo identifier; expected owner/name format.");
+        return new ParseSuccess<RepoIdentifier>(new RepoIdentifier(value));
     }
+
+    public override string ToString() => Value;
+}
+
+/// <summary>A directory path that is guaranteed to exist as of <see cref="Parse"/>-time. There is no
+/// public constructor: an instance can only be obtained through <see cref="Parse"/>, so any
+/// <c>DirectoryPath</c> that exists references a directory that existed when it was validated.</summary>
+internal sealed record DirectoryPath
+{
+    internal string Value { get; }
+
+    private DirectoryPath(string value) => Value = value;
+
+    /// <summary>Returns a <see cref="ParseError{T}"/> when the path does not point at an existing
+    /// directory, so callers can aggregate it with other validation errors.</summary>
+    internal static ParseResult<DirectoryPath> Parse(string path) =>
+        Directory.Exists(path)
+            ? new ParseSuccess<DirectoryPath>(new DirectoryPath(path))
+            : new ParseError<DirectoryPath>($"directory does not exist: {path}");
 
     public override string ToString() => Value;
 }

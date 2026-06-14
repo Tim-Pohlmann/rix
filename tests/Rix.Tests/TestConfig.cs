@@ -24,8 +24,8 @@ internal static class TestConfig
 
     internal static RepoIdentifier Repo(string value) => RepoIdentifier.Parse(value) switch
     {
-        ParsedRepo p => p.Value,
-        RepoParseError e => throw new AssertFailedException($"invalid repo in test: {e.Error}"),
+        ParseSuccess<RepoIdentifier> p => p.Value,
+        ParseError<RepoIdentifier> e => throw new AssertFailedException($"invalid repo in test: {e.Error}"),
         var other => throw new AssertFailedException($"unexpected result: {other}"),
     };
 }

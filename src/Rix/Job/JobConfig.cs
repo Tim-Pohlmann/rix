@@ -7,8 +7,8 @@ internal record JobConfig
     internal ReadToken ReadToken { get; }
     internal MaxTokens MaxTokens { get; }
     internal TimeoutMinutes TimeoutMinutes { get; }
-    internal string WorkDir { get; }
-    internal string OutputDir { get; }
+    internal DirectoryPath WorkDir { get; }
+    internal DirectoryPath OutputDir { get; }
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
@@ -21,8 +21,8 @@ internal record JobConfig
         ReadToken readToken,
         MaxTokens maxTokens,
         TimeoutMinutes timeoutMinutes,
-        string workDir,
-        string outputDir)
+        DirectoryPath workDir,
+        DirectoryPath outputDir)
     {
         Repo = repo;
         Prompt = prompt;
@@ -48,15 +48,26 @@ internal record JobConfig
     {
         var errors = new List<string>();
 
+        // Unwraps a parse result, recording its message (prefixed with the flag) on failure so all
+        // validation errors accumulate in one pass. Centralises the success/error/fail-safe handling.
+        T? Collect<T>(ParseResult<T> result, string flag) where T : class => result switch
+        {
+            ParseSuccess<T> ok => ok.Value,
+            ParseError<T> bad => Fail<T>($"{flag}: {bad.Error}"),
+            var other => Fail<T>($"{flag}: could not be parsed ({other.GetType().Name})"),
+        };
+
+        T? Fail<T>(string error) where T : class
+        {
+            errors.Add(error);
+            return null;
+        }
+
         RepoIdentifier? parsedRepo = null;
         if (string.IsNullOrWhiteSpace(repo))
             errors.Add("--repo is required");
-        else switch (RepoIdentifier.Parse(repo))
-        {
-            case ParsedRepo ok: parsedRepo = ok.Value; break;
-            case RepoParseError bad: errors.Add($"--repo: {bad.Error}"); break;
-            case var other: errors.Add($"--repo: could not be parsed ({other.GetType().Name})"); break;
-        }
+        else
+            parsedRepo = Collect(RepoIdentifier.Parse(repo), "--repo");
 
         if (string.IsNullOrWhiteSpace(prompt))
             errors.Add("--prompt is required");
@@ -73,27 +84,26 @@ internal record JobConfig
             errors.Add("--timeout must be a positive integer");
 
         var resolvedWorkDir = string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir;
-        if (!Directory.Exists(resolvedWorkDir))
-            errors.Add($"--work-dir does not exist: {resolvedWorkDir}");
+        var parsedWorkDir = Collect(DirectoryPath.Parse(resolvedWorkDir), "--work-dir");
 
-        var resolvedOutputDir = outputDir ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(resolvedOutputDir))
+        DirectoryPath? parsedOutputDir = null;
+        if (string.IsNullOrWhiteSpace(outputDir))
             errors.Add("--output-dir is required");
-        else if (!Directory.Exists(resolvedOutputDir))
-            errors.Add($"--output-dir does not exist: {resolvedOutputDir}");
+        else
+            parsedOutputDir = Collect(DirectoryPath.Parse(outputDir), "--output-dir");
 
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
 
-        // parsedRepo is non-null here: a blank or malformed repo would have added an error above.
+        // Non-null here: any blank or unparseable input would have added an error above.
         return new JobConfigValid(new JobConfig(
             repo: parsedRepo!,
             prompt: prompt,
             readToken: new ReadToken(readToken),
             maxTokens: new MaxTokens(resolvedMaxTokens),
             timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
-            workDir: resolvedWorkDir,
-            outputDir: resolvedOutputDir));
+            workDir: parsedWorkDir!,
+            outputDir: parsedOutputDir!));
     }
 }
 

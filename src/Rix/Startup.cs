@@ -64,7 +64,7 @@ internal static class Startup
         Console.WriteLine(json);
 
         if (result is JobSuccess)
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), json, cancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, cancellationToken);
 
         return result switch
         {

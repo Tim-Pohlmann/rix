@@ -37,7 +37,7 @@ public class JobConfigTests
 
         Assert.AreEqual(JobConfig.DefaultMaxTokens, config.MaxTokens.Value);
         Assert.AreEqual(JobConfig.DefaultTimeoutMinutes, config.TimeoutMinutes.Value);
-        Assert.AreEqual(Path.GetTempPath(), config.WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), config.WorkDir.Value);
     }
 
     [TestMethod]
@@ -69,13 +69,13 @@ public class JobConfigTests
     [DataRow("owner/")]
     public void RepoIdentifier_Parse_RejectsInvalidFormat(string repo)
     {
-        Assert.IsInstanceOfType<RepoParseError>(RepoIdentifier.Parse(repo));
+        Assert.IsInstanceOfType<ParseError<RepoIdentifier>>(RepoIdentifier.Parse(repo));
     }
 
     [TestMethod]
     public void RepoIdentifier_Parse_AcceptsOwnerSlashRepo()
     {
-        Assert.IsInstanceOfType<ParsedRepo>(RepoIdentifier.Parse("owner/repo"));
+        Assert.IsInstanceOfType<ParseSuccess<RepoIdentifier>>(RepoIdentifier.Parse("owner/repo"));
     }
 
     [TestMethod]
@@ -147,8 +147,8 @@ public class JobConfigTests
     [TestMethod]
     public void Create_DefaultsWorkDirToTemp_WhenNullOrWhitespace()
     {
-        Assert.AreEqual(Path.GetTempPath(), Valid(Create(workDir: null)).WorkDir);
-        Assert.AreEqual(Path.GetTempPath(), Valid(Create(workDir: "")).WorkDir);
-        Assert.AreEqual(Path.GetTempPath(), Valid(Create(workDir: "   ")).WorkDir);
+        Assert.AreEqual(Path.GetTempPath(), Valid(Create(workDir: null)).WorkDir.Value);
+        Assert.AreEqual(Path.GetTempPath(), Valid(Create(workDir: "")).WorkDir.Value);
+        Assert.AreEqual(Path.GetTempPath(), Valid(Create(workDir: "   ")).WorkDir.Value);
     }
 }
