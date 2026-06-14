@@ -69,13 +69,13 @@ public class JobConfigTests
     [DataRow("owner/")]
     public void RepoIdentifier_Parse_RejectsInvalidFormat(string repo)
     {
-        Assert.IsInstanceOfType<ParseError<RepoIdentifier>>(RepoIdentifier.Parse(repo));
+        Assert.IsInstanceOfType<RepoParseError>(RepoIdentifier.Parse(repo));
     }
 
     [TestMethod]
-    public void RepoIdentifier_Parse_AcceptsOwnerName()
+    public void RepoIdentifier_Parse_AcceptsOwnerSlashRepo()
     {
-        Assert.IsInstanceOfType<Parsed<RepoIdentifier>>(RepoIdentifier.Parse("owner/repo"));
+        Assert.IsInstanceOfType<ParsedRepo>(RepoIdentifier.Parse("owner/repo"));
     }
 
     [TestMethod]

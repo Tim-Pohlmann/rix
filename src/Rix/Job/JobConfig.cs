@@ -1,17 +1,37 @@
 namespace Rix.Job;
 
-internal record JobConfig(
-    RepoIdentifier Repo,
-    string Prompt,
-    ReadToken ReadToken,
-    MaxTokens MaxTokens,
-    TimeoutMinutes TimeoutMinutes,
-    string WorkDir,
-    string OutputDir
-)
+internal record JobConfig
 {
+    internal RepoIdentifier Repo { get; }
+    internal string Prompt { get; }
+    internal ReadToken ReadToken { get; }
+    internal MaxTokens MaxTokens { get; }
+    internal TimeoutMinutes TimeoutMinutes { get; }
+    internal string WorkDir { get; }
+    internal string OutputDir { get; }
+
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
+
+    /// <summary>Private so a <see cref="JobConfig"/> can only be produced by <see cref="Create"/>,
+    /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
+    private JobConfig(
+        RepoIdentifier repo,
+        string prompt,
+        ReadToken readToken,
+        MaxTokens maxTokens,
+        TimeoutMinutes timeoutMinutes,
+        string workDir,
+        string outputDir)
+    {
+        Repo = repo;
+        Prompt = prompt;
+        ReadToken = readToken;
+        MaxTokens = maxTokens;
+        TimeoutMinutes = timeoutMinutes;
+        WorkDir = workDir;
+        OutputDir = outputDir;
+    }
 
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
     /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
@@ -33,8 +53,8 @@ internal record JobConfig(
             errors.Add("--repo is required");
         else switch (RepoIdentifier.Parse(repo))
         {
-            case Parsed<RepoIdentifier> ok: parsedRepo = ok.Value; break;
-            case ParseError<RepoIdentifier> bad: errors.Add(bad.Error); break;
+            case ParsedRepo ok: parsedRepo = ok.Value; break;
+            case RepoParseError bad: errors.Add($"--repo: {bad.Error}"); break;
         }
 
         if (string.IsNullOrWhiteSpace(prompt))
@@ -62,23 +82,26 @@ internal record JobConfig(
             errors.Add($"--output-dir does not exist: {resolvedOutputDir}");
 
         if (errors.Count > 0)
-            return new JobConfigInvalid(errors);
+            return new JobConfigInvalid([.. errors]);
 
         // parsedRepo is non-null here: a blank or malformed repo would have added an error above.
         return new JobConfigValid(new JobConfig(
-            Repo: parsedRepo!.Value,
-            Prompt: prompt,
-            ReadToken: new ReadToken(readToken),
-            MaxTokens: new MaxTokens(resolvedMaxTokens),
-            TimeoutMinutes: new TimeoutMinutes(resolvedTimeout),
-            WorkDir: resolvedWorkDir,
-            OutputDir: resolvedOutputDir));
+            repo: parsedRepo!.Value,
+            prompt: prompt,
+            readToken: new ReadToken(readToken),
+            maxTokens: new MaxTokens(resolvedMaxTokens),
+            timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
+            workDir: resolvedWorkDir,
+            outputDir: resolvedOutputDir));
     }
 }
 
 /// <summary>The result of <see cref="JobConfig.Create"/>: a validated config or the list of
 /// reasons it was rejected. Pattern-matched by callers; never cast.</summary>
-internal abstract record JobConfigResult;
+internal abstract record JobConfigResult
+{
+    private protected JobConfigResult() { }
+}
 
 internal sealed record JobConfigValid(JobConfig Config) : JobConfigResult;
 

@@ -78,6 +78,8 @@ internal static class JobCommand
                         Console.Error.WriteLine($"error: {error}");
                     ctx.ExitCode = ExitCodes.SetupFailed;
                     break;
+                default:
+                    throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
             }
         });
 

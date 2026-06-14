@@ -58,7 +58,8 @@ public class JobCommandTests
 
         using var env = new EnvScope();
         env.Set("RIX_REPO", "env/repo");
-        await parser.InvokeAsync($"job --repo flag/repo --prompt p --read-token r --output-dir {Path.GetTempPath()}");
+        await parser.InvokeAsync(
+            ["job", "--repo", "flag/repo", "--prompt", "p", "--read-token", "r", "--output-dir", Path.GetTempPath()]);
 
         Assert.IsNotNull(captured);
         Assert.AreEqual("flag/repo", captured.Repo.ToString());

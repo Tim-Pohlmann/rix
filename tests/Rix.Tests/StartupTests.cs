@@ -31,7 +31,8 @@ public class StartupTests
     public async Task RunJobAsync_Returns2_WhenRepoFormatIsInvalid()
     {
         var exitCode = await Startup.RunAsync(
-            ["job", "--repo", "invalid-no-slash", "--prompt", "p", "--read-token", "r"]);
+            ["job", "--repo", "invalid-no-slash", "--prompt", "p", "--read-token", "r",
+             "--output-dir", Path.GetTempPath()]);
         Assert.AreEqual(2, exitCode);
     }
 
