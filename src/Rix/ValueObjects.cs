@@ -24,7 +24,7 @@ internal sealed record RepoParseError(string Error) : RepoParseResult;
 /// instance can only be obtained through <see cref="Parse"/>, so any <c>RepoIdentifier</c> that
 /// exists is guaranteed well-formed. Raw, not-yet-validated input is carried as a plain
 /// <c>string</c> until <see cref="Rix.Job.JobConfig.Create"/> parses it.</summary>
-internal readonly record struct RepoIdentifier
+internal sealed record RepoIdentifier
 {
     internal string Value { get; }
 

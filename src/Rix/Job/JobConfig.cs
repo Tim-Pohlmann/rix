@@ -87,7 +87,7 @@ internal record JobConfig
 
         // parsedRepo is non-null here: a blank or malformed repo would have added an error above.
         return new JobConfigValid(new JobConfig(
-            repo: parsedRepo!.Value,
+            repo: parsedRepo!,
             prompt: prompt,
             readToken: new ReadToken(readToken),
             maxTokens: new MaxTokens(resolvedMaxTokens),
