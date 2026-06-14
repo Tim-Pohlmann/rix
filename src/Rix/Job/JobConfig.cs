@@ -55,6 +55,7 @@ internal record JobConfig
         {
             case ParsedRepo ok: parsedRepo = ok.Value; break;
             case RepoParseError bad: errors.Add($"--repo: {bad.Error}"); break;
+            case var other: errors.Add($"--repo: could not be parsed ({other.GetType().Name})"); break;
         }
 
         if (string.IsNullOrWhiteSpace(prompt))
