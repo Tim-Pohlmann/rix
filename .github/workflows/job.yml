@@ -1,0 +1,105 @@
+name: Rix Job
+
+# Reusable workflow: run `rix job` against a target repo and turn its output into PRs.
+# Other repos call it with a tiny caller workflow (see README "Run via GitHub Actions").
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: Target GitHub repo (owner/name)
+        required: true
+        type: string
+      prompt:
+        description: Task prompt for the coding agent
+        required: true
+        type: string
+      rix-version:
+        description: Rix release tag to download (default: latest)
+        required: false
+        type: string
+        default: latest
+      max-tokens:
+        description: Coding agent token budget cap
+        required: false
+        type: number
+      timeout:
+        description: Wall-clock timeout in minutes
+        required: false
+        type: number
+    secrets:
+      read-token:
+        description: GitHub PAT with read access to the target repo (used to clone)
+        required: true
+      write-token:
+        description: GitHub PAT with contents:write + pull-requests:write on the target repo
+        required: true
+      anthropic-api-key:
+        description: Credentials for the claude CLI
+        required: true
+
+# Rix lives in this repo; consumers reference it as
+# Tim-Pohlmann/rix/.github/workflows/job.yml@main. Adjust if the repo moves.
+env:
+  RIX_REPO_SLUG: Tim-Pohlmann/rix
+
+jobs:
+  run:
+    name: Run rix job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Node (for the claude CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download rix binary
+        env:
+          GH_TOKEN: ${{ secrets.read-token }}
+          VERSION: ${{ inputs.rix-version }}
+        run: |
+          tag_args=()
+          if [[ "$VERSION" != "latest" ]]; then
+            tag_args=("$VERSION")
+          fi
+          gh release download "${tag_args[@]}" \
+            -R "$RIX_REPO_SLUG" \
+            -p 'rix-*-linux-x64.tar.gz' \
+            -O rix.tar.gz
+          mkdir -p rix-bin
+          tar -xzf rix.tar.gz -C rix-bin
+          chmod +x rix-bin/rix
+
+      - name: Run rix job
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic-api-key }}
+          RIX_READ_TOKEN: ${{ secrets.read-token }}
+          RIX_REPO: ${{ inputs.repo }}
+          RIX_PROMPT: ${{ inputs.prompt }}
+          RIX_MAX_TOKENS: ${{ inputs.max-tokens }}
+          RIX_TIMEOUT: ${{ inputs.timeout }}
+        run: |
+          mkdir -p out work
+          ./rix-bin/rix job --output-dir out --work-dir work
+
+      - name: Upload job output
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-output
+          path: out/
+
+  create-pr:
+    name: Create PRs
+    needs: run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout rix (for scripts)
+        uses: actions/checkout@v4
+
+      - name: Download job output
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-output
+          path: out
+
+      - name: Create PRs from bundles
+        run: .github/scripts/create-prs.sh out "${{ inputs.repo }}" "${{ secrets.write-token }}"
