@@ -30,12 +30,12 @@ internal static class JobCommand
         description: $"Wall-clock timeout in minutes (default: {JobConfig.DefaultTimeoutMinutes})")
     { IsRequired = false };
 
-    private static readonly Option<string?> WorkDirOption = new(
+    private static readonly Option<string> WorkDirOption = new(
         name: "--work-dir",
         description: "Base directory for the temp clone (default: system temp)")
     { IsRequired = false };
 
-    private static readonly Option<string?> OutputDirOption = new(
+    private static readonly Option<string> OutputDirOption = new(
         name: "--output-dir",
         description: "Directory where result.json and git bundles are written")
     { IsRequired = false };
@@ -65,10 +65,8 @@ internal static class JobCommand
                 readToken:      Str(ReadTokenOption, "RIX_READ_TOKEN"),
                 maxTokens:      Int(MaxTokensOption, "RIX_MAX_TOKENS"),
                 timeoutMinutes: Int(TimeoutOption,   "RIX_TIMEOUT"),
-                workDir:        ctx.ParseResult.GetValueForOption(WorkDirOption)
-                                ?? Environment.GetEnvironmentVariable("RIX_WORK_DIR"),
-                outputDir:      ctx.ParseResult.GetValueForOption(OutputDirOption)
-                                ?? Environment.GetEnvironmentVariable("RIX_OUTPUT_DIR"));
+                workDir:        Str(WorkDirOption,   "RIX_WORK_DIR"),
+                outputDir:      Str(OutputDirOption, "RIX_OUTPUT_DIR"));
 
             ctx.ExitCode = await handler(config);
         });
