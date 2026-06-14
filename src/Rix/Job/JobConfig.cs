@@ -13,64 +13,72 @@ internal record JobConfig(
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
 
-    internal static JobConfig FromInputs(
+    /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
+    /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
+    /// collected, so a <see cref="JobConfigValid"/> is produced only when the whole configuration is
+    /// well-formed — business logic downstream never sees an invalid value.</summary>
+    internal static JobConfigResult Create(
         string repo,
         string prompt,
         string readToken,
         int? maxTokens,
         int? timeoutMinutes,
         string? workDir,
-        string? outputDir) =>
-        new(
-            Repo: new RepoIdentifier(repo),
+        string? outputDir)
+    {
+        var errors = new List<string>();
+
+        RepoIdentifier? parsedRepo = null;
+        if (string.IsNullOrWhiteSpace(repo))
+            errors.Add("--repo is required");
+        else switch (RepoIdentifier.Parse(repo))
+        {
+            case Parsed<RepoIdentifier> ok: parsedRepo = ok.Value; break;
+            case ParseError<RepoIdentifier> bad: errors.Add(bad.Error); break;
+        }
+
+        if (string.IsNullOrWhiteSpace(prompt))
+            errors.Add("--prompt is required");
+
+        if (string.IsNullOrWhiteSpace(readToken))
+            errors.Add("--read-token is required");
+
+        var resolvedMaxTokens = maxTokens ?? DefaultMaxTokens;
+        if (resolvedMaxTokens <= 0)
+            errors.Add("--max-tokens must be a positive integer");
+
+        var resolvedTimeout = timeoutMinutes ?? DefaultTimeoutMinutes;
+        if (resolvedTimeout <= 0)
+            errors.Add("--timeout must be a positive integer");
+
+        var resolvedWorkDir = string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir;
+        if (!Directory.Exists(resolvedWorkDir))
+            errors.Add($"--work-dir does not exist: {resolvedWorkDir}");
+
+        var resolvedOutputDir = outputDir ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(resolvedOutputDir))
+            errors.Add("--output-dir is required");
+        else if (!Directory.Exists(resolvedOutputDir))
+            errors.Add($"--output-dir does not exist: {resolvedOutputDir}");
+
+        if (errors.Count > 0 || parsedRepo is not { } validRepo)
+            return new JobConfigInvalid(errors);
+
+        return new JobConfigValid(new JobConfig(
+            Repo: validRepo,
             Prompt: prompt,
             ReadToken: new ReadToken(readToken),
-            MaxTokens: new MaxTokens(maxTokens ?? DefaultMaxTokens),
-            TimeoutMinutes: new TimeoutMinutes(timeoutMinutes ?? DefaultTimeoutMinutes),
-            WorkDir: string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir,
-            OutputDir: outputDir ?? string.Empty
-        );
-}
-
-internal static class JobConfigExtensions
-{
-    extension(JobConfig config)
-    {
-        public IReadOnlyList<string> ValidationErrors
-        {
-            get
-            {
-                var errors = new List<string>();
-
-                if (string.IsNullOrWhiteSpace(config.Repo.Value))
-                    errors.Add("--repo is required");
-                else if (RepoIdentifier.FormatError(config.Repo.Value) is { } repoError)
-                    errors.Add(repoError);
-
-                if (string.IsNullOrWhiteSpace(config.Prompt))
-                    errors.Add("--prompt is required");
-
-                if (string.IsNullOrWhiteSpace(config.ReadToken.Value))
-                    errors.Add("--read-token is required");
-
-                if (config.MaxTokens.Value <= 0)
-                    errors.Add("--max-tokens must be a positive integer");
-
-                if (config.TimeoutMinutes.Value <= 0)
-                    errors.Add("--timeout must be a positive integer");
-
-                if (string.IsNullOrWhiteSpace(config.WorkDir))
-                    errors.Add("--work-dir must not be empty");
-                else if (!Directory.Exists(config.WorkDir))
-                    errors.Add($"--work-dir does not exist: {config.WorkDir}");
-
-                if (string.IsNullOrWhiteSpace(config.OutputDir))
-                    errors.Add("--output-dir is required");
-                else if (!Directory.Exists(config.OutputDir))
-                    errors.Add($"--output-dir does not exist: {config.OutputDir}");
-
-                return errors;
-            }
-        }
+            MaxTokens: new MaxTokens(resolvedMaxTokens),
+            TimeoutMinutes: new TimeoutMinutes(resolvedTimeout),
+            WorkDir: resolvedWorkDir,
+            OutputDir: resolvedOutputDir));
     }
 }
+
+/// <summary>The result of <see cref="JobConfig.Create"/>: a validated config or the list of
+/// reasons it was rejected. Pattern-matched by callers; never cast.</summary>
+internal abstract record JobConfigResult;
+
+internal sealed record JobConfigValid(JobConfig Config) : JobConfigResult;
+
+internal sealed record JobConfigInvalid(IReadOnlyList<string> Errors) : JobConfigResult;

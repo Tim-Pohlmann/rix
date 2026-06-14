@@ -7,18 +7,35 @@ internal readonly record struct ReadToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 
-internal readonly record struct RepoIdentifier(string Value)
+/// <summary>The outcome of parsing raw text into a <typeparamref name="T"/> value object: either
+/// the parsed value (<see cref="Parsed{T}"/>) or a human-readable error (<see cref="ParseError{T}"/>).
+/// Pattern-matched at the validation boundary so a malformed input becomes a collectable error
+/// rather than a thrown exception.</summary>
+internal abstract record ParseResult<T>;
+
+internal sealed record Parsed<T>(T Value) : ParseResult<T>;
+
+internal sealed record ParseError<T>(string Error) : ParseResult<T>;
+
+/// <summary>A validated GitHub <c>owner/name</c> identifier. There is no public constructor: an
+/// instance can only be obtained through <see cref="Parse"/>, so any <c>RepoIdentifier</c> that
+/// exists is guaranteed well-formed. Raw, not-yet-validated input is carried as a plain
+/// <c>string</c> until <see cref="Rix.Job.JobConfig.Create"/> parses it.</summary>
+internal readonly record struct RepoIdentifier
 {
+    internal string Value { get; }
+
+    private RepoIdentifier(string value) => Value = value;
+
     /// <summary>The single source of truth for the owner/name format rule. Returns a
-    /// human-readable error message, or <c>null</c> when <paramref name="value"/> is well-formed.
-    /// Centralizing the check here lets <see cref="Rix.Job.JobConfig"/> surface a malformed repo
-    /// alongside its other validation errors instead of failing on construction.</summary>
-    internal static string? FormatError(string value)
+    /// <see cref="ParseError{T}"/> for malformed input instead of constructing an invalid instance,
+    /// so callers can aggregate it with other validation errors.</summary>
+    internal static ParseResult<RepoIdentifier> Parse(string value)
     {
         var slash = value.IndexOf('/');
         if (slash <= 0 || slash == value.Length - 1 || value.IndexOf('/', slash + 1) >= 0)
-            return $"'{value}' is not a valid repo identifier; expected owner/name format.";
-        return null;
+            return new ParseError<RepoIdentifier>($"'{value}' is not a valid repo identifier; expected owner/name format.");
+        return new Parsed<RepoIdentifier>(new RepoIdentifier(value));
     }
 
     public override string ToString() => Value;

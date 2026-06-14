@@ -50,12 +50,7 @@ public class StartupTests
     [TestMethod]
     public void DefaultContext_UsesGitHubHostAndDefaultRunProcess()
     {
-        var config = JobConfig.FromInputs(
-            repo: "owner/repo", prompt: "do it", readToken: "tok",
-            maxTokens: null, timeoutMinutes: null,
-            workDir: Path.GetTempPath(), outputDir: Path.GetTempPath());
-
-        var context = Startup.DefaultContext(config);
+        var context = Startup.DefaultContext(TestConfig.Valid());
 
         Assert.IsInstanceOfType<GitHubRepositoryHost>(context.Host);
         Assert.AreSame(Startup.DefaultRunProcess, context.RunProcess);

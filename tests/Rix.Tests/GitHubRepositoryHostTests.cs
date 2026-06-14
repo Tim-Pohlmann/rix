@@ -16,7 +16,7 @@ public class GitHubRepositoryHostTests
         string readToken = "read-tok",
         RunProcessAsync? gitRunner = null) =>
         new(
-            new RepoIdentifier(repo),
+            TestConfig.Repo(repo),
             new ReadToken(readToken),
             gitRunner ?? SuccessGitRunner,
             new DelegatingHandlerStub(handler));

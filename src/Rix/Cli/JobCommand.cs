@@ -59,7 +59,7 @@ internal static class JobCommand
             int? Int(Option<int?> opt, string env) =>
                 ctx.ParseResult.GetValueForOption(opt) ?? (int.TryParse(Environment.GetEnvironmentVariable(env), out var n) ? n : null);
 
-            var config = JobConfig.FromInputs(
+            var result = JobConfig.Create(
                 repo:           Str(RepoOption,      "RIX_REPO"),
                 prompt:         Str(PromptOption,    "RIX_PROMPT"),
                 readToken:      Str(ReadTokenOption, "RIX_READ_TOKEN"),
@@ -68,7 +68,17 @@ internal static class JobCommand
                 workDir:        Str(WorkDirOption,   "RIX_WORK_DIR"),
                 outputDir:      Str(OutputDirOption, "RIX_OUTPUT_DIR"));
 
-            ctx.ExitCode = await handler(config);
+            switch (result)
+            {
+                case JobConfigValid valid:
+                    ctx.ExitCode = await handler(valid.Config);
+                    break;
+                case JobConfigInvalid invalid:
+                    foreach (var error in invalid.Errors)
+                        Console.Error.WriteLine($"error: {error}");
+                    ctx.ExitCode = ExitCodes.SetupFailed;
+                    break;
+            }
         });
 
         return command;
