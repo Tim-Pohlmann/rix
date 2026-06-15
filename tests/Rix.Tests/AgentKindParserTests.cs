@@ -1,5 +1,4 @@
 using Rix.Agents;
-using Rix.Job;
 
 namespace Rix.Tests;
 
@@ -28,20 +27,21 @@ public class AgentKindParserTests
     }
 
     [TestMethod]
-    public void FromInputs_SelectsOpenCode_FromAgentArgument()
+    public void TryParse_Succeeds_ForKnownAndEmptyValues()
     {
-        var config = JobConfig.FromInputs("owner/repo", "do it", "tok",
-            new JobInputOptions(WorkDir: Path.GetTempPath(), OutputDir: Path.GetTempPath(), Agent: "opencode"));
+        Assert.IsTrue(AgentKindParser.TryParse(null, out var def, out var defErr));
+        Assert.AreEqual(AgentKind.Claude, def);
+        Assert.IsNull(defErr);
 
-        Assert.AreEqual(AgentKind.OpenCode, config.Agent);
+        Assert.IsTrue(AgentKindParser.TryParse("opencode", out var oc, out _));
+        Assert.AreEqual(AgentKind.OpenCode, oc);
     }
 
     [TestMethod]
-    public void FromInputs_DefaultsToClaude_WhenAgentOmitted()
+    public void TryParse_Fails_WithError_ForUnknownAgent()
     {
-        var config = JobConfig.FromInputs("owner/repo", "do it", "tok",
-            new JobInputOptions(WorkDir: Path.GetTempPath(), OutputDir: Path.GetTempPath()));
-
-        Assert.AreEqual(AgentKind.Claude, config.Agent);
+        Assert.IsFalse(AgentKindParser.TryParse("devin", out var kind, out var error));
+        Assert.AreEqual(AgentKind.Claude, kind);
+        StringAssert.Contains(error, "devin");
     }
 }

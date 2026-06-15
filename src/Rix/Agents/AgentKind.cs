@@ -18,12 +18,30 @@ internal static class AgentKindParser
     /// unrecognised value throws so the CLI can surface a clear error.
     /// </summary>
     internal static AgentKind Parse(string? value) =>
-        string.IsNullOrWhiteSpace(value)
-            ? AgentKind.Claude
-            : value.Trim().ToLowerInvariant() switch
-            {
-                "claude" => AgentKind.Claude,
-                "opencode" => AgentKind.OpenCode,
-                _ => throw new ArgumentException($"unknown agent '{value}' (expected 'claude' or 'opencode')"),
-            };
+        TryParse(value, out var kind, out var error) ? kind : throw new ArgumentException(error);
+
+    /// <summary>
+    /// Non-throwing variant for the error-collecting validation path: returns <c>false</c> with a
+    /// human-readable <paramref name="error"/> for an unrecognised value, leaving <paramref name="kind"/>
+    /// at the default. An empty/whitespace value selects the default (<see cref="AgentKind.Claude"/>).
+    /// </summary>
+    internal static bool TryParse(string? value, out AgentKind kind, out string? error)
+    {
+        error = null;
+        kind = AgentKind.Claude;
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        var normalized = value.Trim();
+        switch (normalized.ToLowerInvariant())
+        {
+            case "claude":
+                kind = AgentKind.Claude;
+                return true;
+            case "opencode":
+                kind = AgentKind.OpenCode;
+                return true;
+            default:
+                error = $"unknown agent '{normalized}' (expected 'claude' or 'opencode')";
+                return false;
+        }
+    }
 }

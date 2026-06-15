@@ -13,22 +13,8 @@ namespace Rix.Job;
 [JsonSerializable(typeof(PendingPr))]
 internal partial class JobJsonContext : JsonSerializerContext { }
 
-internal delegate Task<ProcessResult> RunProcessAsync(
-    string fileName,
-    IEnumerable<string> arguments,
-    string workingDirectory,
-    IReadOnlyDictionary<string, string>? environmentOverrides,
-    Action<string>? onStdoutLine,
-    CancellationToken cancellationToken);
-
 internal static class JobRunner
 {
-    private static readonly IReadOnlyDictionary<string, string> GitEnv = new Dictionary<string, string>
-    {
-        ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
-        ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
-    };
-
     internal static async Task<IJobResult> RunAsync(
         JobConfig config,
         JobContext context,
@@ -45,7 +31,7 @@ internal static class JobRunner
 
         var stopwatch = Stopwatch.StartNew();
 
-        var cloneDir = Path.Combine(config.WorkDir, $"rix-clone-{Guid.NewGuid():N}");
+        var cloneDir = Path.Combine(config.WorkDir.Value, $"rix-clone-{Guid.NewGuid():N}");
         Directory.CreateDirectory(cloneDir);
 
         try
@@ -55,57 +41,33 @@ internal static class JobRunner
             await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct);
 
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
-            var invocation = context.Agent.BuildInvocation(config, systemPrompt);
-
-            var agentResult = await context.RunProcess(
-                invocation.FileName,
-                invocation.Arguments,
-                cloneDir,
-                invocation.EnvironmentOverrides,
-                context.LogLine.Invoke,
-                ct);
+            var agentResult = await RunAgentAsync(config, context, systemPrompt, cloneDir, ct);
 
             if (agentResult is ProcessFailure agentFailure)
             {
                 stopwatch.Stop();
-                var failure = new JobFailure(
+                return new JobFailure(
                     $"agent failed: {agentFailure.Reason}",
                     CostUsd: 0m,
                     Duration: stopwatch.Elapsed);
-                return failure;
             }
 
             var costUsd = agentResult is ProcessSuccess { Output: { } resultLine }
                 ? context.Agent.ParseCost(resultLine) ?? 0m
                 : 0m;
 
-            var pendingPrs = new List<PendingPr>();
-            foreach (var req in apiServer.QueuedPrRequests)
-            {
-                var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
-                var bundleFile = $"{safeName}.bundle";
-                var bundlePath = Path.Combine(config.OutputDir, bundleFile);
-
-                var bundleResult = await context.RunProcess(
-                    "git",
-                    ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
-                    cloneDir,
-                    GitEnv,
-                    null,
-                    ct);
-
-                if (bundleResult is ProcessFailure)
-                {
-                    stopwatch.Stop();
-                    return new JobFailure($"git bundle failed for branch {req.Branch.Value}", CostUsd: costUsd, stopwatch.Elapsed);
-                }
-
-                pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
-            }
+            var delivery = await BundlePendingPrsAsync(config, context, apiServer.QueuedPrRequests, cloneDir, ct);
 
             stopwatch.Stop();
 
-            return new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
+            return delivery switch
+            {
+                Delivered { PendingPrs: var pendingPrs } =>
+                    new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed),
+                DeliveryFailed { Branch: var branch } =>
+                    new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
+                _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
+            };
         }
         finally
         {
@@ -113,6 +75,61 @@ internal static class JobRunner
             catch (DirectoryNotFoundException) { /* already cleaned up */ }
         }
     }
+
+    /// <summary>Runs the coding agent in the cloned repo and returns its raw process result.</summary>
+    private static Task<ProcessResult> RunAgentAsync(
+        JobConfig config, JobContext context, string systemPrompt, string cloneDir, CancellationToken ct)
+    {
+        var invocation = context.Agent.BuildInvocation(config, systemPrompt);
+        return context.RunProcess(
+            invocation.FileName,
+            invocation.Arguments,
+            cloneDir,
+            invocation.EnvironmentOverrides,
+            context.LogLine.Invoke,
+            ct);
+    }
+
+    /// <summary>
+    /// Creates a git bundle for each queued PR. Returns <see cref="Delivered"/> with the bundled
+    /// PRs, or — if a bundle fails — <see cref="DeliveryFailed"/> naming the branch, so the caller
+    /// can map it to a <see cref="JobFailure"/> while preserving the accumulated cost.
+    /// </summary>
+    private static async Task<DeliveryOutcome> BundlePendingPrsAsync(
+        JobConfig config, JobContext context, IEnumerable<QueuedPr> queuedPrs, string cloneDir, CancellationToken ct)
+    {
+        var pendingPrs = new List<PendingPr>();
+        foreach (var req in queuedPrs)
+        {
+            var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
+            var bundleFile = $"{safeName}.bundle";
+            var bundlePath = Path.Combine(config.OutputDir.Value, bundleFile);
+
+            var bundleResult = await context.RunProcess(
+                "git",
+                ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
+                cloneDir,
+                ProcessEnv.Inherited,
+                null,
+                ct);
+
+            if (bundleResult is ProcessFailure)
+                return new DeliveryFailed(req.Branch.Value);
+
+            pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
+        }
+
+        return new Delivered(pendingPrs);
+    }
+
+    /// <summary>The result of bundling the queued PRs: either all were turned into deliverables,
+    /// or one failed (identified by its branch).</summary>
+    private abstract record DeliveryOutcome
+    {
+        private protected DeliveryOutcome() { }
+    }
+    private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs) : DeliveryOutcome;
+    private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
     private static string BuildSystemPrompt(Uri apiBaseUrl) => $$"""
         You are `rix job`, an autonomous coding agent and part of the `rix` autonomous software factory.

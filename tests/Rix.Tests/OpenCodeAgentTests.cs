@@ -119,8 +119,7 @@ public class OpenCodeAgentTests
     [TestMethod]
     public void BuildInvocation_ProducesOpenCodeRunInvocation()
     {
-        var config = JobConfig.FromInputs("owner/repo", "do it", "tok",
-            new JobInputOptions(MaxTokens: 1234, WorkDir: Path.GetTempPath(), OutputDir: Path.GetTempPath()));
+        var config = TestConfig.Valid(maxTokens: 1234);
 
         var invocation = Agent.BuildInvocation(config, "SYSTEM");
 
