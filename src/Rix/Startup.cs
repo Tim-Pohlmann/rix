@@ -43,17 +43,8 @@ internal static class Startup
         return await parser.InvokeAsync(args);
     }
 
-    private static async Task<int> RunJobAsync(JobConfig config)
-    {
-        if (config.ValidationErrors is { Count: > 0 } errors)
-        {
-            foreach (var error in errors)
-                Console.Error.WriteLine($"error: {error}");
-            return ExitCodes.SetupFailed;
-        }
-
-        return await ExecuteJobAsync(config, CancellationToken.None);
-    }
+    private static Task<int> RunJobAsync(JobConfig config) =>
+        ExecuteJobAsync(config, CancellationToken.None);
 
     /// <summary>
     /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: runs the job,
@@ -73,7 +64,7 @@ internal static class Startup
         Console.WriteLine(json);
 
         if (result is JobSuccess)
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), json, cancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, cancellationToken);
 
         return result switch
         {

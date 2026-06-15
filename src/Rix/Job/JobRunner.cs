@@ -31,7 +31,7 @@ internal static class JobRunner
 
         var stopwatch = Stopwatch.StartNew();
 
-        var cloneDir = Path.Combine(config.WorkDir, $"rix-clone-{Guid.NewGuid():N}");
+        var cloneDir = Path.Combine(config.WorkDir.Value, $"rix-clone-{Guid.NewGuid():N}");
         Directory.CreateDirectory(cloneDir);
 
         try
@@ -99,7 +99,7 @@ internal static class JobRunner
         {
             var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
             var bundleFile = $"{safeName}.bundle";
-            var bundlePath = Path.Combine(config.OutputDir, bundleFile);
+            var bundlePath = Path.Combine(config.OutputDir.Value, bundleFile);
 
             try
             {
