@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Rix.Agents;
 
 namespace Rix.Job;
@@ -18,6 +19,8 @@ internal record JobConfig
 
     /// <summary>Private so a <see cref="JobConfig"/> can only be produced by <see cref="Create"/>,
     /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters",
+        Justification = "All 8 fields are required by the record; they are set once here and are immutable after construction.")]
     private JobConfig(
         RepoIdentifier repo,
         string prompt,
@@ -94,8 +97,7 @@ internal record JobConfig
         else
             parsedOutputDir = Collect(DirectoryPath.Parse(options.OutputDir), "--output-dir");
 
-        var resolvedAgent = AgentKind.Claude;
-        if (!AgentKindParser.TryParse(options.Agent, out resolvedAgent, out var agentError))
+        if (!AgentKindParser.TryParse(options.Agent, out var resolvedAgent, out var agentError))
             errors.Add($"--agent: {agentError}");
 
         if (errors.Count > 0)
