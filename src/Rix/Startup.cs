@@ -7,6 +7,7 @@ using Rix.Cli;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
+using Rix.Submit;
 
 namespace Rix;
 
@@ -30,11 +31,20 @@ internal static class Startup
             Agent: new ClaudeAgent(),
             LogLine: Console.Error.WriteLine);
 
+    /// <summary>The production <see cref="SubmitContext"/>: a GitHub host authenticated with the
+    /// write token, the default process runner, and a stderr log sink.</summary>
+    internal static SubmitContext DefaultSubmitContext(SubmitConfig config) =>
+        new(
+            Host: new GitHubRepositoryHost(config.Repo, config.WriteToken, DefaultRunProcess),
+            RunProcess: DefaultRunProcess,
+            LogLine: Console.Error.WriteLine);
+
     internal static async Task<int> RunAsync(string[] args)
     {
         var rootCommand = new RootCommand("RIX - AI-powered code automation");
 
         rootCommand.AddCommand(JobCommand.Build(RunJobAsync));
+        rootCommand.AddCommand(SubmitCommand.Build(RunSubmitAsync));
 
         var parser = new CommandLineBuilder(rootCommand)
             .UseDefaults()
@@ -43,17 +53,11 @@ internal static class Startup
         return await parser.InvokeAsync(args);
     }
 
-    private static async Task<int> RunJobAsync(JobConfig config)
-    {
-        if (config.ValidationErrors is { Count: > 0 } errors)
-        {
-            foreach (var error in errors)
-                Console.Error.WriteLine($"error: {error}");
-            return ExitCodes.SetupFailed;
-        }
+    private static Task<int> RunJobAsync(JobConfig config) =>
+        ExecuteJobAsync(config, CancellationToken.None);
 
-        return await ExecuteJobAsync(config, CancellationToken.None);
-    }
+    private static Task<int> RunSubmitAsync(SubmitConfig config) =>
+        ExecuteSubmitAsync(config, CancellationToken.None);
 
     /// <summary>
     /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: runs the job,
@@ -73,7 +77,7 @@ internal static class Startup
         Console.WriteLine(json);
 
         if (result is JobSuccess)
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "result.json"), json, cancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, cancellationToken);
 
         return result switch
         {
@@ -81,6 +85,30 @@ internal static class Startup
             SetupFailure => ExitCodes.SetupFailed,
             JobFailure => ExitCodes.JobFailed,
             _ => throw new NotSupportedException($"Unexpected job result type: {result.GetType()}"),
+        };
+    }
+
+    /// <summary>
+    /// Imperative shell around <see cref="SubmitRunner.RunAsync"/>: runs the submit, writes the
+    /// result JSON to stdout, and maps the result to an exit code.
+    /// </summary>
+    internal static async Task<int> ExecuteSubmitAsync(
+        SubmitConfig config,
+        CancellationToken cancellationToken,
+        SubmitContext? context = null)
+    {
+        context ??= DefaultSubmitContext(config);
+
+        var result = await SubmitRunner.RunAsync(config, context, cancellationToken);
+
+        var json = JsonSerializer.Serialize(result, SubmitJsonContext.Default.ISubmitResult);
+        Console.WriteLine(json);
+
+        return result switch
+        {
+            SubmitSuccess => ExitCodes.Success,
+            SubmitFailure => ExitCodes.JobFailed,
+            _ => throw new NotSupportedException($"Unexpected submit result type: {result.GetType()}"),
         };
     }
 }

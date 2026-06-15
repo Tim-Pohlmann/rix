@@ -28,6 +28,15 @@ public class StartupTests
     }
 
     [TestMethod]
+    public async Task RunJobAsync_Returns2_WhenRepoFormatIsInvalid()
+    {
+        var exitCode = await Startup.RunAsync(
+            ["job", "--repo", "invalid-no-slash", "--prompt", "p", "--read-token", "r",
+             "--output-dir", Path.GetTempPath()]);
+        Assert.AreEqual(2, exitCode);
+    }
+
+    [TestMethod]
     public async Task DefaultRunProcess_RunsRealProcess_AndCapturesOutput()
     {
         var lines = new List<string>();
@@ -42,12 +51,7 @@ public class StartupTests
     [TestMethod]
     public void DefaultContext_UsesGitHubHostAndDefaultRunProcess()
     {
-        var config = JobConfig.FromInputs(
-            repo: "owner/repo", prompt: "do it", readToken: "tok",
-            maxTokens: null, timeoutMinutes: null,
-            workDir: Path.GetTempPath(), outputDir: Path.GetTempPath());
-
-        var context = Startup.DefaultContext(config);
+        var context = Startup.DefaultContext(TestConfig.Valid());
 
         Assert.IsInstanceOfType<GitHubRepositoryHost>(context.Host);
         Assert.AreSame(Startup.DefaultRunProcess, context.RunProcess);

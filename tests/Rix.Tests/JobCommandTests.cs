@@ -42,8 +42,8 @@ public class JobCommandTests
         Assert.AreEqual("env-read", captured.ReadToken.Value);
         Assert.AreEqual(999, captured.MaxTokens.Value);
         Assert.AreEqual(15, captured.TimeoutMinutes.Value);
-        Assert.AreEqual(Path.GetTempPath(), captured.WorkDir);
-        Assert.AreEqual(Path.GetTempPath(), captured.OutputDir);
+        Assert.AreEqual(Path.GetTempPath(), captured.WorkDir.Value);
+        Assert.AreEqual(Path.GetTempPath(), captured.OutputDir.Value);
     }
 
     [TestMethod]
@@ -58,17 +58,10 @@ public class JobCommandTests
 
         using var env = new EnvScope();
         env.Set("RIX_REPO", "env/repo");
-        await parser.InvokeAsync("job --repo flag/repo --prompt p --read-token r");
+        await parser.InvokeAsync(
+            ["job", "--repo", "flag/repo", "--prompt", "p", "--read-token", "r", "--output-dir", Path.GetTempPath()]);
 
         Assert.IsNotNull(captured);
         Assert.AreEqual("flag/repo", captured.Repo.ToString());
-    }
-
-    [TestMethod]
-    public async Task Command_Returns2_WhenRepoFormatIsInvalid()
-    {
-        var parser = BuildParser(_ => Task.FromResult(0));
-        var exitCode = await parser.InvokeAsync("job --repo invalid-no-slash --prompt p --read-token r");
-        Assert.AreEqual(2, exitCode);
     }
 }

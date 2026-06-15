@@ -1,34 +1,54 @@
 using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Rix.Process;
 
 namespace Rix.Repository;
 
-internal sealed class GitHubRepositoryHost : IRepositoryHost
+internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
 {
     private readonly RepoIdentifier _repo;
-    private readonly ReadToken _readToken;
+    private readonly string _credential;
     private readonly HttpClient _http;
     private readonly RunProcessAsync _runProcess;
 
     internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken, RunProcessAsync runProcess)
-        : this(repo, readToken, runProcess, handler: null) { }
+        : this(repo, readToken.Value, runProcess, handler: null) { }
 
     internal GitHubRepositoryHost(
         RepoIdentifier repo,
         ReadToken readToken,
         RunProcessAsync runProcess,
         HttpMessageHandler? handler)
+        : this(repo, readToken.Value, runProcess, handler) { }
+
+    internal GitHubRepositoryHost(RepoIdentifier repo, WriteToken writeToken, RunProcessAsync runProcess)
+        : this(repo, writeToken.Value, runProcess, handler: null) { }
+
+    internal GitHubRepositoryHost(
+        RepoIdentifier repo,
+        WriteToken writeToken,
+        RunProcessAsync runProcess,
+        HttpMessageHandler? handler)
+        : this(repo, writeToken.Value, runProcess, handler) { }
+
+    private GitHubRepositoryHost(
+        RepoIdentifier repo,
+        string credential,
+        RunProcessAsync runProcess,
+        HttpMessageHandler? handler)
     {
         _repo = repo;
-        _readToken = readToken;
-        _http = BuildHttpClient(readToken, handler);
+        _credential = credential;
+        _http = BuildHttpClient(credential, handler);
         _runProcess = runProcess;
     }
 
-    private static HttpClient BuildHttpClient(ReadToken token, HttpMessageHandler? handler)
+    private static HttpClient BuildHttpClient(string token, HttpMessageHandler? handler)
     {
         var client = handler is null ? new HttpClient() : new HttpClient(handler);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("rix/1.0");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
@@ -36,7 +56,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-        RunGitAsync(["clone", $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Value}.git", targetDirectory],
+        RunGitAsync(["clone", $"https://x-access-token:{_credential}@github.com/{_repo.Value}.git", targetDirectory],
             cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
@@ -49,6 +69,20 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return true;
     }
 
+    public async Task CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
+    {
+        var url = $"https://api.github.com/repos/{_repo.Value}/pulls";
+        var request = new CreatePullRequestRequest(
+            Title: pullRequest.Title.Value,
+            Head: pullRequest.Branch.Value,
+            Base: pullRequest.BaseBranch.Value,
+            Body: pullRequest.Body.Value);
+        var json = JsonSerializer.Serialize(request, GitHubApiJsonContext.Default.CreatePullRequestRequest);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var response = await _http.PostAsync(url, content, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
     private async Task RunGitAsync(string[] args, CancellationToken cancellationToken)
     {
         var result = await _runProcess("git", args, Path.GetTempPath(), ProcessEnv.Inherited, null, cancellationToken);
@@ -56,3 +90,13 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
     }
 }
+
+/// <summary>The JSON body of a GitHub "create a pull request" REST call.</summary>
+internal sealed record CreatePullRequestRequest(
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("head")] string Head,
+    [property: JsonPropertyName("base")] string Base,
+    [property: JsonPropertyName("body")] string Body);
+
+[JsonSerializable(typeof(CreatePullRequestRequest))]
+internal partial class GitHubApiJsonContext : JsonSerializerContext { }

@@ -367,14 +367,8 @@ public class JobRunnerTests
                 FakeRunner(claudeExitCode, claudeTimedOut, pr),
                 _ => Task.FromResult<InstallResult>(new Installed())));
 
-    private JobConfig MakeConfig() => JobConfig.FromInputs(
-        repo: "owner/repo",
-        prompt: "Do something",
-        readToken: "tok",
-        maxTokens: null,
-        timeoutMinutes: null,
-        workDir: _workDir,
-        outputDir: _outputDir);
+    private JobConfig MakeConfig() =>
+        TestConfig.Valid(prompt: "Do something", workDir: _workDir, outputDir: _outputDir);
 
     private static RunProcessAsync FakeRunner(
         int claudeExitCode = 0,

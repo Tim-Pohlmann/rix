@@ -31,7 +31,7 @@ internal static class JobRunner
 
         var stopwatch = Stopwatch.StartNew();
 
-        var cloneDir = Path.Combine(config.WorkDir, $"rix-clone-{Guid.NewGuid():N}");
+        var cloneDir = Path.Combine(config.WorkDir.Value, $"rix-clone-{Guid.NewGuid():N}");
         Directory.CreateDirectory(cloneDir);
 
         try
@@ -56,14 +56,18 @@ internal static class JobRunner
                 ? context.Agent.ParseCost(resultLine) ?? 0m
                 : 0m;
 
-            var (pendingPrs, failedBranch) =
-                await BundlePendingPrsAsync(config, context, apiServer.QueuedPrRequests, cloneDir, ct);
+            var delivery = await BundlePendingPrsAsync(config, context, apiServer.QueuedPrRequests, cloneDir, ct);
 
             stopwatch.Stop();
 
-            return failedBranch is not null
-                ? new JobFailure($"git bundle failed for branch {failedBranch}", CostUsd: costUsd, stopwatch.Elapsed)
-                : new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed);
+            return delivery switch
+            {
+                Delivered { PendingPrs: var pendingPrs } =>
+                    new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed),
+                DeliveryFailed { Branch: var branch } =>
+                    new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
+                _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
+            };
         }
         finally
         {
@@ -87,11 +91,11 @@ internal static class JobRunner
     }
 
     /// <summary>
-    /// Creates a git bundle for each queued PR. Returns the bundled PRs, or — if a bundle
-    /// fails — the partial list plus the branch name that failed, so the caller can map it
-    /// to a <see cref="JobFailure"/> while preserving the accumulated cost.
+    /// Creates a git bundle for each queued PR. Returns <see cref="Delivered"/> with the bundled
+    /// PRs, or — if a bundle fails — <see cref="DeliveryFailed"/> naming the branch, so the caller
+    /// can map it to a <see cref="JobFailure"/> while preserving the accumulated cost.
     /// </summary>
-    private static async Task<(List<PendingPr> Prs, string? FailedBranch)> BundlePendingPrsAsync(
+    private static async Task<DeliveryOutcome> BundlePendingPrsAsync(
         JobConfig config, JobContext context, IEnumerable<QueuedPr> queuedPrs, string cloneDir, CancellationToken ct)
     {
         var pendingPrs = new List<PendingPr>();
@@ -99,7 +103,7 @@ internal static class JobRunner
         {
             var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
             var bundleFile = $"{safeName}.bundle";
-            var bundlePath = Path.Combine(config.OutputDir, bundleFile);
+            var bundlePath = Path.Combine(config.OutputDir.Value, bundleFile);
 
             var bundleResult = await context.RunProcess(
                 "git",
@@ -110,13 +114,22 @@ internal static class JobRunner
                 ct);
 
             if (bundleResult is ProcessFailure)
-                return (pendingPrs, req.Branch.Value);
+                return new DeliveryFailed(req.Branch.Value);
 
             pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
         }
 
-        return (pendingPrs, null);
+        return new Delivered(pendingPrs);
     }
+
+    /// <summary>The result of bundling the queued PRs: either all were turned into deliverables,
+    /// or one failed (identified by its branch).</summary>
+    private abstract record DeliveryOutcome
+    {
+        private protected DeliveryOutcome() { }
+    }
+    private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs) : DeliveryOutcome;
+    private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
     private static string BuildSystemPrompt(Uri apiBaseUrl) => $$"""
         You are `rix job`, an autonomous coding agent and part of the `rix` autonomous software factory.
