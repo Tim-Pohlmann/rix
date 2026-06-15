@@ -105,16 +105,14 @@ internal static class JobRunner
             var bundleFile = $"{safeName}.bundle";
             var bundlePath = Path.Combine(config.OutputDir.Value, bundleFile);
 
-            var bundleResult = await context.RunProcess(
-                "git",
-                ["bundle", "create", bundlePath, $"{req.BaseBranch.Value}..{req.Branch.Value}"],
-                cloneDir,
-                ProcessEnv.Inherited,
-                null,
-                ct);
-
-            if (bundleResult is ProcessFailure)
+            try
+            {
+                await context.Host.CreateBundleAsync(cloneDir, bundlePath, req.BaseBranch, req.Branch, ct);
+            }
+            catch (InvalidOperationException)
+            {
                 return new DeliveryFailed(req.Branch.Value);
+            }
 
             pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
         }

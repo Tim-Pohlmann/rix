@@ -145,6 +145,25 @@ public class JobConfigTests
     }
 
     [TestMethod]
+    public void DirectoryPath_Parse_NormalisesRelativeToAbsolute()
+    {
+        var result = DirectoryPath.Parse(".");
+        var parsed = result switch
+        {
+            ParseSuccess<DirectoryPath> s => s.Value,
+            _ => throw new AssertFailedException($"expected a valid path, got: {result}"),
+        };
+        Assert.IsTrue(Path.IsPathRooted(parsed.Value), $"expected an absolute path, got: {parsed.Value}");
+        Assert.AreEqual(Path.GetFullPath("."), parsed.Value);
+    }
+
+    [TestMethod]
+    public void DirectoryPath_Parse_RejectsNonExistent()
+    {
+        Assert.IsInstanceOfType<ParseError<DirectoryPath>>(DirectoryPath.Parse("/nonexistent/path/xyz"));
+    }
+
+    [TestMethod]
     public void Create_DefaultsWorkDirToTemp_WhenNullOrWhitespace()
     {
         Assert.AreEqual(Path.GetTempPath(), Valid(Create(workDir: null)).WorkDir.Value);

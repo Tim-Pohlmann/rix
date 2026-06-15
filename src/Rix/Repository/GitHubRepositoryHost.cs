@@ -37,7 +37,16 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
         RunGitAsync(["clone", $"https://x-access-token:{_readToken.Value}@github.com/{_repo.Value}.git", targetDirectory],
-            cancellationToken);
+            workingDirectory: Path.GetTempPath(), cancellationToken);
+
+    public Task CreateBundleAsync(
+        string repoDirectory,
+        string bundlePath,
+        BranchName baseBranch,
+        BranchName branch,
+        CancellationToken cancellationToken) =>
+        RunGitAsync(["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
+            workingDirectory: repoDirectory, cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
@@ -49,9 +58,12 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return true;
     }
 
-    private async Task RunGitAsync(string[] args, CancellationToken cancellationToken)
+    private async Task RunGitAsync(string[] args, string workingDirectory, CancellationToken cancellationToken)
     {
-        var result = await _runProcess("git", args, Path.GetTempPath(), ProcessEnv.Inherited, null, cancellationToken);
+        // No environment overrides: the subprocess already inherits the full parent environment.
+        // Forcing PATH/HOME here would be redundant and, on Windows (where HOME is usually unset),
+        // would inject an empty HOME that disrupts git's home-directory resolution.
+        var result = await _runProcess("git", args, workingDirectory, null, null, cancellationToken);
         if (result is ProcessFailure f)
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
     }

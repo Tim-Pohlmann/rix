@@ -10,6 +10,9 @@ public class GitHubRepositoryHostTests
     private static readonly RunProcessAsync SuccessGitRunner =
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
 
+    private static readonly string[] ExpectedBundleArgs =
+        ["bundle", "create", "/tmp/out/fix.bundle", "main..rix/fix"];
+
     private static GitHubRepositoryHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
@@ -58,6 +61,41 @@ public class GitHubRepositoryHostTests
         Assert.AreEqual("clone", capturedArgs[0]);
         Assert.IsTrue(capturedArgs[1].Contains("my-read-token"), "Token must be embedded in clone URL");
         Assert.AreEqual("/tmp/target", capturedArgs[2]);
+    }
+
+    [TestMethod]
+    public async Task CreateBundleAsync_CallsGitBundle_InRepoDirectory_WithCorrectArgs()
+    {
+        string[]? capturedArgs = null;
+        string? capturedWorkingDir = null;
+        var host = BuildHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, args, workingDir, _, _, _) =>
+            {
+                capturedArgs = args.ToArray();
+                capturedWorkingDir = workingDir;
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await host.CreateBundleAsync("/tmp/clone", "/tmp/out/fix.bundle",
+            new BranchName("main"), new BranchName("rix/fix"), CancellationToken.None);
+
+        Assert.IsNotNull(capturedArgs);
+        Assert.AreEqual("/tmp/clone", capturedWorkingDir);
+        CollectionAssert.AreEqual(ExpectedBundleArgs, capturedArgs);
+    }
+
+    [TestMethod]
+    public async Task CreateBundleAsync_Throws_WhenGitFails()
+    {
+        var host = BuildHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.CreateBundleAsync("/tmp/clone", "/tmp/out/fix.bundle",
+                new BranchName("main"), new BranchName("rix/fix"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "bundle");
     }
 
     [TestMethod]
