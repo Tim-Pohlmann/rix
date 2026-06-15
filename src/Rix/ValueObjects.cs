@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 namespace Rix;
 
 internal readonly record struct ReadToken(string Value);
+internal readonly record struct WriteToken(string Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 

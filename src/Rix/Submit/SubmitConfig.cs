@@ -1,0 +1,83 @@
+namespace Rix.Submit;
+
+internal record SubmitConfig
+{
+    internal RepoIdentifier Repo { get; }
+    internal WriteToken WriteToken { get; }
+    internal DirectoryPath InputDir { get; }
+    internal DirectoryPath WorkDir { get; }
+
+    /// <summary>Private so a <see cref="SubmitConfig"/> can only be produced by <see cref="Create"/>,
+    /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
+    private SubmitConfig(RepoIdentifier repo, WriteToken writeToken, DirectoryPath inputDir, DirectoryPath workDir)
+    {
+        Repo = repo;
+        WriteToken = writeToken;
+        InputDir = inputDir;
+        WorkDir = workDir;
+    }
+
+    /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
+    /// <see cref="SubmitConfig"/>, collecting every error in one pass so a <see cref="SubmitConfigValid"/>
+    /// is produced only when the whole configuration is well-formed.</summary>
+    internal static SubmitConfigResult Create(
+        string repo,
+        string writeToken,
+        string? inputDir,
+        string? workDir)
+    {
+        var errors = new List<string>();
+
+        T? Collect<T>(ParseResult<T> result, string flag) where T : class => result switch
+        {
+            ParseSuccess<T> ok => ok.Value,
+            ParseError<T> bad => Fail<T>($"{flag}: {bad.Error}"),
+            var other => Fail<T>($"{flag}: could not be parsed ({other.GetType().Name})"),
+        };
+
+        T? Fail<T>(string error) where T : class
+        {
+            errors.Add(error);
+            return null;
+        }
+
+        RepoIdentifier? parsedRepo = null;
+        if (string.IsNullOrWhiteSpace(repo))
+            errors.Add("--repo is required");
+        else
+            parsedRepo = Collect(RepoIdentifier.Parse(repo), "--repo");
+
+        if (string.IsNullOrWhiteSpace(writeToken))
+            errors.Add("--write-token is required");
+
+        DirectoryPath? parsedInputDir = null;
+        if (string.IsNullOrWhiteSpace(inputDir))
+            errors.Add("--input-dir is required");
+        else
+            parsedInputDir = Collect(DirectoryPath.Parse(inputDir), "--input-dir");
+
+        var resolvedWorkDir = string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir;
+        var parsedWorkDir = Collect(DirectoryPath.Parse(resolvedWorkDir), "--work-dir");
+
+        if (errors.Count > 0)
+            return new SubmitConfigInvalid([.. errors]);
+
+        // Non-null here: any blank or unparseable input would have added an error above.
+        return new SubmitConfigValid(new SubmitConfig(
+            repo: parsedRepo!,
+            writeToken: new WriteToken(writeToken),
+            inputDir: parsedInputDir!,
+            workDir: parsedWorkDir!));
+    }
+}
+
+/// <summary>The result of <see cref="SubmitConfig.Create"/>: a validated config or the list of
+/// reasons it was rejected. Pattern-matched by callers; never cast.</summary>
+internal abstract record SubmitConfigResult
+{
+    private protected SubmitConfigResult() { }
+}
+
+internal sealed record SubmitConfigValid(SubmitConfig Config) : SubmitConfigResult;
+
+internal sealed record SubmitConfigInvalid(IReadOnlyList<string> Errors) : SubmitConfigResult;

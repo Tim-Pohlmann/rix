@@ -72,6 +72,52 @@ public class GitHubRepositoryHostTests
         StringAssert.Contains(ex.Message, "clone");
     }
 
+    [TestMethod]
+    public async Task CreatePullRequestAsync_PostsToPullsEndpoint_WithPrFields()
+    {
+        HttpRequestMessage? captured = null;
+        string? body = null;
+        var host = BuildWriteHost(req =>
+        {
+            captured = req;
+            body = req.Content!.ReadAsStringAsync().Result;
+            return new HttpResponseMessage(HttpStatusCode.Created);
+        });
+
+        await host.CreatePullRequestAsync(SamplePr("My title", "My body"), CancellationToken.None);
+
+        Assert.IsNotNull(captured);
+        Assert.AreEqual(HttpMethod.Post, captured.Method);
+        StringAssert.EndsWith(captured.RequestUri!.AbsoluteUri, "/repos/owner/repo/pulls");
+        Assert.IsNotNull(body);
+        StringAssert.Contains(body, "\"head\":\"rix/fix\"");
+        StringAssert.Contains(body, "\"base\":\"main\"");
+        StringAssert.Contains(body, "\"title\":\"My title\"");
+    }
+
+    [TestMethod]
+    public async Task CreatePullRequestAsync_Throws_OnErrorResponse()
+    {
+        var host = BuildWriteHost(_ => new HttpResponseMessage(HttpStatusCode.UnprocessableEntity));
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(
+            () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
+    }
+
+    private static PendingPr SamplePr(string title, string body) =>
+        new(new RixBranchName("rix/fix"), new BranchName("main"),
+            new PrTitle(title), new PrBody(body), "rix_2Ffix.bundle");
+
+    private static GitHubRepositoryHost BuildWriteHost(
+        Func<HttpRequestMessage, HttpResponseMessage> handler,
+        string repo = "owner/repo",
+        string writeToken = "write-tok") =>
+        new(
+            TestConfig.Repo(repo),
+            new WriteToken(writeToken),
+            SuccessGitRunner,
+            new DelegatingHandlerStub(handler));
+
     private sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler)
         : HttpMessageHandler
     {
