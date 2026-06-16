@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Rix.Agents;
 
 namespace Rix.Job;
@@ -6,35 +5,27 @@ namespace Rix.Job;
 internal record JobConfig
 {
     internal RepoIdentifier Repo { get; }
-    internal string Prompt { get; }
     internal ReadToken ReadToken { get; }
-    internal MaxTokens MaxTokens { get; }
     internal TimeoutMinutes TimeoutMinutes { get; }
     internal DirectoryPath WorkDir { get; }
     internal DirectoryPath OutputDir { get; }
-    internal AgentKind Agent { get; }
+    internal AgentConfig Agent { get; }
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
 
     /// <summary>Private so a <see cref="JobConfig"/> can only be produced by <see cref="Create"/>,
     /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
-    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters",
-        Justification = "All 8 fields are required by the record; they are set once here and are immutable after construction.")]
     private JobConfig(
         RepoIdentifier repo,
-        string prompt,
         ReadToken readToken,
-        MaxTokens maxTokens,
         TimeoutMinutes timeoutMinutes,
         DirectoryPath workDir,
         DirectoryPath outputDir,
-        AgentKind agent)
+        AgentConfig agent)
     {
         Repo = repo;
-        Prompt = prompt;
         ReadToken = readToken;
-        MaxTokens = maxTokens;
         TimeoutMinutes = timeoutMinutes;
         WorkDir = workDir;
         OutputDir = outputDir;
@@ -106,15 +97,18 @@ internal record JobConfig
         // Non-null here: any blank or unparseable input would have added an error above.
         return new JobConfigValid(new JobConfig(
             repo: parsedRepo!,
-            prompt: prompt,
             readToken: new ReadToken(readToken),
-            maxTokens: new MaxTokens(resolvedMaxTokens),
             timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
             workDir: parsedWorkDir!,
             outputDir: parsedOutputDir!,
-            agent: resolvedAgent));
+            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens))));
     }
 }
+
+/// <summary>How the coding agent should be run: which agent (<see cref="AgentKind"/>), the task
+/// <paramref name="Prompt"/> it receives, and its token budget. Groups the inputs the <c>--agent</c>,
+/// <c>--prompt</c>, and <c>--max-tokens</c> flags configure.</summary>
+internal sealed record AgentConfig(AgentKind Kind, string Prompt, MaxTokens MaxTokens);
 
 /// <summary>Groups the optional CLI/environment inputs to <see cref="JobConfig.Create"/>, keeping its
 /// signature small and letting callers set only the values they care about.</summary>

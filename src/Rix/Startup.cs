@@ -27,7 +27,7 @@ internal static class Startup
         new(
             Host: new GitHubRepositoryHost(config.Repo, config.ReadToken, DefaultRunProcess),
             RunProcess: DefaultRunProcess,
-            Agent: SelectAgent(config.Agent),
+            Agent: SelectAgent(config.Agent.Kind),
             LogLine: Console.Error.WriteLine);
 
     private static ICodingAgent SelectAgent(AgentKind agent) => agent switch

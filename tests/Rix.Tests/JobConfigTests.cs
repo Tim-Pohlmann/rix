@@ -41,7 +41,7 @@ public class JobConfigTests
     {
         var config = Valid(Create());
 
-        Assert.AreEqual(JobConfig.DefaultMaxTokens, config.MaxTokens.Value);
+        Assert.AreEqual(JobConfig.DefaultMaxTokens, config.Agent.MaxTokens.Value);
         Assert.AreEqual(JobConfig.DefaultTimeoutMinutes, config.TimeoutMinutes.Value);
         Assert.AreEqual(Path.GetTempPath(), config.WorkDir.Value);
     }
@@ -51,7 +51,7 @@ public class JobConfigTests
     {
         var config = Valid(Create(maxTokens: 1000, timeoutMinutes: 5, workDir: Path.GetTempPath()));
 
-        Assert.AreEqual(1000, config.MaxTokens.Value);
+        Assert.AreEqual(1000, config.Agent.MaxTokens.Value);
         Assert.AreEqual(5, config.TimeoutMinutes.Value);
     }
 
@@ -161,8 +161,8 @@ public class JobConfigTests
     [TestMethod]
     public void Create_DefaultsAgentToClaude_AndSelectsOpenCode()
     {
-        Assert.AreEqual(Rix.Agents.AgentKind.Claude, Valid(Create()).Agent);
-        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, Valid(Create(agent: "opencode")).Agent);
+        Assert.AreEqual(Rix.Agents.AgentKind.Claude, Valid(Create()).Agent.Kind);
+        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, Valid(Create(agent: "opencode")).Agent.Kind);
     }
 
     [TestMethod]

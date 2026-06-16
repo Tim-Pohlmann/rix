@@ -28,7 +28,7 @@ internal sealed class OpenCodeAgent : ICodingAgent
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt) =>
         new(
             FileName: "opencode",
-            Arguments: ["run", $"{systemPrompt}\n\n{config.Prompt}", "--format", "json"],
+            Arguments: ["run", $"{systemPrompt}\n\n{config.Agent.Prompt}", "--format", "json"],
             EnvironmentOverrides: new Dictionary<string, string>());
 
     public decimal? ParseCost(string outputLine) => OpenCodeCost.FromEventLine(outputLine);

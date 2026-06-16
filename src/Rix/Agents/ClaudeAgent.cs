@@ -17,10 +17,10 @@ internal sealed class ClaudeAgent : ICodingAgent
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt) =>
         new(
             FileName: "claude",
-            Arguments: ["--output-format", "stream-json", "--print", config.Prompt, "--append-system-prompt", systemPrompt],
+            Arguments: ["--output-format", "stream-json", "--print", config.Agent.Prompt, "--append-system-prompt", systemPrompt],
             EnvironmentOverrides: new Dictionary<string, string>
             {
-                ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.MaxTokens.Value.ToString(),
+                ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.Agent.MaxTokens.Value.ToString(),
             });
 
     public decimal? ParseCost(string outputLine) => JobCost.FromResultLine(outputLine);
