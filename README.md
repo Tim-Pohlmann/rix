@@ -44,3 +44,13 @@ on a read-only token; only the final, deterministic PR-creation step holds write
 
 The workflow downloads the latest published `rix` release binary; pin a specific build
 with the optional `rix-version` input.
+
+Both jobs run on `ubuntu-latest` by default. Pass the optional `runner` input to run them
+on a different runner (e.g. a self-hosted label):
+
+```yaml
+    with:
+      repo: ${{ github.repository }}
+      prompt: ${{ inputs.prompt }}
+      runner: self-hosted
+```

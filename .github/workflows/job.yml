@@ -26,6 +26,11 @@ on:
         description: Wall-clock timeout in minutes
         required: false
         type: number
+      runner:
+        description: runs-on label for both jobs (e.g. a self-hosted runner label)
+        required: false
+        type: string
+        default: ubuntu-latest
     secrets:
       read-token:
         description: GitHub PAT with read access to the target repo (used to clone)
@@ -45,7 +50,7 @@ env:
 jobs:
   run:
     name: Run rix job
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     steps:
       - name: Setup Node (for the claude CLI)
         uses: actions/setup-node@v4
@@ -54,7 +59,9 @@ jobs:
 
       - name: Download rix binary
         env:
-          GH_TOKEN: ${{ secrets.read-token }}
+          # Downloads the rix release from RIX_REPO_SLUG, not the target repo, so use the
+          # caller's automatic token rather than the target-scoped read PAT.
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.rix-version }}
         run: |
           tag_args=()
@@ -90,11 +97,13 @@ jobs:
   create-pr:
     name: Create PRs
     needs: run
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     steps:
       - name: Download rix binary
         env:
-          GH_TOKEN: ${{ secrets.write-token }}
+          # Downloads the rix release from RIX_REPO_SLUG, not the target repo, so use the
+          # caller's automatic token rather than the target-scoped write PAT.
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.rix-version }}
         run: |
           tag_args=()
