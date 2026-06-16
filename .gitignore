@@ -36,6 +36,17 @@ Thumbs.db
 TestResult.xml
 nunit-*.xml
 
-# Claude Code harness local state
+# Claude Code — ignore local/personal state, keep shared config
+.claude/*
+!.claude/settings.json
+!.claude/commands/
+!.claude/skills/
+!.claude/agents/
+!.claude/hooks/
+
+# Local-only overrides (never share)
+.claude/settings.local.json
+
+# Harness local state
 .dev/
 .orphaned_at
