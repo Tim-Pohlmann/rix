@@ -128,6 +128,39 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_SkipsDuplicateQueuedBranch()
+    {
+        var log = new List<string>();
+
+        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
+                for (var i = 0; i < 2; i++)
+                {
+                    using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+                    {
+                        branch = "rix/dup", baseBranch = "main", title = "T", body = "b",
+                    }, ct);
+                    response.EnsureSuccessStatusCode();
+                }
+            }
+            return new ProcessSuccess();
+        };
+
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed()), logLine: log.Add),
+            CancellationToken.None);
+
+        var success = (JobSuccess)result;
+        Assert.AreEqual(1, success.PendingPrRequests.Count);
+        Assert.AreEqual(1, Directory.GetFiles(_outputDir, "*.bundle").Length);
+        Assert.IsTrue(log.Exists(l => l.Contains("duplicate")));
+    }
+
+    [TestMethod]
     public async Task RunAsync_ClonesRepo()
     {
         var host = new TrackingRepositoryHost();

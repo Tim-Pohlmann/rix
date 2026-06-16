@@ -11,31 +11,30 @@ internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
     private readonly ConcurrentQueue<QueuedPr> _pendingPrRequests;
-    private readonly ConcurrentQueue<string> _logs;
 
     internal Uri BaseUrl { get; }
     internal IReadOnlyList<QueuedPr> QueuedPrRequests => _pendingPrRequests.ToArray();
-    internal IReadOnlyList<string> Logs => _logs.ToArray();
 
-    private LocalApiServer(WebApplication app, Uri baseUrl, ConcurrentQueue<QueuedPr> pendingPrRequests, ConcurrentQueue<string> logs)
+    private LocalApiServer(WebApplication app, Uri baseUrl, ConcurrentQueue<QueuedPr> pendingPrRequests)
     {
         _app = app;
         BaseUrl = baseUrl;
         _pendingPrRequests = pendingPrRequests;
-        _logs = logs;
     }
 
+    /// <param name="logLine">Sink for the server's own diagnostic log lines, forwarded live so they
+    /// interleave with the agent's output on the same seam. When <c>null</c>, server logs are dropped.</param>
     internal static async Task<LocalApiServer> StartAsync(
         IRepositoryHost host,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<string>? logLine = null)
     {
         var pendingPrRequests = new ConcurrentQueue<QueuedPr>();
-        var logs = new ConcurrentQueue<string>();
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
         builder.Logging.ClearProviders();
-        builder.Logging.AddProvider(new LogCollector(logs));
+        builder.Logging.AddProvider(new LogForwarder(logLine ?? (_ => { })));
         builder.Services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonContext.Default));
 
@@ -46,7 +45,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         await app.StartAsync(cancellationToken);
 
         var baseUrl = new Uri(app.Urls.First());
-        return new LocalApiServer(app, baseUrl, pendingPrRequests, logs);
+        return new LocalApiServer(app, baseUrl, pendingPrRequests);
     }
 
     private static void MapEndpoints(
@@ -82,17 +81,17 @@ internal sealed class LocalApiServer : IAsyncDisposable
         await _app.DisposeAsync();
     }
 
-    private sealed class LogCollector(ConcurrentQueue<string> logs) : ILoggerProvider
+    private sealed class LogForwarder(Action<string> sink) : ILoggerProvider
     {
-        public ILogger CreateLogger(string categoryName) => new Logger(logs, categoryName);
+        public ILogger CreateLogger(string categoryName) => new Logger(sink, categoryName);
         public void Dispose() { }
 
-        private sealed class Logger(ConcurrentQueue<string> logs, string category) : ILogger
+        private sealed class Logger(Action<string> sink, string category) : ILogger
         {
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
             public bool IsEnabled(LogLevel logLevel) => true;
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-                logs.Enqueue($"[{logLevel}] {category}: {formatter(state, exception)}");
+                sink($"[{logLevel}] {category}: {formatter(state, exception)}");
         }
     }
 }
