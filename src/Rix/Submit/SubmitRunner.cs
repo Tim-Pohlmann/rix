@@ -91,5 +91,5 @@ internal static class SubmitRunner
         string repoDir,
         IEnumerable<string> args,
         CancellationToken cancellationToken) =>
-        context.RunProcess("git", ["-C", repoDir, .. args], repoDir, ProcessEnv.Inherited, null, cancellationToken);
+        context.RunProcess("git", ["-C", repoDir, .. args], repoDir, null, null, cancellationToken);
 }
