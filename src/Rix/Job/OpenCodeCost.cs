@@ -17,27 +17,13 @@ internal static class OpenCodeCost
     /// is not valid JSON or carries no numeric cost. The cost is read from <c>part.cost</c> (a
     /// <c>step_finish</c> event) and, as a fallback, a top-level <c>cost</c> field.
     /// </summary>
-    internal static decimal? FromEventLine(string line)
-    {
-        var trimmed = line.TrimStart();
-        if (trimmed.Length == 0 || trimmed[0] != '{') return null;
-        if (!trimmed.Contains("\"cost\"")) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(trimmed);
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return null;
-
-            if (root.TryGetProperty("part", out var part) &&
-                part.ValueKind == JsonValueKind.Object &&
-                TryReadCost(part, out var partCost))
-                return partCost;
-
-            return TryReadCost(root, out var rootCost) ? rootCost : null;
-        }
-        catch (JsonException) { /* malformed JSON line — skip */ }
-        return null;
-    }
+    internal static decimal? FromEventLine(string line) =>
+        CostLine.Read(line, "\"cost\"", root =>
+            root.TryGetProperty("part", out var part) &&
+            part.ValueKind == JsonValueKind.Object &&
+            TryReadCost(part, out var partCost)
+                ? partCost
+                : TryReadCost(root, out var rootCost) ? rootCost : null);
 
     private static bool TryReadCost(JsonElement element, out decimal cost)
     {

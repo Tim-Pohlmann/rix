@@ -13,9 +13,9 @@ internal enum AgentKind
 internal static class AgentKindParser
 {
     /// <summary>
-    /// Parses a user-supplied agent name (case-insensitive) into an <see cref="AgentKind"/>.
-    /// An empty/whitespace value selects the default (<see cref="AgentKind.Claude"/>); any other
-    /// unrecognised value throws so the CLI can surface a clear error.
+    /// Throwing convenience over <see cref="TryParse"/>: parses a user-supplied agent name
+    /// (case-insensitive) into an <see cref="AgentKind"/>. An empty/whitespace value selects the
+    /// default (<see cref="AgentKind.Claude"/>); any other unrecognised value throws.
     /// </summary>
     internal static AgentKind Parse(string? value) =>
         TryParse(value, out var kind, out var error) ? kind : throw new ArgumentException(error);
@@ -34,7 +34,6 @@ internal static class AgentKindParser
         switch (normalized.ToLowerInvariant())
         {
             case "claude":
-                kind = AgentKind.Claude;
                 return true;
             case "opencode":
                 kind = AgentKind.OpenCode;

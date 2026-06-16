@@ -14,24 +14,11 @@ internal static class JobCost
     /// Returns the <c>total_cost_usd</c> from a Claude <c>result</c> line, or <c>null</c> when
     /// <paramref name="line"/> is not a result object or carries no numeric cost.
     /// </summary>
-    internal static decimal? FromResultLine(string line)
-    {
-        var trimmed = line.TrimStart();
-        if (trimmed.Length == 0 || trimmed[0] != '{') return null;
-        if (!trimmed.Contains("\"total_cost_usd\"")) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(trimmed);
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("type", out var type) ||
-                type.ValueKind != JsonValueKind.String || type.GetString() != "result")
-                return null;
-            return root.TryGetProperty("total_cost_usd", out var cost) &&
-                   cost.ValueKind == JsonValueKind.Number && cost.TryGetDecimal(out var v)
-                ? v : null;
-        }
-        catch (JsonException) { /* malformed JSON line — skip */ }
-        return null;
-    }
+    internal static decimal? FromResultLine(string line) =>
+        CostLine.Read(line, "\"total_cost_usd\"", root =>
+            root.TryGetProperty("type", out var type) &&
+            type.ValueKind == JsonValueKind.String && type.GetString() == "result" &&
+            root.TryGetProperty("total_cost_usd", out var cost) &&
+            cost.ValueKind == JsonValueKind.Number && cost.TryGetDecimal(out var v)
+                ? v : null);
 }
