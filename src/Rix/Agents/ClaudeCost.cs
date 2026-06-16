@@ -1,14 +1,15 @@
 using System.Text.Json;
 
-namespace Rix.Job;
+namespace Rix.Agents;
 
 /// <summary>
 /// Pure parsing of Claude's NDJSON output into the run's USD cost. Claude emits a single
 /// terminal <c>result</c> line whose <c>total_cost_usd</c> is the cumulative cost for the run;
 /// non-result lines (and results without a cost) yield <c>null</c> so the caller keeps the
-/// last known value.
+/// last known value. Lives beside <see cref="ClaudeAgent"/> as the Claude-specific half of the
+/// cost seam (cf. <see cref="OpenCodeCost"/>).
 /// </summary>
-internal static class JobCost
+internal static class ClaudeCost
 {
     /// <summary>
     /// Returns the <c>total_cost_usd</c> from a Claude <c>result</c> line, or <c>null</c> when

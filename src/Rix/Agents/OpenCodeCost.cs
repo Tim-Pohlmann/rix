@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Rix.Job;
+namespace Rix.Agents;
 
 /// <summary>
 /// Pure parsing of OpenCode's <c>--format json</c> output into the run's USD cost. OpenCode
