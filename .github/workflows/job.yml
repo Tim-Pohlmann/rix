@@ -92,8 +92,22 @@ jobs:
     needs: run
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout rix (for scripts)
-        uses: actions/checkout@v4
+      - name: Download rix binary
+        env:
+          GH_TOKEN: ${{ secrets.write-token }}
+          VERSION: ${{ inputs.rix-version }}
+        run: |
+          tag_args=()
+          if [[ "$VERSION" != "latest" ]]; then
+            tag_args=("$VERSION")
+          fi
+          gh release download "${tag_args[@]}" \
+            -R "$RIX_REPO_SLUG" \
+            -p 'rix-*-linux-x64.tar.gz' \
+            -O rix.tar.gz
+          mkdir -p rix-bin
+          tar -xzf rix.tar.gz -C rix-bin
+          chmod +x rix-bin/rix
 
       - name: Download job output
         uses: actions/download-artifact@v4
@@ -101,5 +115,9 @@ jobs:
           name: rix-output
           path: out
 
-      - name: Create PRs from bundles
-        run: .github/scripts/create-prs.sh out "${{ inputs.repo }}" "${{ secrets.write-token }}"
+      - name: Push branches and open PRs
+        env:
+          RIX_REPO: ${{ inputs.repo }}
+          RIX_WRITE_TOKEN: ${{ secrets.write-token }}
+          RIX_INPUT_DIR: out
+        run: ./rix-bin/rix submit
