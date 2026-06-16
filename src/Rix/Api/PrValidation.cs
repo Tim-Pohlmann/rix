@@ -18,23 +18,20 @@ internal static class PrRequestExtensions
             if (string.IsNullOrWhiteSpace(req.Title)) return new InvalidPr("title is required");
             if (string.IsNullOrWhiteSpace(req.Body)) return new InvalidPr("body is required");
 
-            RixBranchName branch;
-            try { branch = new RixBranchName(req.Branch); }
-            catch (ArgumentException ex) { return new InvalidPr($"{nameof(RixBranchName)}: {ex.Message}"); }
-
-            BranchName baseBranch;
-            try { baseBranch = new BranchName(req.BaseBranch); }
-            catch (ArgumentException ex) { return new InvalidPr($"{nameof(BranchName)}: {ex.Message}"); }
-
-            PrTitle title;
-            try { title = new PrTitle(req.Title); }
-            catch (ArgumentException ex) { return new InvalidPr($"{nameof(PrTitle)}: {ex.Message}"); }
-
-            PrBody body;
-            try { body = new PrBody(req.Body); }
-            catch (ArgumentException ex) { return new InvalidPr($"{nameof(PrBody)}: {ex.Message}"); }
-
-            return new ValidPr(new QueuedPr(branch, baseBranch, title, body));
+            // Each field is parsed on the ParseResult union, so an invalid value becomes a
+            // collectable error rather than a thrown exception. The first failing field wins.
+            return (RixBranchName.Parse(req.Branch), BranchName.Parse(req.BaseBranch),
+                    PrTitle.Parse(req.Title), PrBody.Parse(req.Body)) switch
+            {
+                (ParseSuccess<RixBranchName> branch, ParseSuccess<BranchName> baseBranch,
+                 ParseSuccess<PrTitle> title, ParseSuccess<PrBody> body)
+                    => new ValidPr(new QueuedPr(branch.Value, baseBranch.Value, title.Value, body.Value)),
+                (ParseError<RixBranchName> e, _, _, _) => new InvalidPr(e.Error),
+                (_, ParseError<BranchName> e, _, _) => new InvalidPr(e.Error),
+                (_, _, ParseError<PrTitle> e, _) => new InvalidPr(e.Error),
+                (_, _, _, ParseError<PrBody> e) => new InvalidPr(e.Error),
+                var other => throw new NotSupportedException($"Unexpected parse result combination: {other.GetType()}"),
+            };
         }
     }
 }

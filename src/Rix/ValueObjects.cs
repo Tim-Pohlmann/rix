@@ -87,22 +87,26 @@ internal sealed record DirectoryPath
 }
 
 /// <summary>
-/// Base converter for value objects that serialize as a single JSON string. Subclasses supply
-/// how to build the wrapper from a string and how to read the string back out. Construction-time
-/// validation (an <see cref="ArgumentException"/> from <see cref="Create"/>) is surfaced as a
-/// <see cref="JsonException"/> so malformed input fails as a parse error, not an unhandled throw.
+/// Base converter for value objects that serialize as a single JSON string. Subclasses supply how
+/// to <see cref="Parse"/> a string into the wrapper and how to read the string back out. A
+/// <see cref="ParseError{T}"/> is surfaced as a <see cref="JsonException"/> so malformed input fails
+/// as a parse error rather than an unhandled throw — validation stays on the union, not exceptions.
 /// </summary>
 internal abstract class StringValueJsonConverter<T> : JsonConverter<T>
 {
-    protected abstract T Create(string value);
+    protected abstract ParseResult<T> Parse(string value);
     protected abstract string Extract(T value);
 
     public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType != JsonTokenType.String)
             throw new JsonException($"Expected string token for {typeof(T).Name}, got {reader.TokenType}");
-        try { return Create(reader.GetString()!); }
-        catch (ArgumentException ex) { throw new JsonException(ex.Message, ex); }
+        return Parse(reader.GetString()!) switch
+        {
+            ParseSuccess<T> ok => ok.Value,
+            ParseError<T> bad => throw new JsonException(bad.Error),
+            var other => throw new JsonException($"Unexpected parse result for {typeof(T).Name}: {other.GetType().Name}"),
+        };
     }
 
     public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
