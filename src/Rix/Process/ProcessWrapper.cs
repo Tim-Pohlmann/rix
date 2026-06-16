@@ -24,18 +24,6 @@ internal delegate Task<ProcessResult> RunProcessAsync(
     Action<string>? onStdoutLine,
     CancellationToken cancellationToken);
 
-internal static class ProcessEnv
-{
-    /// <summary>The host's <c>PATH</c> and <c>HOME</c> — the minimum a child CLI (git, npm) needs
-    /// to resolve executables and user config. Shared so the same environment is applied
-    /// everywhere a subprocess is launched with explicit overrides.</summary>
-    internal static readonly IReadOnlyDictionary<string, string> Inherited = new Dictionary<string, string>
-    {
-        ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "",
-        ["HOME"] = Environment.GetEnvironmentVariable("HOME") ?? "",
-    };
-}
-
 internal static class ProcessWrapper
 {
     internal static async Task<ProcessResult> RunAsync(

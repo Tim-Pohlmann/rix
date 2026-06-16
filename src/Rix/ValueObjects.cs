@@ -54,9 +54,12 @@ internal sealed record RepoIdentifier
     public override string ToString() => Value;
 }
 
-/// <summary>A directory path that is guaranteed to exist as of <see cref="Parse"/>-time. There is no
-/// public constructor: an instance can only be obtained through <see cref="Parse"/>, so any
-/// <c>DirectoryPath</c> that exists references a directory that existed when it was validated.</summary>
+/// <summary>A directory path that is guaranteed to exist as of <see cref="Parse"/>-time and is
+/// stored as an absolute path. There is no public constructor: an instance can only be obtained
+/// through <see cref="Parse"/>, so any <c>DirectoryPath</c> that exists references a directory that
+/// existed when it was validated. Normalising to absolute at the boundary means paths derived from
+/// it (e.g. via <see cref="System.IO.Path.Combine(string, string)"/>) stay rooted, so a subprocess
+/// run from a different working directory resolves them where the caller intended.</summary>
 internal sealed record DirectoryPath
 {
     internal string Value { get; }
@@ -64,10 +67,11 @@ internal sealed record DirectoryPath
     private DirectoryPath(string value) => Value = value;
 
     /// <summary>Returns a <see cref="ParseError{T}"/> when the path does not point at an existing
-    /// directory, so callers can aggregate it with other validation errors.</summary>
+    /// directory, so callers can aggregate it with other validation errors. On success the path is
+    /// normalised to absolute via <see cref="System.IO.Path.GetFullPath(string)"/>.</summary>
     internal static ParseResult<DirectoryPath> Parse(string path) =>
         Directory.Exists(path)
-            ? new ParseSuccess<DirectoryPath>(new DirectoryPath(path))
+            ? new ParseSuccess<DirectoryPath>(new DirectoryPath(Path.GetFullPath(path)))
             : new ParseError<DirectoryPath>($"directory does not exist: {path}");
 
     public override string ToString() => Value;
