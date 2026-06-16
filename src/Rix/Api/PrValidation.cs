@@ -18,20 +18,27 @@ internal static class PrRequestExtensions
             if (string.IsNullOrWhiteSpace(req.Title)) return new InvalidPr("title is required");
             if (string.IsNullOrWhiteSpace(req.Body)) return new InvalidPr("body is required");
 
-            // Each field is parsed on the ParseResult union, so an invalid value becomes a
-            // collectable error rather than a thrown exception. The first failing field wins.
-            return (RixBranchName.Parse(req.Branch), BranchName.Parse(req.BaseBranch),
-                    PrTitle.Parse(req.Title), PrBody.Parse(req.Body)) switch
-            {
-                (ParseSuccess<RixBranchName> branch, ParseSuccess<BranchName> baseBranch,
-                 ParseSuccess<PrTitle> title, ParseSuccess<PrBody> body)
-                    => new ValidPr(new QueuedPr(branch.Value, baseBranch.Value, title.Value, body.Value)),
-                (ParseError<RixBranchName> e, _, _, _) => new InvalidPr(e.Error),
-                (_, ParseError<BranchName> e, _, _) => new InvalidPr(e.Error),
-                (_, _, ParseError<PrTitle> e, _) => new InvalidPr(e.Error),
-                (_, _, _, ParseError<PrBody> e) => new InvalidPr(e.Error),
-                var other => throw new NotSupportedException($"Unexpected parse result combination: {other.GetType()}"),
-            };
+            // Each field is parsed on the ParseResult union; the first failure (if any) is recorded
+            // in `error` rather than thrown, so every field flows through one error-handling path.
+            string? error = null;
+            var branch = Take(RixBranchName.Parse(req.Branch), ref error);
+            var baseBranch = Take(BranchName.Parse(req.BaseBranch), ref error);
+            var title = Take(PrTitle.Parse(req.Title), ref error);
+            var body = Take(PrBody.Parse(req.Body), ref error);
+
+            // When no field failed, every Take returned its parsed value.
+            return error is null
+                ? new ValidPr(new QueuedPr(branch!, baseBranch!, title, body))
+                : new InvalidPr(error);
         }
+    }
+
+    /// <summary>Unwraps a successful parse to its value; on failure records the first
+    /// <paramref name="error"/> and returns the default so the caller can keep collecting.</summary>
+    private static T? Take<T>(ParseResult<T> result, ref string? error)
+    {
+        if (result is ParseSuccess<T> ok) return ok.Value;
+        if (result is ParseError<T> bad) error ??= bad.Error;
+        return default;
     }
 }
