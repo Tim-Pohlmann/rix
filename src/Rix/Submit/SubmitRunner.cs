@@ -47,33 +47,8 @@ internal static class SubmitRunner
             var created = new List<string>();
             foreach (var pr in success.PendingPrRequests)
             {
-                if (await context.Host.BranchExistsOnRemoteAsync(pr.Branch, cancellationToken))
-                    return new SubmitFailure($"branch already exists on remote: {pr.Branch.Value}");
-
-                var bundlePath = Path.Combine(config.InputDir.Value, pr.BundleFile);
-                if (!File.Exists(bundlePath))
-                    return new SubmitFailure($"bundle file not found: {pr.BundleFile}");
-
-                var fetch = await Git(
-                    context, cloneDir, ["fetch", bundlePath, $"{pr.Branch.Value}:{pr.Branch.Value}"], cancellationToken);
-                if (fetch is ProcessFailure fetchFailure)
-                    return new SubmitFailure($"git fetch failed for {pr.Branch.Value}: {fetchFailure.Reason}");
-
-                var push = await Git(
-                    context, cloneDir, ["push", "origin", pr.Branch.Value], cancellationToken);
-                if (push is ProcessFailure pushFailure)
-                    return new SubmitFailure($"git push failed for {pr.Branch.Value}: {pushFailure.Reason}");
-
-                try
-                {
-                    await context.Host.CreatePullRequestAsync(pr, cancellationToken);
-                }
-                catch (HttpRequestException ex)
-                {
-                    return new SubmitFailure($"creating PR for {pr.Branch.Value} failed: {ex.Message}");
-                }
-
-                context.LogLine($"opened PR for {pr.Branch.Value}");
+                if (await SubmitOneAsync(config, context, cloneDir, pr, cancellationToken) is SubmitFailure failure)
+                    return failure;
                 created.Add(pr.Branch.Value);
             }
 
@@ -84,6 +59,45 @@ internal static class SubmitRunner
             try { Directory.Delete(cloneDir, recursive: true); }
             catch (DirectoryNotFoundException) { /* already cleaned up */ }
         }
+    }
+
+    /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns a
+    /// <see cref="SubmitFailure"/> on the first problem, or <c>null</c> on success.</summary>
+    private static async Task<ISubmitResult?> SubmitOneAsync(
+        SubmitConfig config,
+        SubmitContext context,
+        string cloneDir,
+        PendingPr pr,
+        CancellationToken cancellationToken)
+    {
+        if (await context.Host.BranchExistsOnRemoteAsync(pr.Branch, cancellationToken))
+            return new SubmitFailure($"branch already exists on remote: {pr.Branch.Value}");
+
+        var bundlePath = Path.Combine(config.InputDir.Value, pr.BundleFile);
+        if (!File.Exists(bundlePath))
+            return new SubmitFailure($"bundle file not found: {pr.BundleFile}");
+
+        var fetch = await Git(
+            context, cloneDir, ["fetch", bundlePath, $"{pr.Branch.Value}:{pr.Branch.Value}"], cancellationToken);
+        if (fetch is ProcessFailure fetchFailure)
+            return new SubmitFailure($"git fetch failed for {pr.Branch.Value}: {fetchFailure.Reason}");
+
+        var push = await Git(
+            context, cloneDir, ["push", "origin", pr.Branch.Value], cancellationToken);
+        if (push is ProcessFailure pushFailure)
+            return new SubmitFailure($"git push failed for {pr.Branch.Value}: {pushFailure.Reason}");
+
+        try
+        {
+            await context.Host.CreatePullRequestAsync(pr, cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            return new SubmitFailure($"creating PR for {pr.Branch.Value} failed: {ex.Message}");
+        }
+
+        context.LogLine($"opened PR for {pr.Branch.Value}");
+        return null;
     }
 
     private static Task<ProcessResult> Git(
