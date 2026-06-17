@@ -47,7 +47,7 @@ internal static class SubmitRunner
             var created = new List<string>();
             foreach (var pr in success.PendingPrRequests)
             {
-                if (await SubmitOneAsync(config, context, cloneDir, pr, cancellationToken) is SubmitFailure failure)
+                if (await SubmitOneAsync(config, context, cloneDir, pr, cancellationToken) is { } failure)
                     return failure;
                 created.Add(pr.Branch.Value);
             }
@@ -63,7 +63,7 @@ internal static class SubmitRunner
 
     /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns a
     /// <see cref="SubmitFailure"/> on the first problem, or <c>null</c> on success.</summary>
-    private static async Task<ISubmitResult?> SubmitOneAsync(
+    private static async Task<SubmitFailure?> SubmitOneAsync(
         SubmitConfig config,
         SubmitContext context,
         string cloneDir,
