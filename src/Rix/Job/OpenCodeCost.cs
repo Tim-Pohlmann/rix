@@ -18,12 +18,17 @@ internal static class OpenCodeCost
     /// <c>step_finish</c> event) and, as a fallback, a top-level <c>cost</c> field.
     /// </summary>
     internal static decimal? FromEventLine(string line) =>
-        CostLine.Read(line, "\"cost\"", root =>
-            root.TryGetProperty("part", out var part) &&
+        CostLine.Read(line, "\"cost\"", ReadCost);
+
+    private static decimal? ReadCost(JsonElement root)
+    {
+        if (root.TryGetProperty("part", out var part) &&
             part.ValueKind == JsonValueKind.Object &&
-            TryReadCost(part, out var partCost)
-                ? partCost
-                : TryReadCost(root, out var rootCost) ? rootCost : null);
+            TryReadCost(part, out var partCost))
+            return partCost;
+
+        return TryReadCost(root, out var rootCost) ? rootCost : null;
+    }
 
     private static bool TryReadCost(JsonElement element, out decimal cost)
     {
