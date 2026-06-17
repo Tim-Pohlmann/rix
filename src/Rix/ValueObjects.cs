@@ -28,6 +28,17 @@ internal readonly record struct TimeoutMinutes(int Value);
 internal abstract record ParseResult<T>
 {
     private protected ParseResult() { }
+
+    /// <summary>Eliminates the union exhaustively: runs <paramref name="onSuccess"/> for a
+    /// <see cref="ParseSuccess{T}"/> or <paramref name="onError"/> for a <see cref="ParseError{T}"/>.
+    /// The closed <c>private protected</c> hierarchy makes these the only two cases, so callers fold
+    /// without repeating a defensive catch-all arm at every site.</summary>
+    internal TResult Match<TResult>(Func<T, TResult> onSuccess, Func<string, TResult> onError) => this switch
+    {
+        ParseSuccess<T> ok => onSuccess(ok.Value),
+        ParseError<T> bad => onError(bad.Error),
+        _ => throw new InvalidOperationException($"Unexpected {nameof(ParseResult<T>)}: {GetType().Name}"),
+    };
 }
 
 internal sealed record ParseSuccess<T>(T Value) : ParseResult<T>;
@@ -101,12 +112,9 @@ internal abstract class StringValueJsonConverter<T> : JsonConverter<T>
     {
         if (reader.TokenType != JsonTokenType.String)
             throw new JsonException($"Expected string token for {typeof(T).Name}, got {reader.TokenType}");
-        return Parse(reader.GetString()!) switch
-        {
-            ParseSuccess<T> ok => ok.Value,
-            ParseError<T> bad => throw new JsonException(bad.Error),
-            var other => throw new JsonException($"Unexpected parse result for {typeof(T).Name}: {other.GetType().Name}"),
-        };
+        return Parse(reader.GetString()!).Match(
+            onSuccess: value => value,
+            onError: error => throw new JsonException(error));
     }
 
     public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)

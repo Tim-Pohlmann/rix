@@ -25,9 +25,10 @@ internal static class PrRequestExtensions
             var (title, titleError) = Take(PrTitle.Parse(req.Title));
             var (body, bodyError) = Take(PrBody.Parse(req.Body));
 
-            // When no field failed, every Take returned its parsed value.
-            return new[] { branchError, baseBranchError, titleError, bodyError }
-                .FirstOrDefault(e => e is not null) is { } error
+            // The first field that failed (if any) becomes the error; otherwise every Take
+            // returned its parsed value.
+            var error = branchError ?? baseBranchError ?? titleError ?? bodyError;
+            return error is not null
                 ? new InvalidPr(error)
                 : new ValidPr(new QueuedPr(branch!, baseBranch!, title, body));
         }
@@ -35,10 +36,6 @@ internal static class PrRequestExtensions
 
     /// <summary>Projects a parse result onto a (value, error) pair: success carries the value and a
     /// null error; failure carries the default value and the error message.</summary>
-    private static (T? Value, string? Error) Take<T>(ParseResult<T> result) => result switch
-    {
-        ParseSuccess<T> ok => (ok.Value, null),
-        ParseError<T> bad => (default, bad.Error),
-        _ => (default, $"unexpected parse result: {result.GetType().Name}"),
-    };
+    private static (T? Value, string? Error) Take<T>(ParseResult<T> result) =>
+        result.Match<(T?, string?)>(value => (value, null), error => (default, error));
 }
