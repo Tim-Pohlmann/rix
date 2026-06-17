@@ -1,6 +1,5 @@
 using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
+using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Rix.Process;
 
@@ -13,24 +12,12 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
     private readonly HttpClient _http;
     private readonly RunProcessAsync _runProcess;
 
-    internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken, RunProcessAsync runProcess)
-        : this(repo, readToken.Value, runProcess, handler: null) { }
-
     internal GitHubRepositoryHost(
-        RepoIdentifier repo,
-        ReadToken readToken,
-        RunProcessAsync runProcess,
-        HttpMessageHandler? handler)
+        RepoIdentifier repo, ReadToken readToken, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
         : this(repo, readToken.Value, runProcess, handler) { }
 
-    internal GitHubRepositoryHost(RepoIdentifier repo, WriteToken writeToken, RunProcessAsync runProcess)
-        : this(repo, writeToken.Value, runProcess, handler: null) { }
-
     internal GitHubRepositoryHost(
-        RepoIdentifier repo,
-        WriteToken writeToken,
-        RunProcessAsync runProcess,
-        HttpMessageHandler? handler)
+        RepoIdentifier repo, WriteToken writeToken, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
         : this(repo, writeToken.Value, runProcess, handler) { }
 
     private GitHubRepositoryHost(
@@ -86,8 +73,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
             Head: pullRequest.Branch.Value,
             Base: pullRequest.BaseBranch.Value,
             Body: pullRequest.Body.Value);
-        var json = JsonSerializer.Serialize(request, GitHubApiJsonContext.Default.CreatePullRequestRequest);
-        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var content = JsonContent.Create(request, GitHubApiJsonContext.Default.CreatePullRequestRequest);
         using var response = await _http.PostAsync(url, content, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
