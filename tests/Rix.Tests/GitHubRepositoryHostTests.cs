@@ -13,6 +13,8 @@ public class GitHubRepositoryHostTests
     private static readonly string[] ExpectedBundleArgs =
         ["bundle", "create", "/tmp/out/fix.bundle", "main..rix/fix"];
 
+    private static readonly string[] ExpectedPushArgs = ["push", "origin", "rix/fix"];
+
     private static GitHubRepositoryHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
@@ -124,7 +126,7 @@ public class GitHubRepositoryHostTests
 
         await host.PushBranchAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None);
 
-        CollectionAssert.AreEqual(new[] { "push", "origin", "rix/fix" }, capturedArgs);
+        CollectionAssert.AreEqual(ExpectedPushArgs, capturedArgs);
         Assert.AreEqual("/tmp/clone", capturedWorkingDir);
         Assert.IsNotNull(capturedEnv);
         Assert.AreEqual("1", capturedEnv["GIT_CONFIG_COUNT"]);
