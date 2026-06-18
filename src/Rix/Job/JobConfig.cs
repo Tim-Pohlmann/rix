@@ -36,12 +36,9 @@ internal record JobConfig
     /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
     /// collected, so a <see cref="JobConfigValid"/> is produced only when the whole configuration is
     /// well-formed — business logic downstream never sees an invalid value.</summary>
-    internal static JobConfigResult Create(
-        string repo,
-        string prompt,
-        string readToken,
-        JobInputOptions options)
+    internal static JobConfigResult Create(JobInputs inputs)
     {
+        var (repo, prompt, readToken) = (inputs.Repo, inputs.Prompt, inputs.ReadToken);
         var errors = new List<string>();
 
         // Unwraps a parse result, recording its message (prefixed with the flag) on failure so all
@@ -71,24 +68,24 @@ internal record JobConfig
         if (string.IsNullOrWhiteSpace(readToken))
             errors.Add("--read-token is required");
 
-        var resolvedMaxTokens = options.MaxTokens ?? DefaultMaxTokens;
+        var resolvedMaxTokens = inputs.MaxTokens ?? DefaultMaxTokens;
         if (resolvedMaxTokens <= 0)
             errors.Add("--max-tokens must be a positive integer");
 
-        var resolvedTimeout = options.TimeoutMinutes ?? DefaultTimeoutMinutes;
+        var resolvedTimeout = inputs.TimeoutMinutes ?? DefaultTimeoutMinutes;
         if (resolvedTimeout <= 0)
             errors.Add("--timeout must be a positive integer");
 
-        var resolvedWorkDir = string.IsNullOrWhiteSpace(options.WorkDir) ? Path.GetTempPath() : options.WorkDir;
+        var resolvedWorkDir = string.IsNullOrWhiteSpace(inputs.WorkDir) ? Path.GetTempPath() : inputs.WorkDir;
         var parsedWorkDir = Collect(DirectoryPath.Parse(resolvedWorkDir), "--work-dir");
 
         DirectoryPath? parsedOutputDir = null;
-        if (string.IsNullOrWhiteSpace(options.OutputDir))
+        if (string.IsNullOrWhiteSpace(inputs.OutputDir))
             errors.Add("--output-dir is required");
         else
-            parsedOutputDir = Collect(DirectoryPath.Parse(options.OutputDir), "--output-dir");
+            parsedOutputDir = Collect(DirectoryPath.Parse(inputs.OutputDir), "--output-dir");
 
-        if (!AgentKindParser.TryParse(options.Agent, out var resolvedAgent, out var agentError))
+        if (!AgentKindParser.TryParse(inputs.Agent, out var resolvedAgent, out var agentError))
             errors.Add($"--agent: {agentError}");
 
         if (errors.Count > 0)
@@ -110,9 +107,14 @@ internal record JobConfig
 /// <c>--prompt</c>, and <c>--max-tokens</c> flags configure.</summary>
 internal sealed record AgentConfig(AgentKind Kind, string Prompt, MaxTokens MaxTokens);
 
-/// <summary>Groups the optional CLI/environment inputs to <see cref="JobConfig.Create"/>, keeping its
-/// signature small and letting callers set only the values they care about.</summary>
-internal record JobInputOptions(
+/// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
+/// values first, then the optional ones (which default to <c>null</c> so callers set only what they
+/// care about). <see cref="JobConfig.Create"/> is the boundary that turns these primitives into the
+/// always-valid, strongly-typed <see cref="JobConfig"/>.</summary>
+internal record JobInputs(
+    string Repo,
+    string Prompt,
+    string ReadToken,
     int? MaxTokens = null,
     int? TimeoutMinutes = null,
     string? WorkDir = null,

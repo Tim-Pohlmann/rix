@@ -15,7 +15,10 @@ internal static class TestConfig
         string? workDir = null,
         string? outputDir = null,
         string? agent = null) =>
-        JobConfig.Create(repo, prompt, readToken, new JobInputOptions(
+        JobConfig.Create(new JobInputs(
+            Repo: repo,
+            Prompt: prompt,
+            ReadToken: readToken,
             MaxTokens: maxTokens,
             TimeoutMinutes: timeoutMinutes,
             WorkDir: workDir ?? Path.GetTempPath(),
