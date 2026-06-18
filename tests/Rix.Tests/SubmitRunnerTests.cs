@@ -67,7 +67,8 @@ public class SubmitRunnerTests
         Assert.AreEqual(1, host.CreatedPrs.Count);
         Assert.AreEqual("rix/my-fix", host.CreatedPrs[0].Branch.Value);
         CollectionAssert.Contains(commands, "fetch");
-        CollectionAssert.Contains(commands, "push");
+        CollectionAssert.AreEqual(
+            new[] { "rix/my-fix" }, host.PushedBranches.Select(b => b.Value).ToArray());
     }
 
     [TestMethod]
@@ -98,16 +99,10 @@ public class SubmitRunnerTests
     public async Task RunAsync_Fails_WhenGitPushFails()
     {
         WriteOnePendingPr();
-        var host = new StubSubmitHost();
+        var host = new StubSubmitHost(
+            pushBranch: _ => throw new InvalidOperationException("exited with code 1"));
 
-        RunProcessAsync runner = (_, args, _, _, _, _) =>
-        {
-            var verb = args.ElementAt(2); // git -C <dir> <verb> ...
-            return Task.FromResult<ProcessResult>(
-                verb == "push" ? new ProcessFailure("exited with code 1") : new ProcessSuccess());
-        };
-
-        var result = await Run(host, runner);
+        var result = await Run(host);
 
         AssertFailure(result, "git push failed");
         Assert.AreEqual(0, host.CreatedPrs.Count);

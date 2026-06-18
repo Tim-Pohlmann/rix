@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json.Serialization;
 using Rix.Process;
 
@@ -8,9 +9,9 @@ namespace Rix.Repository;
 internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
 {
     private readonly RepoIdentifier _repo;
-    private readonly string _credential;
     private readonly HttpClient _http;
     private readonly RunProcessAsync _runProcess;
+    private readonly IReadOnlyDictionary<string, string> _gitAuthEnv;
 
     internal GitHubRepositoryHost(
         RepoIdentifier repo, ReadToken readToken, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
@@ -27,9 +28,9 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
         HttpMessageHandler? handler)
     {
         _repo = repo;
-        _credential = credential;
         _http = BuildHttpClient(credential, handler);
         _runProcess = runProcess;
+        _gitAuthEnv = BuildGitAuthEnv(credential);
     }
 
     private static HttpClient BuildHttpClient(string token, HttpMessageHandler? handler)
@@ -42,8 +43,25 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
         return client;
     }
 
+    /// <summary>
+    /// Builds the environment that authenticates git over HTTPS without ever placing the token in
+    /// a command-line argument (visible via <c>ps</c>) or in the cloned repo's persisted
+    /// <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables as ad-hoc config,
+    /// so the credential lives only in this process's environment for the duration of each call.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> BuildGitAuthEnv(string token)
+    {
+        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token}"));
+        return new Dictionary<string, string>
+        {
+            ["GIT_CONFIG_COUNT"] = "1",
+            ["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader",
+            ["GIT_CONFIG_VALUE_0"] = $"Authorization: Basic {basic}",
+        };
+    }
+
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-        RunGitAsync(["clone", $"https://x-access-token:{_credential}@github.com/{_repo.Value}.git", targetDirectory],
+        RunGitAsync(["clone", $"https://github.com/{_repo.Value}.git", targetDirectory],
             workingDirectory: Path.GetTempPath(), cancellationToken);
 
     public Task CreateBundleAsync(
@@ -54,6 +72,9 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
         CancellationToken cancellationToken) =>
         RunGitAsync(["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
             workingDirectory: repoDirectory, cancellationToken);
+
+    public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken) =>
+        RunGitAsync(["push", "origin", branch.Value], workingDirectory: repoDirectory, cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
@@ -80,10 +101,9 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
 
     private async Task RunGitAsync(string[] args, string workingDirectory, CancellationToken cancellationToken)
     {
-        // No environment overrides: the subprocess already inherits the full parent environment.
-        // Forcing PATH/HOME here would be redundant and, on Windows (where HOME is usually unset),
-        // would inject an empty HOME that disrupts git's home-directory resolution.
-        var result = await _runProcess("git", args, workingDirectory, null, null, cancellationToken);
+        // Pass only the GIT_CONFIG_* auth variables as overrides; the subprocess still inherits the
+        // full parent environment (PATH, HOME, ...) on top of these, so we never force those here.
+        var result = await _runProcess("git", args, workingDirectory, _gitAuthEnv, null, cancellationToken);
         if (result is ProcessFailure f)
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
     }
