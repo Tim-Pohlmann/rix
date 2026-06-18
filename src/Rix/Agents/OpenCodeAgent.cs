@@ -15,7 +15,7 @@ namespace Rix.Agents;
 /// <item>OpenCode has no <c>--append-system-prompt</c> flag, so rix's system prompt (which carries
 /// the local PR API URL) is folded into the run message ahead of the user's prompt.</item>
 /// <item>OpenCode exposes no per-run output-token cap equivalent to
-/// <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so <see cref="JobConfig.MaxTokens"/> is not forwarded;
+/// <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so <see cref="AgentConfig.MaxTokens"/> is not forwarded;
 /// the invocation carries no environment overrides.</item>
 /// </list>
 /// </remarks>
