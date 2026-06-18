@@ -13,9 +13,17 @@ internal static class TestConfig
         int? maxTokens = null,
         int? timeoutMinutes = null,
         string? workDir = null,
-        string? outputDir = null) =>
-        JobConfig.Create(repo, prompt, readToken, maxTokens, timeoutMinutes,
-            workDir ?? Path.GetTempPath(), outputDir ?? Path.GetTempPath()) switch
+        string? outputDir = null,
+        string? agent = null) =>
+        JobConfig.Create(new JobInputs(
+            Repo: repo,
+            Prompt: prompt,
+            ReadToken: readToken,
+            MaxTokens: maxTokens,
+            TimeoutMinutes: timeoutMinutes,
+            WorkDir: workDir ?? Path.GetTempPath(),
+            OutputDir: outputDir ?? Path.GetTempPath(),
+            Agent: agent)) switch
         {
             JobConfigValid v => v.Config,
             JobConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),

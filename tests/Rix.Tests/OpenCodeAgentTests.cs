@@ -5,9 +5,9 @@ using Rix.Process;
 namespace Rix.Tests;
 
 [TestClass]
-public class ClaudeAgentTests
+public class OpenCodeAgentTests
 {
-    private static readonly ClaudeAgent Agent = new();
+    private static readonly OpenCodeAgent Agent = new();
 
     // Adapts a simple (fileName, args) -> ProcessResult stub to the full RunProcessAsync shape.
     private static RunProcessAsync Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run) =>
@@ -16,10 +16,10 @@ public class ClaudeAgentTests
     // ---- EnsureInstalledAsync ----
 
     [TestMethod]
-    public async Task EnsureInstalled_ReturnsInstalled_WhenClaudeAlreadyInstalled()
+    public async Task EnsureInstalled_ReturnsInstalled_WhenOpenCodeAlreadyInstalled()
     {
         var result = await Agent.EnsureInstalledAsync(
-            Runner((f, _) => Task.FromResult<ProcessResult>(f == "claude"
+            Runner((f, _) => Task.FromResult<ProcessResult>(f == "opencode"
                 ? new ProcessSuccess()
                 : new ProcessFailure("exited with code 1"))),
             CancellationToken.None);
@@ -30,11 +30,11 @@ public class ClaudeAgentTests
     [TestMethod]
     public async Task EnsureInstalled_ReturnsInstalled_WhenInstallSucceeds()
     {
-        int claudeCallCount = 0;
+        int opencodeCallCount = 0;
         var result = await Agent.EnsureInstalledAsync(
             Runner((f, args) => f switch
             {
-                "claude" => Task.FromResult<ProcessResult>(++claudeCallCount == 1
+                "opencode" => Task.FromResult<ProcessResult>(++opencodeCallCount == 1
                     ? new ProcessFailure("exited with code 1")
                     : new ProcessSuccess()),
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
@@ -62,7 +62,7 @@ public class ClaudeAgentTests
         var result = await Agent.EnsureInstalledAsync(
             Runner((f, args) => f switch
             {
-                "claude" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
+                "opencode" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
                 "npm" when args.Contains("--version") => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 "npm" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
                 _ => throw new NotSupportedException(f),
@@ -74,19 +74,19 @@ public class ClaudeAgentTests
     }
 
     [TestMethod]
-    public async Task EnsureInstalled_InstallsLatestVersion()
+    public async Task EnsureInstalled_InstallsOpenCodePackage()
     {
         string? installedPackage = null;
-        int claudeCallCount = 0;
+        int opencodeCallCount = 0;
 
         await Agent.EnsureInstalledAsync(
             Runner((f, args) =>
             {
                 if (f == "npm" && args.Contains("install"))
-                    installedPackage = args.FirstOrDefault(a => a.StartsWith("@anthropic-ai/claude-code"));
+                    installedPackage = args.FirstOrDefault(a => a.StartsWith("opencode-ai"));
                 return f switch
                 {
-                    "claude" => Task.FromResult<ProcessResult>(++claudeCallCount == 1
+                    "opencode" => Task.FromResult<ProcessResult>(++opencodeCallCount == 1
                         ? new ProcessFailure("exited with code 1")
                         : new ProcessSuccess()),
                     "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
@@ -95,27 +95,16 @@ public class ClaudeAgentTests
             }),
             CancellationToken.None);
 
-        Assert.AreEqual("@anthropic-ai/claude-code", installedPackage);
+        Assert.AreEqual("opencode-ai", installedPackage);
     }
 
     [TestMethod]
-    public async Task EnsureInstalled_Fails_WhenTimesOut()
-    {
-        var result = await Agent.EnsureInstalledAsync(
-            Runner((_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("timed out"))),
-            CancellationToken.None);
-
-        Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
-        StringAssert.Contains(failed.Reason, "timed out");
-    }
-
-    [TestMethod]
-    public async Task EnsureInstalled_Fails_WhenPostInstallClaudeCheckFails()
+    public async Task EnsureInstalled_Fails_WhenPostInstallOpenCodeCheckFails()
     {
         var result = await Agent.EnsureInstalledAsync(
             Runner((f, args) => f switch
             {
-                "claude" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
+                "opencode" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
             }),
@@ -128,15 +117,20 @@ public class ClaudeAgentTests
     // ---- BuildInvocation / ParseCost ----
 
     [TestMethod]
-    public void BuildInvocation_ProducesClaudePrintInvocation()
+    public void BuildInvocation_ProducesOpenCodeRunInvocation()
     {
         var config = TestConfig.Valid(maxTokens: 1234);
 
         var invocation = Agent.BuildInvocation(config, "SYSTEM");
 
-        Assert.AreEqual("claude", invocation.FileName);
-        CollectionAssert.Contains(invocation.Arguments.ToList(), "--append-system-prompt");
-        CollectionAssert.Contains(invocation.Arguments.ToList(), "SYSTEM");
-        Assert.AreEqual("1234", invocation.EnvironmentOverrides["CLAUDE_CODE_MAX_OUTPUT_TOKENS"]);
+        Assert.AreEqual("opencode", invocation.FileName);
+        var args = invocation.Arguments.ToList();
+        CollectionAssert.Contains(args, "run");
+        CollectionAssert.Contains(args, "--format");
+        CollectionAssert.Contains(args, "json");
+        // System prompt is folded into the run message ahead of the user prompt.
+        Assert.IsTrue(args.Any(a => a.Contains("SYSTEM") && a.Contains("do it")));
+        // OpenCode has no output-token cap equivalent, so no environment overrides are set.
+        Assert.AreEqual(0, invocation.EnvironmentOverrides.Count);
     }
 }

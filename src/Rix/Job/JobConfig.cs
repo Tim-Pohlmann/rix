@@ -1,14 +1,15 @@
+using Rix.Agents;
+
 namespace Rix.Job;
 
 internal record JobConfig
 {
     internal RepoIdentifier Repo { get; }
-    internal string Prompt { get; }
     internal ReadToken ReadToken { get; }
-    internal MaxTokens MaxTokens { get; }
     internal TimeoutMinutes TimeoutMinutes { get; }
     internal DirectoryPath WorkDir { get; }
     internal DirectoryPath OutputDir { get; }
+    internal AgentConfig Agent { get; }
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
@@ -17,35 +18,27 @@ internal record JobConfig
     /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
     private JobConfig(
         RepoIdentifier repo,
-        string prompt,
         ReadToken readToken,
-        MaxTokens maxTokens,
         TimeoutMinutes timeoutMinutes,
         DirectoryPath workDir,
-        DirectoryPath outputDir)
+        DirectoryPath outputDir,
+        AgentConfig agent)
     {
         Repo = repo;
-        Prompt = prompt;
         ReadToken = readToken;
-        MaxTokens = maxTokens;
         TimeoutMinutes = timeoutMinutes;
         WorkDir = workDir;
         OutputDir = outputDir;
+        Agent = agent;
     }
 
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
     /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
     /// collected, so a <see cref="JobConfigValid"/> is produced only when the whole configuration is
     /// well-formed — business logic downstream never sees an invalid value.</summary>
-    internal static JobConfigResult Create(
-        string repo,
-        string prompt,
-        string readToken,
-        int? maxTokens,
-        int? timeoutMinutes,
-        string? workDir,
-        string? outputDir)
+    internal static JobConfigResult Create(JobInputs inputs)
     {
+        var (repo, prompt, readToken) = (inputs.Repo, inputs.Prompt, inputs.ReadToken);
         var errors = new List<string>();
 
         // Unwraps a parse result, recording its message (prefixed with the flag) on failure so all
@@ -75,22 +68,25 @@ internal record JobConfig
         if (string.IsNullOrWhiteSpace(readToken))
             errors.Add("--read-token is required");
 
-        var resolvedMaxTokens = maxTokens ?? DefaultMaxTokens;
+        var resolvedMaxTokens = inputs.MaxTokens ?? DefaultMaxTokens;
         if (resolvedMaxTokens <= 0)
             errors.Add("--max-tokens must be a positive integer");
 
-        var resolvedTimeout = timeoutMinutes ?? DefaultTimeoutMinutes;
+        var resolvedTimeout = inputs.TimeoutMinutes ?? DefaultTimeoutMinutes;
         if (resolvedTimeout <= 0)
             errors.Add("--timeout must be a positive integer");
 
-        var resolvedWorkDir = string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir;
+        var resolvedWorkDir = string.IsNullOrWhiteSpace(inputs.WorkDir) ? Path.GetTempPath() : inputs.WorkDir;
         var parsedWorkDir = Collect(DirectoryPath.Parse(resolvedWorkDir), "--work-dir");
 
         DirectoryPath? parsedOutputDir = null;
-        if (string.IsNullOrWhiteSpace(outputDir))
+        if (string.IsNullOrWhiteSpace(inputs.OutputDir))
             errors.Add("--output-dir is required");
         else
-            parsedOutputDir = Collect(DirectoryPath.Parse(outputDir), "--output-dir");
+            parsedOutputDir = Collect(DirectoryPath.Parse(inputs.OutputDir), "--output-dir");
+
+        if (!AgentKindParser.TryParse(inputs.Agent, out var resolvedAgent, out var agentError))
+            errors.Add($"--agent: {agentError}");
 
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
@@ -98,14 +94,33 @@ internal record JobConfig
         // Non-null here: any blank or unparseable input would have added an error above.
         return new JobConfigValid(new JobConfig(
             repo: parsedRepo!,
-            prompt: prompt,
             readToken: new ReadToken(readToken),
-            maxTokens: new MaxTokens(resolvedMaxTokens),
             timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
             workDir: parsedWorkDir!,
-            outputDir: parsedOutputDir!));
+            outputDir: parsedOutputDir!,
+            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens))));
     }
 }
+
+/// <summary>How the coding agent should be run: which agent (<see cref="AgentKind"/>), the task
+/// <paramref name="Prompt"/> it receives, and its token budget. Groups the inputs the <c>--agent</c>,
+/// <c>--prompt</c>, and <c>--max-tokens</c> flags configure.</summary>
+internal sealed record AgentConfig(AgentKind Kind, string Prompt, MaxTokens MaxTokens);
+
+/// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
+/// values first, then the optional ones (which default to <c>null</c> so callers set only what they
+/// care about). <see cref="JobConfig.Create"/> is the boundary that turns these primitives into the
+/// always-valid, strongly-typed <see cref="JobConfig"/>.</summary>
+internal record JobInputs(
+    string Repo,
+    string Prompt,
+    string ReadToken,
+    int? MaxTokens = null,
+    int? TimeoutMinutes = null,
+    string? WorkDir = null,
+    string? OutputDir = null,
+    string? Agent = null
+);
 
 /// <summary>The result of <see cref="JobConfig.Create"/>: a validated config or the list of
 /// reasons it was rejected. Pattern-matched by callers; never cast.</summary>

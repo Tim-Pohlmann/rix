@@ -40,6 +40,11 @@ internal static class JobCommand
         description: "Directory where result.json and git bundles are written")
     { IsRequired = false };
 
+    private static readonly Option<string> AgentOption = new(
+        name: "--agent",
+        description: "Coding agent to run: 'claude' (default) or 'opencode'")
+    { IsRequired = false };
+
     internal static Command Build(Func<JobConfig, Task<int>> handler)
     {
         var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
@@ -51,6 +56,7 @@ internal static class JobCommand
         command.AddOption(TimeoutOption);
         command.AddOption(WorkDirOption);
         command.AddOption(OutputDirOption);
+        command.AddOption(AgentOption);
 
         command.SetHandler(async ctx =>
         {
@@ -59,14 +65,15 @@ internal static class JobCommand
             int? Int(Option<int?> opt, string env) =>
                 ctx.ParseResult.GetValueForOption(opt) ?? (int.TryParse(Environment.GetEnvironmentVariable(env), out var n) ? n : null);
 
-            var result = JobConfig.Create(
-                repo:           Str(RepoOption,      "RIX_REPO"),
-                prompt:         Str(PromptOption,    "RIX_PROMPT"),
-                readToken:      Str(ReadTokenOption, "RIX_READ_TOKEN"),
-                maxTokens:      Int(MaxTokensOption, "RIX_MAX_TOKENS"),
-                timeoutMinutes: Int(TimeoutOption,   "RIX_TIMEOUT"),
-                workDir:        Str(WorkDirOption,   "RIX_WORK_DIR"),
-                outputDir:      Str(OutputDirOption, "RIX_OUTPUT_DIR"));
+            var result = JobConfig.Create(new JobInputs(
+                Repo:           Str(RepoOption,      "RIX_REPO"),
+                Prompt:         Str(PromptOption,    "RIX_PROMPT"),
+                ReadToken:      Str(ReadTokenOption, "RIX_READ_TOKEN"),
+                MaxTokens:      Int(MaxTokensOption, "RIX_MAX_TOKENS"),
+                TimeoutMinutes: Int(TimeoutOption,   "RIX_TIMEOUT"),
+                WorkDir:        Str(WorkDirOption,   "RIX_WORK_DIR"),
+                OutputDir:      Str(OutputDirOption, "RIX_OUTPUT_DIR"),
+                Agent:          Str(AgentOption,     "RIX_AGENT")));
 
             switch (result)
             {
