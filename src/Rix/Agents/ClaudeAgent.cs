@@ -23,5 +23,5 @@ internal sealed class ClaudeAgent : ICodingAgent
                 ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.Agent.MaxTokens.Value.ToString(),
             });
 
-    public decimal? ParseCost(string outputLine) => JobCost.FromResultLine(outputLine);
+    public decimal? ParseCost(string outputLine) => ClaudeCost.FromResultLine(outputLine);
 }

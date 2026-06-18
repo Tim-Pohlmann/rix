@@ -141,7 +141,7 @@ public class ClaudeAgentTests
     }
 
     [TestMethod]
-    public void ParseCost_ForwardsToJobCost()
+    public void ParseCost_ForwardsToClaudeCost()
     {
         Assert.AreEqual(0.5m, Agent.ParseCost("""{"type":"result","total_cost_usd":0.5}"""));
         Assert.IsNull(Agent.ParseCost("not json"));

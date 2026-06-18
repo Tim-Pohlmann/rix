@@ -8,7 +8,7 @@ namespace Rix.Job;
 /// non-result lines (and results without a cost) yield <c>null</c> so the caller keeps the
 /// last known value.
 /// </summary>
-internal static class JobCost
+internal static class ClaudeCost
 {
     /// <summary>
     /// Returns the <c>total_cost_usd</c> from a Claude <c>result</c> line, or <c>null</c> when
