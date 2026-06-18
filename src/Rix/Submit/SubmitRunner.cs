@@ -82,10 +82,14 @@ internal static class SubmitRunner
         if (fetch is ProcessFailure fetchFailure)
             return new SubmitFailure($"git fetch failed for {pr.Branch.Value}: {fetchFailure.Reason}");
 
-        var push = await Git(
-            context, cloneDir, ["push", "origin", pr.Branch.Value], cancellationToken);
-        if (push is ProcessFailure pushFailure)
-            return new SubmitFailure($"git push failed for {pr.Branch.Value}: {pushFailure.Reason}");
+        try
+        {
+            await context.Host.PushBranchAsync(cloneDir, pr.Branch, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new SubmitFailure($"git push failed for {pr.Branch.Value}: {ex.Message}");
+        }
 
         try
         {

@@ -23,9 +23,11 @@ internal sealed class StubRepositoryHost(
 
 internal sealed class StubSubmitHost(
     Func<BranchName, Task<bool>>? branchExists = null,
-    Func<PendingPr, Task>? createPullRequest = null) : ISubmitHost
+    Func<PendingPr, Task>? createPullRequest = null,
+    Func<BranchName, Task>? pushBranch = null) : ISubmitHost
 {
     public List<PendingPr> CreatedPrs { get; } = [];
+    public List<BranchName> PushedBranches { get; } = [];
     public bool CloneCalled { get; private set; }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
@@ -36,6 +38,12 @@ internal sealed class StubSubmitHost(
 
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken) =>
         branchExists is not null ? branchExists(branch) : Task.FromResult(false);
+
+    public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
+    {
+        PushedBranches.Add(branch);
+        return pushBranch is not null ? pushBranch(branch) : Task.CompletedTask;
+    }
 
     public Task CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
     {
