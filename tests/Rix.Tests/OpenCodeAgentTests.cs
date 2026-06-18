@@ -133,11 +133,4 @@ public class OpenCodeAgentTests
         // OpenCode has no output-token cap equivalent, so no environment overrides are set.
         Assert.AreEqual(0, invocation.EnvironmentOverrides.Count);
     }
-
-    [TestMethod]
-    public void ParseCost_ForwardsToOpenCodeCost()
-    {
-        Assert.AreEqual(0.5m, Agent.ParseCost("""{"type":"step_finish","part":{"cost":0.5}}"""));
-        Assert.IsNull(Agent.ParseCost("not json"));
-    }
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Rix.Job;
 using Rix.Process;
 
@@ -23,5 +24,16 @@ internal sealed class ClaudeAgent : ICodingAgent
                 ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.Agent.MaxTokens.Value.ToString(),
             });
 
-    public decimal? ParseCost(string outputLine) => ClaudeCost.FromResultLine(outputLine);
+    /// <summary>
+    /// Reads cost from Claude's NDJSON output. Claude emits a single terminal <c>result</c> line
+    /// whose <c>total_cost_usd</c> is the run's cumulative cost; other lines (and results without a
+    /// cost) yield <c>null</c> so the caller keeps the last known value.
+    /// </summary>
+    public decimal? ParseCost(string outputLine) =>
+        CostLine.Read(outputLine, "\"total_cost_usd\"", root =>
+            root.TryGetProperty("type", out var type) &&
+            type.ValueKind == JsonValueKind.String && type.GetString() == "result" &&
+            root.TryGetProperty("total_cost_usd", out var cost) &&
+            cost.ValueKind == JsonValueKind.Number && cost.TryGetDecimal(out var v)
+                ? v : null);
 }

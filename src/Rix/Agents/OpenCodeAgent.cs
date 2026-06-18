@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Rix.Job;
 using Rix.Process;
 
@@ -31,5 +32,34 @@ internal sealed class OpenCodeAgent : ICodingAgent
             Arguments: ["run", $"{systemPrompt}\n\n{config.Agent.Prompt}", "--format", "json"],
             EnvironmentOverrides: new Dictionary<string, string>());
 
-    public decimal? ParseCost(string outputLine) => OpenCodeCost.FromEventLine(outputLine);
+    /// <summary>
+    /// Reads cost from an OpenCode JSON event line. The cost (when known) rides on a
+    /// <c>step_finish</c> event inside <c>part.cost</c>, with a top-level <c>cost</c> fallback.
+    /// Unlike Claude, OpenCode emits no single authoritative total and frequently reports <c>0</c>
+    /// (costs derive from external LiteLLM pricing that may be unavailable), so a missing cost is
+    /// treated as unknown (<c>null</c>).
+    /// </summary>
+    public decimal? ParseCost(string outputLine) =>
+        CostLine.Read(outputLine, "\"cost\"", ReadCost);
+
+    private static decimal? ReadCost(JsonElement root)
+    {
+        if (root.TryGetProperty("part", out var part) &&
+            part.ValueKind == JsonValueKind.Object &&
+            TryReadCost(part, out var partCost))
+            return partCost;
+
+        return TryReadCost(root, out var rootCost) ? rootCost : null;
+    }
+
+    private static bool TryReadCost(JsonElement element, out decimal cost)
+    {
+        if (element.TryGetProperty("cost", out var value) &&
+            value.ValueKind == JsonValueKind.Number &&
+            value.TryGetDecimal(out cost))
+            return true;
+
+        cost = 0m;
+        return false;
+    }
 }
