@@ -77,19 +77,8 @@ internal static class SubmitRunner
         if (!File.Exists(bundlePath))
             return new SubmitFailure($"bundle file not found: {pr.BundleFile}");
 
-        var fetch = await Git(
-            context, cloneDir, ["fetch", bundlePath, $"{pr.Branch.Value}:{pr.Branch.Value}"], cancellationToken);
-        if (fetch is ProcessFailure fetchFailure)
-            return new SubmitFailure($"git fetch failed for {pr.Branch.Value}: {fetchFailure.Reason}");
-
-        try
-        {
-            await context.Host.PushBranchAsync(cloneDir, pr.Branch, cancellationToken);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return new SubmitFailure($"git push failed for {pr.Branch.Value}: {ex.Message}");
-        }
+        if (await DeliverBranchAsync(context, cloneDir, bundlePath, pr.Branch, cancellationToken) is { } deliverFailure)
+            return deliverFailure;
 
         try
         {
@@ -101,6 +90,28 @@ internal static class SubmitRunner
         }
 
         context.LogLine($"opened PR for {pr.Branch.Value}");
+        return null;
+    }
+
+    /// <summary>Unbundles the PR's branch from its local bundle and pushes it to the remote.
+    /// Returns a <see cref="SubmitFailure"/> on the first problem, or <c>null</c> on success.</summary>
+    private static async Task<SubmitFailure?> DeliverBranchAsync(
+        SubmitContext context, string cloneDir, string bundlePath, RixBranchName branch, CancellationToken cancellationToken)
+    {
+        var fetch = await Git(
+            context, cloneDir, ["fetch", bundlePath, $"{branch.Value}:{branch.Value}"], cancellationToken);
+        if (fetch is ProcessFailure fetchFailure)
+            return new SubmitFailure($"git fetch failed for {branch.Value}: {fetchFailure.Reason}");
+
+        try
+        {
+            await context.Host.PushBranchAsync(cloneDir, branch, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new SubmitFailure($"git push failed for {branch.Value}: {ex.Message}");
+        }
+
         return null;
     }
 

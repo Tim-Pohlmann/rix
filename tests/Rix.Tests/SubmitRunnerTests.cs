@@ -6,6 +6,8 @@ namespace Rix.Tests;
 [TestClass]
 public class SubmitRunnerTests
 {
+    private static readonly string[] ExpectedPushedBranches = ["rix/my-fix"];
+
     private string _inputDir = null!;
     private string _workDir = null!;
 
@@ -68,7 +70,7 @@ public class SubmitRunnerTests
         Assert.AreEqual("rix/my-fix", host.CreatedPrs[0].Branch.Value);
         CollectionAssert.Contains(commands, "fetch");
         CollectionAssert.AreEqual(
-            new[] { "rix/my-fix" }, host.PushedBranches.Select(b => b.Value).ToArray());
+            ExpectedPushedBranches, host.PushedBranches.Select(b => b.Value).ToArray());
     }
 
     [TestMethod]
