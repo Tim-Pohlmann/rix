@@ -107,6 +107,42 @@ public class GitHubRepositoryHostTests
     }
 
     [TestMethod]
+    public async Task PushBranchAsync_RunsGitPush_InRepoDir_WithAuthEnv()
+    {
+        string[]? capturedArgs = null;
+        string? capturedWorkingDir = null;
+        IReadOnlyDictionary<string, string>? capturedEnv = null;
+        var host = BuildWriteHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, args, workingDir, env, _, _) =>
+            {
+                capturedArgs = args.ToArray();
+                capturedWorkingDir = workingDir;
+                capturedEnv = env;
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await host.PushBranchAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "push", "origin", "rix/fix" }, capturedArgs);
+        Assert.AreEqual("/tmp/clone", capturedWorkingDir);
+        Assert.IsNotNull(capturedEnv);
+        Assert.AreEqual("1", capturedEnv["GIT_CONFIG_COUNT"]);
+    }
+
+    [TestMethod]
+    public async Task PushBranchAsync_Throws_WhenGitFails()
+    {
+        var host = BuildWriteHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.PushBranchAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "push");
+    }
+
+    [TestMethod]
     public async Task CreateBundleAsync_Throws_WhenGitFails()
     {
         var host = BuildHost(
@@ -170,11 +206,12 @@ public class GitHubRepositoryHostTests
     private static GitHubRepositoryHost BuildWriteHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
-        string writeToken = "write-tok") =>
+        string writeToken = "write-tok",
+        RunProcessAsync? gitRunner = null) =>
         new(
             TestConfig.Repo(repo),
             new WriteToken(writeToken),
-            SuccessGitRunner,
+            gitRunner ?? SuccessGitRunner,
             new DelegatingHandlerStub(handler));
 
     private sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler)
