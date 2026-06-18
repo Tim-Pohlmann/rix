@@ -42,7 +42,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     /// <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables as ad-hoc config,
     /// so the credential lives only in this process's environment for the duration of each call.
     /// </summary>
-    private static IReadOnlyDictionary<string, string> BuildGitAuthEnv(string token)
+    private static Dictionary<string, string> BuildGitAuthEnv(string token)
     {
         var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token}"));
         return new Dictionary<string, string>
