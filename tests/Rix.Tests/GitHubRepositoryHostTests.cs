@@ -118,7 +118,7 @@ public class GitHubRepositoryHostTests
         var host = BuildWriteHost(req =>
         {
             captured = req;
-            body = req.Content!.ReadAsStringAsync().Result;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
             return new HttpResponseMessage(HttpStatusCode.Created);
         });
 
