@@ -87,6 +87,22 @@ public class GitHubHostTests
     }
 
     [TestMethod]
+    public async Task CreateBundleAsync_PassesNoAuthEnv_BecauseBundleIsLocalOnly()
+    {
+        IReadOnlyDictionary<string, string>? capturedEnv = null;
+        var captured = false;
+        var host = BuildHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, env, _, _) => { capturedEnv = env; captured = true; return Task.FromResult<ProcessResult>(new ProcessSuccess()); });
+
+        await host.CreateBundleAsync("/tmp/clone", "/tmp/out/fix.bundle",
+            new BranchName("main"), new BranchName("rix/fix"), CancellationToken.None);
+
+        Assert.IsTrue(captured, "git runner should have been invoked");
+        Assert.IsNull(capturedEnv, "local-only bundle must not receive the credential env");
+    }
+
+    [TestMethod]
     public async Task CreateBundleAsync_CallsGitBundle_InRepoDirectory_WithCorrectArgs()
     {
         string[]? capturedArgs = null;

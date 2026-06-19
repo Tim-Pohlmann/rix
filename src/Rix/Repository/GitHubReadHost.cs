@@ -40,10 +40,9 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
     }
 
     /// <summary>
-    /// Builds the environment that authenticates git over HTTPS without ever placing the token in
-    /// a command-line argument (visible via <c>ps</c>) or in the cloned repo's persisted
-    /// <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables as ad-hoc config,
-    /// so the credential lives only in this process's environment for the duration of each call.
+    /// Builds environment overrides for git HTTPS auth without ever placing the token in argv (visible via <c>ps</c>)
+    /// or persisting it into the clone's <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables
+    /// as ad-hoc config, so the credential is supplied only via the git subprocess environment for each invocation.
     /// </summary>
     private static Dictionary<string, string> BuildGitAuthEnv(GitReadToken token)
     {
@@ -58,7 +57,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
         RunGitAsync(["clone", $"https://github.com/{Repo.Value}.git", targetDirectory],
-            workingDirectory: Path.GetTempPath(), cancellationToken);
+            workingDirectory: Path.GetTempPath(), authenticated: true, cancellationToken);
 
     public Task CreateBundleAsync(
         string repoDirectory,
@@ -67,7 +66,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
         BranchName branch,
         CancellationToken cancellationToken) =>
         RunGitAsync(["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
-            workingDirectory: repoDirectory, cancellationToken);
+            workingDirectory: repoDirectory, authenticated: false, cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
@@ -79,13 +78,17 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
         return true;
     }
 
-    /// <summary>Runs <c>git</c> with the auth environment applied. Shared with the composing
-    /// <see cref="GitHubHost"/> so its push reuses the exact same credential injection.</summary>
-    internal async Task RunGitAsync(string[] args, string workingDirectory, CancellationToken cancellationToken)
+    /// <summary>Runs <c>git</c>, injecting the credential only when <paramref name="authenticated"/>
+    /// is set. Local-only commands (e.g. <c>bundle create</c>) pass <c>false</c> so the token never
+    /// reaches a subprocess that has no need for it; remote commands (clone, push) pass <c>true</c>.
+    /// Shared with the composing <see cref="GitHubHost"/> so its push reuses this exact injection.</summary>
+    internal async Task RunGitAsync(
+        string[] args, string workingDirectory, bool authenticated, CancellationToken cancellationToken)
     {
-        // Pass only the GIT_CONFIG_* auth variables as overrides; the subprocess still inherits the
+        // Only the GIT_CONFIG_* auth variables are ever overridden; the subprocess still inherits the
         // full parent environment (PATH, HOME, ...) on top of these, so we never force those here.
-        var result = await _runProcess("git", args, workingDirectory, _gitAuthEnv, null, cancellationToken);
+        var env = authenticated ? _gitAuthEnv : null;
+        var result = await _runProcess("git", args, workingDirectory, env, null, cancellationToken);
         if (result is ProcessFailure f)
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
     }
