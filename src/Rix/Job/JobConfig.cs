@@ -4,7 +4,7 @@ internal record JobConfig
 {
     internal RepoIdentifier Repo { get; }
     internal string Prompt { get; }
-    internal ReadToken ReadToken { get; }
+    internal GitReadToken ReadToken { get; }
     internal MaxTokens MaxTokens { get; }
     internal TimeoutMinutes TimeoutMinutes { get; }
     internal DirectoryPath WorkDir { get; }
@@ -18,7 +18,7 @@ internal record JobConfig
     private JobConfig(
         RepoIdentifier repo,
         string prompt,
-        ReadToken readToken,
+        GitReadToken readToken,
         MaxTokens maxTokens,
         TimeoutMinutes timeoutMinutes,
         DirectoryPath workDir,
@@ -99,7 +99,7 @@ internal record JobConfig
         return new JobConfigValid(new JobConfig(
             repo: parsedRepo!,
             prompt: prompt,
-            readToken: new ReadToken(readToken),
+            readToken: new GitReadToken(readToken),
             maxTokens: new MaxTokens(resolvedMaxTokens),
             timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
             workDir: parsedWorkDir!,

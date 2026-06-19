@@ -4,12 +4,14 @@ using System.Text.Json.Serialization;
 
 namespace Rix;
 
-/// <summary>A GitHub access token. The read/write split is encoded in the type so a read-only
-/// credential can never be passed where a write is required, while shared consumers (e.g.
-/// <see cref="Rix.Repository.GitHubRepositoryHost"/>) accept the common <c>GitToken</c> base.</summary>
-internal abstract record GitToken(string Value);
-internal sealed record ReadToken(string Value) : GitToken(Value);
-internal sealed record WriteToken(string Value) : GitToken(Value);
+/// <summary>A read-scoped GitHub access token: enough to clone and inspect a repo, never to write.
+/// <see cref="GitToken"/> derives from it because a write-capable token can do everything a read
+/// one can, so a <see cref="GitToken"/> is accepted wherever a <c>GitReadToken</c> is required.</summary>
+internal record GitReadToken(string Value);
+
+/// <summary>A write-capable GitHub access token (push, open PRs). Being a <see cref="GitReadToken"/>,
+/// it also satisfies read-only consumers without a separate credential.</summary>
+internal sealed record GitToken(string Value) : GitReadToken(Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 

@@ -1,39 +1,35 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text;
-using System.Text.Json.Serialization;
 using Rix.Process;
 
 namespace Rix.Repository;
 
-internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
+/// <summary>Read-only GitHub host for one repo. Owns the shared transport — an authenticated
+/// <see cref="HttpClient"/> for the REST API and the git auth environment for HTTPS git commands —
+/// which <see cref="GitHubHost"/> composes and reuses for its write operations.</summary>
+internal sealed class GitHubReadHost : IRepositoryReadHost
 {
-    private readonly RepoIdentifier _repo;
-    private readonly HttpClient _http;
     private readonly RunProcessAsync _runProcess;
     private readonly IReadOnlyDictionary<string, string> _gitAuthEnv;
 
-    internal GitHubRepositoryHost(
-        RepoIdentifier repo, ReadToken readToken, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
-        : this(repo, (GitToken)readToken, runProcess, handler) { }
+    /// <summary>The target repo, exposed so the composing <see cref="GitHubHost"/> can build REST
+    /// URLs without keeping a second copy.</summary>
+    internal RepoIdentifier Repo { get; }
 
-    internal GitHubRepositoryHost(
-        RepoIdentifier repo, WriteToken writeToken, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
-        : this(repo, (GitToken)writeToken, runProcess, handler) { }
+    /// <summary>The authenticated REST client, shared with the composing <see cref="GitHubHost"/> so
+    /// its write path reuses the same connection pool and auth headers.</summary>
+    internal HttpClient Http { get; }
 
-    private GitHubRepositoryHost(
-        RepoIdentifier repo,
-        GitToken token,
-        RunProcessAsync runProcess,
-        HttpMessageHandler? handler)
+    internal GitHubReadHost(
+        RepoIdentifier repo, GitReadToken token, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
     {
-        _repo = repo;
-        _http = BuildHttpClient(token, handler);
+        Repo = repo;
+        Http = BuildHttpClient(token, handler);
         _runProcess = runProcess;
         _gitAuthEnv = BuildGitAuthEnv(token);
     }
 
-    private static HttpClient BuildHttpClient(GitToken token, HttpMessageHandler? handler)
+    private static HttpClient BuildHttpClient(GitReadToken token, HttpMessageHandler? handler)
     {
         var client = handler is null ? new HttpClient() : new HttpClient(handler);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
@@ -49,7 +45,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
     /// <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables as ad-hoc config,
     /// so the credential lives only in this process's environment for the duration of each call.
     /// </summary>
-    private static Dictionary<string, string> BuildGitAuthEnv(GitToken token)
+    private static Dictionary<string, string> BuildGitAuthEnv(GitReadToken token)
     {
         var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token.Value}"));
         return new Dictionary<string, string>
@@ -61,7 +57,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
     }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-        RunGitAsync(["clone", $"https://github.com/{_repo.Value}.git", targetDirectory],
+        RunGitAsync(["clone", $"https://github.com/{Repo.Value}.git", targetDirectory],
             workingDirectory: Path.GetTempPath(), cancellationToken);
 
     public Task CreateBundleAsync(
@@ -73,33 +69,19 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
         RunGitAsync(["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
             workingDirectory: repoDirectory, cancellationToken);
 
-    public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken) =>
-        RunGitAsync(["push", "origin", branch.Value], workingDirectory: repoDirectory, cancellationToken);
-
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
-        var url = $"https://api.github.com/repos/{_repo.Value}/branches/{Uri.EscapeDataString(branch.Value)}";
-        using var response = await _http.GetAsync(url, cancellationToken);
+        var url = $"https://api.github.com/repos/{Repo.Value}/branches/{Uri.EscapeDataString(branch.Value)}";
+        using var response = await Http.GetAsync(url, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return false;
         response.EnsureSuccessStatusCode();
         return true;
     }
 
-    public async Task CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
-    {
-        var url = $"https://api.github.com/repos/{_repo.Value}/pulls";
-        var request = new CreatePullRequestRequest(
-            Title: pullRequest.Title.Value,
-            Head: pullRequest.Branch.Value,
-            Base: pullRequest.BaseBranch.Value,
-            Body: pullRequest.Body.Value);
-        using var content = JsonContent.Create(request, GitHubApiJsonContext.Default.CreatePullRequestRequest);
-        using var response = await _http.PostAsync(url, content, cancellationToken);
-        response.EnsureSuccessStatusCode();
-    }
-
-    private async Task RunGitAsync(string[] args, string workingDirectory, CancellationToken cancellationToken)
+    /// <summary>Runs <c>git</c> with the auth environment applied. Shared with the composing
+    /// <see cref="GitHubHost"/> so its push reuses the exact same credential injection.</summary>
+    internal async Task RunGitAsync(string[] args, string workingDirectory, CancellationToken cancellationToken)
     {
         // Pass only the GIT_CONFIG_* auth variables as overrides; the subprocess still inherits the
         // full parent environment (PATH, HOME, ...) on top of these, so we never force those here.
@@ -108,13 +90,3 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
     }
 }
-
-/// <summary>The JSON body of a GitHub "create a pull request" REST call.</summary>
-internal sealed record CreatePullRequestRequest(
-    [property: JsonPropertyName("title")] string Title,
-    [property: JsonPropertyName("head")] string Head,
-    [property: JsonPropertyName("base")] string Base,
-    [property: JsonPropertyName("body")] string Body);
-
-[JsonSerializable(typeof(CreatePullRequestRequest))]
-internal partial class GitHubApiJsonContext : JsonSerializerContext { }

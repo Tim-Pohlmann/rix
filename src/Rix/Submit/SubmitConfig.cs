@@ -3,13 +3,13 @@ namespace Rix.Submit;
 internal record SubmitConfig
 {
     internal RepoIdentifier Repo { get; }
-    internal WriteToken WriteToken { get; }
+    internal GitToken WriteToken { get; }
     internal DirectoryPath InputDir { get; }
     internal DirectoryPath WorkDir { get; }
 
     /// <summary>Private so a <see cref="SubmitConfig"/> can only be produced by <see cref="Create"/>,
     /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
-    private SubmitConfig(RepoIdentifier repo, WriteToken writeToken, DirectoryPath inputDir, DirectoryPath workDir)
+    private SubmitConfig(RepoIdentifier repo, GitToken writeToken, DirectoryPath inputDir, DirectoryPath workDir)
     {
         Repo = repo;
         WriteToken = writeToken;
@@ -65,7 +65,7 @@ internal record SubmitConfig
         // Non-null here: any blank or unparseable input would have added an error above.
         return new SubmitConfigValid(new SubmitConfig(
             repo: parsedRepo!,
-            writeToken: new WriteToken(writeToken),
+            writeToken: new GitToken(writeToken),
             inputDir: parsedInputDir!,
             workDir: parsedWorkDir!));
     }

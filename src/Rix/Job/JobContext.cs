@@ -13,7 +13,7 @@ internal delegate void LogLine(string line);
 /// constructs the real implementations at the root of the call stack.
 /// </summary>
 internal sealed record JobContext(
-    IRepositoryHost Host,
+    IRepositoryReadHost Host,
     RunProcessAsync RunProcess,
     ICodingAgent Agent,
     LogLine LogLine);

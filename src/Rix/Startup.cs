@@ -26,7 +26,7 @@ internal static class Startup
     /// <paramref name="config"/>.</summary>
     internal static JobContext DefaultContext(JobConfig config) =>
         new(
-            Host: new GitHubRepositoryHost(config.Repo, config.ReadToken, DefaultRunProcess),
+            Host: new GitHubReadHost(config.Repo, config.ReadToken, DefaultRunProcess),
             RunProcess: DefaultRunProcess,
             Agent: new ClaudeAgent(),
             LogLine: Console.Error.WriteLine);
@@ -35,7 +35,7 @@ internal static class Startup
     /// write token, the default process runner, and a stderr log sink.</summary>
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config) =>
         new(
-            Host: new GitHubRepositoryHost(config.Repo, config.WriteToken, DefaultRunProcess),
+            Host: new GitHubHost(config.Repo, config.WriteToken, DefaultRunProcess),
             RunProcess: DefaultRunProcess,
             LogLine: Console.Error.WriteLine);
 

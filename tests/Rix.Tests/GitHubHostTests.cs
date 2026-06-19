@@ -5,7 +5,7 @@ using Rix.Repository;
 namespace Rix.Tests;
 
 [TestClass]
-public class GitHubRepositoryHostTests
+public class GitHubHostTests
 {
     private static readonly RunProcessAsync SuccessGitRunner =
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -15,14 +15,14 @@ public class GitHubRepositoryHostTests
 
     private static readonly string[] ExpectedPushArgs = ["push", "origin", "rix/fix"];
 
-    private static GitHubRepositoryHost BuildHost(
+    private static GitHubReadHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string readToken = "read-tok",
         RunProcessAsync? gitRunner = null) =>
         new(
             TestConfig.Repo(repo),
-            new ReadToken(readToken),
+            new GitReadToken(readToken),
             gitRunner ?? SuccessGitRunner,
             new DelegatingHandlerStub(handler));
 
@@ -205,14 +205,14 @@ public class GitHubRepositoryHostTests
         new(new RixBranchName("rix/fix"), new BranchName("main"),
             new PrTitle(title), new PrBody(body), "rix_2Ffix.bundle");
 
-    private static GitHubRepositoryHost BuildWriteHost(
+    private static GitHubHost BuildWriteHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string writeToken = "write-tok",
         RunProcessAsync? gitRunner = null) =>
         new(
             TestConfig.Repo(repo),
-            new WriteToken(writeToken),
+            new GitToken(writeToken),
             gitRunner ?? SuccessGitRunner,
             new DelegatingHandlerStub(handler));
 
