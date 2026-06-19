@@ -47,7 +47,7 @@ public class GitHubRepositoryHostTests
     }
 
     [TestMethod]
-    public async Task CloneAsync_CallsGitClone_WithCorrectArgs()
+    public async Task CloneAsync_CallsGitClone_WithPlainUrl_NoTokenInArgs()
     {
         string[]? capturedArgs = null;
         var host = BuildHost(
@@ -59,8 +59,45 @@ public class GitHubRepositoryHostTests
 
         Assert.IsNotNull(capturedArgs);
         Assert.AreEqual("clone", capturedArgs[0]);
-        Assert.IsTrue(capturedArgs[1].Contains("my-read-token"), "Token must be embedded in clone URL");
+        Assert.AreEqual("https://github.com/owner/repo.git", capturedArgs[1]);
         Assert.AreEqual("/tmp/target", capturedArgs[2]);
+        Assert.IsFalse(
+            capturedArgs.Any(a => a.Contains("my-read-token")), "Token must never appear in git arguments");
+    }
+
+    [TestMethod]
+    public async Task CloneAsync_PassesTokenViaGitConfigEnv_NotInUrl()
+    {
+        IReadOnlyDictionary<string, string>? capturedEnv = null;
+        var host = BuildHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            readToken: "my-read-token",
+            gitRunner: (_, _, _, env, _, _) => { capturedEnv = env; return Task.FromResult<ProcessResult>(new ProcessSuccess()); });
+
+        await host.CloneAsync("/tmp/target", CancellationToken.None);
+
+        Assert.IsNotNull(capturedEnv);
+        Assert.AreEqual("1", capturedEnv["GIT_CONFIG_COUNT"]);
+        Assert.AreEqual("http.https://github.com/.extraheader", capturedEnv["GIT_CONFIG_KEY_0"]);
+        var expected = "Authorization: Basic " +
+            Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("x-access-token:my-read-token"));
+        Assert.AreEqual(expected, capturedEnv["GIT_CONFIG_VALUE_0"]);
+    }
+
+    [TestMethod]
+    public async Task CreateBundleAsync_PassesNoAuthEnv_BecauseBundleIsLocalOnly()
+    {
+        IReadOnlyDictionary<string, string>? capturedEnv = null;
+        var captured = false;
+        var host = BuildHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, env, _, _) => { capturedEnv = env; captured = true; return Task.FromResult<ProcessResult>(new ProcessSuccess()); });
+
+        await host.CreateBundleAsync("/tmp/clone", "/tmp/out/fix.bundle",
+            new BranchName("main"), new BranchName("rix/fix"), CancellationToken.None);
+
+        Assert.IsTrue(captured, "git runner should have been invoked");
+        Assert.IsNull(capturedEnv, "local-only bundle must not receive the credential env");
     }
 
     [TestMethod]
