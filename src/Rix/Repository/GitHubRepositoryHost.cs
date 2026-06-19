@@ -54,7 +54,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
         RunGitAsync(["clone", $"https://github.com/{_repo.Value}.git", targetDirectory],
-            workingDirectory: Path.GetTempPath(), cancellationToken);
+            workingDirectory: Path.GetTempPath(), authenticated: true, cancellationToken);
 
     public Task CreateBundleAsync(
         string repoDirectory,
@@ -63,7 +63,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         BranchName branch,
         CancellationToken cancellationToken) =>
         RunGitAsync(["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
-            workingDirectory: repoDirectory, cancellationToken);
+            workingDirectory: repoDirectory, authenticated: false, cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
@@ -75,11 +75,16 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
         return true;
     }
 
-    private async Task RunGitAsync(string[] args, string workingDirectory, CancellationToken cancellationToken)
+    /// <summary>Runs <c>git</c>, injecting the credential only when <paramref name="authenticated"/>
+    /// is set. Local-only commands (e.g. <c>bundle create</c>) pass <c>false</c> so the token never
+    /// reaches a subprocess that has no need for it; only remote commands (clone) receive it.</summary>
+    private async Task RunGitAsync(
+        string[] args, string workingDirectory, bool authenticated, CancellationToken cancellationToken)
     {
-        // Pass only the GIT_CONFIG_* auth variables as overrides; the subprocess still inherits the
+        // Only the GIT_CONFIG_* auth variables are ever overridden; the subprocess still inherits the
         // full parent environment (PATH, HOME, ...) on top of these, so we never force those here.
-        var result = await _runProcess("git", args, workingDirectory, _gitAuthEnv, null, cancellationToken);
+        var env = authenticated ? _gitAuthEnv : null;
+        var result = await _runProcess("git", args, workingDirectory, env, null, cancellationToken);
         if (result is ProcessFailure f)
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
     }
