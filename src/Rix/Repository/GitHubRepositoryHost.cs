@@ -37,10 +37,9 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     }
 
     /// <summary>
-    /// Builds the environment that authenticates git over HTTPS without ever placing the token in
-    /// a command-line argument (visible via <c>ps</c>) or in the cloned repo's persisted
-    /// <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables as ad-hoc config,
-    /// so the credential lives only in this process's environment for the duration of each call.
+    /// Builds environment overrides for git HTTPS auth without ever placing the token in argv (visible via <c>ps</c>)
+    /// or persisting it into the clone's <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables
+    /// as ad-hoc config, so the credential is supplied only via the git subprocess environment for each invocation.
     /// </summary>
     private static Dictionary<string, string> BuildGitAuthEnv(string token)
     {
