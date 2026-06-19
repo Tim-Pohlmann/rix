@@ -15,28 +15,28 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
 
     internal GitHubRepositoryHost(
         RepoIdentifier repo, ReadToken readToken, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
-        : this(repo, readToken.Value, runProcess, handler) { }
+        : this(repo, (GitToken)readToken, runProcess, handler) { }
 
     internal GitHubRepositoryHost(
         RepoIdentifier repo, WriteToken writeToken, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
-        : this(repo, writeToken.Value, runProcess, handler) { }
+        : this(repo, (GitToken)writeToken, runProcess, handler) { }
 
     private GitHubRepositoryHost(
         RepoIdentifier repo,
-        string credential,
+        GitToken token,
         RunProcessAsync runProcess,
         HttpMessageHandler? handler)
     {
         _repo = repo;
-        _http = BuildHttpClient(credential, handler);
+        _http = BuildHttpClient(token, handler);
         _runProcess = runProcess;
-        _gitAuthEnv = BuildGitAuthEnv(credential);
+        _gitAuthEnv = BuildGitAuthEnv(token);
     }
 
-    private static HttpClient BuildHttpClient(string token, HttpMessageHandler? handler)
+    private static HttpClient BuildHttpClient(GitToken token, HttpMessageHandler? handler)
     {
         var client = handler is null ? new HttpClient() : new HttpClient(handler);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("rix/1.0");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
@@ -49,9 +49,9 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost, ISubmitHost
     /// <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables as ad-hoc config,
     /// so the credential lives only in this process's environment for the duration of each call.
     /// </summary>
-    private static Dictionary<string, string> BuildGitAuthEnv(string token)
+    private static Dictionary<string, string> BuildGitAuthEnv(GitToken token)
     {
-        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token}"));
+        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token.Value}"));
         return new Dictionary<string, string>
         {
             ["GIT_CONFIG_COUNT"] = "1",
