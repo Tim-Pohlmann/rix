@@ -30,7 +30,8 @@ internal sealed class GitHubHost : IRepositoryHost
         _read.CreateBundleAsync(repoDirectory, bundlePath, baseBranch, branch, cancellationToken);
 
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken) =>
-        _read.RunGitAsync(["push", "origin", branch.Value], workingDirectory: repoDirectory, cancellationToken);
+        _read.RunGitAsync(["push", "origin", branch.Value],
+            workingDirectory: repoDirectory, authenticated: true, cancellationToken);
 
     public async Task CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
     {
