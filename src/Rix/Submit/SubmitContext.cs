@@ -1,4 +1,3 @@
-using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
 

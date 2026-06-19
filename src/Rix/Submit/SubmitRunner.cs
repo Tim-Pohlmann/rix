@@ -24,8 +24,9 @@ internal static class SubmitRunner
         IJobResult? jobResult;
         try
         {
-            var json = await File.ReadAllTextAsync(resultPath, cancellationToken);
-            jobResult = JsonSerializer.Deserialize(json, JobJsonContext.Default.IJobResult);
+            await using var stream = File.OpenRead(resultPath);
+            jobResult = await JsonSerializer.DeserializeAsync(
+                stream, JobJsonContext.Default.IJobResult, cancellationToken);
         }
         catch (JsonException ex)
         {
