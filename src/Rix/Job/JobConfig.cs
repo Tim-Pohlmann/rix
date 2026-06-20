@@ -41,26 +41,11 @@ internal record JobConfig
         var (repo, prompt, readToken) = (inputs.Repo, inputs.Prompt, inputs.ReadToken);
         var errors = new List<string>();
 
-        // Unwraps a parse result, recording its message (prefixed with the flag) on failure so all
-        // validation errors accumulate in one pass. Centralises the success/error/fail-safe handling.
-        T? Collect<T>(ParseResult<T> result, string flag) where T : class => result switch
-        {
-            ParseSuccess<T> ok => ok.Value,
-            ParseError<T> bad => Fail<T>($"{flag}: {bad.Error}"),
-            var other => Fail<T>($"{flag}: could not be parsed ({other.GetType().Name})"),
-        };
-
-        T? Fail<T>(string error) where T : class
-        {
-            errors.Add(error);
-            return null;
-        }
-
         RepoIdentifier? parsedRepo = null;
         if (string.IsNullOrWhiteSpace(repo))
             errors.Add("--repo is required");
         else
-            parsedRepo = Collect(RepoIdentifier.Parse(repo), "--repo");
+            parsedRepo = RepoIdentifier.Parse(repo).Collect(errors, "--repo");
 
         if (string.IsNullOrWhiteSpace(prompt))
             errors.Add("--prompt is required");
@@ -77,13 +62,13 @@ internal record JobConfig
             errors.Add("--timeout must be a positive integer");
 
         var resolvedWorkDir = string.IsNullOrWhiteSpace(inputs.WorkDir) ? Path.GetTempPath() : inputs.WorkDir;
-        var parsedWorkDir = Collect(DirectoryPath.Parse(resolvedWorkDir), "--work-dir");
+        var parsedWorkDir = DirectoryPath.Parse(resolvedWorkDir).Collect(errors, "--work-dir");
 
         DirectoryPath? parsedOutputDir = null;
         if (string.IsNullOrWhiteSpace(inputs.OutputDir))
             errors.Add("--output-dir is required");
         else
-            parsedOutputDir = Collect(DirectoryPath.Parse(inputs.OutputDir), "--output-dir");
+            parsedOutputDir = DirectoryPath.Parse(inputs.OutputDir).Collect(errors, "--output-dir");
 
         if (!AgentKindParser.TryParse(inputs.Agent, out var resolvedAgent, out var agentError))
             errors.Add($"--agent: {agentError}");

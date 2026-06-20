@@ -28,24 +28,11 @@ internal record SubmitConfig
     {
         var errors = new List<string>();
 
-        T? Collect<T>(ParseResult<T> result, string flag) where T : class => result switch
-        {
-            ParseSuccess<T> ok => ok.Value,
-            ParseError<T> bad => Fail<T>($"{flag}: {bad.Error}"),
-            var other => Fail<T>($"{flag}: could not be parsed ({other.GetType().Name})"),
-        };
-
-        T? Fail<T>(string error) where T : class
-        {
-            errors.Add(error);
-            return null;
-        }
-
         RepoIdentifier? parsedRepo = null;
         if (string.IsNullOrWhiteSpace(repo))
             errors.Add("--repo is required");
         else
-            parsedRepo = Collect(RepoIdentifier.Parse(repo), "--repo");
+            parsedRepo = RepoIdentifier.Parse(repo).Collect(errors, "--repo");
 
         if (string.IsNullOrWhiteSpace(writeToken))
             errors.Add("--write-token is required");
@@ -54,10 +41,10 @@ internal record SubmitConfig
         if (string.IsNullOrWhiteSpace(inputDir))
             errors.Add("--input-dir is required");
         else
-            parsedInputDir = Collect(DirectoryPath.Parse(inputDir), "--input-dir");
+            parsedInputDir = DirectoryPath.Parse(inputDir).Collect(errors, "--input-dir");
 
         var resolvedWorkDir = string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir;
-        var parsedWorkDir = Collect(DirectoryPath.Parse(resolvedWorkDir), "--work-dir");
+        var parsedWorkDir = DirectoryPath.Parse(resolvedWorkDir).Collect(errors, "--work-dir");
 
         if (errors.Count > 0)
             return new SubmitConfigInvalid([.. errors]);

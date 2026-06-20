@@ -43,6 +43,18 @@ internal abstract record ParseResult<T>
 
 internal sealed record ParseSuccess<T>(T Value) : ParseResult<T>;
 
+/// <summary>The shared validation strategy for the command <c>Create</c> methods: every parsed field
+/// folds through <see cref="Collect{T}"/> so each error accumulates in one pass with the same
+/// <c>flag: message</c> shape, instead of each command repeating its own success/error switch.</summary>
+internal static class ParseResultExtensions
+{
+    /// <summary>Unwraps a successful parse to its value; on failure records <paramref name="flag"/>
+    /// and the error in <paramref name="errors"/> and returns <c>null</c> so the caller keeps
+    /// collecting the remaining fields before deciding the config is invalid.</summary>
+    internal static T? Collect<T>(this ParseResult<T> result, List<string> errors, string flag) where T : class =>
+        result.Match<T?>(value => value, error => { errors.Add($"{flag}: {error}"); return null; });
+}
+
 /// <summary>The failure case carries only a message; <typeparamref name="T"/> exists purely to keep
 /// it in the same union as <see cref="ParseSuccess{T}"/> so callers can switch over one type. The
 /// resulting "unused type parameter" smell (Sonar S2326) is accepted by design.</summary>
