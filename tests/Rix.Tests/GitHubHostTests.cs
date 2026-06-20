@@ -5,7 +5,7 @@ using Rix.Repository;
 namespace Rix.Tests;
 
 [TestClass]
-public class GitHubRepositoryHostTests
+public class GitHubHostTests
 {
     private static readonly RunProcessAsync SuccessGitRunner =
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -13,14 +13,16 @@ public class GitHubRepositoryHostTests
     private static readonly string[] ExpectedBundleArgs =
         ["bundle", "create", "/tmp/out/fix.bundle", "main..rix/fix"];
 
-    private static GitHubRepositoryHost BuildHost(
+    private static readonly string[] ExpectedPushArgs = ["push", "origin", "rix/fix"];
+
+    private static GitHubReadHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string readToken = "read-tok",
         RunProcessAsync? gitRunner = null) =>
         new(
             TestConfig.Repo(repo),
-            new ReadToken(readToken),
+            new GitReadToken(readToken),
             gitRunner ?? SuccessGitRunner,
             new DelegatingHandlerStub(handler));
 
@@ -123,6 +125,42 @@ public class GitHubRepositoryHostTests
     }
 
     [TestMethod]
+    public async Task PushBranchAsync_RunsGitPush_InRepoDir_WithAuthEnv()
+    {
+        string[]? capturedArgs = null;
+        string? capturedWorkingDir = null;
+        IReadOnlyDictionary<string, string>? capturedEnv = null;
+        var host = BuildWriteHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, args, workingDir, env, _, _) =>
+            {
+                capturedArgs = args.ToArray();
+                capturedWorkingDir = workingDir;
+                capturedEnv = env;
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await host.PushBranchAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None);
+
+        CollectionAssert.AreEqual(ExpectedPushArgs, capturedArgs);
+        Assert.AreEqual("/tmp/clone", capturedWorkingDir);
+        Assert.IsNotNull(capturedEnv);
+        Assert.AreEqual("1", capturedEnv["GIT_CONFIG_COUNT"]);
+    }
+
+    [TestMethod]
+    public async Task PushBranchAsync_Throws_WhenGitFails()
+    {
+        var host = BuildWriteHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.PushBranchAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "push");
+    }
+
+    [TestMethod]
     public async Task CreateBundleAsync_Throws_WhenGitFails()
     {
         var host = BuildHost(
@@ -146,6 +184,53 @@ public class GitHubRepositoryHostTests
             () => host.CloneAsync("/tmp/target", CancellationToken.None));
         StringAssert.Contains(ex.Message, "clone");
     }
+
+    [TestMethod]
+    public async Task CreatePullRequestAsync_PostsToPullsEndpoint_WithPrFields()
+    {
+        HttpRequestMessage? captured = null;
+        string? body = null;
+        var host = BuildWriteHost(req =>
+        {
+            captured = req;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.Created);
+        });
+
+        await host.CreatePullRequestAsync(SamplePr("My title", "My body"), CancellationToken.None);
+
+        Assert.IsNotNull(captured);
+        Assert.AreEqual(HttpMethod.Post, captured.Method);
+        StringAssert.EndsWith(captured.RequestUri!.AbsoluteUri, "/repos/owner/repo/pulls");
+        Assert.IsNotNull(body);
+        StringAssert.Contains(body, "\"head\":\"rix/fix\"");
+        StringAssert.Contains(body, "\"base\":\"main\"");
+        StringAssert.Contains(body, "\"title\":\"My title\"");
+    }
+
+    [TestMethod]
+    public async Task CreatePullRequestAsync_Throws_OnErrorResponse()
+    {
+        var host = BuildWriteHost(_ => new HttpResponseMessage(HttpStatusCode.UnprocessableEntity));
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(
+            () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
+    }
+
+    private static PendingPr SamplePr(string title, string body) =>
+        new(new RixBranchName("rix/fix"), new BranchName("main"),
+            new PrTitle(title), new PrBody(body), "rix_2Ffix.bundle");
+
+    private static GitHubHost BuildWriteHost(
+        Func<HttpRequestMessage, HttpResponseMessage> handler,
+        string repo = "owner/repo",
+        string writeToken = "write-tok",
+        RunProcessAsync? gitRunner = null) =>
+        new(
+            TestConfig.Repo(repo),
+            new GitToken(writeToken),
+            gitRunner ?? SuccessGitRunner,
+            new DelegatingHandlerStub(handler));
 
     private sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler)
         : HttpMessageHandler

@@ -5,7 +5,7 @@ namespace Rix.Job;
 internal record JobConfig
 {
     internal RepoIdentifier Repo { get; }
-    internal ReadToken ReadToken { get; }
+    internal GitReadToken ReadToken { get; }
     internal TimeoutMinutes TimeoutMinutes { get; }
     internal DirectoryPath WorkDir { get; }
     internal DirectoryPath OutputDir { get; }
@@ -18,7 +18,7 @@ internal record JobConfig
     /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
     private JobConfig(
         RepoIdentifier repo,
-        ReadToken readToken,
+        GitReadToken readToken,
         TimeoutMinutes timeoutMinutes,
         DirectoryPath workDir,
         DirectoryPath outputDir,
@@ -94,7 +94,7 @@ internal record JobConfig
         // Non-null here: any blank or unparseable input would have added an error above.
         return new JobConfigValid(new JobConfig(
             repo: parsedRepo!,
-            readToken: new ReadToken(readToken),
+            readToken: new GitReadToken(readToken),
             timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
             workDir: parsedWorkDir!,
             outputDir: parsedOutputDir!,

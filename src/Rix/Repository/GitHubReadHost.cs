@@ -4,32 +4,35 @@ using Rix.Process;
 
 namespace Rix.Repository;
 
-internal sealed class GitHubRepositoryHost : IRepositoryHost
+/// <summary>Read-only GitHub host for one repo. Owns the shared transport — an authenticated
+/// <see cref="HttpClient"/> for the REST API and the git auth environment for HTTPS git commands —
+/// which <see cref="GitHubHost"/> composes and reuses for its write operations.</summary>
+internal sealed class GitHubReadHost : IRepositoryReadHost
 {
-    private readonly RepoIdentifier _repo;
-    private readonly HttpClient _http;
     private readonly RunProcessAsync _runProcess;
     private readonly IReadOnlyDictionary<string, string> _gitAuthEnv;
 
-    internal GitHubRepositoryHost(RepoIdentifier repo, ReadToken readToken, RunProcessAsync runProcess)
-        : this(repo, readToken, runProcess, handler: null) { }
+    /// <summary>The target repo, exposed so the composing <see cref="GitHubHost"/> can build REST
+    /// URLs without keeping a second copy.</summary>
+    internal RepoIdentifier Repo { get; }
 
-    internal GitHubRepositoryHost(
-        RepoIdentifier repo,
-        ReadToken readToken,
-        RunProcessAsync runProcess,
-        HttpMessageHandler? handler)
+    /// <summary>The authenticated REST client, shared with the composing <see cref="GitHubHost"/> so
+    /// its write path reuses the same connection pool and auth headers.</summary>
+    internal HttpClient Http { get; }
+
+    internal GitHubReadHost(
+        RepoIdentifier repo, GitReadToken token, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
     {
-        _repo = repo;
-        _http = BuildHttpClient(readToken.Value, handler);
+        Repo = repo;
+        Http = BuildHttpClient(token, handler);
         _runProcess = runProcess;
-        _gitAuthEnv = BuildGitAuthEnv(readToken.Value);
+        _gitAuthEnv = BuildGitAuthEnv(token);
     }
 
-    private static HttpClient BuildHttpClient(string token, HttpMessageHandler? handler)
+    private static HttpClient BuildHttpClient(GitReadToken token, HttpMessageHandler? handler)
     {
         var client = handler is null ? new HttpClient() : new HttpClient(handler);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("rix/1.0");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
@@ -41,9 +44,9 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     /// or persisting it into the clone's <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables
     /// as ad-hoc config, so the credential is supplied only via the git subprocess environment for each invocation.
     /// </summary>
-    private static Dictionary<string, string> BuildGitAuthEnv(string token)
+    private static Dictionary<string, string> BuildGitAuthEnv(GitReadToken token)
     {
-        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token}"));
+        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token.Value}"));
         return new Dictionary<string, string>
         {
             ["GIT_CONFIG_COUNT"] = "1",
@@ -53,7 +56,7 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
     }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-        RunGitAsync(["clone", $"https://github.com/{_repo.Value}.git", targetDirectory],
+        RunGitAsync(["clone", $"https://github.com/{Repo.Value}.git", targetDirectory],
             workingDirectory: Path.GetTempPath(), authenticated: true, cancellationToken);
 
     public Task CreateBundleAsync(
@@ -67,8 +70,8 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
-        var url = $"https://api.github.com/repos/{_repo.Value}/branches/{Uri.EscapeDataString(branch.Value)}";
-        using var response = await _http.GetAsync(url, cancellationToken);
+        var url = $"https://api.github.com/repos/{Repo.Value}/branches/{Uri.EscapeDataString(branch.Value)}";
+        using var response = await Http.GetAsync(url, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return false;
         response.EnsureSuccessStatusCode();
@@ -77,8 +80,9 @@ internal sealed class GitHubRepositoryHost : IRepositoryHost
 
     /// <summary>Runs <c>git</c>, injecting the credential only when <paramref name="authenticated"/>
     /// is set. Local-only commands (e.g. <c>bundle create</c>) pass <c>false</c> so the token never
-    /// reaches a subprocess that has no need for it; only remote commands (clone) receive it.</summary>
-    private async Task RunGitAsync(
+    /// reaches a subprocess that has no need for it; remote commands (clone, push) pass <c>true</c>.
+    /// Shared with the composing <see cref="GitHubHost"/> so its push reuses this exact injection.</summary>
+    internal async Task RunGitAsync(
         string[] args, string workingDirectory, bool authenticated, CancellationToken cancellationToken)
     {
         // Only the GIT_CONFIG_* auth variables are ever overridden; the subprocess still inherits the

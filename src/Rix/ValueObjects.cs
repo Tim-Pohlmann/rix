@@ -4,7 +4,17 @@ using System.Text.Json.Serialization;
 
 namespace Rix;
 
-internal readonly record struct ReadToken(string Value);
+/// <summary>Writes a single diagnostic line (e.g. a forwarded agent stdout line) to the log sink.</summary>
+internal delegate void LogLine(string line);
+
+/// <summary>A read-scoped GitHub access token: enough to clone and inspect a repo, never to write.
+/// <see cref="GitToken"/> derives from it because a write-capable token can do everything a read
+/// one can, so a <see cref="GitToken"/> is accepted wherever a <c>GitReadToken</c> is required.</summary>
+internal record GitReadToken(string Value);
+
+/// <summary>A write-capable GitHub access token (push, open PRs). Being a <see cref="GitReadToken"/>,
+/// it also satisfies read-only consumers without a separate credential.</summary>
+internal sealed record GitToken(string Value) : GitReadToken(Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 

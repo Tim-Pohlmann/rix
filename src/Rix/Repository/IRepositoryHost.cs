@@ -1,17 +1,11 @@
 namespace Rix.Repository;
 
-internal interface IRepositoryHost
+/// <summary>A full repository host: every read operation from <see cref="IRepositoryReadHost"/> plus
+/// the write operations <c>rix submit</c> needs against a target it can write to — push a branch and
+/// open a pull request. Requires a write credential; the read-only job path depends only on the
+/// narrower <see cref="IRepositoryReadHost"/>.</summary>
+internal interface IRepositoryHost : IRepositoryReadHost
 {
-    Task CloneAsync(string targetDirectory, CancellationToken cancellationToken);
-    Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken);
-
-    /// <summary>Bundles the commits on <paramref name="branch"/> not on <paramref name="baseBranch"/>
-    /// into a git bundle at <paramref name="bundlePath"/>, run inside the cloned
-    /// <paramref name="repoDirectory"/>.</summary>
-    Task CreateBundleAsync(
-        string repoDirectory,
-        string bundlePath,
-        BranchName baseBranch,
-        BranchName branch,
-        CancellationToken cancellationToken);
+    Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken);
+    Task CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken);
 }

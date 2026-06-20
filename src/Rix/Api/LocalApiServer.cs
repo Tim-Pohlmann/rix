@@ -26,7 +26,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     }
 
     internal static async Task<LocalApiServer> StartAsync(
-        IRepositoryHost host,
+        IRepositoryReadHost host,
         CancellationToken cancellationToken)
     {
         var pendingPrRequests = new ConcurrentQueue<QueuedPr>();
@@ -51,7 +51,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
     private static void MapEndpoints(
         WebApplication app,
-        IRepositoryHost host,
+        IRepositoryReadHost host,
         ConcurrentQueue<QueuedPr> pendingPrRequests)
     {
         app.MapGet("/health", () => Results.Ok());
