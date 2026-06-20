@@ -29,10 +29,11 @@ internal abstract record ParseResult<T>
 {
     private protected ParseResult() { }
 
-    /// <summary>Eliminates the union exhaustively: runs <paramref name="onSuccess"/> for a
+    /// <summary>Eliminates the union: runs <paramref name="onSuccess"/> for a
     /// <see cref="ParseSuccess{T}"/> or <paramref name="onError"/> for a <see cref="ParseError{T}"/>.
-    /// The closed <c>private protected</c> hierarchy makes these the only two cases, so callers fold
-    /// without repeating a defensive catch-all arm at every site.</summary>
+    /// The <c>private protected</c> ctor keeps these the only two cases in practice (new ones could
+    /// only be added here, in this assembly), so callers fold without repeating the catch-all arm —
+    /// which this method keeps in one place as a guard rather than spread across every site.</summary>
     internal TResult Match<TResult>(Func<T, TResult> onSuccess, Func<string, TResult> onError) => this switch
     {
         ParseSuccess<T> ok => onSuccess(ok.Value),
