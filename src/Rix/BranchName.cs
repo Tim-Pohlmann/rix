@@ -23,17 +23,22 @@ internal record RixBranchName : BranchName
 
     internal RixBranchName(string value) : base(value)
     {
-        if (!Pattern.IsMatch(value))
-            throw new ArgumentException($"Branch must match rix/* pattern, got: {value}", nameof(value));
+        if (Validate(value) is { } error)
+            throw new ArgumentException(error, nameof(value));
     }
 
-    /// <summary>The single source of truth for the <c>rix/*</c> rule on the union path: returns a
-    /// <see cref="ParseError{T}"/> for malformed input so callers can aggregate it instead of
-    /// catching an exception.</summary>
+    /// <summary>Returns the union path's <see cref="RixBranchName"/> or, for malformed input, a
+    /// <see cref="ParseError{T}"/> callers can aggregate instead of catching an exception.</summary>
     internal static new ParseResult<RixBranchName> Parse(string value) =>
-        Pattern.IsMatch(value)
-            ? new ParseSuccess<RixBranchName>(new RixBranchName(value))
-            : new ParseError<RixBranchName>($"Branch must match rix/* pattern, got: {value}");
+        Validate(value) is { } error
+            ? new ParseError<RixBranchName>(error)
+            : new ParseSuccess<RixBranchName>(new RixBranchName(value));
+
+    /// <summary>The single source of the <c>rix/*</c> rule and its message, shared by the throwing
+    /// constructor and the non-throwing <see cref="Parse"/>: null when <paramref name="value"/> is
+    /// valid, otherwise the reason it was rejected.</summary>
+    private static string? Validate(string value) =>
+        Pattern.IsMatch(value) ? null : $"Branch must match rix/* pattern, got: {value}";
 }
 
 internal sealed class BranchNameJsonConverter : StringValueJsonConverter<BranchName>
