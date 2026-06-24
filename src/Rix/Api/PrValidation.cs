@@ -18,22 +18,22 @@ internal static class PrRequestExtensions
             if (string.IsNullOrWhiteSpace(req.Title)) return new InvalidPr("title is required");
             if (string.IsNullOrWhiteSpace(req.Body)) return new InvalidPr("body is required");
 
-            // Parse each field on the ParseResult union; the first that fails short-circuits to an
-            // InvalidPr naming the rejected field, otherwise every field parsed cleanly.
-            if (RixBranchName.Parse(req.Branch) is ParseError<RixBranchName> branchError)
-                return new InvalidPr($"branch: {branchError.Error}");
-            if (BranchName.Parse(req.BaseBranch) is ParseError<BranchName> baseBranchError)
-                return new InvalidPr($"baseBranch: {baseBranchError.Error}");
-            if (PrTitle.Parse(req.Title) is ParseError<PrTitle> titleError)
-                return new InvalidPr($"title: {titleError.Error}");
-            if (PrBody.Parse(req.Body) is ParseError<PrBody> bodyError)
-                return new InvalidPr($"body: {bodyError.Error}");
-
-            return new ValidPr(new QueuedPr(
-                new RixBranchName(req.Branch),
-                new BranchName(req.BaseBranch),
-                new PrTitle(req.Title),
-                new PrBody(req.Body)));
+            // Parse every field once, then match: the first failure becomes an InvalidPr naming the
+            // field, and the all-success arm hands the parsed strong types straight to QueuedPr.
+            return (RixBranchName.Parse(req.Branch),
+                    BranchName.Parse(req.BaseBranch),
+                    PrTitle.Parse(req.Title),
+                    PrBody.Parse(req.Body)) switch
+            {
+                (ParseError<RixBranchName> e, _, _, _) => new InvalidPr($"branch: {e.Error}"),
+                (_, ParseError<BranchName> e, _, _) => new InvalidPr($"baseBranch: {e.Error}"),
+                (_, _, ParseError<PrTitle> e, _) => new InvalidPr($"title: {e.Error}"),
+                (_, _, _, ParseError<PrBody> e) => new InvalidPr($"body: {e.Error}"),
+                (ParseSuccess<RixBranchName> branch, ParseSuccess<BranchName> baseBranch,
+                 ParseSuccess<PrTitle> title, ParseSuccess<PrBody> body)
+                    => new ValidPr(new QueuedPr(branch.Value, baseBranch.Value, title.Value, body.Value)),
+                var other => throw new InvalidOperationException($"Unexpected parse results: {other}"),
+            };
         }
     }
 }
