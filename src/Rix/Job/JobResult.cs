@@ -28,16 +28,26 @@ internal record JobSuccess(
     TimeSpan Duration
 ) : JobResultBase(CostUsd, Duration);
 
-internal record JobFailure(
+/// <summary>Shared base for the two failure shapes — a job that ran and failed
+/// (<see cref="JobFailure"/>) and a failure before the job could run (<see cref="SetupFailure"/>).
+/// They are <em>siblings</em> rather than one deriving from the other, so the exit-code switch in
+/// <see cref="Rix.Startup"/> matches disjoint concrete types and is no longer order-sensitive.</summary>
+internal abstract record JobFailureBase(
     [property: JsonPropertyName("error")] string Error,
     decimal CostUsd,
     TimeSpan Duration
 ) : JobResultBase(CostUsd, Duration);
 
+internal sealed record JobFailure(
+    string Error,
+    decimal CostUsd,
+    TimeSpan Duration
+) : JobFailureBase(Error, CostUsd, Duration);
+
 /// <summary>
 /// A failure before the job proper could run (e.g. agent install failed). Serializes as
-/// <c>"status": "setupFailure"</c> so the shell can map it to a distinct exit code, while still
-/// being a <see cref="JobFailure"/> with no cost or duration.
+/// <c>"status": "setupFailure"</c> so the shell can map it to a distinct exit code; carries no cost
+/// or duration. A sibling of <see cref="JobFailure"/>, not a specialization of it.
 /// </summary>
 internal sealed record SetupFailure(string Error)
-    : JobFailure(Error, CostUsd: 0m, Duration: TimeSpan.Zero);
+    : JobFailureBase(Error, CostUsd: 0m, Duration: TimeSpan.Zero);
