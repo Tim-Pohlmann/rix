@@ -381,7 +381,7 @@ public class JobRunnerTests
     // ---- helpers ----
 
     private static JobContext Context(
-        IRepositoryHost host,
+        IRepositoryReadHost host,
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
         LogLine? logLine = null) =>
@@ -446,7 +446,7 @@ public class JobRunnerTests
 
     private record QueuedPrSpec(string Branch, string BaseBranch, string Title, string Body);
 
-    private sealed class TrackingRepositoryHost : IRepositoryHost
+    private sealed class TrackingRepositoryHost : IRepositoryReadHost
     {
         public bool CloneCalled { get; private set; }
         public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)

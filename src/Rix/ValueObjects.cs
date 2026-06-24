@@ -4,7 +4,17 @@ using System.Text.Json.Serialization;
 
 namespace Rix;
 
-internal readonly record struct ReadToken(string Value);
+/// <summary>Writes a single diagnostic line (e.g. a forwarded agent stdout line) to the log sink.</summary>
+internal delegate void LogLine(string line);
+
+/// <summary>A read-scoped GitHub access token: enough to clone and inspect a repo, never to write.
+/// <see cref="GitToken"/> derives from it because a write-capable token can do everything a read
+/// one can, so a <see cref="GitToken"/> is accepted wherever a <c>GitReadToken</c> is required.</summary>
+internal record GitReadToken(string Value);
+
+/// <summary>A write-capable GitHub access token (push, open PRs). Being a <see cref="GitReadToken"/>,
+/// it also satisfies read-only consumers without a separate credential.</summary>
+internal sealed record GitToken(string Value) : GitReadToken(Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 
@@ -18,9 +28,33 @@ internal readonly record struct TimeoutMinutes(int Value);
 internal abstract record ParseResult<T>
 {
     private protected ParseResult() { }
+
+    /// <summary>Eliminates the union: runs <paramref name="onSuccess"/> for a
+    /// <see cref="ParseSuccess{T}"/> or <paramref name="onError"/> for a <see cref="ParseError{T}"/>.
+    /// The <c>private protected</c> ctor keeps these the only two cases in practice (new ones could
+    /// only be added here, in this assembly), so callers fold without repeating the catch-all arm —
+    /// which this method keeps in one place as a guard rather than spread across every site.</summary>
+    internal TResult Match<TResult>(Func<T, TResult> onSuccess, Func<string, TResult> onError) => this switch
+    {
+        ParseSuccess<T> ok => onSuccess(ok.Value),
+        ParseError<T> bad => onError(bad.Error),
+        _ => throw new InvalidOperationException($"Unexpected {nameof(ParseResult<T>)}: {GetType().Name}"),
+    };
 }
 
 internal sealed record ParseSuccess<T>(T Value) : ParseResult<T>;
+
+/// <summary>The shared validation strategy for the command <c>Create</c> methods: every parsed field
+/// folds through <see cref="Collect{T}"/> so each error accumulates in one pass with the same
+/// <c>flag: message</c> shape, instead of each command repeating its own success/error switch.</summary>
+internal static class ParseResultExtensions
+{
+    /// <summary>Unwraps a successful parse to its value; on failure records <paramref name="flag"/>
+    /// and the error in <paramref name="errors"/> and returns <c>null</c> so the caller keeps
+    /// collecting the remaining fields before deciding the config is invalid.</summary>
+    internal static T? Collect<T>(this ParseResult<T> result, List<string> errors, string flag) where T : class =>
+        result.Match<T?>(value => value, error => { errors.Add($"{flag}: {error}"); return null; });
+}
 
 /// <summary>The failure case carries only a message; <typeparamref name="T"/> exists purely to keep
 /// it in the same union as <see cref="ParseSuccess{T}"/> so callers can switch over one type. The
@@ -77,22 +111,23 @@ internal sealed record DirectoryPath
 }
 
 /// <summary>
-/// Base converter for value objects that serialize as a single JSON string. Subclasses supply
-/// how to build the wrapper from a string and how to read the string back out. Construction-time
-/// validation (an <see cref="ArgumentException"/> from <see cref="Create"/>) is surfaced as a
-/// <see cref="JsonException"/> so malformed input fails as a parse error, not an unhandled throw.
+/// Base converter for value objects that serialize as a single JSON string. Subclasses supply how
+/// to <see cref="Parse"/> a string into the wrapper and how to read the string back out. A
+/// <see cref="ParseError{T}"/> is surfaced as a <see cref="JsonException"/> so malformed input fails
+/// as a parse error rather than an unhandled throw — validation stays on the union, not exceptions.
 /// </summary>
 internal abstract class StringValueJsonConverter<T> : JsonConverter<T>
 {
-    protected abstract T Create(string value);
+    protected abstract ParseResult<T> Parse(string value);
     protected abstract string Extract(T value);
 
     public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType != JsonTokenType.String)
             throw new JsonException($"Expected string token for {typeof(T).Name}, got {reader.TokenType}");
-        try { return Create(reader.GetString()!); }
-        catch (ArgumentException ex) { throw new JsonException(ex.Message, ex); }
+        return Parse(reader.GetString()!).Match(
+            onSuccess: value => value,
+            onError: error => throw new JsonException(error));
     }
 
     public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)

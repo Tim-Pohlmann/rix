@@ -7,7 +7,7 @@ namespace Rix.Tests;
 
 internal sealed class StubRepositoryHost(
     Func<BranchName, Task<bool>>? branchExists = null,
-    Func<string, Task>? createBundle = null) : IRepositoryHost
+    Func<string, Task>? createBundle = null) : IRepositoryReadHost
 {
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
         Task.CompletedTask;
@@ -19,6 +19,42 @@ internal sealed class StubRepositoryHost(
     public Task CreateBundleAsync(
         string repoDirectory, string bundlePath, BranchName baseBranch, BranchName branch, CancellationToken cancellationToken) =>
         createBundle is not null ? createBundle(bundlePath) : File.WriteAllTextAsync(bundlePath, "fake-bundle", cancellationToken);
+}
+
+internal sealed class StubSubmitHost(
+    Func<BranchName, Task<bool>>? branchExists = null,
+    Func<PendingPr, Task>? createPullRequest = null,
+    Func<BranchName, Task>? pushBranch = null) : IRepositoryHost
+{
+    public List<PendingPr> CreatedPrs { get; } = [];
+    public List<BranchName> PushedBranches { get; } = [];
+    public bool CloneCalled { get; private set; }
+
+    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
+    {
+        CloneCalled = true;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The submit flow never bundles (that is the job path's job), so this should be unreachable.</summary>
+    public Task CreateBundleAsync(
+        string repoDirectory, string bundlePath, BranchName baseBranch, BranchName branch, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("submit flow does not create bundles");
+
+    public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken) =>
+        branchExists is not null ? branchExists(branch) : Task.FromResult(false);
+
+    public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
+    {
+        PushedBranches.Add(branch);
+        return pushBranch is not null ? pushBranch(branch) : Task.CompletedTask;
+    }
+
+    public Task CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
+    {
+        CreatedPrs.Add(pullRequest);
+        return createPullRequest is not null ? createPullRequest(pullRequest) : Task.CompletedTask;
+    }
 }
 
 /// <summary>

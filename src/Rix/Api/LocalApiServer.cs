@@ -25,7 +25,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// <param name="logLine">Sink for the server's own diagnostic log lines, forwarded live so they
     /// interleave with the agent's output on the same seam. When <c>null</c>, server logs are dropped.</param>
     internal static async Task<LocalApiServer> StartAsync(
-        IRepositoryHost host,
+        IRepositoryReadHost host,
         CancellationToken cancellationToken,
         Action<string>? logLine = null)
     {
@@ -50,7 +50,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
     private static void MapEndpoints(
         WebApplication app,
-        IRepositoryHost host,
+        IRepositoryReadHost host,
         ConcurrentQueue<QueuedPr> pendingPrRequests)
     {
         app.MapGet("/health", () => Results.Ok());
