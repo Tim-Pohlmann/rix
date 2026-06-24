@@ -18,24 +18,22 @@ internal static class PrRequestExtensions
             if (string.IsNullOrWhiteSpace(req.Title)) return new InvalidPr("title is required");
             if (string.IsNullOrWhiteSpace(req.Body)) return new InvalidPr("body is required");
 
-            // Parse each field inline; a failure throws (prefixed with the field name) and the one
-            // catch below turns the first such throw into an InvalidPr naming the rejected field.
-            try
-            {
-                var branch = RixBranchName.Parse(req.Branch).Match(v => v, e => throw new InvalidFieldException($"branch: {e}"));
-                var baseBranch = BranchName.Parse(req.BaseBranch).Match(v => v, e => throw new InvalidFieldException($"baseBranch: {e}"));
-                var title = PrTitle.Parse(req.Title).Match(v => v, e => throw new InvalidFieldException($"title: {e}"));
-                var body = PrBody.Parse(req.Body).Match(v => v, e => throw new InvalidFieldException($"body: {e}"));
-                return new ValidPr(new QueuedPr(branch, baseBranch, title, body));
-            }
-            catch (InvalidFieldException ex)
-            {
-                return new InvalidPr(ex.Message);
-            }
+            // Parse each field on the ParseResult union; the first that fails short-circuits to an
+            // InvalidPr naming the rejected field, otherwise every field parsed cleanly.
+            if (RixBranchName.Parse(req.Branch) is ParseError<RixBranchName> branchError)
+                return new InvalidPr($"branch: {branchError.Error}");
+            if (BranchName.Parse(req.BaseBranch) is ParseError<BranchName> baseBranchError)
+                return new InvalidPr($"baseBranch: {baseBranchError.Error}");
+            if (PrTitle.Parse(req.Title) is ParseError<PrTitle> titleError)
+                return new InvalidPr($"title: {titleError.Error}");
+            if (PrBody.Parse(req.Body) is ParseError<PrBody> bodyError)
+                return new InvalidPr($"body: {bodyError.Error}");
+
+            return new ValidPr(new QueuedPr(
+                new RixBranchName(req.Branch),
+                new BranchName(req.BaseBranch),
+                new PrTitle(req.Title),
+                new PrBody(req.Body)));
         }
     }
-
-    /// <summary>Signals that a request field failed to parse; carries the field-prefixed reason so
-    /// <see cref="PrRequestExtensions"/> can surface it as an <see cref="InvalidPr"/>.</summary>
-    private sealed class InvalidFieldException(string message) : Exception(message);
 }
