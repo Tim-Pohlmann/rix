@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Rix.Agents;
@@ -130,7 +131,9 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_SkipsDuplicateQueuedBranch()
     {
-        var log = new List<string>();
+        // LocalApiServer forwards log lines from threadpool threads while the main thread writes the
+        // dedup message, so the sink must tolerate concurrent writes.
+        var log = new ConcurrentQueue<string>();
 
         RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
         {
@@ -151,13 +154,13 @@ public class JobRunnerTests
 
         var result = await JobRunner.RunAsync(MakeConfig(),
             Context(new StubRepositoryHost(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed()), logLine: log.Add),
+                _ => Task.FromResult<InstallResult>(new Installed()), logLine: log.Enqueue),
             CancellationToken.None);
 
         var success = (JobSuccess)result;
         Assert.AreEqual(1, success.PendingPrRequests.Count);
         Assert.AreEqual(1, Directory.GetFiles(_outputDir, "*.bundle").Length);
-        Assert.IsTrue(log.Exists(l => l.Contains("duplicate")));
+        Assert.IsTrue(log.Any(l => l.Contains("duplicate")));
     }
 
     [TestMethod]

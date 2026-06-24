@@ -90,8 +90,13 @@ internal sealed class LocalApiServer : IAsyncDisposable
         {
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
             public bool IsEnabled(LogLevel logLevel) => true;
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-                sink($"[{logLevel}] {category}: {formatter(state, exception)}");
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                // ASP.NET invokes loggers from arbitrary threadpool threads; logging is best-effort,
+                // so a throwing sink must never bubble back into request handling.
+                try { sink($"[{logLevel}] {category}: {formatter(state, exception)}"); }
+                catch { /* drop the line rather than fault the request */ }
+            }
         }
     }
 }
