@@ -34,7 +34,10 @@ internal sealed class LocalApiServer : IAsyncDisposable
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
         builder.Logging.ClearProviders();
-        builder.Logging.AddProvider(new LogForwarder(logLine ?? (_ => { })));
+        // With no sink there is nothing to forward to, so skip the provider entirely rather than
+        // formatting every line only to drop it.
+        if (logLine is not null)
+            builder.Logging.AddProvider(new LogForwarder(logLine));
         builder.Services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonContext.Default));
 
