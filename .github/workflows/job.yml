@@ -71,14 +71,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.rix-version }}
         run: |
-          tag_args=()
-          if [[ "$VERSION" != "latest" ]]; then
-            tag_args=("$VERSION")
+          # Resolve the release asset URL via the REST API (curl + grep only, no gh/jq) so the
+          # workflow runs on minimal self-hosted runners too. The asset download itself is
+          # unauthenticated: rix releases are public, and forwarding the API auth header through
+          # GitHub's redirect to S3 would be rejected.
+          if [[ "${VERSION:-latest}" == "latest" ]]; then
+            api="https://api.github.com/repos/$RIX_REPO_SLUG/releases/latest"
+          else
+            api="https://api.github.com/repos/$RIX_REPO_SLUG/releases/tags/$VERSION"
           fi
-          gh release download "${tag_args[@]}" \
-            -R "$RIX_REPO_SLUG" \
-            -p 'rix-*-linux-x64.tar.gz' \
-            -O rix.tar.gz
+          asset_url=$(curl -fsSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$api" \
+            | grep -o 'https://[^"]*rix-[^"]*-linux-x64\.tar\.gz' | head -n1)
+          if [[ -z "$asset_url" ]]; then
+            echo "No rix-*-linux-x64.tar.gz asset in release '${VERSION:-latest}' of $RIX_REPO_SLUG" >&2
+            exit 1
+          fi
+          curl -fSL -o rix.tar.gz "$asset_url"
           mkdir -p rix-bin
           tar -xzf rix.tar.gz -C rix-bin
           chmod +x rix-bin/rix
@@ -119,14 +130,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.rix-version }}
         run: |
-          tag_args=()
-          if [[ "$VERSION" != "latest" ]]; then
-            tag_args=("$VERSION")
+          # Resolve the release asset URL via the REST API (curl + grep only, no gh/jq) so the
+          # workflow runs on minimal self-hosted runners too. The asset download itself is
+          # unauthenticated: rix releases are public, and forwarding the API auth header through
+          # GitHub's redirect to S3 would be rejected.
+          if [[ "${VERSION:-latest}" == "latest" ]]; then
+            api="https://api.github.com/repos/$RIX_REPO_SLUG/releases/latest"
+          else
+            api="https://api.github.com/repos/$RIX_REPO_SLUG/releases/tags/$VERSION"
           fi
-          gh release download "${tag_args[@]}" \
-            -R "$RIX_REPO_SLUG" \
-            -p 'rix-*-linux-x64.tar.gz' \
-            -O rix.tar.gz
+          asset_url=$(curl -fsSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$api" \
+            | grep -o 'https://[^"]*rix-[^"]*-linux-x64\.tar\.gz' | head -n1)
+          if [[ -z "$asset_url" ]]; then
+            echo "No rix-*-linux-x64.tar.gz asset in release '${VERSION:-latest}' of $RIX_REPO_SLUG" >&2
+            exit 1
+          fi
+          curl -fSL -o rix.tar.gz "$asset_url"
           mkdir -p rix-bin
           tar -xzf rix.tar.gz -C rix-bin
           chmod +x rix-bin/rix
