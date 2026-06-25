@@ -25,11 +25,15 @@ jobs:
     with:
       repo: ${{ github.repository }}
       prompt: ${{ inputs.prompt }}
+      # agent: opencode   # optional; defaults to 'claude'
     secrets:
       read-token: ${{ secrets.RIX_READ_TOKEN }}
       write-token: ${{ secrets.RIX_WRITE_TOKEN }}
-      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      agent-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+Pick the coding agent with the optional `agent` input — `claude` (default) or `opencode`.
+Both install their CLI via npm at run time.
 
 ### Required secrets
 
@@ -37,7 +41,7 @@ jobs:
 | --- | --- |
 | `read-token` | PAT with read access to the target repo; used to clone it during the agent run. |
 | `write-token` | PAT with `contents:write` + `pull-requests:write` on the target repo; used to push branches and open PRs. |
-| `anthropic-api-key` | Credentials for the `claude` CLI. |
+| `agent-api-key` | API key for the selected agent's model provider. Mapped to the provider env var the agent reads (`ANTHROPIC_API_KEY` for both `claude` and `opencode`). |
 
 The read/write split keeps the agent run (which executes untrusted, model-generated work)
 on a read-only token; only the final, deterministic PR-creation step holds write access.
