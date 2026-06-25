@@ -38,7 +38,7 @@ internal static class JobRunner
         {
             await context.Host.CloneAsync(cloneDir, ct);
 
-            await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct);
+            await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct, context.LogLine.Invoke);
 
             var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
             var agentResult = await RunAgentAsync(config, context, systemPrompt, cloneDir, ct);
@@ -99,8 +99,17 @@ internal static class JobRunner
         JobConfig config, JobContext context, IEnumerable<QueuedPr> queuedPrs, string cloneDir, CancellationToken ct)
     {
         var pendingPrs = new List<PendingPr>();
+        var seenBranches = new HashSet<string>(StringComparer.Ordinal);
         foreach (var req in queuedPrs)
         {
+            // Two PRs queued in one run can name the same branch; their bundle file names would
+            // collide and the second would overwrite the first. Keep the first and skip the rest.
+            if (!seenBranches.Add(req.Branch.Value))
+            {
+                context.LogLine($"skipping duplicate queued PR for branch {req.Branch.Value}");
+                continue;
+            }
+
             var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
             var bundleFile = $"{safeName}.bundle";
             var bundlePath = Path.Combine(config.OutputDir.Value, bundleFile);
