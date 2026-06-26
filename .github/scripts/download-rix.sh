@@ -46,7 +46,9 @@ rix_asset_url() {
   local rid="$1" ext="$2"
   # Escape dots so the extension (e.g. tar.gz) matches literally rather than as regex wildcards.
   local ext_re="${ext//./\\.}"
-  { grep -o "https://[^\"]*rix-[^\"]*-$rid\.$ext_re" || true; } | head -n1
+  # Require the closing JSON quote right after the extension so a sibling asset like
+  # rix-…-$rid.tar.gz.sig can't yield a truncated match.
+  { grep -o "https://[^\"]*rix-[^\"]*-$rid\.$ext_re\"" || true; } | head -n1 | tr -d '"'
   return 0
 }
 

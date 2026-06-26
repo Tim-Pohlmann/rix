@@ -78,3 +78,13 @@ setup() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "asset: a sibling .sig asset does not produce a truncated match" {
+  local json='{"assets":[
+    {"browser_download_url":"https://github.com/Tim-Pohlmann/rix/releases/download/v1.2.0/rix-1.2.0-linux-x64.tar.gz.sig"},
+    {"browser_download_url":"https://github.com/Tim-Pohlmann/rix/releases/download/v1.2.0/rix-1.2.0-linux-x64.tar.gz"}
+  ]}'
+  run bash -c "printf '%s' '$json' | { source '${BATS_TEST_DIRNAME}/../../.github/scripts/download-rix.sh'; rix_asset_url linux-x64 tar.gz; }"
+  [ "$status" -eq 0 ]
+  [ "$output" = "https://github.com/Tim-Pohlmann/rix/releases/download/v1.2.0/rix-1.2.0-linux-x64.tar.gz" ]
+}
