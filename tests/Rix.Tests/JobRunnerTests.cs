@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Rix.Agents;
@@ -125,6 +126,41 @@ public class JobRunnerTests
         await Run(pr: new("rix/feat/sub", "main", "T", "b"));
 
         Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "rix_2Ffeat_2Fsub.bundle")));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_SkipsDuplicateQueuedBranch()
+    {
+        // LocalApiServer forwards log lines from threadpool threads while the main thread writes the
+        // dedup message, so the sink must tolerate concurrent writes.
+        var log = new ConcurrentQueue<string>();
+
+        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
+                for (var i = 0; i < 2; i++)
+                {
+                    using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
+                    {
+                        branch = "rix/dup", baseBranch = "main", title = "T", body = "b",
+                    }, ct);
+                    response.EnsureSuccessStatusCode();
+                }
+            }
+            return new ProcessSuccess();
+        };
+
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed()), logLine: log.Enqueue),
+            CancellationToken.None);
+
+        var success = (JobSuccess)result;
+        Assert.AreEqual(1, success.PendingPrRequests.Count);
+        Assert.AreEqual(1, Directory.GetFiles(_outputDir, "*.bundle").Length);
+        Assert.IsTrue(log.Any(l => l.Contains("duplicate")));
     }
 
     [TestMethod]
@@ -348,7 +384,7 @@ public class JobRunnerTests
     // ---- helpers ----
 
     private static JobContext Context(
-        IRepositoryHost host,
+        IRepositoryReadHost host,
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
         LogLine? logLine = null) =>
@@ -413,7 +449,7 @@ public class JobRunnerTests
 
     private record QueuedPrSpec(string Branch, string BaseBranch, string Title, string Body);
 
-    private sealed class TrackingRepositoryHost : IRepositoryHost
+    private sealed class TrackingRepositoryHost : IRepositoryReadHost
     {
         public bool CloneCalled { get; private set; }
         public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)

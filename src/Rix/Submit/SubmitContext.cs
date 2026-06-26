@@ -1,4 +1,3 @@
-using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
 
@@ -10,6 +9,6 @@ namespace Rix.Submit;
 /// shell constructs the real implementations at the root of the call stack.
 /// </summary>
 internal sealed record SubmitContext(
-    ISubmitHost Host,
+    IRepositoryHost Host,
     RunProcessAsync RunProcess,
     LogLine LogLine);

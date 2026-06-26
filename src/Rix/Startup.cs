@@ -22,20 +22,27 @@ internal static class Startup
                 onStdoutLine: onStdoutLine);
 
     /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
-    /// the default coding agent (<see cref="ClaudeAgent"/>), and stderr log sink, all wired from
-    /// <paramref name="config"/>.</summary>
+    /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
+    /// from <paramref name="config"/>.</summary>
     internal static JobContext DefaultContext(JobConfig config) =>
         new(
-            Host: new GitHubRepositoryHost(config.Repo, config.ReadToken, DefaultRunProcess),
+            Host: new GitHubReadHost(config.Repo, config.ReadToken, DefaultRunProcess),
             RunProcess: DefaultRunProcess,
-            Agent: new ClaudeAgent(),
+            Agent: SelectAgent(config.Agent.Kind),
             LogLine: Console.Error.WriteLine);
+
+    private static ICodingAgent SelectAgent(AgentKind agent) => agent switch
+    {
+        AgentKind.Claude => new ClaudeAgent(),
+        AgentKind.OpenCode => new OpenCodeAgent(),
+        _ => throw new NotSupportedException($"Unsupported agent: {agent}"),
+    };
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub host authenticated with the
     /// write token, the default process runner, and a stderr log sink.</summary>
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config) =>
         new(
-            Host: new GitHubRepositoryHost(config.Repo, config.WriteToken, DefaultRunProcess),
+            Host: new GitHubHost(config.Repo, config.WriteToken, DefaultRunProcess),
             RunProcess: DefaultRunProcess,
             LogLine: Console.Error.WriteLine);
 

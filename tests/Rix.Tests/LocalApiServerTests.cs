@@ -82,6 +82,7 @@ public class LocalApiServerTests
         var json = await response.Content.ReadAsStringAsync();
         var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
         StringAssert.Contains(result["error"], "rix/*");
+        StringAssert.StartsWith(result["error"], "branch:");
     }
 
     [DataTestMethod]

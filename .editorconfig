@@ -1,0 +1,11 @@
+root = true
+
+[*.cs]
+
+# S3060 ("don't branch on a subtype from within the hierarchy") encodes the OOP
+# extensibility model: behavior distributed across types via virtual dispatch.
+# ParseResult<T> is a deliberately closed discriminated union (private protected
+# ctor, two sealed cases) consumed functionally — pattern-matching over the cases
+# is the intended style, not a smell. Suppress where that union lives.
+[src/Rix/ValueObjects.cs]
+dotnet_diagnostic.S3060.severity = none

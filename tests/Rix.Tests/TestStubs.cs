@@ -7,7 +7,7 @@ namespace Rix.Tests;
 
 internal sealed class StubRepositoryHost(
     Func<BranchName, Task<bool>>? branchExists = null,
-    Func<string, Task>? createBundle = null) : IRepositoryHost
+    Func<string, Task>? createBundle = null) : IRepositoryReadHost
 {
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
         Task.CompletedTask;
@@ -24,7 +24,7 @@ internal sealed class StubRepositoryHost(
 internal sealed class StubSubmitHost(
     Func<BranchName, Task<bool>>? branchExists = null,
     Func<PendingPr, Task>? createPullRequest = null,
-    Func<BranchName, Task>? pushBranch = null) : ISubmitHost
+    Func<BranchName, Task>? pushBranch = null) : IRepositoryHost
 {
     public List<PendingPr> CreatedPrs { get; } = [];
     public List<BranchName> PushedBranches { get; } = [];
@@ -35,6 +35,11 @@ internal sealed class StubSubmitHost(
         CloneCalled = true;
         return Task.CompletedTask;
     }
+
+    /// <summary>The submit flow never bundles (that is the job path's job), so this should be unreachable.</summary>
+    public Task CreateBundleAsync(
+        string repoDirectory, string bundlePath, BranchName baseBranch, BranchName branch, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("submit flow does not create bundles");
 
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken) =>
         branchExists is not null ? branchExists(branch) : Task.FromResult(false);

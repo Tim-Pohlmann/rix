@@ -14,8 +14,17 @@ public class JobConfigTests
         int? maxTokens = null,
         int? timeoutMinutes = null,
         string? workDir = null,
-        string? outputDir = null) =>
-        JobConfig.Create(repo, prompt, readToken, maxTokens, timeoutMinutes, workDir, outputDir ?? ExistingDir);
+        string? outputDir = null,
+        string? agent = null) =>
+        JobConfig.Create(new JobInputs(
+            Repo: repo,
+            Prompt: prompt,
+            ReadToken: readToken,
+            MaxTokens: maxTokens,
+            TimeoutMinutes: timeoutMinutes,
+            WorkDir: workDir,
+            OutputDir: outputDir ?? ExistingDir,
+            Agent: agent));
 
     private static JobConfig Valid(JobConfigResult result) => result switch
     {
@@ -35,7 +44,7 @@ public class JobConfigTests
     {
         var config = Valid(Create());
 
-        Assert.AreEqual(JobConfig.DefaultMaxTokens, config.MaxTokens.Value);
+        Assert.AreEqual(JobConfig.DefaultMaxTokens, config.Agent.MaxTokens.Value);
         Assert.AreEqual(JobConfig.DefaultTimeoutMinutes, config.TimeoutMinutes.Value);
         Assert.AreEqual(Path.GetTempPath(), config.WorkDir.Value);
     }
@@ -45,7 +54,7 @@ public class JobConfigTests
     {
         var config = Valid(Create(maxTokens: 1000, timeoutMinutes: 5, workDir: Path.GetTempPath()));
 
-        Assert.AreEqual(1000, config.MaxTokens.Value);
+        Assert.AreEqual(1000, config.Agent.MaxTokens.Value);
         Assert.AreEqual(5, config.TimeoutMinutes.Value);
     }
 
@@ -169,5 +178,18 @@ public class JobConfigTests
         Assert.AreEqual(Path.GetTempPath(), Valid(Create(workDir: null)).WorkDir.Value);
         Assert.AreEqual(Path.GetTempPath(), Valid(Create(workDir: "")).WorkDir.Value);
         Assert.AreEqual(Path.GetTempPath(), Valid(Create(workDir: "   ")).WorkDir.Value);
+    }
+
+    [TestMethod]
+    public void Create_DefaultsAgentToClaude_AndSelectsOpenCode()
+    {
+        Assert.AreEqual(Rix.Agents.AgentKind.Claude, Valid(Create()).Agent.Kind);
+        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, Valid(Create(agent: "opencode")).Agent.Kind);
+    }
+
+    [TestMethod]
+    public void Create_RejectsUnknownAgent()
+    {
+        Assert.IsTrue(Errors(Create(agent: "devin")).Any(e => e.Contains("--agent")));
     }
 }

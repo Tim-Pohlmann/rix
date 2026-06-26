@@ -53,7 +53,7 @@ public class StartupTests
     {
         var context = Startup.DefaultContext(TestConfig.Valid());
 
-        Assert.IsInstanceOfType<GitHubRepositoryHost>(context.Host);
+        Assert.IsInstanceOfType<GitHubReadHost>(context.Host);
         Assert.AreSame(Startup.DefaultRunProcess, context.RunProcess);
         Assert.IsInstanceOfType<ClaudeAgent>(context.Agent);
     }
