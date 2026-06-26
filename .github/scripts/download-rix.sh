@@ -68,7 +68,7 @@ rix_main() {
   else
     local -a auth=()
     [[ -n "${GH_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer $GH_TOKEN")
-    json="$(curl -fsSL "${auth[@]}" -H "Accept: application/vnd.github+json" "$api")"
+    json="$(curl -fsSL --proto '=https' --tlsv1.2 "${auth[@]}" -H "Accept: application/vnd.github+json" "$api")"
   fi
 
   asset_url="$(printf '%s' "$json" | rix_asset_url "$rid" "$ext")"
