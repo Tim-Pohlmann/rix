@@ -14,7 +14,6 @@
 # Test hooks (override auto-detection / the network call):
 #   RIX_UNAME_S, RIX_UNAME_M   stand in for `uname -s` / `uname -m`
 #   RIX_RELEASE_JSON           releases-API JSON to parse instead of calling curl
-set -euo pipefail
 
 # Maps the runner platform to a release RID and archive extension. Echoes "<rid> <ext>".
 # Releases ship linux-x64, linux-arm64, osx-x64, osx-arm64 (.tar.gz) and win-x64 (.zip).
@@ -106,5 +105,8 @@ rix_main() {
 # Only run when executed directly, so the bats tests can source this file and exercise the
 # functions in isolation.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  # Set strict mode only when executed directly — sourcing (e.g. by the bats tests) must not
+  # mutate the caller's shell options.
+  set -euo pipefail
   rix_main
 fi

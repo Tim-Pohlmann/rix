@@ -76,6 +76,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.RIX_REPO_SLUG }}
+          # Pin the helper to the same release tag as the binary so a consumer pinning
+          # rix-version gets a matching script; empty ref falls back to the default branch
+          # only for "latest".
+          ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
           sparse-checkout: .github/scripts/download-rix.sh
           sparse-checkout-cone-mode: false
           path: rix-src
@@ -125,6 +129,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.RIX_REPO_SLUG }}
+          # Pin the helper to the same release tag as the binary so a consumer pinning
+          # rix-version gets a matching script; empty ref falls back to the default branch
+          # only for "latest".
+          ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
           sparse-checkout: .github/scripts/download-rix.sh
           sparse-checkout-cone-mode: false
           path: rix-src
