@@ -47,6 +47,7 @@ rix_asset_url() {
   # Escape dots so the extension (e.g. tar.gz) matches literally rather than as regex wildcards.
   local ext_re="${ext//./\\.}"
   { grep -o "https://[^\"]*rix-[^\"]*-$rid\.$ext_re" || true; } | head -n1
+  return 0
 }
 
 rix_main() {
