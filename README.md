@@ -50,9 +50,9 @@ The workflow downloads the latest published `rix` release binary; pin a specific
 with the optional `rix-version` input.
 
 Both jobs run on `ubuntu-latest` by default. Pass the optional `runner` input to run them
-on a different runner (e.g. a self-hosted label). The runner must be **Linux x64**: the
-workflow downloads the `linux-x64` release binary, so macOS, Windows, or ARM runners will
-fail with a wrong-architecture binary.
+on a different runner (e.g. a self-hosted label). The workflow detects the runner's OS and
+architecture and downloads the matching release binary, so Linux, macOS, and Windows
+runners (x64 or arm64) all work.
 
 ```yaml
     with:
