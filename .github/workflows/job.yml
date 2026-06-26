@@ -145,4 +145,5 @@ jobs:
           RIX_WRITE_TOKEN: ${{ secrets.write-token }}
           RIX_INPUT_DIR: out
         shell: bash
-        run: "$RIX_BIN" submit
+        run: |
+          "$RIX_BIN" submit
