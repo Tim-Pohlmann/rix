@@ -45,7 +45,9 @@ rix_detect_target() {
 # instead of tripping `set -e`/`pipefail` on grep's no-match status.
 rix_asset_url() {
   local rid="$1" ext="$2"
-  { grep -o "https://[^\"]*rix-[^\"]*-$rid\.$ext" || true; } | head -n1
+  # Escape dots so the extension (e.g. tar.gz) matches literally rather than as regex wildcards.
+  local ext_re="${ext//./\\.}"
+  { grep -o "https://[^\"]*rix-[^\"]*-$rid\.$ext_re" || true; } | head -n1
 }
 
 rix_main() {
@@ -82,7 +84,9 @@ rix_main() {
   # header through GitHub's redirect to S3 would be rejected.
   curl -fSL -o "$archive" "$asset_url"
   mkdir -p rix-bin
-  # `tar -xf` extracts both .tar.gz (GNU tar) and .zip (bsdtar on Windows) — no unzip dependency.
+  # `tar -xf` extracts the .tar.gz on Linux/macOS and the .zip on Windows, where `tar` is bsdtar
+  # and reads zips natively — so there is no unzip dependency. (GNU tar on Linux does not read
+  # zips, but a .zip is only ever downloaded on Windows.)
   tar -xf "$archive" -C rix-bin
 
   # The Windows build is rix.exe; every other RID is rix. Resolve the real path so later steps

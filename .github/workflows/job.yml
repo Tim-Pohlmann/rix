@@ -54,6 +54,12 @@ on:
 env:
   RIX_REPO_SLUG: Tim-Pohlmann/rix
 
+# Both jobs only need read access via GITHUB_TOKEN (the sparse-checkout of the public rix repo).
+# All writes to the target repo go through the write-token PAT, never GITHUB_TOKEN — so deny it
+# write access explicitly, keeping the untrusted agent run unable to push using the caller token.
+permissions:
+  contents: read
+
 jobs:
   run:
     name: Run rix job
