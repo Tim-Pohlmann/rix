@@ -19,7 +19,7 @@ on:
         type: string
         default: claude
       rix-version:
-        description: Rix release tag to download (default: latest)
+        description: "Rix release tag to download (default: latest)"
         required: false
         type: string
         default: latest
@@ -41,7 +41,7 @@ on:
         description: GitHub PAT with read access to the target repo (used to clone)
         required: true
       write-token:
-        description: GitHub PAT with contents:write + pull-requests:write on the target repo
+        description: "GitHub PAT with contents:write + pull-requests:write on the target repo"
         required: true
       agent-api-key:
         description: >-
