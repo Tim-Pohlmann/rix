@@ -84,7 +84,7 @@ rix_main() {
   archive="rix-archive.$ext"
   # The asset download is unauthenticated: rix releases are public, and forwarding the API auth
   # header through GitHub's redirect to S3 would be rejected.
-  curl -fSL -o "$archive" "$asset_url"
+  curl -fSL --proto '=https' --tlsv1.2 -o "$archive" "$asset_url"
   mkdir -p rix-bin
   # `tar -xf` extracts the .tar.gz on Linux/macOS and the .zip on Windows, where `tar` is bsdtar
   # and reads zips natively — so there is no unzip dependency. (GNU tar on Linux does not read

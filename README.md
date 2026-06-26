@@ -35,6 +35,9 @@ jobs:
 Pick the coding agent with the optional `agent` input — `claude` (default) or `opencode`.
 Both install their CLI via npm at run time.
 
+`@main` tracks the latest workflow; once a release is tagged, pin to that tag or a commit
+SHA (e.g. `...job.yml@v1.0.0`) for reproducible, supply-chain-safe runs.
+
 ### Required secrets
 
 | Secret | Purpose |
