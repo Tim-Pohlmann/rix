@@ -18,6 +18,25 @@ jobs:
       - name: Dolphin check
         uses: Tim-Pohlmann/Dolphin@v1
 
+  scripts:
+    name: Lint & test workflow scripts
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint workflows (actionlint)
+        uses: raven-actions/actionlint@v2
+
+      - name: Lint shell scripts (shellcheck)
+        run: shellcheck .github/scripts/*.sh
+
+      - name: Run bats tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+          bats tests/scripts
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

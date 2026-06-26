@@ -64,51 +64,24 @@ jobs:
         with:
           node-version: '20'
 
+      # Sparse-checkout of the rix repo (not the target) for the cross-platform download helper,
+      # which is unit-tested in CI (tests/scripts/download-rix.bats).
+      - name: Get rix download helper
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RIX_REPO_SLUG }}
+          sparse-checkout: .github/scripts/download-rix.sh
+          sparse-checkout-cone-mode: false
+          path: rix-src
+
       - name: Download rix binary
         env:
-          # Downloads the rix release from RIX_REPO_SLUG, not the target repo, so use the
-          # caller's automatic token rather than the target-scoped read PAT.
+          # The API call hits RIX_REPO_SLUG, not the target repo, so use the caller's automatic
+          # token rather than the target-scoped read PAT. The script exports RIX_BIN.
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.rix-version }}
         shell: bash
-        run: |
-          # Detect the runner's OS/arch and resolve the matching rix release asset via the REST
-          # API (curl + grep only, no gh/jq) so the workflow runs on minimal runners of any
-          # platform. The asset download itself is unauthenticated: rix releases are public, and
-          # forwarding the API auth header through GitHub's redirect to S3 would be rejected.
-          # `tar -xf` extracts both .tar.gz (GNU tar) and .zip (bsdtar on Windows), so there is
-          # no unzip dependency.
-          case "$(uname -s)" in
-            Linux)  os=linux ;;
-            Darwin) os=osx ;;
-            MINGW*|MSYS*|CYGWIN*) os=win ;;
-            *) echo "Unsupported OS: $(uname -s)" >&2; exit 1 ;;
-          esac
-          case "$(uname -m)" in
-            x86_64|amd64)  cpu=x64 ;;
-            arm64|aarch64) cpu=arm64 ;;
-            *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
-          esac
-          rid="$os-$cpu"
-          [[ "$os" == "win" ]] && ext="zip" || ext="tar.gz"
-          if [[ "${VERSION:-latest}" == "latest" ]]; then
-            api="https://api.github.com/repos/$RIX_REPO_SLUG/releases/latest"
-          else
-            api="https://api.github.com/repos/$RIX_REPO_SLUG/releases/tags/$VERSION"
-          fi
-          asset_url=$(curl -fsSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "$api" \
-            | grep -o "https://[^\"]*rix-[^\"]*-$rid\.$ext" | head -n1)
-          if [[ -z "$asset_url" ]]; then
-            echo "No rix-*-$rid.$ext asset in release '${VERSION:-latest}' of $RIX_REPO_SLUG" >&2
-            exit 1
-          fi
-          curl -fSL -o "rix-archive.$ext" "$asset_url"
-          mkdir -p rix-bin
-          tar -xf "rix-archive.$ext" -C rix-bin
-          chmod +x rix-bin/rix 2>/dev/null || true
+        run: bash rix-src/.github/scripts/download-rix.sh
 
       - name: Run rix job
         env:
@@ -127,7 +100,7 @@ jobs:
             *) echo "Unknown agent: $RIX_AGENT" >&2; exit 1 ;;
           esac
           mkdir -p out work
-          ./rix-bin/rix job --agent "${RIX_AGENT:-claude}" --output-dir out --work-dir work
+          "$RIX_BIN" job --agent "${RIX_AGENT:-claude}" --output-dir out --work-dir work
 
       - name: Upload job output
         uses: actions/upload-artifact@v4
@@ -140,51 +113,25 @@ jobs:
     needs: run
     runs-on: ${{ inputs.runner }}
     steps:
+      # Sparse-checkout of the rix repo (not the target) for the cross-platform download helper,
+      # which is unit-tested in CI (tests/scripts/download-rix.bats).
+      - name: Get rix download helper
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RIX_REPO_SLUG }}
+          sparse-checkout: .github/scripts/download-rix.sh
+          sparse-checkout-cone-mode: false
+          path: rix-src
+
       - name: Download rix binary
         env:
           # Downloads the rix release from RIX_REPO_SLUG, not the target repo, so use the
-          # caller's automatic token rather than the target-scoped write PAT.
+          # caller's automatic token rather than the target-scoped write PAT. The script exports
+          # RIX_BIN.
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.rix-version }}
         shell: bash
-        run: |
-          # Detect the runner's OS/arch and resolve the matching rix release asset via the REST
-          # API (curl + grep only, no gh/jq) so the workflow runs on minimal runners of any
-          # platform. The asset download itself is unauthenticated: rix releases are public, and
-          # forwarding the API auth header through GitHub's redirect to S3 would be rejected.
-          # `tar -xf` extracts both .tar.gz (GNU tar) and .zip (bsdtar on Windows), so there is
-          # no unzip dependency.
-          case "$(uname -s)" in
-            Linux)  os=linux ;;
-            Darwin) os=osx ;;
-            MINGW*|MSYS*|CYGWIN*) os=win ;;
-            *) echo "Unsupported OS: $(uname -s)" >&2; exit 1 ;;
-          esac
-          case "$(uname -m)" in
-            x86_64|amd64)  cpu=x64 ;;
-            arm64|aarch64) cpu=arm64 ;;
-            *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
-          esac
-          rid="$os-$cpu"
-          [[ "$os" == "win" ]] && ext="zip" || ext="tar.gz"
-          if [[ "${VERSION:-latest}" == "latest" ]]; then
-            api="https://api.github.com/repos/$RIX_REPO_SLUG/releases/latest"
-          else
-            api="https://api.github.com/repos/$RIX_REPO_SLUG/releases/tags/$VERSION"
-          fi
-          asset_url=$(curl -fsSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "$api" \
-            | grep -o "https://[^\"]*rix-[^\"]*-$rid\.$ext" | head -n1)
-          if [[ -z "$asset_url" ]]; then
-            echo "No rix-*-$rid.$ext asset in release '${VERSION:-latest}' of $RIX_REPO_SLUG" >&2
-            exit 1
-          fi
-          curl -fSL -o "rix-archive.$ext" "$asset_url"
-          mkdir -p rix-bin
-          tar -xf "rix-archive.$ext" -C rix-bin
-          chmod +x rix-bin/rix 2>/dev/null || true
+        run: bash rix-src/.github/scripts/download-rix.sh
 
       - name: Download job output
         uses: actions/download-artifact@v4
@@ -198,4 +145,4 @@ jobs:
           RIX_WRITE_TOKEN: ${{ secrets.write-token }}
           RIX_INPUT_DIR: out
         shell: bash
-        run: ./rix-bin/rix submit
+        run: "$RIX_BIN" submit

@@ -51,8 +51,8 @@ with the optional `rix-version` input.
 
 Both jobs run on `ubuntu-latest` by default. Pass the optional `runner` input to run them
 on a different runner (e.g. a self-hosted label). The workflow detects the runner's OS and
-architecture and downloads the matching release binary, so Linux, macOS, and Windows
-runners (x64 or arm64) all work.
+architecture and downloads the matching release binary: Linux and macOS on x64 or arm64,
+and Windows on x64.
 
 ```yaml
     with:
