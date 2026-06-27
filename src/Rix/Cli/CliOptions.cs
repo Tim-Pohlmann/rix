@@ -7,10 +7,13 @@ namespace Rix.Cli;
 /// variable, then to a default. Used by every command handler.</summary>
 internal static class CliOptions
 {
-    internal static string Str(this ParseResult parseResult, Option<string> option, string env) =>
-        parseResult.GetValueForOption(option) ?? Environment.GetEnvironmentVariable(env) ?? string.Empty;
+    extension(ParseResult parseResult)
+    {
+        public string Str(Option<string> option, string env) =>
+            parseResult.GetValueForOption(option) ?? Environment.GetEnvironmentVariable(env) ?? string.Empty;
 
-    internal static int? Int(this ParseResult parseResult, Option<int?> option, string env) =>
-        parseResult.GetValueForOption(option)
-        ?? (int.TryParse(Environment.GetEnvironmentVariable(env), out var n) ? n : null);
+        public int? Int(Option<int?> option, string env) =>
+            parseResult.GetValueForOption(option)
+            ?? (int.TryParse(Environment.GetEnvironmentVariable(env), out var n) ? n : null);
+    }
 }
