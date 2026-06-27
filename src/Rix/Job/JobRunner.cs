@@ -31,49 +31,40 @@ internal static class JobRunner
 
         var stopwatch = Stopwatch.StartNew();
 
-        var cloneDir = Path.Combine(config.WorkDir.Value, $"rix-clone-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(cloneDir);
+        using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-clone");
 
-        try
+        await context.Host.CloneAsync(cloneDir.Path, ct);
+
+        await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct, context.LogLine.Invoke);
+
+        var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
+        var agentResult = await RunAgentAsync(config, context, systemPrompt, cloneDir.Path, ct);
+
+        if (agentResult is ProcessFailure agentFailure)
         {
-            await context.Host.CloneAsync(cloneDir, ct);
-
-            await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct, context.LogLine.Invoke);
-
-            var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
-            var agentResult = await RunAgentAsync(config, context, systemPrompt, cloneDir, ct);
-
-            if (agentResult is ProcessFailure agentFailure)
-            {
-                stopwatch.Stop();
-                return new JobFailure(
-                    $"agent failed: {agentFailure.Reason}",
-                    CostUsd: 0m,
-                    Duration: stopwatch.Elapsed);
-            }
-
-            var costUsd = agentResult is ProcessSuccess { Output: { } resultLine }
-                ? context.Agent.ParseCost(resultLine) ?? 0m
-                : 0m;
-
-            var delivery = await BundlePendingPrsAsync(config, context, apiServer.QueuedPrRequests, cloneDir, ct);
-
             stopwatch.Stop();
+            return new JobFailure(
+                $"agent failed: {agentFailure.Reason}",
+                CostUsd: 0m,
+                Duration: stopwatch.Elapsed);
+        }
 
-            return delivery switch
-            {
-                Delivered { PendingPrs: var pendingPrs } =>
-                    new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed),
-                DeliveryFailed { Branch: var branch } =>
-                    new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
-                _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
-            };
-        }
-        finally
+        var costUsd = agentResult is ProcessSuccess { Output: { } resultLine }
+            ? context.Agent.ParseCost(resultLine) ?? 0m
+            : 0m;
+
+        var delivery = await BundlePendingPrsAsync(config, context, apiServer.QueuedPrRequests, cloneDir.Path, ct);
+
+        stopwatch.Stop();
+
+        return delivery switch
         {
-            try { Directory.Delete(cloneDir, recursive: true); }
-            catch (DirectoryNotFoundException) { /* already cleaned up */ }
-        }
+            Delivered { PendingPrs: var pendingPrs } =>
+                new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed),
+            DeliveryFailed { Branch: var branch } =>
+                new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
+            _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
+        };
     }
 
     /// <summary>Runs the coding agent in the cloned repo and returns its raw process result.</summary>

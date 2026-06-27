@@ -60,20 +60,16 @@ internal static class JobCommand
 
         command.SetHandler(async ctx =>
         {
-            string Str(Option<string> opt, string env) =>
-                ctx.ParseResult.GetValueForOption(opt) ?? Environment.GetEnvironmentVariable(env) ?? string.Empty;
-            int? Int(Option<int?> opt, string env) =>
-                ctx.ParseResult.GetValueForOption(opt) ?? (int.TryParse(Environment.GetEnvironmentVariable(env), out var n) ? n : null);
-
+            var parsed = ctx.ParseResult;
             var result = JobConfig.Create(new JobInputs(
-                Repo:           Str(RepoOption,      "RIX_REPO"),
-                Prompt:         Str(PromptOption,    "RIX_PROMPT"),
-                ReadToken:      Str(ReadTokenOption, "RIX_READ_TOKEN"),
-                MaxTokens:      Int(MaxTokensOption, "RIX_MAX_TOKENS"),
-                TimeoutMinutes: Int(TimeoutOption,   "RIX_TIMEOUT"),
-                WorkDir:        Str(WorkDirOption,   "RIX_WORK_DIR"),
-                OutputDir:      Str(OutputDirOption, "RIX_OUTPUT_DIR"),
-                Agent:          Str(AgentOption,     "RIX_AGENT")));
+                Repo:           parsed.Str(RepoOption,      "RIX_REPO"),
+                Prompt:         parsed.Str(PromptOption,    "RIX_PROMPT"),
+                ReadToken:      parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"),
+                MaxTokens:      parsed.Int(MaxTokensOption, "RIX_MAX_TOKENS"),
+                TimeoutMinutes: parsed.Int(TimeoutOption,   "RIX_TIMEOUT"),
+                WorkDir:        parsed.Str(WorkDirOption,   "RIX_WORK_DIR"),
+                OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
+                Agent:          parsed.Str(AgentOption,     "RIX_AGENT")));
 
             switch (result)
             {

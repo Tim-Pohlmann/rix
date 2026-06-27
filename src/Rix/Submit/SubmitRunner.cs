@@ -39,27 +39,19 @@ internal static class SubmitRunner
         if (success.PendingPrRequests.Count == 0)
             return new SubmitSuccess([]);
 
-        var cloneDir = Path.Combine(config.WorkDir.Value, $"rix-submit-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(cloneDir);
-        try
-        {
-            await context.Host.CloneAsync(cloneDir, cancellationToken);
+        using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-submit");
 
-            var created = new List<string>();
-            foreach (var pr in success.PendingPrRequests)
-            {
-                if (await SubmitOneAsync(config, context, cloneDir, pr, cancellationToken) is { } failure)
-                    return failure;
-                created.Add(pr.Branch.Value);
-            }
+        await context.Host.CloneAsync(cloneDir.Path, cancellationToken);
 
-            return new SubmitSuccess(created);
-        }
-        finally
+        var created = new List<string>();
+        foreach (var pr in success.PendingPrRequests)
         {
-            try { Directory.Delete(cloneDir, recursive: true); }
-            catch (DirectoryNotFoundException) { /* already cleaned up */ }
+            if (await SubmitOneAsync(config, context, cloneDir.Path, pr, cancellationToken) is { } failure)
+                return failure;
+            created.Add(pr.Branch.Value);
         }
+
+        return new SubmitSuccess(created);
     }
 
     /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns a
