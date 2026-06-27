@@ -1,8 +1,8 @@
 namespace Rix;
 
-/// <summary>A uniquely-named working directory under a base dir that deletes itself (recursively,
-/// best-effort) on dispose. Replaces the hand-rolled guid-dir + try/finally cleanup duplicated by
-/// the job and submit runners.</summary>
+/// <summary>A uniquely-named working directory under a base dir that recursively deletes itself on
+/// dispose, tolerating the case where it has already been removed. Replaces the hand-rolled guid-dir
+/// + try/finally cleanup duplicated by the job and submit runners.</summary>
 internal sealed class TempDirectory : IDisposable
 {
     internal string Path { get; }
