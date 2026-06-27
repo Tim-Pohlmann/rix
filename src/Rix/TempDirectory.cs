@@ -1,8 +1,9 @@
 namespace Rix;
 
 /// <summary>A uniquely-named working directory under a base dir that recursively deletes itself on
-/// dispose, tolerating the case where it has already been removed. Replaces the hand-rolled guid-dir
-/// + try/finally cleanup duplicated by the job and submit runners.</summary>
+/// dispose. Cleanup is best-effort: any I/O failure (already removed, locked file, denied access) is
+/// swallowed so a leftover temp dir never fails the command or masks an earlier exception. Replaces
+/// the hand-rolled guid-dir + try/finally cleanup duplicated by the job and submit runners.</summary>
 internal sealed class TempDirectory : IDisposable
 {
     internal string Path { get; }
@@ -18,7 +19,10 @@ internal sealed class TempDirectory : IDisposable
 
     public void Dispose()
     {
+        // DirectoryNotFoundException derives from IOException, so this also covers the
+        // already-cleaned-up case.
         try { Directory.Delete(Path, recursive: true); }
-        catch (DirectoryNotFoundException) { /* already cleaned up */ }
+        catch (IOException) { /* best-effort: leave the temp dir rather than fault */ }
+        catch (UnauthorizedAccessException) { /* best-effort: leave the temp dir rather than fault */ }
     }
 }
