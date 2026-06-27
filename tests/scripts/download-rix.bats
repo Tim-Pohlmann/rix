@@ -79,6 +79,31 @@ setup() {
   [ -z "$output" ]
 }
 
+# --- rix_verify_checksum: archive integrity against a sha256sum-style sidecar ---
+
+@test "checksum: a matching digest passes" {
+  local f="$BATS_TEST_TMPDIR/archive.tar.gz"
+  printf 'rix-archive-contents' > "$f"
+  local line; line="$(rix_sha256 "$f")  archive.tar.gz"
+  run rix_verify_checksum "$f" "$line"
+  [ "$status" -eq 0 ]
+}
+
+@test "checksum: a wrong digest fails with a message" {
+  local f="$BATS_TEST_TMPDIR/archive.tar.gz"
+  printf 'rix-archive-contents' > "$f"
+  run rix_verify_checksum "$f" "0000000000000000000000000000000000000000000000000000000000000000  archive.tar.gz"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Checksum mismatch"* ]]
+}
+
+@test "checksum: an empty sidecar fails rather than passing vacuously" {
+  local f="$BATS_TEST_TMPDIR/archive.tar.gz"
+  printf 'rix-archive-contents' > "$f"
+  run rix_verify_checksum "$f" ""
+  [ "$status" -ne 0 ]
+}
+
 @test "asset: a sibling .sig asset does not produce a truncated match" {
   local json='{"assets":[
     {"browser_download_url":"https://github.com/Tim-Pohlmann/rix/releases/download/v1.2.0/rix-1.2.0-linux-x64.tar.gz.sig"},

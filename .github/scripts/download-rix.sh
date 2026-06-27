@@ -52,6 +52,29 @@ rix_asset_url() {
   return 0
 }
 
+# Echoes the SHA-256 hex digest of file $1, using whichever tool the runner has: sha256sum on
+# Linux/Git-bash, shasum on macOS.
+rix_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+
+# Verifies file $1 against a sha256sum-style line ("<hex>  <name>") $2. Returns non-zero with a
+# message on mismatch so the caller can abort before extracting an unverified archive. Kept pure
+# (no network) so tests/scripts/download-rix.bats can exercise it directly.
+rix_verify_checksum() {
+  local file="$1" expected actual
+  expected="${2%% *}"
+  actual="$(rix_sha256 "$file")"
+  if [[ -z "$expected" || "$expected" != "$actual" ]]; then
+    echo "Checksum mismatch for $file: expected '$expected', got '$actual'" >&2
+    return 1
+  fi
+}
+
 rix_main() {
   : "${RIX_REPO_SLUG:?RIX_REPO_SLUG is required}"
   local version="${VERSION:-latest}"
@@ -85,6 +108,12 @@ rix_main() {
   # The asset download is unauthenticated: rix releases are public, and forwarding the API auth
   # header through GitHub's redirect to S3 would be rejected.
   curl -fSL --proto '=https' --tlsv1.2 -o "$archive" "$asset_url"
+
+  # Verify the archive against its published .sha256 sidecar before extracting it, so a tampered
+  # or truncated download never reaches `tar`.
+  curl -fSL --proto '=https' --tlsv1.2 -o "$archive.sha256" "$asset_url.sha256"
+  rix_verify_checksum "$archive" "$(cat "$archive.sha256")"
+
   mkdir -p rix-bin
   # `tar -xf` extracts the .tar.gz on Linux/macOS and the .zip on Windows, where `tar` is bsdtar
   # and reads zips natively — so there is no unzip dependency. (GNU tar on Linux does not read
