@@ -1,6 +1,6 @@
-using System.Net;
 using Rix.Process;
 using Rix.Repository;
+using System.Net;
 
 namespace Rix.Tests;
 
@@ -19,12 +19,14 @@ public class GitHubHostTests
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string readToken = "read-tok",
-        RunProcessAsync? gitRunner = null) =>
-        new(
-            TestConfig.Repo(repo),
-            new GitReadToken(readToken),
-            gitRunner ?? SuccessGitRunner,
-            new DelegatingHandlerStub(handler));
+        RunProcessAsync? gitRunner = null)
+    => new
+    (
+        TestConfig.Repo(repo),
+        new GitReadToken(readToken),
+        gitRunner ?? SuccessGitRunner,
+        new DelegatingHandlerStub(handler)
+    );
 
     [TestMethod]
     public async Task BranchExistsOnRemoteAsync_ReturnsTrue_When200()
@@ -217,27 +219,32 @@ public class GitHubHostTests
             () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
     }
 
-    private static PendingPr SamplePr(string title, string body) =>
-        new(new RixBranchName("rix/fix"), new BranchName("main"),
-            new PrTitle(title), new PrBody(body), "rix_2Ffix.bundle");
+    private static PendingPr SamplePr(string title, string body)
+    => new
+    (
+        new RixBranchName("rix/fix"), new BranchName("main"),
+        new PrTitle(title), new PrBody(body), "rix_2Ffix.bundle"
+    );
 
     private static GitHubHost BuildWriteHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string writeToken = "write-tok",
-        RunProcessAsync? gitRunner = null) =>
-        new(
-            TestConfig.Repo(repo),
-            new GitToken(writeToken),
-            gitRunner ?? SuccessGitRunner,
-            new DelegatingHandlerStub(handler));
+        RunProcessAsync? gitRunner = null)
+    => new
+    (
+        TestConfig.Repo(repo),
+        new GitToken(writeToken),
+        gitRunner ?? SuccessGitRunner,
+        new DelegatingHandlerStub(handler)
+    );
 
     private sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler)
         : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(handler(request));
+            CancellationToken cancellationToken)
+        => Task.FromResult(handler(request));
     }
 }

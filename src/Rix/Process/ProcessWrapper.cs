@@ -31,8 +31,8 @@ internal static class ProcessWrapper
         IEnumerable<string> arguments,
         string workingDirectory,
         IReadOnlyDictionary<string, string>? environmentOverrides = null,
-        CancellationToken cancellationToken = default,
-        Action<string>? onStdoutLine = null)
+        Action<string>? onStdoutLine = null,
+        CancellationToken cancellationToken = default)
     {
         var startInfo = new ProcessStartInfo
         {

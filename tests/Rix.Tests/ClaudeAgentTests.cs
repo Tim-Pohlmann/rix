@@ -10,8 +10,8 @@ public class ClaudeAgentTests
     private static readonly ClaudeAgent Agent = new();
 
     // Adapts a simple (fileName, args) -> ProcessResult stub to the full RunProcessAsync shape.
-    private static RunProcessAsync Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run) =>
-        (fileName, args, _, _, _, _) => run(fileName, args);
+    private static RunProcessAsync Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)
+    => (fileName, args, _, _, _, _) => run(fileName, args);
 
     // ---- EnsureInstalledAsync ----
 

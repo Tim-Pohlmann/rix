@@ -1,7 +1,7 @@
+using Rix.Api;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Rix.Api;
 
 namespace Rix.Tests;
 
@@ -10,8 +10,7 @@ public class LocalApiServerTests
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
-    private static StubRepositoryHost FakeHost(bool branchExists) =>
-        new(_ => Task.FromResult(branchExists));
+    private static StubRepositoryHost FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
 
     [TestMethod]
     public async Task GetHealth_Returns200()

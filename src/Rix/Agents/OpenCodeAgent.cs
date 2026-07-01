@@ -1,6 +1,6 @@
-using System.Text.Json;
 using Rix.Job;
 using Rix.Process;
+using System.Text.Json;
 
 namespace Rix.Agents;
 
@@ -23,14 +23,16 @@ internal sealed class OpenCodeAgent : ICodingAgent
 {
     private const string Package = "opencode-ai";
 
-    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync runProcess, CancellationToken cancellationToken) =>
-        CodingAgentHelper.EnsureInstalledViaNpmAsync(runProcess, "opencode", Package, cancellationToken);
+    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync runProcess, CancellationToken cancellationToken)
+    => CodingAgentHelper.EnsureInstalledViaNpmAsync(runProcess, "opencode", Package, cancellationToken);
 
-    public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt) =>
-        new(
-            FileName: "opencode",
-            Arguments: ["run", $"{systemPrompt}\n\n{config.Agent.Prompt}", "--format", "json"],
-            EnvironmentOverrides: new Dictionary<string, string>());
+    public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
+    => new
+    (
+        FileName: "opencode",
+        Arguments: ["run", $"{systemPrompt}\n\n{config.Agent.Prompt}", "--format", "json"],
+        EnvironmentOverrides: new Dictionary<string, string>()
+    );
 
     /// <summary>
     /// Reads cost from an OpenCode JSON event line. The cost (when known) rides on a
@@ -39,8 +41,7 @@ internal sealed class OpenCodeAgent : ICodingAgent
     /// (costs derive from external LiteLLM pricing that may be unavailable), so a missing cost is
     /// treated as unknown (<c>null</c>).
     /// </summary>
-    public decimal? ParseCost(string outputLine) =>
-        CostLine.Read(outputLine, "\"cost\"", ReadCost);
+    public decimal? ParseCost(string outputLine) => CostLine.Read(outputLine, "\"cost\"", ReadCost);
 
     private static decimal? ReadCost(JsonElement root)
     {

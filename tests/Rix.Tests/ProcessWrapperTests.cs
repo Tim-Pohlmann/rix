@@ -5,18 +5,20 @@ namespace Rix.Tests;
 [TestClass]
 public class ProcessWrapperTests
 {
-    private static string Shell => OperatingSystem.IsWindows() ? "pwsh" : "/bin/sh";
+    private static string Shell => OperatingSystem.IsWindows() switch { true => "pwsh", false => "/bin/sh" };
 
-    private static string Echo(string text) =>
-        OperatingSystem.IsWindows() ? $"Write-Output '{text}'" : $"echo {text}";
+    private static string Echo(string text)
+    => OperatingSystem.IsWindows() switch { true => $"Write-Output '{text}'", false => $"echo {text}" };
 
-    private static string SleepSeconds(int n) =>
-        OperatingSystem.IsWindows() ? $"Start-Sleep -s {n}" : $"sleep {n}";
+    private static string SleepSeconds(int n)
+    => OperatingSystem.IsWindows() switch { true => $"Start-Sleep -s {n}", false => $"sleep {n}" };
 
-    private static string PrintEnvOrFallback(string varName, string fallback) =>
-        OperatingSystem.IsWindows()
-            ? $"$v=$env:{varName}; if($v){{$v}}else{{'{fallback}'}}"
-            : $"echo ${{{varName}:-{fallback}}}";
+    private static string PrintEnvOrFallback(string varName, string fallback)
+    => OperatingSystem.IsWindows() switch
+    {
+        true => $"$v=$env:{varName}; if($v){{$v}}else{{'{fallback}'}}",
+        false => $"echo ${{{varName}:-{fallback}}}",
+    };
 
     [TestMethod]
     public async Task RunAsync_CapturesStdoutLines()

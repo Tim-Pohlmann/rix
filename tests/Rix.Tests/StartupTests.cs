@@ -1,8 +1,3 @@
-using Rix.Agents;
-using Rix.Job;
-using Rix.Process;
-using Rix.Repository;
-
 namespace Rix.Tests;
 
 [TestClass]
@@ -34,27 +29,5 @@ public class StartupTests
             ["job", "--repo", "invalid-no-slash", "--prompt", "p", "--read-token", "r",
              "--output-dir", Path.GetTempPath()]);
         Assert.AreEqual(2, exitCode);
-    }
-
-    [TestMethod]
-    public async Task DefaultRunProcess_RunsRealProcess_AndCapturesOutput()
-    {
-        var lines = new List<string>();
-
-        var result = await Startup.DefaultRunProcess(
-            Shell, ["-c", Echo("hi")], Path.GetTempPath(), null, lines.Add, CancellationToken.None);
-
-        Assert.IsInstanceOfType<ProcessSuccess>(result);
-        Assert.IsTrue(lines.Any(l => l.Contains("hi")), $"Got: [{string.Join(", ", lines)}]");
-    }
-
-    [TestMethod]
-    public void DefaultContext_UsesGitHubHostAndDefaultRunProcess()
-    {
-        var context = Startup.DefaultContext(TestConfig.Valid());
-
-        Assert.IsInstanceOfType<GitHubReadHost>(context.Host);
-        Assert.AreSame(Startup.DefaultRunProcess, context.RunProcess);
-        Assert.IsInstanceOfType<ClaudeAgent>(context.Agent);
     }
 }

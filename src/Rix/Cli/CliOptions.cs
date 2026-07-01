@@ -9,11 +9,11 @@ internal static class ParseResultExtensions
 {
     extension(ParseResult parseResult)
     {
-        public string Str(Option<string> option, string env) =>
-            parseResult.GetValueForOption(option) ?? Environment.GetEnvironmentVariable(env) ?? string.Empty;
+        public string Str(Option<string> option, string env)
+        => parseResult.GetValueForOption(option) ?? Environment.GetEnvironmentVariable(env) ?? string.Empty;
 
-        public int? Int(Option<int?> option, string env) =>
-            parseResult.GetValueForOption(option)
-            ?? (int.TryParse(Environment.GetEnvironmentVariable(env), out var n) ? n : null);
+        public int? Int(Option<int?> option, string env)
+        => parseResult.GetValueForOption(option)
+        ?? (int.TryParse(Environment.GetEnvironmentVariable(env), out var n) switch { true => n, false => null });
     }
 }

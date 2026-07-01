@@ -1,48 +1,64 @@
-using System.CommandLine;
 using Rix.Job;
+using System.CommandLine;
 
 namespace Rix.Cli;
 
 internal static class JobCommand
 {
-    private static readonly Option<string> RepoOption = new(
+    private static readonly Option<string> RepoOption = new
+    (
         name: "--repo",
-        description: "Full GitHub repo identifier (owner/repo)")
+        description: "Full GitHub repo identifier (owner/repo)"
+    )
     { IsRequired = false };
 
-    private static readonly Option<string> PromptOption = new(
+    private static readonly Option<string> PromptOption = new
+    (
         name: "--prompt",
-        description: "Task prompt passed to the coding agent")
+        description: "Task prompt passed to the coding agent"
+    )
     { IsRequired = false };
 
-    private static readonly Option<string> ReadTokenOption = new(
+    private static readonly Option<string> ReadTokenOption = new
+    (
         name: "--read-token",
-        description: "GitHub PAT with read-only repo access")
+        description: "GitHub PAT with read-only repo access"
+    )
     { IsRequired = false };
 
-    private static readonly Option<int?> MaxTokensOption = new(
+    private static readonly Option<int?> MaxTokensOption = new
+    (
         name: "--max-tokens",
-        description: $"Coding agent token budget cap (default: {JobConfig.DefaultMaxTokens})")
+        description: $"Coding agent token budget cap (default: {JobConfig.DefaultMaxTokens})"
+    )
     { IsRequired = false };
 
-    private static readonly Option<int?> TimeoutOption = new(
+    private static readonly Option<int?> TimeoutOption = new
+    (
         name: "--timeout",
-        description: $"Wall-clock timeout in minutes (default: {JobConfig.DefaultTimeoutMinutes})")
+        description: $"Wall-clock timeout in minutes (default: {JobConfig.DefaultTimeoutMinutes})"
+    )
     { IsRequired = false };
 
-    private static readonly Option<string> WorkDirOption = new(
+    private static readonly Option<string> WorkDirOption = new
+    (
         name: "--work-dir",
-        description: "Base directory for the temp clone (default: system temp)")
+        description: "Base directory for the temp clone (default: system temp)"
+    )
     { IsRequired = false };
 
-    private static readonly Option<string> OutputDirOption = new(
+    private static readonly Option<string> OutputDirOption = new
+    (
         name: "--output-dir",
-        description: "Directory where result.json and git bundles are written")
+        description: "Directory where result.json and git bundles are written"
+    )
     { IsRequired = false };
 
-    private static readonly Option<string> AgentOption = new(
+    private static readonly Option<string> AgentOption = new
+    (
         name: "--agent",
-        description: "Coding agent to run: 'claude' (default) or 'opencode'")
+        description: "Coding agent to run: 'claude' (default) or 'opencode'"
+    )
     { IsRequired = false };
 
     internal static Command Build(Func<JobConfig, Task<int>> handler)

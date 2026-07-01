@@ -33,7 +33,8 @@ internal sealed class PrBodyJsonConverter : StringValueJsonConverter<PrBody>
 
 internal record QueuedPr(RixBranchName Branch, BranchName BaseBranch, PrTitle Title, PrBody Body);
 
-internal record PendingPr(
+internal record PendingPr
+(
     [property: JsonPropertyName("branch")] RixBranchName Branch,
     [property: JsonPropertyName("baseBranch")] BranchName BaseBranch,
     [property: JsonPropertyName("title")] PrTitle Title,

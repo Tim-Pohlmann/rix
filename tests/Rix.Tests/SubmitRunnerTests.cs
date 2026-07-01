@@ -112,11 +112,13 @@ public class SubmitRunnerTests
 
     // ---- helpers ----
 
-    private Task<ISubmitResult> Run(StubSubmitHost host, RunProcessAsync? runner = null) =>
-        SubmitRunner.RunAsync(
-            TestConfig.ValidSubmit(inputDir: _inputDir, workDir: _workDir),
-            new SubmitContext(host, runner ?? OkGit, _ => { }),
-            CancellationToken.None);
+    private Task<ISubmitResult> Run(StubSubmitHost host, RunProcessAsync? runner = null)
+    => SubmitRunner.RunAsync
+    (
+        TestConfig.ValidSubmit(inputDir: _inputDir, workDir: _workDir),
+        new SubmitContext(host, runner ?? OkGit, _ => { }),
+        CancellationToken.None
+    );
 
     private static readonly RunProcessAsync OkGit =
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -142,8 +144,7 @@ public class SubmitRunnerTests
         StringAssert.Contains(failure.Error, expectedSubstring);
     }
 
-    private void WriteResultJson(string json) =>
-        File.WriteAllText(Path.Combine(_inputDir, "result.json"), json);
+    private void WriteResultJson(string json) => File.WriteAllText(Path.Combine(_inputDir, "result.json"), json);
 
     private void WriteOnePendingPr()
     {

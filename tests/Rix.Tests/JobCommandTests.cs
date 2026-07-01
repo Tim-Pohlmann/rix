@@ -1,8 +1,8 @@
+using Rix.Cli;
+using Rix.Job;
 using System.CommandLine;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
-using Rix.Cli;
-using Rix.Job;
 
 namespace Rix.Tests;
 
