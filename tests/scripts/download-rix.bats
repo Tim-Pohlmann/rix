@@ -106,6 +106,16 @@ setup() {
   [[ "$output" == *"No SHA-256 tool found"* ]]
 }
 
+@test "checksum: a hashing failure propagates, not a bogus mismatch" {
+  local f="$BATS_TEST_TMPDIR/archive.tar.gz"
+  printf 'rix-archive-contents' > "$f"
+  # No SHA-256 tool on PATH: verification must surface the real error, not "Checksum mismatch".
+  PATH= run rix_verify_checksum "$f" "deadbeef  archive.tar.gz"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"No SHA-256 tool found"* ]]
+  [[ "$output" != *"Checksum mismatch"* ]]
+}
+
 @test "checksum: an empty sidecar fails rather than passing vacuously" {
   local f="$BATS_TEST_TMPDIR/archive.tar.gz"
   printf 'rix-archive-contents' > "$f"

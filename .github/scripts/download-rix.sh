@@ -75,8 +75,16 @@ rix_sha256() {
 rix_verify_checksum() {
   local file="$1" expected actual
   expected="${2%% *}"
-  actual="$(rix_sha256 "$file")"
-  if [[ -z "$expected" || "$expected" != "$actual" ]]; then
+  if [[ -z "$expected" ]]; then
+    echo "No expected checksum for $file (empty or malformed .sha256 sidecar)." >&2
+    return 1
+  fi
+  # Propagate a hashing failure (e.g. no SHA-256 tool) as itself, rather than letting an empty
+  # digest fall through to a misleading "mismatch".
+  if ! actual="$(rix_sha256 "$file")"; then
+    return 1
+  fi
+  if [[ "$expected" != "$actual" ]]; then
     echo "Checksum mismatch for $file: expected '$expected', got '$actual'" >&2
     return 1
   fi
