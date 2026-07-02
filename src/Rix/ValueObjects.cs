@@ -53,12 +53,10 @@ internal sealed record DirectoryPath
     /// <summary>Returns a <see cref="ParseError{T}"/> when the path does not point at an existing
     /// directory, so callers can aggregate it with other validation errors. On success the path is
     /// normalised to absolute via <see cref="System.IO.Path.GetFullPath(string)"/>.</summary>
-    internal static ParseResult<DirectoryPath> Parse(string path)
-    => Directory.Exists(path) switch
-    {
-        true => new ParseSuccess<DirectoryPath>(new DirectoryPath(Path.GetFullPath(path))),
-        false => new ParseError<DirectoryPath>($"directory does not exist: {path}")
-    };
+    internal static ParseResult<DirectoryPath> Parse(string path) =>
+        Directory.Exists(path)
+            ? new ParseSuccess<DirectoryPath>(new DirectoryPath(Path.GetFullPath(path)))
+            : new ParseError<DirectoryPath>($"directory does not exist: {path}");
 
     public override string ToString() => Value;
 }
