@@ -36,14 +36,12 @@ internal static class SubmitCommand
 
         command.SetHandler(async ctx =>
         {
-            string Str(Option<string> opt, string env) =>
-                ctx.ParseResult.GetValueForOption(opt) ?? Environment.GetEnvironmentVariable(env) ?? string.Empty;
-
+            var parsed = ctx.ParseResult;
             var result = SubmitConfig.Create(
-                repo:       Str(RepoOption,        "RIX_REPO"),
-                writeToken: Str(WriteTokenOption,  "RIX_WRITE_TOKEN"),
-                inputDir:   Str(InputDirOption,    "RIX_INPUT_DIR"),
-                workDir:    Str(WorkDirOption,     "RIX_WORK_DIR"));
+                repo:       parsed.Str(RepoOption,        "RIX_REPO"),
+                writeToken: parsed.Str(WriteTokenOption,  "RIX_WRITE_TOKEN"),
+                inputDir:   parsed.Str(InputDirOption,    "RIX_INPUT_DIR"),
+                workDir:    parsed.Str(WorkDirOption,     "RIX_WORK_DIR"));
 
             switch (result)
             {
