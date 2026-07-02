@@ -97,6 +97,15 @@ setup() {
   [[ "$output" == *"Checksum mismatch"* ]]
 }
 
+@test "checksum: no SHA-256 tool fails clearly instead of a bogus mismatch" {
+  local f="$BATS_TEST_TMPDIR/archive.tar.gz"
+  printf 'rix-archive-contents' > "$f"
+  # Empty PATH removes sha256sum and shasum while shell builtins (command, printf) still work.
+  PATH= run rix_sha256 "$f"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"No SHA-256 tool found"* ]]
+}
+
 @test "checksum: an empty sidecar fails rather than passing vacuously" {
   local f="$BATS_TEST_TMPDIR/archive.tar.gz"
   printf 'rix-archive-contents' > "$f"

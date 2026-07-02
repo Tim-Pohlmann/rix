@@ -53,14 +53,19 @@ rix_asset_url() {
 }
 
 # Echoes the SHA-256 hex digest of file $1, using whichever tool the runner has: sha256sum on
-# Linux/Git-bash, shasum on macOS.
+# Linux/Git-bash, shasum on macOS. Fails (non-zero) with a clear message when neither tool exists
+# or hashing errors, so a broken environment never masquerades as a checksum mismatch downstream.
 rix_sha256() {
-  local file="$1"
+  local file="$1" digest
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$file" | cut -d' ' -f1
+    digest="$(sha256sum "$file")" || return 1
+  elif command -v shasum >/dev/null 2>&1; then
+    digest="$(shasum -a 256 "$file")" || return 1
   else
-    shasum -a 256 "$file" | cut -d' ' -f1
+    echo "No SHA-256 tool found (need sha256sum or shasum) to verify the download." >&2
+    return 1
   fi
+  printf '%s\n' "${digest%% *}"
   return 0
 }
 
