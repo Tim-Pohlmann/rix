@@ -1,5 +1,5 @@
-using System.Text.Json;
 using Rix.Job;
+using System.Text.Json;
 
 namespace Rix.Tests;
 

@@ -1,10 +1,10 @@
-using System.Collections.Concurrent;
-using System.Net.Http.Json;
-using System.Text.Json;
 using Rix.Agents;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
+using System.Collections.Concurrent;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Rix.Tests;
 
@@ -292,7 +292,7 @@ public class JobRunnerTests
         const string resultLine = """{"type":"result","subtype":"success","total_cost_usd":0.028521,"usage":{"input_tokens":2036,"output_tokens":14}}""";
 
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-            Task.FromResult<ProcessResult>(new ProcessSuccess(f == "claude" ? resultLine : null));
+            Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
 
         await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             Context(new StubRepositoryHost(), runner,
@@ -307,7 +307,7 @@ public class JobRunnerTests
     public async Task RunAsync_CostIsZero_WhenClaudeOutputIsNotAResultLine()
     {
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-            Task.FromResult<ProcessResult>(new ProcessSuccess(f == "claude" ? "thinking..." : null));
+            Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => "thinking...", false => null }));
 
         await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             Context(new StubRepositoryHost(), runner,
@@ -348,7 +348,7 @@ public class JobRunnerTests
         const string resultLine = """{"type":"result","total_cost_usd":"not-a-number"}""";
 
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-            Task.FromResult<ProcessResult>(new ProcessSuccess(f == "claude" ? resultLine : null));
+            Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
 
         await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             Context(new StubRepositoryHost(), runner,
@@ -387,30 +387,27 @@ public class JobRunnerTests
         IRepositoryReadHost host,
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
-        LogLine? logLine = null) =>
-        new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }));
+        LogLine? logLine = null)
+    => new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }));
 
-    private Task<int> Run(
-        int claudeExitCode = 0,
-        bool claudeTimedOut = false,
-        QueuedPrSpec? pr = null) =>
-        Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
-            Context(new StubRepositoryHost(),
-                FakeRunner(claudeExitCode, claudeTimedOut, pr),
-                _ => Task.FromResult<InstallResult>(new Installed())));
+    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null)
+    => Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        Context(new StubRepositoryHost(),
+            FakeRunner(claudeExitCode, claudeTimedOut, pr),
+            _ => Task.FromResult<InstallResult>(new Installed())));
 
-    private JobConfig MakeConfig() =>
-        TestConfig.Valid(prompt: "Do something", workDir: _workDir, outputDir: _outputDir);
+    private JobConfig MakeConfig()
+    => TestConfig.Valid(prompt: "Do something", workDir: _workDir, outputDir: _outputDir);
 
     private static RunProcessAsync FakeRunner(
         int claudeExitCode = 0,
         bool claudeTimedOut = false,
-        QueuedPrSpec? pr = null) =>
-        async (fileName, args, workDir, envOverrides, onLine, ct) => fileName switch
-        {
-            "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, args, ct),
-            _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
-        };
+        QueuedPrSpec? pr = null)
+    => async (fileName, args, workDir, envOverrides, onLine, ct) => fileName switch
+    {
+        "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, args, ct),
+        _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
+    };
 
     private static string ExtractApiUrlFromSystemPrompt(IEnumerable<string> args)
     {
@@ -425,7 +422,7 @@ public class JobRunnerTests
             throw new InvalidOperationException($"Expected marker '{marker}' not found in system prompt.");
         start += marker.Length;
         var end = prompt.IndexOfAny(['\n', '\r'], start);
-        return (end < 0 ? prompt[start..] : prompt[start..end]).Trim();
+        return ((end < 0) switch { true => prompt[start..], false => prompt[start..end] }).Trim();
     }
 
     private static async Task<ProcessResult> SimulateClaudeAsync(
@@ -444,7 +441,11 @@ public class JobRunnerTests
             response.EnsureSuccessStatusCode();
         }
         if (timedOut) return new ProcessFailure("timed out");
-        return exitCode == 0 ? new ProcessSuccess() : (ProcessResult)new ProcessFailure($"exited with code {exitCode}");
+        return (exitCode == 0) switch
+        {
+            true => new ProcessSuccess(),
+            false => (ProcessResult)new ProcessFailure($"exited with code {exitCode}"),
+        };
     }
 
     private record QueuedPrSpec(string Branch, string BaseBranch, string Title, string Body);
@@ -457,10 +458,14 @@ public class JobRunnerTests
             CloneCalled = true;
             return Task.CompletedTask;
         }
-        public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken) =>
-            Task.FromResult(false);
+        public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
+        => Task.FromResult(false);
         public Task CreateBundleAsync(
-            string repoDirectory, string bundlePath, BranchName baseBranch, BranchName branch, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+            string repoDirectory,
+            string bundlePath,
+            BranchName baseBranch,
+            BranchName branch,
+            CancellationToken cancellationToken)
+        => Task.CompletedTask;
     }
 }

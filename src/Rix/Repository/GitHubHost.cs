@@ -1,6 +1,6 @@
+using Rix.Process;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
-using Rix.Process;
 
 namespace Rix.Repository;
 
@@ -12,26 +12,32 @@ internal sealed class GitHubHost : IRepositoryHost
     private readonly GitHubReadHost _read;
 
     internal GitHubHost(
-        RepoIdentifier repo, GitToken token, RunProcessAsync runProcess, HttpMessageHandler? handler = null) =>
-        _read = new GitHubReadHost(repo, token, runProcess, handler);
+        RepoIdentifier repo,
+        GitToken token,
+        RunProcessAsync runProcess,
+        HttpMessageHandler? handler = null)
+    => _read = new GitHubReadHost(repo, token, runProcess, handler);
 
-    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-        _read.CloneAsync(targetDirectory, cancellationToken);
+    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
+    => _read.CloneAsync(targetDirectory, cancellationToken);
 
-    public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken) =>
-        _read.BranchExistsOnRemoteAsync(branch, cancellationToken);
+    public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
+    => _read.BranchExistsOnRemoteAsync(branch, cancellationToken);
 
     public Task CreateBundleAsync(
         string repoDirectory,
         string bundlePath,
         BranchName baseBranch,
         BranchName branch,
-        CancellationToken cancellationToken) =>
-        _read.CreateBundleAsync(repoDirectory, bundlePath, baseBranch, branch, cancellationToken);
+        CancellationToken cancellationToken)
+    => _read.CreateBundleAsync(repoDirectory, bundlePath, baseBranch, branch, cancellationToken);
 
-    public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken) =>
-        _read.RunGitAsync(["push", "origin", branch.Value],
-            workingDirectory: repoDirectory, authenticated: true, cancellationToken);
+    public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
+    => _read.RunGitAsync(
+        ["push", "origin", branch.Value],
+        workingDirectory: repoDirectory,
+        authenticated: true,
+        cancellationToken);
 
     public async Task CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
     {

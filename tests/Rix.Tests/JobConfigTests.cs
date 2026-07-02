@@ -15,16 +15,18 @@ public class JobConfigTests
         int? timeoutMinutes = null,
         string? workDir = null,
         string? outputDir = null,
-        string? agent = null) =>
-        JobConfig.Create(new JobInputs(
-            Repo: repo,
-            Prompt: prompt,
-            ReadToken: readToken,
-            MaxTokens: maxTokens,
-            TimeoutMinutes: timeoutMinutes,
-            WorkDir: workDir,
-            OutputDir: outputDir ?? ExistingDir,
-            Agent: agent));
+        string? agent = null)
+    => JobConfig.Create(new JobInputs
+    (
+        Repo: repo,
+        Prompt: prompt,
+        ReadToken: readToken,
+        MaxTokens: maxTokens,
+        TimeoutMinutes: timeoutMinutes,
+        WorkDir: workDir,
+        OutputDir: outputDir ?? ExistingDir,
+        Agent: agent
+    ));
 
     private static JobConfig Valid(JobConfigResult result) => result switch
     {

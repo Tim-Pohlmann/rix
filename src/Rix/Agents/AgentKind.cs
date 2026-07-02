@@ -17,8 +17,12 @@ internal static class AgentKindParser
     /// (case-insensitive) into an <see cref="AgentKind"/>. An empty/whitespace value selects the
     /// default (<see cref="AgentKind.Claude"/>); any other unrecognised value throws.
     /// </summary>
-    internal static AgentKind Parse(string? value) =>
-        TryParse(value, out var kind, out var error) ? kind : throw new ArgumentException(error);
+    internal static AgentKind Parse(string? value)
+    => TryParse(value, out var kind, out var error) switch
+    {
+        true => kind,
+        false => throw new ArgumentException(error)
+    };
 
     /// <summary>
     /// Non-throwing variant for the error-collecting validation path: returns <c>false</c> with a

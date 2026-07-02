@@ -1,6 +1,6 @@
+using Rix.Process;
 using System.Net.Http.Headers;
 using System.Text;
-using Rix.Process;
 
 namespace Rix.Repository;
 
@@ -20,8 +20,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
     /// its write path reuses the same connection pool and auth headers.</summary>
     internal HttpClient Http { get; }
 
-    internal GitHubReadHost(
-        RepoIdentifier repo, GitReadToken token, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
+    internal GitHubReadHost(RepoIdentifier repo, GitReadToken token, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
     {
         Repo = repo;
         Http = BuildHttpClient(token, handler);

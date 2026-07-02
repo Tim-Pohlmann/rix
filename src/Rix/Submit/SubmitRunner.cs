@@ -1,6 +1,6 @@
-using System.Text.Json;
 using Rix.Job;
 using Rix.Process;
+using System.Text.Json;
 
 namespace Rix.Submit;
 
@@ -112,6 +112,6 @@ internal static class SubmitRunner
         SubmitContext context,
         string repoDir,
         IEnumerable<string> args,
-        CancellationToken cancellationToken) =>
-        context.RunProcess("git", ["-C", repoDir, .. args], repoDir, null, null, cancellationToken);
+        CancellationToken cancellationToken)
+    => context.RunProcess("git", ["-C", repoDir, .. args], repoDir, null, null, cancellationToken);
 }

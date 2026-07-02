@@ -1,37 +1,32 @@
-using System.CommandLine;
-using System.CommandLine.Builder;
-using System.CommandLine.Parsing;
-using System.Text.Json;
 using Rix.Agents;
 using Rix.Cli;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
 using Rix.Submit;
+using System.CommandLine;
+using System.CommandLine.Builder;
+using System.CommandLine.Parsing;
+using System.Text.Json;
 
 namespace Rix;
 
 internal static class Startup
 {
-    internal static readonly RunProcessAsync DefaultRunProcess =
-        (fileName, arguments, workingDirectory, environmentOverrides, onStdoutLine, token) =>
-            ProcessWrapper.RunAsync(fileName, arguments,
-                workingDirectory: workingDirectory,
-                environmentOverrides: environmentOverrides,
-                cancellationToken: token,
-                onStdoutLine: onStdoutLine);
-
     /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
     /// from <paramref name="config"/>.</summary>
-    internal static JobContext DefaultContext(JobConfig config) =>
-        new(
-            Host: new GitHubReadHost(config.Repo, config.ReadToken, DefaultRunProcess),
-            RunProcess: DefaultRunProcess,
-            Agent: SelectAgent(config.Agent.Kind),
-            LogLine: Console.Error.WriteLine);
+    internal static JobContext DefaultContext(JobConfig config)
+    => new
+    (
+        Host: new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
+        RunProcess: ProcessWrapper.RunAsync,
+        Agent: SelectAgent(config.Agent.Kind),
+        LogLine: Console.Error.WriteLine
+    );
 
-    private static ICodingAgent SelectAgent(AgentKind agent) => agent switch
+    private static ICodingAgent SelectAgent(AgentKind agent)
+    => agent switch
     {
         AgentKind.Claude => new ClaudeAgent(),
         AgentKind.OpenCode => new OpenCodeAgent(),
@@ -40,57 +35,40 @@ internal static class Startup
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub host authenticated with the
     /// write token, the default process runner, and a stderr log sink.</summary>
-    internal static SubmitContext DefaultSubmitContext(SubmitConfig config) =>
-        new(
-            Host: new GitHubHost(config.Repo, config.WriteToken, DefaultRunProcess),
-            RunProcess: DefaultRunProcess,
-            LogLine: Console.Error.WriteLine);
+    internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
+    => new
+    (
+        Host: new GitHubHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
+        RunProcess: ProcessWrapper.RunAsync,
+        LogLine: Console.Error.WriteLine
+    );
 
     internal static async Task<int> RunAsync(string[] args)
     {
         var rootCommand = new RootCommand("RIX - AI-powered code automation");
-
-        rootCommand.AddCommand(JobCommand.Build(RunJobAsync));
-        rootCommand.AddCommand(SubmitCommand.Build(RunSubmitAsync));
-
-        var parser = new CommandLineBuilder(rootCommand)
-            .UseDefaults()
-            .Build();
-
-        return await parser.InvokeAsync(args);
+        rootCommand.AddCommand(JobCommand.Build(config => ExecuteJobAsync(config, CancellationToken.None)));
+        rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, CancellationToken.None)));
+        return await new CommandLineBuilder(rootCommand).UseDefaults().Build().InvokeAsync(args);
     }
-
-    private static Task<int> RunJobAsync(JobConfig config) =>
-        ExecuteJobAsync(config, CancellationToken.None);
-
-    private static Task<int> RunSubmitAsync(SubmitConfig config) =>
-        ExecuteSubmitAsync(config, CancellationToken.None);
 
     /// <summary>
     /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: runs the job,
     /// then performs all output effects — forwards the agent's stream to stderr, writes the result
     /// JSON to stdout, persists <c>result.json</c> on success, and maps the result to an exit code.
     /// </summary>
-    internal static async Task<int> ExecuteJobAsync(
-        JobConfig config,
-        CancellationToken cancellationToken,
-        JobContext? context = null)
+    internal static async Task<int> ExecuteJobAsync(JobConfig config, CancellationToken cancellationToken, JobContext? context = null)
     {
         context ??= DefaultContext(config);
-
         var result = await JobRunner.RunAsync(config, context, cancellationToken);
-
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
         Console.WriteLine(json);
-
         if (result is JobSuccess)
             await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, cancellationToken);
-
         return result switch
         {
             JobSuccess => ExitCodes.Success,
-            SetupFailure => ExitCodes.SetupFailed,
             JobFailure => ExitCodes.JobFailed,
+            SetupFailure => ExitCodes.SetupFailed,
             _ => throw new NotSupportedException($"Unexpected job result type: {result.GetType()}"),
         };
     }
@@ -99,18 +77,12 @@ internal static class Startup
     /// Imperative shell around <see cref="SubmitRunner.RunAsync"/>: runs the submit, writes the
     /// result JSON to stdout, and maps the result to an exit code.
     /// </summary>
-    internal static async Task<int> ExecuteSubmitAsync(
-        SubmitConfig config,
-        CancellationToken cancellationToken,
-        SubmitContext? context = null)
+    internal static async Task<int> ExecuteSubmitAsync(SubmitConfig config, CancellationToken cancellationToken, SubmitContext? context = null)
     {
         context ??= DefaultSubmitContext(config);
-
         var result = await SubmitRunner.RunAsync(config, context, cancellationToken);
-
         var json = JsonSerializer.Serialize(result, SubmitJsonContext.Default.ISubmitResult);
         Console.WriteLine(json);
-
         return result switch
         {
             SubmitSuccess => ExitCodes.Success,

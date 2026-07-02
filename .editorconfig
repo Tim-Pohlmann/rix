@@ -7,5 +7,5 @@ root = true
 # ParseResult<T> is a deliberately closed discriminated union (private protected
 # ctor, two sealed cases) consumed functionally — pattern-matching over the cases
 # is the intended style, not a smell. Suppress where that union lives.
-[src/Rix/ValueObjects.cs]
+[src/Rix/ParseResult.cs]
 dotnet_diagnostic.S3060.severity = none

@@ -61,7 +61,11 @@ internal record JobConfig
         if (resolvedTimeout <= 0)
             errors.Add("--timeout must be a positive integer");
 
-        var resolvedWorkDir = string.IsNullOrWhiteSpace(inputs.WorkDir) ? Path.GetTempPath() : inputs.WorkDir;
+        var resolvedWorkDir = string.IsNullOrWhiteSpace(inputs.WorkDir) switch
+        {
+            true => Path.GetTempPath(),
+            false => inputs.WorkDir,
+        };
         var parsedWorkDir = DirectoryPath.Parse(resolvedWorkDir).Collect(errors, "--work-dir");
 
         DirectoryPath? parsedOutputDir = null;

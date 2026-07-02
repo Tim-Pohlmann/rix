@@ -9,8 +9,7 @@ internal record BranchName(string Value)
     /// <summary>Parses raw text into a <see cref="BranchName"/>. Currently every non-null string is
     /// accepted, but the boundary exists so future format rules can return a
     /// <see cref="ParseError{T}"/> alongside the other value objects rather than throwing.</summary>
-    internal static ParseResult<BranchName> Parse(string value) =>
-        new ParseSuccess<BranchName>(new BranchName(value));
+    internal static ParseResult<BranchName> Parse(string value) => new ParseSuccess<BranchName>(new BranchName(value));
 
     public override string ToString() => Value;
 }
@@ -18,8 +17,7 @@ internal record BranchName(string Value)
 [JsonConverter(typeof(RixBranchNameJsonConverter))]
 internal record RixBranchName : BranchName
 {
-    private static readonly Regex Pattern =
-        new(@"^rix/.+$", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+    private static readonly Regex Pattern = new(@"^rix/.+$", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     internal RixBranchName(string value) : base(value)
     {
@@ -29,16 +27,18 @@ internal record RixBranchName : BranchName
 
     /// <summary>Returns the union path's <see cref="RixBranchName"/> or, for malformed input, a
     /// <see cref="ParseError{T}"/> callers can aggregate instead of catching an exception.</summary>
-    internal static new ParseResult<RixBranchName> Parse(string value) =>
-        Validate(value) is { } error
-            ? new ParseError<RixBranchName>(error)
-            : new ParseSuccess<RixBranchName>(new RixBranchName(value));
+    internal static new ParseResult<RixBranchName> Parse(string value)
+    => Validate(value) switch
+    {
+        { } error => new ParseError<RixBranchName>(error),
+        _ => new ParseSuccess<RixBranchName>(new RixBranchName(value))
+    };
 
     /// <summary>The single source of the <c>rix/*</c> rule and its message, shared by the throwing
     /// constructor and the non-throwing <see cref="Parse"/>: null when <paramref name="value"/> is
     /// valid, otherwise the reason it was rejected.</summary>
-    private static string? Validate(string value) =>
-        Pattern.IsMatch(value) ? null : $"Branch must match rix/* pattern, got: {value}";
+    private static string? Validate(string value)
+    => Pattern.IsMatch(value) switch { true => null, false => $"Branch must match rix/* pattern, got: {value}" };
 }
 
 internal sealed class BranchNameJsonConverter : StringValueJsonConverter<BranchName>

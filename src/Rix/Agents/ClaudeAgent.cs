@@ -1,6 +1,6 @@
-using System.Text.Json;
 using Rix.Job;
 using Rix.Process;
+using System.Text.Json;
 
 namespace Rix.Agents;
 
@@ -12,28 +12,30 @@ internal sealed class ClaudeAgent : ICodingAgent
 {
     private const string Package = "@anthropic-ai/claude-code";
 
-    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync runProcess, CancellationToken cancellationToken) =>
-        CodingAgentHelper.EnsureInstalledViaNpmAsync(runProcess, "claude", Package, cancellationToken);
+    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync runProcess, CancellationToken cancellationToken)
+    => CodingAgentHelper.EnsureInstalledViaNpmAsync(runProcess, "claude", Package, cancellationToken);
 
-    public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt) =>
-        new(
-            FileName: "claude",
-            Arguments: ["--output-format", "stream-json", "--print", config.Agent.Prompt, "--append-system-prompt", systemPrompt],
-            EnvironmentOverrides: new Dictionary<string, string>
-            {
-                ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.Agent.MaxTokens.Value.ToString(),
-            });
+    public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
+    => new
+    (
+        FileName: "claude",
+        Arguments: ["--output-format", "stream-json", "--print", config.Agent.Prompt, "--append-system-prompt", systemPrompt],
+        EnvironmentOverrides: new Dictionary<string, string>
+        {
+            ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.Agent.MaxTokens.Value.ToString(),
+        }
+    );
 
     /// <summary>
     /// Reads cost from Claude's NDJSON output. Claude emits a single terminal <c>result</c> line
     /// whose <c>total_cost_usd</c> is the run's cumulative cost; other lines (and results without a
     /// cost) yield <c>null</c> so the caller keeps the last known value.
     /// </summary>
-    public decimal? ParseCost(string outputLine) =>
-        CostLine.Read(outputLine, "\"total_cost_usd\"", root =>
-            root.TryGetProperty("type", out var type) &&
-            type.ValueKind == JsonValueKind.String && type.GetString() == "result" &&
-            root.TryGetProperty("total_cost_usd", out var cost) &&
-            cost.ValueKind == JsonValueKind.Number && cost.TryGetDecimal(out var v)
-                ? v : null);
+    public decimal? ParseCost(string outputLine)
+    => CostLine.Read(outputLine, "\"total_cost_usd\"", root =>
+        root.TryGetProperty("type", out var type) &&
+        type.ValueKind == JsonValueKind.String && type.GetString() == "result" &&
+        root.TryGetProperty("total_cost_usd", out var cost) &&
+        cost.ValueKind == JsonValueKind.Number && cost.TryGetDecimal(out var v)
+            ? v : null);
 }

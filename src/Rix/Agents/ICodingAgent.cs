@@ -29,10 +29,12 @@ internal interface ICodingAgent
 }
 
 /// <summary>A pure description of how to launch a coding agent as a subprocess.</summary>
-internal sealed record AgentInvocation(
+internal sealed record AgentInvocation
+(
     string FileName,
     IReadOnlyList<string> Arguments,
-    IReadOnlyDictionary<string, string> EnvironmentOverrides);
+    IReadOnlyDictionary<string, string> EnvironmentOverrides
+);
 
 /// <summary>Outcome of <see cref="ICodingAgent.EnsureInstalledAsync"/>.</summary>
 internal abstract record InstallResult
@@ -48,11 +50,13 @@ internal static class CodingAgentHelper
     /// <summary>
     /// Runs a command and returns <c>null</c> on success, or the failure reason on error.
     /// </summary>
-    internal static async Task<string?> RunCommandAsync(
+    internal static async Task<string?> RunCommandAsync
+    (
         RunProcessAsync runProcess,
         string fileName,
         IEnumerable<string> args,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var result = await runProcess(fileName, args, Path.GetTempPath(), null, null, cancellationToken);
         return result is ProcessFailure failure ? failure.Reason : null;
@@ -63,14 +67,16 @@ internal static class CodingAgentHelper
     /// installing it via <c>npm install -g</c>. Returns <see cref="Installed"/> on success,
     /// <see cref="InstallFailed"/> on any error.
     /// </summary>
-    internal static async Task<InstallResult> EnsureInstalledViaNpmAsync(
+    internal static async Task<InstallResult> EnsureInstalledViaNpmAsync
+    (
         RunProcessAsync runProcess,
         string cliName,
         string npmPackage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
-        Task<string?> Run(string fileName, IEnumerable<string> args) =>
-            RunCommandAsync(runProcess, fileName, args, cancellationToken);
+        Task<string?> Run(string fileName, IEnumerable<string> args)
+        => RunCommandAsync(runProcess, fileName, args, cancellationToken);
 
         if (await Run(cliName, ["--version"]) is null) return new Installed();
 

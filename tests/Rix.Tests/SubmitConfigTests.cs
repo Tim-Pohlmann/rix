@@ -7,12 +7,14 @@ public class SubmitConfigTests
 {
     private static readonly string ExistingDir = Path.GetTempPath();
 
-    private static SubmitConfigResult Create(
+    private static SubmitConfigResult Create
+    (
         string repo = "owner/repo",
         string writeToken = "write-tok",
         string? inputDir = null,
-        string? workDir = null) =>
-        SubmitConfig.Create(repo, writeToken, inputDir ?? ExistingDir, workDir);
+        string? workDir = null
+    )
+    => SubmitConfig.Create(repo, writeToken, inputDir ?? ExistingDir, workDir);
 
     private static SubmitConfig Valid(SubmitConfigResult result) => result switch
     {

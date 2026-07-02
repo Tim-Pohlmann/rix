@@ -1,8 +1,8 @@
-using System.Diagnostics;
-using System.Text.Json.Serialization;
 using Rix.Agents;
 using Rix.Api;
 using Rix.Process;
+using System.Diagnostics;
+using System.Text.Json.Serialization;
 
 namespace Rix.Job;
 
@@ -49,9 +49,11 @@ internal static class JobRunner
                 Duration: stopwatch.Elapsed);
         }
 
-        var costUsd = agentResult is ProcessSuccess { Output: { } resultLine }
-            ? context.Agent.ParseCost(resultLine) ?? 0m
-            : 0m;
+        var costUsd = agentResult switch
+        {
+            ProcessSuccess { Output: { } resultLine } => context.Agent.ParseCost(resultLine) ?? 0m,
+            _ => 0m,
+        };
 
         var delivery = await BundlePendingPrsAsync(config, context, apiServer.QueuedPrRequests, cloneDir.Path, ct);
 

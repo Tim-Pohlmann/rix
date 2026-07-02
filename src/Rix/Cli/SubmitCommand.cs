@@ -1,28 +1,36 @@
-using System.CommandLine;
 using Rix.Submit;
+using System.CommandLine;
 
 namespace Rix.Cli;
 
 internal static class SubmitCommand
 {
-    private static readonly Option<string> RepoOption = new(
+    private static readonly Option<string> RepoOption = new
+    (
         name: "--repo",
-        description: "Full GitHub repo identifier (owner/repo)")
+        description: "Full GitHub repo identifier (owner/repo)"
+    )
     { IsRequired = false };
 
-    private static readonly Option<string> WriteTokenOption = new(
+    private static readonly Option<string> WriteTokenOption = new
+    (
         name: "--write-token",
-        description: "GitHub PAT with contents:write and pull-requests:write access")
+        description: "GitHub PAT with contents:write and pull-requests:write access"
+    )
     { IsRequired = false };
 
-    private static readonly Option<string> InputDirOption = new(
+    private static readonly Option<string> InputDirOption = new
+    (
         name: "--input-dir",
-        description: "Directory holding result.json and the git bundles produced by `rix job`")
+        description: "Directory holding result.json and the git bundles produced by `rix job`"
+    )
     { IsRequired = false };
 
-    private static readonly Option<string> WorkDirOption = new(
+    private static readonly Option<string> WorkDirOption = new
+    (
         name: "--work-dir",
-        description: "Base directory for the temp clone (default: system temp)")
+        description: "Base directory for the temp clone (default: system temp)"
+    )
     { IsRequired = false };
 
     internal static Command Build(Func<SubmitConfig, Task<int>> handler)
