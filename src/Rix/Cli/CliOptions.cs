@@ -5,7 +5,7 @@ namespace Rix.Cli;
 
 /// <summary>Shared CLI option resolution: prefer the parsed option, fall back to an environment
 /// variable, then to a default. Used by every command handler.</summary>
-internal static class CliOptions
+internal static class ParseResultExtensions
 {
     extension(ParseResult parseResult)
     {
