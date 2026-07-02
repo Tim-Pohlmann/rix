@@ -55,11 +55,13 @@ rix_asset_url() {
 # Echoes the SHA-256 hex digest of file $1, using whichever tool the runner has: sha256sum on
 # Linux/Git-bash, shasum on macOS.
 rix_sha256() {
+  local file="$1"
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | cut -d' ' -f1
+    sha256sum "$file" | cut -d' ' -f1
   else
-    shasum -a 256 "$1" | cut -d' ' -f1
+    shasum -a 256 "$file" | cut -d' ' -f1
   fi
+  return 0
 }
 
 # Verifies file $1 against a sha256sum-style line ("<hex>  <name>") $2. Returns non-zero with a
