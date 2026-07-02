@@ -120,8 +120,18 @@ jobs:
         if: matrix.archive_ext == 'zip'
         run: cd publish && zip -r ../rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.zip .
 
+      - name: Checksum
+        run: |
+          asset="rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.${{ matrix.archive_ext }}"
+          # Sidecar consumed by .github/scripts/download-rix.sh to verify the archive before
+          # extraction. sha256sum's format is "<hex>  <filename>".
+          sha256sum "$asset" > "$asset.sha256"
+
       - name: Upload asset
-        run: gh release upload "${{ github.event.inputs.version }}" "rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.${{ matrix.archive_ext }}" --clobber --repo "$GITHUB_REPOSITORY"
+        run: |
+          asset="rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.${{ matrix.archive_ext }}"
+          gh release upload "${{ github.event.inputs.version }}" \
+            "$asset" "$asset.sha256" --clobber --repo "$GITHUB_REPOSITORY"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

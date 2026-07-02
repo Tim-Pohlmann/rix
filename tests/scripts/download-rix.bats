@@ -79,6 +79,50 @@ setup() {
   [ -z "$output" ]
 }
 
+# --- rix_verify_checksum: archive integrity against a sha256sum-style sidecar ---
+
+@test "checksum: a matching digest passes" {
+  local f="$BATS_TEST_TMPDIR/archive.tar.gz"
+  printf 'rix-archive-contents' > "$f"
+  local line; line="$(rix_sha256 "$f")  archive.tar.gz"
+  run rix_verify_checksum "$f" "$line"
+  [ "$status" -eq 0 ]
+}
+
+@test "checksum: a wrong digest fails with a message" {
+  local f="$BATS_TEST_TMPDIR/archive.tar.gz"
+  printf 'rix-archive-contents' > "$f"
+  run rix_verify_checksum "$f" "0000000000000000000000000000000000000000000000000000000000000000  archive.tar.gz"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Checksum mismatch"* ]]
+}
+
+@test "checksum: no SHA-256 tool fails clearly instead of a bogus mismatch" {
+  local f="$BATS_TEST_TMPDIR/archive.tar.gz"
+  printf 'rix-archive-contents' > "$f"
+  # Empty PATH removes sha256sum and shasum while shell builtins (command, printf) still work.
+  PATH= run rix_sha256 "$f"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"No SHA-256 tool found"* ]]
+}
+
+@test "checksum: a hashing failure propagates, not a bogus mismatch" {
+  local f="$BATS_TEST_TMPDIR/archive.tar.gz"
+  printf 'rix-archive-contents' > "$f"
+  # No SHA-256 tool on PATH: verification must surface the real error, not "Checksum mismatch".
+  PATH= run rix_verify_checksum "$f" "deadbeef  archive.tar.gz"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"No SHA-256 tool found"* ]]
+  [[ "$output" != *"Checksum mismatch"* ]]
+}
+
+@test "checksum: an empty sidecar fails rather than passing vacuously" {
+  local f="$BATS_TEST_TMPDIR/archive.tar.gz"
+  printf 'rix-archive-contents' > "$f"
+  run rix_verify_checksum "$f" ""
+  [ "$status" -ne 0 ]
+}
+
 @test "asset: a sibling .sig asset does not produce a truncated match" {
   local json='{"assets":[
     {"browser_download_url":"https://github.com/Tim-Pohlmann/rix/releases/download/v1.2.0/rix-1.2.0-linux-x64.tar.gz.sig"},
