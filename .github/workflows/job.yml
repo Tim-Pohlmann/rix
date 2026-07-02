@@ -1,0 +1,163 @@
+name: Rix Job
+
+# Reusable workflow: run `rix job` against a target repo and turn its output into PRs.
+# Other repos call it with a tiny caller workflow (see README "Run via GitHub Actions").
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: Target GitHub repo (owner/name)
+        required: true
+        type: string
+      prompt:
+        description: Task prompt for the coding agent
+        required: true
+        type: string
+      agent:
+        description: "Coding agent to run: 'claude' (default) or 'opencode'"
+        required: false
+        type: string
+        default: claude
+      rix-version:
+        description: "Rix release tag to download (default: latest)"
+        required: false
+        type: string
+        default: latest
+      max-tokens:
+        description: Coding agent token budget cap
+        required: false
+        type: number
+      timeout:
+        description: Wall-clock timeout in minutes
+        required: false
+        type: number
+      runner:
+        description: runs-on label for both jobs (e.g. a self-hosted runner label)
+        required: false
+        type: string
+        default: ubuntu-latest
+    secrets:
+      read-token:
+        description: GitHub PAT with read access to the target repo (used to clone)
+        required: true
+      write-token:
+        description: "GitHub PAT with contents:write + pull-requests:write on the target repo"
+        required: true
+      agent-api-key:
+        description: >-
+          API key for the selected coding agent's model provider. Mapped to the provider
+          environment variable the agent reads (ANTHROPIC_API_KEY for 'claude' and 'opencode').
+        required: true
+
+# Rix lives in this repo; consumers reference it as
+# Tim-Pohlmann/rix/.github/workflows/job.yml@main. Adjust if the repo moves.
+env:
+  RIX_REPO_SLUG: Tim-Pohlmann/rix
+
+# Both jobs only need read access via GITHUB_TOKEN (the sparse-checkout of the public rix repo).
+# All writes to the target repo go through the write-token PAT, never GITHUB_TOKEN — so deny it
+# write access explicitly, keeping the untrusted agent run unable to push using the caller token.
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: Run rix job
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Setup Node (rix installs the coding agent CLI via npm)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Sparse-checkout of the rix repo (not the target) for the cross-platform download helper,
+      # which is unit-tested in CI (tests/scripts/download-rix.bats).
+      - name: Get rix download helper
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RIX_REPO_SLUG }}
+          # Pin the helper to the same release tag as the binary so a consumer pinning
+          # rix-version gets a matching script; empty ref falls back to the default branch
+          # only for "latest".
+          ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
+          sparse-checkout: .github/scripts/download-rix.sh
+          sparse-checkout-cone-mode: false
+          path: rix-src
+
+      - name: Download rix binary
+        env:
+          # The API call hits RIX_REPO_SLUG, not the target repo, so use the caller's automatic
+          # token rather than the target-scoped read PAT. The script exports RIX_BIN.
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.rix-version }}
+        shell: bash
+        run: bash rix-src/.github/scripts/download-rix.sh
+
+      - name: Run rix job
+        env:
+          AGENT_API_KEY: ${{ secrets.agent-api-key }}
+          RIX_AGENT: ${{ inputs.agent }}
+          RIX_READ_TOKEN: ${{ secrets.read-token }}
+          RIX_REPO: ${{ inputs.repo }}
+          RIX_PROMPT: ${{ inputs.prompt }}
+          RIX_MAX_TOKENS: ${{ inputs.max-tokens }}
+          RIX_TIMEOUT: ${{ inputs.timeout }}
+        shell: bash
+        run: |
+          # Map the generic agent API key onto the provider env var the selected agent reads.
+          case "${RIX_AGENT:-claude}" in
+            claude|opencode) export ANTHROPIC_API_KEY="$AGENT_API_KEY" ;;
+            *) echo "Unknown agent: $RIX_AGENT" >&2; exit 1 ;;
+          esac
+          mkdir -p out work
+          "$RIX_BIN" job --agent "${RIX_AGENT:-claude}" --output-dir out --work-dir work
+
+      - name: Upload job output
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-output
+          path: out/
+
+  create-pr:
+    name: Create PRs
+    needs: run
+    runs-on: ${{ inputs.runner }}
+    steps:
+      # Sparse-checkout of the rix repo (not the target) for the cross-platform download helper,
+      # which is unit-tested in CI (tests/scripts/download-rix.bats).
+      - name: Get rix download helper
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RIX_REPO_SLUG }}
+          # Pin the helper to the same release tag as the binary so a consumer pinning
+          # rix-version gets a matching script; empty ref falls back to the default branch
+          # only for "latest".
+          ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
+          sparse-checkout: .github/scripts/download-rix.sh
+          sparse-checkout-cone-mode: false
+          path: rix-src
+
+      - name: Download rix binary
+        env:
+          # Downloads the rix release from RIX_REPO_SLUG, not the target repo, so use the
+          # caller's automatic token rather than the target-scoped write PAT. The script exports
+          # RIX_BIN.
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.rix-version }}
+        shell: bash
+        run: bash rix-src/.github/scripts/download-rix.sh
+
+      - name: Download job output
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-output
+          path: out
+
+      - name: Push branches and open PRs
+        env:
+          RIX_REPO: ${{ inputs.repo }}
+          RIX_WRITE_TOKEN: ${{ secrets.write-token }}
+          RIX_INPUT_DIR: out
+        shell: bash
+        run: |
+          "$RIX_BIN" submit
