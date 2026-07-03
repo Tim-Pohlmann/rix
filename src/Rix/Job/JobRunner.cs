@@ -15,10 +15,12 @@ internal partial class JobJsonContext : JsonSerializerContext { }
 
 internal static class JobRunner
 {
-    internal static async Task<IJobResult> RunAsync(
+    internal static async Task<IJobResult> RunAsync
+    (
         JobConfig config,
         JobContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
@@ -43,10 +45,12 @@ internal static class JobRunner
         if (agentResult is ProcessFailure agentFailure)
         {
             stopwatch.Stop();
-            return new JobFailure(
+            return new JobFailure
+            (
                 $"agent failed: {agentFailure.Reason}",
                 CostUsd: 0m,
-                Duration: stopwatch.Elapsed);
+                Duration: stopwatch.Elapsed
+            );
         }
 
         var costUsd = agentResult switch
@@ -61,26 +65,30 @@ internal static class JobRunner
 
         return delivery switch
         {
-            Delivered { PendingPrs: var pendingPrs } =>
-                new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed),
-            DeliveryFailed { Branch: var branch } =>
-                new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
+            Delivered { PendingPrs: var pendingPrs }
+                => new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed),
+            DeliveryFailed { Branch: var branch }
+                => new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
             _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
         };
     }
 
     /// <summary>Runs the coding agent in the cloned repo and returns its raw process result.</summary>
-    private static Task<ProcessResult> RunAgentAsync(
-        JobConfig config, JobContext context, string systemPrompt, string cloneDir, CancellationToken ct)
+    private static Task<ProcessResult> RunAgentAsync
+    (
+        JobConfig config, JobContext context, string systemPrompt, string cloneDir, CancellationToken ct
+    )
     {
         var invocation = context.Agent.BuildInvocation(config, systemPrompt);
-        return context.RunProcess(
+        return context.RunProcess
+        (
             invocation.FileName,
             invocation.Arguments,
             cloneDir,
             invocation.EnvironmentOverrides,
             context.LogLine.Invoke,
-            ct);
+            ct
+        );
     }
 
     /// <summary>
@@ -88,8 +96,10 @@ internal static class JobRunner
     /// PRs, or — if a bundle fails — <see cref="DeliveryFailed"/> naming the branch, so the caller
     /// can map it to a <see cref="JobFailure"/> while preserving the accumulated cost.
     /// </summary>
-    private static async Task<DeliveryOutcome> BundlePendingPrsAsync(
-        JobConfig config, JobContext context, IEnumerable<QueuedPr> queuedPrs, string cloneDir, CancellationToken ct)
+    private static async Task<DeliveryOutcome> BundlePendingPrsAsync
+    (
+        JobConfig config, JobContext context, IEnumerable<QueuedPr> queuedPrs, string cloneDir, CancellationToken ct
+    )
     {
         var pendingPrs = new List<PendingPr>();
         var seenBranches = new HashSet<string>(StringComparer.Ordinal);

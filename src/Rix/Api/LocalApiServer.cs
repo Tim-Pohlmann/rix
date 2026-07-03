@@ -24,10 +24,12 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
     /// <param name="logLine">Sink for the server's own diagnostic log lines, forwarded live so they
     /// interleave with the agent's output on the same seam. When <c>null</c>, server logs are dropped.</param>
-    internal static async Task<LocalApiServer> StartAsync(
+    internal static async Task<LocalApiServer> StartAsync
+    (
         IRepositoryReadHost host,
         CancellationToken cancellationToken,
-        Action<string>? logLine = null)
+        Action<string>? logLine = null
+    )
     {
         var pendingPrRequests = new ConcurrentQueue<QueuedPr>();
 
@@ -38,8 +40,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
         // formatting every line only to drop it.
         if (logLine is not null)
             builder.Logging.AddProvider(new LogForwarder(logLine));
-        builder.Services.ConfigureHttpJsonOptions(options =>
-            options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonContext.Default));
+        builder.Services.ConfigureHttpJsonOptions(options
+        => options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonContext.Default));
 
         var app = builder.Build();
 
@@ -51,25 +53,27 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return new LocalApiServer(app, baseUrl, pendingPrRequests);
     }
 
-    private static void MapEndpoints(
+    private static void MapEndpoints
+    (
         WebApplication app,
         IRepositoryReadHost host,
-        ConcurrentQueue<QueuedPr> pendingPrRequests)
+        ConcurrentQueue<QueuedPr> pendingPrRequests
+    )
     {
         app.MapGet("/health", () => Results.Ok());
 
-        app.MapPost("/pr", async (PrRequest req, CancellationToken ct) =>
-            req.Validate() switch
-            {
-                ValidPr(var queuedPr) when !await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
-                    => EnqueuePr(pendingPrRequests, queuedPr),
-                ValidPr(var queuedPr)
-                    => Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote.")),
-                InvalidPr invalid
-                    => Results.BadRequest(new ErrorResponse(invalid.Reason)),
-                var other
-                    => throw new NotSupportedException($"Unexpected PR validation {other.GetType()}"),
-            });
+        app.MapPost("/pr", async (PrRequest req, CancellationToken ct)
+        => req.Validate() switch
+        {
+            ValidPr(var queuedPr) when !await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
+                => EnqueuePr(pendingPrRequests, queuedPr),
+            ValidPr(var queuedPr)
+                => Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote.")),
+            InvalidPr invalid
+                => Results.BadRequest(new ErrorResponse(invalid.Reason)),
+            var other
+                => throw new NotSupportedException($"Unexpected PR validation {other.GetType()}"),
+        });
     }
 
     private static IResult EnqueuePr(ConcurrentQueue<QueuedPr> pendingPrRequests, QueuedPr queuedPr)

@@ -16,13 +16,15 @@ internal record JobConfig
 
     /// <summary>Private so a <see cref="JobConfig"/> can only be produced by <see cref="Create"/>,
     /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
-    private JobConfig(
+    private JobConfig
+    (
         RepoIdentifier repo,
         GitReadToken readToken,
         TimeoutMinutes timeoutMinutes,
         DirectoryPath workDir,
         DirectoryPath outputDir,
-        AgentConfig agent)
+        AgentConfig agent
+    )
     {
         Repo = repo;
         ReadToken = readToken;
@@ -74,21 +76,25 @@ internal record JobConfig
         else
             parsedOutputDir = DirectoryPath.Parse(inputs.OutputDir).Collect(errors, "--output-dir");
 
-        var resolvedAgent = AgentKindParser.Parse(inputs.Agent).Match(
+        var resolvedAgent = AgentKindParser.Parse(inputs.Agent).Match
+        (
             onSuccess: kind => kind,
-            onError: error => { errors.Add($"--agent: {error}"); return AgentKind.Claude; });
+            onError: error => { errors.Add($"--agent: {error}"); return AgentKind.Claude; }
+        );
 
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
 
         // Non-null here: any blank or unparseable input would have added an error above.
-        return new JobConfigValid(new JobConfig(
+        return new JobConfigValid(new JobConfig
+        (
             repo: parsedRepo!,
             readToken: new GitReadToken(readToken),
             timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
             workDir: parsedWorkDir!,
             outputDir: parsedOutputDir!,
-            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens))));
+            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens))
+        ));
     }
 }
 
@@ -101,7 +107,8 @@ internal sealed record AgentConfig(AgentKind Kind, string Prompt, MaxTokens MaxT
 /// values first, then the optional ones (which default to <c>null</c> so callers set only what they
 /// care about). <see cref="JobConfig.Create"/> is the boundary that turns these primitives into the
 /// always-valid, strongly-typed <see cref="JobConfig"/>.</summary>
-internal record JobInputs(
+internal record JobInputs
+(
     string Repo,
     string Prompt,
     string ReadToken,

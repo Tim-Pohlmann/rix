@@ -8,7 +8,9 @@ namespace Rix.Submit;
 /// boundary object. The core (<see cref="SubmitRunner.RunAsync"/>) consumes these; the imperative
 /// shell constructs the real implementations at the root of the call stack.
 /// </summary>
-internal sealed record SubmitContext(
+internal sealed record SubmitContext
+(
     IRepositoryHost Host,
     RunProcessAsync RunProcess,
-    LogLine LogLine);
+    LogLine LogLine
+);
