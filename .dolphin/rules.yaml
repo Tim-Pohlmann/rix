@@ -30,3 +30,73 @@ rules:
           - pattern: ((Installed)$X)
           - pattern: ((ValidPr)$X)
           - pattern: ((InvalidPr)$X)
+
+  - id: curl-unpinned-tls
+    languages: [bash]
+    severity: ERROR
+    message: >-
+      curl calls in this repo pin the protocol and TLS version
+      (--proto '=https' --tlsv1.2) to harden the release-download path
+      against downgrade attacks. Add these flags.
+    pattern-regex: curl (?!.*--proto '=https').*$
+
+  - id: ternary-conditional
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Ternary conditional expressions are banned in this codebase; use an
+      if/else statement instead.
+    pattern: "$A ? $B : $C"
+
+  - id: raw-temp-dir-creation
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Use TempDirectory.Create instead of hand-rolling
+      Directory.CreateDirectory with a new Guid-named path.
+    patterns:
+      - pattern: Directory.CreateDirectory($P)
+      - pattern-not-inside: |
+          class TempDirectory
+          {
+            ...
+          }
+
+  - id: raw-process-outside-wrapper
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Construct Process only inside ProcessWrapper; consume it elsewhere via
+      the ProcessResult union.
+    paths:
+      exclude:
+        - src/Rix/Process/ProcessWrapper.cs
+    patterns:
+      - pattern-either:
+          - pattern: new System.Diagnostics.Process()
+          - pattern: new Process()
+
+  - id: console-io-outside-composition-root
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Keep console I/O at the composition root: confine Console.Write*
+      calls to Startup.cs and the Cli/ layer; return typed results elsewhere.
+    paths:
+      exclude:
+        - src/Rix/Startup.cs
+        - src/Rix/Cli/**
+    patterns:
+      - pattern-either:
+          - pattern: Console.WriteLine(...)
+          - pattern: Console.Write(...)
+          - pattern: Console.Error.WriteLine(...)
+          - pattern: Console.Error.Write(...)
+
+  - id: no-out-parameter
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Avoid declaring `out` parameters; return the value (or a result/tuple
+      type) instead.
+    pattern: $RET $M(..., out $T $P, ...) { ... }
