@@ -100,3 +100,21 @@ rules:
       Avoid declaring `out` parameters; return the value (or a result/tuple
       type) instead.
     pattern: $RET $M(..., out $T $P, ...) { ... }
+
+  - id: arrow-on-own-line
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      When a `=>` body doesn't fit on the same line as its signature/lambda
+      parameters/switch-arm pattern, start the next line with `=>` instead of
+      trailing it at the end of the previous line.
+    pattern-regex: =>[ \t]*$
+
+  - id: open-paren-own-line
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      When a parenthesized parameter/argument list doesn't fit on one line,
+      start the next line with `(` instead of trailing it at the end of the
+      declaration/call.
+    pattern-regex: \S.*\([ \t]*$
