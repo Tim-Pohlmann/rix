@@ -17,6 +17,8 @@ jobs:
 
       - name: Dolphin check
         uses: Tim-Pohlmann/Dolphin@v1
+        with:
+          fail-on: info
 
   scripts:
     name: Lint & test workflow scripts
