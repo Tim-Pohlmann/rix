@@ -31,11 +31,16 @@ internal sealed class ClaudeAgent : ICodingAgent
     /// whose <c>total_cost_usd</c> is the run's cumulative cost; other lines (and results without a
     /// cost) yield <c>null</c> so the caller keeps the last known value.
     /// </summary>
-    public decimal? ParseCost(string outputLine)
-    => CostLine.Read(outputLine, "\"total_cost_usd\"", root =>
-        root.TryGetProperty("type", out var type) &&
-        type.ValueKind == JsonValueKind.String && type.GetString() == "result" &&
-        root.TryGetProperty("total_cost_usd", out var cost) &&
-        cost.ValueKind == JsonValueKind.Number && cost.TryGetDecimal(out var v)
-            ? v : null);
+    public decimal? ParseCost(string outputLine) => CostLine.Read(outputLine, "\"total_cost_usd\"", ReadCost);
+
+    private static decimal? ReadCost(JsonElement root)
+    {
+        if (root.TryGetProperty("type", out var type) &&
+            type.ValueKind == JsonValueKind.String && type.GetString() == "result" &&
+            root.TryGetProperty("total_cost_usd", out var cost) &&
+            cost.ValueKind == JsonValueKind.Number && cost.TryGetDecimal(out var v))
+            return v;
+
+        return null;
+    }
 }

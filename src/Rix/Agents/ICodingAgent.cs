@@ -59,7 +59,9 @@ internal static class CodingAgentHelper
     )
     {
         var result = await runProcess(fileName, args, Path.GetTempPath(), null, null, cancellationToken);
-        return result is ProcessFailure failure ? failure.Reason : null;
+        if (result is ProcessFailure failure)
+            return failure.Reason;
+        return null;
     }
 
     /// <summary>

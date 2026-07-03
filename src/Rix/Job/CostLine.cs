@@ -18,7 +18,9 @@ internal static class CostLine
         try
         {
             using var doc = JsonDocument.Parse(trimmed);
-            return doc.RootElement.ValueKind == JsonValueKind.Object ? readCost(doc.RootElement) : null;
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                return readCost(doc.RootElement);
+            return null;
         }
         catch (JsonException) { /* malformed JSON line — skip */ }
         return null;

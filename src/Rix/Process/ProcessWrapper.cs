@@ -78,7 +78,9 @@ internal static class ProcessWrapper
         }
 
         var lastLine = await stdoutTask;
-        return process.ExitCode == 0 ? new ProcessSuccess(lastLine) : new ProcessFailure($"exited with code {process.ExitCode}");
+        if (process.ExitCode == 0)
+            return new ProcessSuccess(lastLine);
+        return new ProcessFailure($"exited with code {process.ExitCode}");
     }
 
     /// <summary>Forwards each stdout line to <paramref name="onLine"/> and returns the final

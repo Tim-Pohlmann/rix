@@ -30,7 +30,11 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
 
     private static HttpClient BuildHttpClient(GitReadToken token, HttpMessageHandler? handler)
     {
-        var client = handler is null ? new HttpClient() : new HttpClient(handler);
+        HttpClient client;
+        if (handler is null)
+            client = new HttpClient();
+        else
+            client = new HttpClient(handler);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("rix/1.0");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
@@ -86,7 +90,11 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
     {
         // Only the GIT_CONFIG_* auth variables are ever overridden; the subprocess still inherits the
         // full parent environment (PATH, HOME, ...) on top of these, so we never force those here.
-        var env = authenticated ? _gitAuthEnv : null;
+        IReadOnlyDictionary<string, string>? env;
+        if (authenticated)
+            env = _gitAuthEnv;
+        else
+            env = null;
         var result = await _runProcess("git", args, workingDirectory, env, null, cancellationToken);
         if (result is ProcessFailure f)
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
