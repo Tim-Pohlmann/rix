@@ -74,8 +74,9 @@ internal record JobConfig
         else
             parsedOutputDir = DirectoryPath.Parse(inputs.OutputDir).Collect(errors, "--output-dir");
 
-        if (!AgentKindParser.TryParse(inputs.Agent, out var resolvedAgent, out var agentError))
-            errors.Add($"--agent: {agentError}");
+        var resolvedAgent = AgentKindParser.Parse(inputs.Agent).Match(
+            onSuccess: kind => kind,
+            onError: error => { errors.Add($"--agent: {error}"); return AgentKind.Claude; });
 
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
