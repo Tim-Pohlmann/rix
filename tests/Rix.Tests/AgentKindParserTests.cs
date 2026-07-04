@@ -13,13 +13,6 @@ public class AgentKindParserTests
     };
 
     [TestMethod]
-    public void Parse_DefaultsToClaude_WhenNullOrWhitespace()
-    {
-        Assert.AreEqual(AgentKind.Claude, Unwrap(AgentKindParser.Parse(null)));
-        Assert.AreEqual(AgentKind.Claude, Unwrap(AgentKindParser.Parse("   ")));
-    }
-
-    [TestMethod]
     public void Parse_IsCaseInsensitiveAndTrims()
     {
         Assert.AreEqual(AgentKind.Claude, Unwrap(AgentKindParser.Parse(" Claude ")));

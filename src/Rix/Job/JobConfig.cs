@@ -13,6 +13,7 @@ internal record JobConfig
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
+    internal const AgentKind DefaultAgent = AgentKind.Claude;
 
     /// <summary>Private so a <see cref="JobConfig"/> can only be produced by <see cref="Create"/>,
     /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
@@ -76,11 +77,15 @@ internal record JobConfig
         else
             parsedOutputDir = DirectoryPath.Parse(inputs.OutputDir).Collect(errors, "--output-dir");
 
-        var resolvedAgent = AgentKindParser.Parse(inputs.Agent).Match
-        (
-            onSuccess: kind => kind,
-            onError: error => { errors.Add($"--agent: {error}"); return AgentKind.Claude; }
-        );
+        AgentKind resolvedAgent;
+        if (string.IsNullOrWhiteSpace(inputs.Agent))
+            resolvedAgent = DefaultAgent;
+        else
+            resolvedAgent = AgentKindParser.Parse(inputs.Agent).Match
+            (
+                onSuccess: kind => kind,
+                onError: error => { errors.Add($"--agent: {error}"); return DefaultAgent; }
+            );
 
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);

@@ -13,15 +13,13 @@ internal enum AgentKind
 internal static class AgentKindParser
 {
     /// <summary>
-    /// Parses a user-supplied agent name (case-insensitive) into an <see cref="AgentKind"/>. An
-    /// empty/whitespace value selects the default (<see cref="AgentKind.Claude"/>); any other
-    /// unrecognised value is a <see cref="ParseError{T}"/> for the caller to collect, consistent
-    /// with the other <c>Create</c>-time value parsers.
+    /// Parses a non-blank, user-supplied agent name (case-insensitive) into an <see cref="AgentKind"/>,
+    /// or a <see cref="ParseError{T}"/> for the caller to collect. Whether a blank input should select
+    /// a default is the caller's policy to decide, not this parser's — consistent with how
+    /// <see cref="Job.JobConfig.Create"/> resolves its other optional fields.
     /// </summary>
-    internal static ParseResult<AgentKind> Parse(string? value)
+    internal static ParseResult<AgentKind> Parse(string value)
     {
-        if (string.IsNullOrWhiteSpace(value))
-            return new ParseSuccess<AgentKind>(AgentKind.Claude);
         var normalized = value.Trim();
         return normalized.ToLowerInvariant() switch
         {
