@@ -7,6 +7,7 @@ using Rix.Submit;
 using System.CommandLine;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace Rix;
@@ -43,12 +44,39 @@ internal static class Startup
         LogLine: Console.Error.WriteLine
     );
 
+    /// <summary>
+    /// Cancels in-flight work on Ctrl+C (<see cref="Console.CancelKeyPress"/>) or SIGTERM
+    /// (<see cref="PosixSignalRegistration"/>, e.g. <c>docker stop</c> or a Kubernetes pod
+    /// eviction), so a mid-flight git/agent/HTTP call unwinds instead of being killed outright.
+    /// Both handlers are unregistered once the run completes, so repeated calls (as in tests)
+    /// don't accumulate stale handlers.
+    /// </summary>
     internal static async Task<int> RunAsync(string[] args)
     {
-        var rootCommand = new RootCommand("RIX - AI-powered code automation");
-        rootCommand.AddCommand(JobCommand.Build(config => ExecuteJobAsync(config, CancellationToken.None)));
-        rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, CancellationToken.None)));
-        return await new CommandLineBuilder(rootCommand).UseDefaults().Build().InvokeAsync(args);
+        using var cts = new CancellationTokenSource();
+        ConsoleCancelEventHandler onCancelKeyPress = (_, e) =>
+        {
+            e.Cancel = true;
+            cts.Cancel();
+        };
+        Console.CancelKeyPress += onCancelKeyPress;
+        try
+        {
+            using var onSigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx =>
+            {
+                ctx.Cancel = true;
+                cts.Cancel();
+            });
+
+            var rootCommand = new RootCommand("RIX - AI-powered code automation");
+            rootCommand.AddCommand(JobCommand.Build(config => ExecuteJobAsync(config, cts.Token)));
+            rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, cts.Token)));
+            return await new CommandLineBuilder(rootCommand).UseDefaults().Build().InvokeAsync(args);
+        }
+        finally
+        {
+            Console.CancelKeyPress -= onCancelKeyPress;
+        }
     }
 
     /// <summary>
