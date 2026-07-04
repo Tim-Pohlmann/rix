@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Rix.Tests;
 
 [TestClass]
@@ -29,5 +31,17 @@ public class StartupTests
             ["job", "--repo", "invalid-no-slash", "--prompt", "p", "--read-token", "r",
              "--output-dir", Path.GetTempPath()]);
         Assert.AreEqual(2, exitCode);
+    }
+
+    [TestMethod]
+    public void HandleSigterm_CancelsTokenAndSuppressesDefaultTermination()
+    {
+        using var cts = new CancellationTokenSource();
+        var ctx = new PosixSignalContext(PosixSignal.SIGTERM);
+
+        Startup.HandleSigterm(cts)(ctx);
+
+        Assert.IsTrue(cts.IsCancellationRequested);
+        Assert.IsTrue(ctx.Cancel);
     }
 }

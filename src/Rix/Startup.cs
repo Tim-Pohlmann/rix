@@ -62,11 +62,7 @@ internal static class Startup
         Console.CancelKeyPress += onCancelKeyPress;
         try
         {
-            using var onSigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx =>
-            {
-                ctx.Cancel = true;
-                cts.Cancel();
-            });
+            using var onSigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, HandleSigterm(cts));
 
             var rootCommand = new RootCommand("RIX - AI-powered code automation");
             rootCommand.AddCommand(JobCommand.Build(config => ExecuteJobAsync(config, cts.Token)));
@@ -78,6 +74,17 @@ internal static class Startup
             Console.CancelKeyPress -= onCancelKeyPress;
         }
     }
+
+    /// <summary>Cancels <paramref name="cts"/> and suppresses the runtime's default termination so
+    /// the in-flight run unwinds gracefully. Extracted from <see cref="RunAsync"/> so the SIGTERM
+    /// path is unit-testable: unlike <see cref="ConsoleCancelEventArgs"/>, <see cref="PosixSignalContext"/>
+    /// has a public constructor.</summary>
+    internal static Action<PosixSignalContext> HandleSigterm(CancellationTokenSource cts)
+    => ctx =>
+    {
+        ctx.Cancel = true;
+        cts.Cancel();
+    };
 
     /// <summary>
     /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: runs the job,
