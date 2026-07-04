@@ -118,3 +118,66 @@ rules:
       start the next line with `(` instead of trailing it at the end of the
       declaration/call.
     pattern-regex: \S.*\([ \t]*$
+
+  - id: if-else-bool-assign
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Resolve this value with a boolean-condition switch expression
+      (cond switch { true => ..., false => ... }, or a multi-arm switch for
+      more than two branches) instead of an if/else-assign chain; this
+      codebase prefers the switch-expression idiom for resolving
+      optional/defaultable values (see JobConfig.cs, SubmitConfig.cs).
+    pattern: |
+      if ($COND)
+          $VAR = $A;
+      else
+          $VAR = $B;
+
+  - id: async-method-missing-cancellationtoken
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Async methods in this codebase take and propagate a CancellationToken
+      (the sole exception is Startup.RunAsync, the top-level entry point).
+      Add a CancellationToken parameter and forward it to any awaited calls.
+    paths:
+      exclude:
+        - src/Rix/Startup.cs
+    patterns:
+      - pattern-either:
+          - pattern: "async Task $M(...) { ... }"
+          - pattern: "async Task<$T> $M(...) { ... }"
+      - pattern-not: "async Task $M(..., CancellationToken $CT, ...) { ... }"
+      - pattern-not: "async Task<$T> $M(..., CancellationToken $CT, ...) { ... }"
+
+  - id: cli-namespace-outside-composition-root
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Rix.Cli is a leaf layer wired only from the composition root
+      (Startup.cs); reference it there only, not from Job/Agents/Process/
+      Repository/Submit/Api.
+    paths:
+      exclude:
+        - src/Rix/Startup.cs
+        - src/Rix/Cli/**
+    pattern: using Rix.Cli;
+
+  - id: service-construction-outside-composition-root
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Wire production service implementations (GitHubReadHost, GitHubHost,
+      ClaudeAgent, OpenCodeAgent) only in Startup.cs, the composition root
+      (GitHubHost composing GitHubReadHost internally is the one exception).
+    paths:
+      exclude:
+        - src/Rix/Startup.cs
+        - src/Rix/Repository/GitHubHost.cs
+    patterns:
+      - pattern-either:
+          - pattern: new GitHubReadHost(...)
+          - pattern: new GitHubHost(...)
+          - pattern: new ClaudeAgent()
+          - pattern: new OpenCodeAgent()
