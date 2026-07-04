@@ -45,11 +45,11 @@ internal record SubmitConfig
         else
             parsedInputDir = DirectoryPath.Parse(inputDir).Collect(errors, "--input-dir");
 
-        string resolvedWorkDir;
-        if (string.IsNullOrWhiteSpace(workDir))
-            resolvedWorkDir = Path.GetTempPath();
-        else
-            resolvedWorkDir = workDir;
+        var resolvedWorkDir = string.IsNullOrWhiteSpace(workDir) switch
+        {
+            true => Path.GetTempPath(),
+            false => workDir,
+        };
         var parsedWorkDir = DirectoryPath.Parse(resolvedWorkDir).Collect(errors, "--work-dir");
 
         if (errors.Count > 0)
