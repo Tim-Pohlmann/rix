@@ -77,15 +77,15 @@ internal record JobConfig
         else
             parsedOutputDir = DirectoryPath.Parse(inputs.OutputDir).Collect(errors, "--output-dir");
 
-        AgentKind resolvedAgent;
-        if (string.IsNullOrWhiteSpace(inputs.Agent))
-            resolvedAgent = DefaultAgent;
-        else
-            resolvedAgent = AgentKindParser.Parse(inputs.Agent).Match
+        var resolvedAgent = string.IsNullOrWhiteSpace(inputs.Agent) switch
+        {
+            true => DefaultAgent,
+            false => AgentKindParser.Parse(inputs.Agent).Match
             (
                 onSuccess: kind => kind,
                 onError: error => { errors.Add($"--agent: {error}"); return DefaultAgent; }
-            );
+            ),
+        };
 
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
