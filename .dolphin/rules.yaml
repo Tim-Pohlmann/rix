@@ -38,7 +38,7 @@ rules:
       curl calls in this repo pin the protocol and TLS version
       (--proto '=https' --tlsv1.2) to harden the release-download path
       against downgrade attacks. Add these flags.
-    pattern-regex: curl (?!.*--proto '=https').*$
+    pattern-regex: curl (?!.*--proto '=https').*$|curl (?!.*--tlsv1\.2).*$
 
   - id: ternary-conditional
     languages: [csharp]
@@ -52,8 +52,8 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Use TempDirectory.Create instead of hand-rolling
-      Directory.CreateDirectory with a new Guid-named path.
+      Directory.CreateDirectory is reserved for TempDirectory itself; use
+      TempDirectory.Create instead of calling it directly elsewhere.
     patterns:
       - pattern: Directory.CreateDirectory($P)
       - pattern-not-inside: |
