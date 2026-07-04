@@ -94,11 +94,11 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
     {
         // Only the GIT_CONFIG_* auth variables are ever overridden; the subprocess still inherits the
         // full parent environment (PATH, HOME, ...) on top of these, so we never force those here.
-        IReadOnlyDictionary<string, string>? env;
-        if (authenticated)
-            env = _gitAuthEnv;
-        else
-            env = null;
+        var env = authenticated switch
+        {
+            true => (IReadOnlyDictionary<string, string>?)_gitAuthEnv,
+            false => null,
+        };
         var result = await _runProcess("git", args, workingDirectory, env, null, cancellationToken);
         if (result is ProcessFailure f)
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
