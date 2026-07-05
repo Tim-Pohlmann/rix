@@ -63,15 +63,15 @@ internal sealed class LocalApiServer : IAsyncDisposable
     )
     {
         app.MapGet("/health", () => Results.Ok());
-        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, ct, host, pendingPrRequests));
+        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, pendingPrRequests, ct));
     }
 
     private static async Task<IResult> HandlePrAsync
     (
         PrRequest req,
-        CancellationToken ct,
         IRepositoryReadHost host,
-        ConcurrentQueue<QueuedPr> pendingPrRequests
+        ConcurrentQueue<QueuedPr> pendingPrRequests,
+        CancellationToken ct
     )
     => req.Validate() switch
     {
