@@ -20,8 +20,8 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Consume the ProcessResult / InstallResult / PrValidation discriminated
-      unions via pattern matching (is ProcessFailure f), never an explicit cast.
+      Consume this codebase's discriminated unions via pattern matching
+      (is ProcessFailure f), never an explicit cast.
     patterns:
       - pattern-either:
           - pattern: ((ProcessFailure)$X)
@@ -30,6 +30,17 @@ rules:
           - pattern: ((Installed)$X)
           - pattern: ((ValidPr)$X)
           - pattern: ((InvalidPr)$X)
+          - pattern: ((JobConfigValid)$X)
+          - pattern: ((JobConfigInvalid)$X)
+          - pattern: ((SubmitConfigValid)$X)
+          - pattern: ((SubmitConfigInvalid)$X)
+          - pattern: ((JobSuccess)$X)
+          - pattern: ((JobFailure)$X)
+          - pattern: ((SetupFailure)$X)
+          - pattern: ((SubmitSuccess)$X)
+          - pattern: ((SubmitFailure)$X)
+          - pattern: ((ParseSuccess<$T>)$X)
+          - pattern: ((ParseError<$T>)$X)
 
   - id: curl-unpinned-tls
     languages: [bash]
