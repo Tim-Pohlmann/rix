@@ -54,8 +54,8 @@ internal static class Startup
     internal static async Task<int> RunAsync(string[] args)
     {
         using var cts = new CancellationTokenSource();
-        ConsoleCancelEventHandler onCancelKeyPress = (_, e)
-        => {
+        ConsoleCancelEventHandler onCancelKeyPress = (_, e) =>
+        {
             e.Cancel = true;
             cts.Cancel();
         };
@@ -80,8 +80,8 @@ internal static class Startup
     /// path is unit-testable: unlike <see cref="ConsoleCancelEventArgs"/>, <see cref="PosixSignalContext"/>
     /// has a public constructor.</summary>
     internal static Action<PosixSignalContext> HandleSigterm(CancellationTokenSource cts)
-    => ctx
-    => {
+    => ctx =>
+    {
         ctx.Cancel = true;
         cts.Cancel();
     };
