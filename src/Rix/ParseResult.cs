@@ -9,7 +9,9 @@ namespace Rix;
 /// the validation boundary so malformed input becomes a collectable error rather than a thrown
 /// exception or an invalid instance. <typeparamref name="T"/> is unused in this base (Sonar S2326,
 /// accepted) — it exists only so the success and error cases share one generic union.</summary>
-[SuppressMessage("Major Code Smell", "S2326:Unused type parameters should be removed",
+[SuppressMessage
+(
+    "Major Code Smell", "S2326:Unused type parameters should be removed",
     Justification = "T parameterises the success/error cases that derive from this union root.")]
 internal abstract record ParseResult<T>
 {
@@ -33,7 +35,9 @@ internal sealed record ParseSuccess<T>(T Value) : ParseResult<T>;
 /// <summary>The failure case carries only a message; <typeparamref name="T"/> exists purely to keep
 /// it in the same union as <see cref="ParseSuccess{T}"/> so callers can switch over one type. The
 /// resulting "unused type parameter" smell (Sonar S2326) is accepted by design.</summary>
-[SuppressMessage("Major Code Smell", "S2326:Unused type parameters should be removed",
+[SuppressMessage
+(
+    "Major Code Smell", "S2326:Unused type parameters should be removed",
     Justification = "T keeps the error case in the same ParseResult<T> union as the success case.")]
 internal sealed record ParseError<T>(string Error) : ParseResult<T>;
 

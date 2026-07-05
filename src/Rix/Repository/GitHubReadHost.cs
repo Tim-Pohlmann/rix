@@ -59,8 +59,13 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
     }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
-    => RunGitAsync(["clone", $"https://github.com/{Repo.Value}.git", targetDirectory],
-        workingDirectory: Path.GetTempPath(), authenticated: true, cancellationToken);
+    => RunGitAsync
+    (
+        ["clone", $"https://github.com/{Repo.Value}.git", targetDirectory],
+        workingDirectory: Path.GetTempPath(),
+        authenticated: true,
+        cancellationToken
+    );
 
     public Task CreateBundleAsync
     (
@@ -70,8 +75,13 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
         BranchName branch,
         CancellationToken cancellationToken
     )
-    => RunGitAsync(["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
-        workingDirectory: repoDirectory, authenticated: false, cancellationToken);
+    => RunGitAsync
+    (
+        ["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
+        workingDirectory: repoDirectory,
+        authenticated: false,
+        cancellationToken
+    );
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {

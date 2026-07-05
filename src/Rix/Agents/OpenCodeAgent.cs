@@ -57,9 +57,12 @@ internal sealed class OpenCodeAgent : ICodingAgent
 
     private static decimal? ReadCostValue(JsonElement element)
     {
-        if (element.TryGetProperty("cost", out var value) &&
+        if
+        (
+            element.TryGetProperty("cost", out var value) &&
             value.ValueKind == JsonValueKind.Number &&
-            value.TryGetDecimal(out var cost))
+            value.TryGetDecimal(out var cost)
+        )
             return cost;
 
         return null;

@@ -127,10 +127,19 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      When a parenthesized parameter/argument list doesn't fit on one line,
-      start the next line with `(` instead of trailing it at the end of the
-      declaration/call.
-    pattern-regex: \S.*\([ \t]*$
+      When `(` and `)` end up on different lines, isolate `(` on its own line
+      instead of trailing it after the declaration/call/first argument. (If
+      `(` and `)` are on the same line, this doesn't apply.)
+    pattern-regex: ^(?![ \t]*(?:///|//|\*))(?!\s*\([ \t]*$)[ \t]*(?:[^()\r\n]|\([^()\r\n]*\))*\([^()\r\n]*$
+
+  - id: close-paren-own-line
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      When `(` and `)` end up on different lines, isolate `)` on its own line
+      instead of trailing it after the last argument. (If `(` and `)` are on
+      the same line, this doesn't apply.)
+    pattern-regex: ^(?![ \t]*(?:///|//|\*))[ \t]*[^)\s\r\n](?:[^()\r\n]|\([^()\r\n]*\))*\)+[ \t]*[;,]?[ \t]*$
 
   - id: if-else-bool-assign
     languages: [csharp]
