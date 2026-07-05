@@ -20,8 +20,8 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Consume the ProcessResult / InstallResult / PrValidation discriminated
-      unions via pattern matching (is ProcessFailure f), never an explicit cast.
+      Consume this codebase's discriminated unions via pattern matching
+      (is ProcessFailure f), never an explicit cast.
     patterns:
       - pattern-either:
           - pattern: ((ProcessFailure)$X)
@@ -30,3 +30,165 @@ rules:
           - pattern: ((Installed)$X)
           - pattern: ((ValidPr)$X)
           - pattern: ((InvalidPr)$X)
+          - pattern: ((JobConfigValid)$X)
+          - pattern: ((JobConfigInvalid)$X)
+          - pattern: ((SubmitConfigValid)$X)
+          - pattern: ((SubmitConfigInvalid)$X)
+          - pattern: ((JobSuccess)$X)
+          - pattern: ((JobFailure)$X)
+          - pattern: ((SetupFailure)$X)
+          - pattern: ((SubmitSuccess)$X)
+          - pattern: ((SubmitFailure)$X)
+          - pattern: ((ParseSuccess<$T>)$X)
+          - pattern: ((ParseError<$T>)$X)
+
+  - id: curl-unpinned-tls
+    languages: [bash]
+    severity: ERROR
+    message: >-
+      curl calls in this repo pin the protocol and TLS version
+      (--proto '=https' --tlsv1.2) to harden the release-download path
+      against downgrade attacks. Add these flags.
+    pattern-regex: curl (?!.*--proto '=https').*$|curl (?!.*--tlsv1\.2).*$
+
+  - id: ternary-conditional
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Ternary conditional expressions are banned in this codebase; use an
+      if/else statement instead.
+    pattern: "$A ? $B : $C"
+
+  - id: raw-temp-dir-creation
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Directory.CreateDirectory is reserved for TempDirectory itself; use
+      TempDirectory.Create instead of calling it directly elsewhere.
+    patterns:
+      - pattern: Directory.CreateDirectory($P)
+      - pattern-not-inside: |
+          class TempDirectory
+          {
+            ...
+          }
+
+  - id: raw-process-outside-wrapper
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Construct Process only inside ProcessWrapper; consume it elsewhere via
+      the ProcessResult union.
+    paths:
+      exclude:
+        - src/Rix/Process/ProcessWrapper.cs
+    patterns:
+      - pattern-either:
+          - pattern: new System.Diagnostics.Process()
+          - pattern: new Process()
+
+  - id: console-io-outside-composition-root
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Keep console I/O at the composition root: confine Console.Write*
+      calls to Startup.cs and the Cli/ layer; return typed results elsewhere.
+    paths:
+      exclude:
+        - src/Rix/Startup.cs
+        - src/Rix/Cli/**
+    patterns:
+      - pattern-either:
+          - pattern: Console.WriteLine(...)
+          - pattern: Console.Write(...)
+          - pattern: Console.Error.WriteLine(...)
+          - pattern: Console.Error.Write(...)
+
+  - id: no-out-parameter
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Avoid declaring `out` parameters; return the value (or a result/tuple
+      type) instead.
+    pattern: $RET $M(..., out $T $P, ...) { ... }
+
+  - id: arrow-on-own-line
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      When a `=>` body doesn't fit on the same line as its signature/lambda
+      parameters/switch-arm pattern, start the next line with `=>` instead of
+      trailing it at the end of the previous line.
+    pattern-regex: =>[ \t]*$
+
+  - id: open-paren-own-line
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      When a parenthesized parameter/argument list doesn't fit on one line,
+      start the next line with `(` instead of trailing it at the end of the
+      declaration/call.
+    pattern-regex: \S.*\([ \t]*$
+
+  - id: if-else-bool-assign
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Resolve this value with a boolean-condition switch expression
+      (cond switch { true => ..., false => ... }, or a multi-arm switch for
+      more than two branches) instead of an if/else-assign chain; this
+      codebase prefers the switch-expression idiom for resolving
+      optional/defaultable values (see JobConfig.cs, SubmitConfig.cs).
+    pattern: |
+      if ($COND)
+          $VAR = $A;
+      else
+          $VAR = $B;
+
+  - id: async-method-missing-cancellationtoken
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Async methods in this codebase take and propagate a CancellationToken
+      (the sole exception is Startup.RunAsync, the top-level entry point).
+      Add a CancellationToken parameter and forward it to any awaited calls.
+    paths:
+      exclude:
+        - src/Rix/Startup.cs
+    patterns:
+      - pattern-either:
+          - pattern: "async Task $M(...) { ... }"
+          - pattern: "async Task<$T> $M(...) { ... }"
+      - pattern-not: "async Task $M(..., CancellationToken $CT, ...) { ... }"
+      - pattern-not: "async Task<$T> $M(..., CancellationToken $CT, ...) { ... }"
+
+  - id: cli-namespace-outside-composition-root
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Rix.Cli is a leaf layer wired only from the composition root
+      (Startup.cs); reference it there only, not from Job/Agents/Process/
+      Repository/Submit/Api.
+    paths:
+      exclude:
+        - src/Rix/Startup.cs
+        - src/Rix/Cli/**
+    pattern: using Rix.Cli;
+
+  - id: service-construction-outside-composition-root
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Wire production service implementations (GitHubReadHost, GitHubHost,
+      ClaudeAgent, OpenCodeAgent) only in Startup.cs, the composition root
+      (GitHubHost composing GitHubReadHost internally is the one exception).
+    paths:
+      exclude:
+        - src/Rix/Startup.cs
+        - src/Rix/Repository/GitHubHost.cs
+    patterns:
+      - pattern-either:
+          - pattern: new GitHubReadHost(...)
+          - pattern: new GitHubHost(...)
+          - pattern: new ClaudeAgent()
+          - pattern: new OpenCodeAgent()

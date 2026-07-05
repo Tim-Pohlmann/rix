@@ -45,22 +45,23 @@ internal sealed class OpenCodeAgent : ICodingAgent
 
     private static decimal? ReadCost(JsonElement root)
     {
-        if (root.TryGetProperty("part", out var part) &&
-            part.ValueKind == JsonValueKind.Object &&
-            TryReadCost(part, out var partCost))
-            return partCost;
+        if (root.TryGetProperty("part", out var part) && part.ValueKind == JsonValueKind.Object)
+        {
+            var partCost = ReadCostValue(part);
+            if (partCost is not null)
+                return partCost;
+        }
 
-        return TryReadCost(root, out var rootCost) ? rootCost : null;
+        return ReadCostValue(root);
     }
 
-    private static bool TryReadCost(JsonElement element, out decimal cost)
+    private static decimal? ReadCostValue(JsonElement element)
     {
         if (element.TryGetProperty("cost", out var value) &&
             value.ValueKind == JsonValueKind.Number &&
-            value.TryGetDecimal(out cost))
-            return true;
+            value.TryGetDecimal(out var cost))
+            return cost;
 
-        cost = 0m;
-        return false;
+        return null;
     }
 }

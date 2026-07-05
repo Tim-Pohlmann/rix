@@ -30,7 +30,11 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
 
     private static HttpClient BuildHttpClient(GitReadToken token, HttpMessageHandler? handler)
     {
-        var client = handler is null ? new HttpClient() : new HttpClient(handler);
+        var client = handler switch
+        {
+            null => new HttpClient(),
+            var h => new HttpClient(h),
+        };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("rix/1.0");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
@@ -54,18 +58,20 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
         };
     }
 
-    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) =>
-        RunGitAsync(["clone", $"https://github.com/{Repo.Value}.git", targetDirectory],
-            workingDirectory: Path.GetTempPath(), authenticated: true, cancellationToken);
+    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
+    => RunGitAsync(["clone", $"https://github.com/{Repo.Value}.git", targetDirectory],
+        workingDirectory: Path.GetTempPath(), authenticated: true, cancellationToken);
 
-    public Task CreateBundleAsync(
+    public Task CreateBundleAsync
+    (
         string repoDirectory,
         string bundlePath,
         BranchName baseBranch,
         BranchName branch,
-        CancellationToken cancellationToken) =>
-        RunGitAsync(["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
-            workingDirectory: repoDirectory, authenticated: false, cancellationToken);
+        CancellationToken cancellationToken
+    )
+    => RunGitAsync(["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
+        workingDirectory: repoDirectory, authenticated: false, cancellationToken);
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
@@ -81,12 +87,18 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
     /// is set. Local-only commands (e.g. <c>bundle create</c>) pass <c>false</c> so the token never
     /// reaches a subprocess that has no need for it; remote commands (clone, push) pass <c>true</c>.
     /// Shared with the composing <see cref="GitHubHost"/> so its push reuses this exact injection.</summary>
-    internal async Task RunGitAsync(
-        string[] args, string workingDirectory, bool authenticated, CancellationToken cancellationToken)
+    internal async Task RunGitAsync
+    (
+        string[] args, string workingDirectory, bool authenticated, CancellationToken cancellationToken
+    )
     {
         // Only the GIT_CONFIG_* auth variables are ever overridden; the subprocess still inherits the
         // full parent environment (PATH, HOME, ...) on top of these, so we never force those here.
-        var env = authenticated ? _gitAuthEnv : null;
+        var env = authenticated switch
+        {
+            true => (IReadOnlyDictionary<string, string>?)_gitAuthEnv,
+            false => null,
+        };
         var result = await _runProcess("git", args, workingDirectory, env, null, cancellationToken);
         if (result is ProcessFailure f)
             throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");

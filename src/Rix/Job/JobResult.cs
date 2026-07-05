@@ -13,7 +13,8 @@ internal interface IJobResult
     int DurationSeconds { get; }
 }
 
-internal abstract record JobResultBase(
+internal abstract record JobResultBase
+(
     [property: JsonPropertyName("costUsd")] decimal CostUsd,
     [property: JsonIgnore] TimeSpan Duration
 ) : IJobResult
@@ -22,7 +23,8 @@ internal abstract record JobResultBase(
     public int DurationSeconds => (int)Duration.TotalSeconds;
 }
 
-internal record JobSuccess(
+internal record JobSuccess
+(
     [property: JsonPropertyName("pendingPrRequests")] IReadOnlyList<PendingPr> PendingPrRequests,
     decimal CostUsd,
     TimeSpan Duration
@@ -32,13 +34,15 @@ internal record JobSuccess(
 /// (<see cref="JobFailure"/>) and a failure before the job could run (<see cref="SetupFailure"/>).
 /// They are <em>siblings</em> rather than one deriving from the other, so the exit-code switch in
 /// <see cref="Rix.Startup"/> matches disjoint concrete types and is no longer order-sensitive.</summary>
-internal abstract record JobFailureBase(
+internal abstract record JobFailureBase
+(
     [property: JsonPropertyName("error")] string Error,
     decimal CostUsd,
     TimeSpan Duration
 ) : JobResultBase(CostUsd, Duration);
 
-internal sealed record JobFailure(
+internal sealed record JobFailure
+(
     string Error,
     decimal CostUsd,
     TimeSpan Duration

@@ -16,23 +16,27 @@ internal sealed record ProcessFailure(string Reason) : ProcessResult;
 /// <summary>The single side-effect seam for running a subprocess. Every part of a job — agent
 /// install, the agent run itself, and git operations — flows through one of these so effects stay
 /// in one place and can be stubbed in tests.</summary>
-internal delegate Task<ProcessResult> RunProcessAsync(
+internal delegate Task<ProcessResult> RunProcessAsync
+(
     string fileName,
     IEnumerable<string> arguments,
     string workingDirectory,
     IReadOnlyDictionary<string, string>? environmentOverrides,
     Action<string>? onStdoutLine,
-    CancellationToken cancellationToken);
+    CancellationToken cancellationToken
+);
 
 internal static class ProcessWrapper
 {
-    internal static async Task<ProcessResult> RunAsync(
+    internal static async Task<ProcessResult> RunAsync
+    (
         string fileName,
         IEnumerable<string> arguments,
         string workingDirectory,
         IReadOnlyDictionary<string, string>? environmentOverrides = null,
         Action<string>? onStdoutLine = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         var startInfo = new ProcessStartInfo
         {
@@ -78,15 +82,19 @@ internal static class ProcessWrapper
         }
 
         var lastLine = await stdoutTask;
-        return process.ExitCode == 0 ? new ProcessSuccess(lastLine) : new ProcessFailure($"exited with code {process.ExitCode}");
+        if (process.ExitCode == 0)
+            return new ProcessSuccess(lastLine);
+        return new ProcessFailure($"exited with code {process.ExitCode}");
     }
 
     /// <summary>Forwards each stdout line to <paramref name="onLine"/> and returns the final
     /// non-empty line read (or <c>null</c>).</summary>
-    private static async Task<string?> ReadLinesAsync(
+    private static async Task<string?> ReadLinesAsync
+    (
         StreamReader reader,
         Action<string>? onLine,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         string? lastLine = null;
         while (true)

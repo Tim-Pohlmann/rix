@@ -12,10 +12,12 @@ namespace Rix.Submit;
 /// </summary>
 internal static class SubmitRunner
 {
-    internal static async Task<ISubmitResult> RunAsync(
+    internal static async Task<ISubmitResult> RunAsync
+    (
         SubmitConfig config,
         SubmitContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var resultPath = Path.Combine(config.InputDir.Value, "result.json");
         if (!File.Exists(resultPath))
@@ -25,8 +27,10 @@ internal static class SubmitRunner
         try
         {
             await using var stream = File.OpenRead(resultPath);
-            jobResult = await JsonSerializer.DeserializeAsync(
-                stream, JobJsonContext.Default.IJobResult, cancellationToken);
+            jobResult = await JsonSerializer.DeserializeAsync
+            (
+                stream, JobJsonContext.Default.IJobResult, cancellationToken
+            );
         }
         catch (JsonException ex)
         {
@@ -56,12 +60,14 @@ internal static class SubmitRunner
 
     /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns a
     /// <see cref="SubmitFailure"/> on the first problem, or <c>null</c> on success.</summary>
-    private static async Task<SubmitFailure?> SubmitOneAsync(
+    private static async Task<SubmitFailure?> SubmitOneAsync
+    (
         SubmitConfig config,
         SubmitContext context,
         string cloneDir,
         PendingPr pr,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         if (await context.Host.BranchExistsOnRemoteAsync(pr.Branch, cancellationToken))
             return new SubmitFailure($"branch already exists on remote: {pr.Branch.Value}");
@@ -88,11 +94,15 @@ internal static class SubmitRunner
 
     /// <summary>Unbundles the PR's branch from its local bundle and pushes it to the remote.
     /// Returns a <see cref="SubmitFailure"/> on the first problem, or <c>null</c> on success.</summary>
-    private static async Task<SubmitFailure?> DeliverBranchAsync(
-        SubmitContext context, string cloneDir, string bundlePath, RixBranchName branch, CancellationToken cancellationToken)
+    private static async Task<SubmitFailure?> DeliverBranchAsync
+    (
+        SubmitContext context, string cloneDir, string bundlePath, RixBranchName branch, CancellationToken cancellationToken
+    )
     {
-        var fetch = await Git(
-            context, cloneDir, ["fetch", bundlePath, $"{branch.Value}:{branch.Value}"], cancellationToken);
+        var fetch = await Git
+        (
+            context, cloneDir, ["fetch", bundlePath, $"{branch.Value}:{branch.Value}"], cancellationToken
+        );
         if (fetch is ProcessFailure fetchFailure)
             return new SubmitFailure($"git fetch failed for {branch.Value}: {fetchFailure.Reason}");
 
@@ -108,10 +118,12 @@ internal static class SubmitRunner
         return null;
     }
 
-    private static Task<ProcessResult> Git(
+    private static Task<ProcessResult> Git
+    (
         SubmitContext context,
         string repoDir,
         IEnumerable<string> args,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     => context.RunProcess("git", ["-C", repoDir, .. args], repoDir, null, null, cancellationToken);
 }

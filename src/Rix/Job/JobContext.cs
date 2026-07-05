@@ -9,8 +9,10 @@ namespace Rix.Job;
 /// object. The core (<see cref="JobRunner.RunAsync"/>) consumes these; the imperative shell
 /// constructs the real implementations at the root of the call stack.
 /// </summary>
-internal sealed record JobContext(
+internal sealed record JobContext
+(
     IRepositoryReadHost Host,
     RunProcessAsync RunProcess,
     ICodingAgent Agent,
-    LogLine LogLine);
+    LogLine LogLine
+);

@@ -20,11 +20,13 @@ internal record SubmitConfig
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
     /// <see cref="SubmitConfig"/>, collecting every error in one pass so a <see cref="SubmitConfigValid"/>
     /// is produced only when the whole configuration is well-formed.</summary>
-    internal static SubmitConfigResult Create(
+    internal static SubmitConfigResult Create
+    (
         string repo,
         string writeToken,
         string? inputDir,
-        string? workDir)
+        string? workDir
+    )
     {
         var errors = new List<string>();
 
@@ -43,18 +45,24 @@ internal record SubmitConfig
         else
             parsedInputDir = DirectoryPath.Parse(inputDir).Collect(errors, "--input-dir");
 
-        var resolvedWorkDir = string.IsNullOrWhiteSpace(workDir) ? Path.GetTempPath() : workDir;
+        var resolvedWorkDir = string.IsNullOrWhiteSpace(workDir) switch
+        {
+            true => Path.GetTempPath(),
+            false => workDir,
+        };
         var parsedWorkDir = DirectoryPath.Parse(resolvedWorkDir).Collect(errors, "--work-dir");
 
         if (errors.Count > 0)
             return new SubmitConfigInvalid([.. errors]);
 
         // Non-null here: any blank or unparseable input would have added an error above.
-        return new SubmitConfigValid(new SubmitConfig(
+        return new SubmitConfigValid(new SubmitConfig
+        (
             repo: parsedRepo!,
             writeToken: new GitToken(writeToken),
             inputDir: parsedInputDir!,
-            workDir: parsedWorkDir!));
+            workDir: parsedWorkDir!
+        ));
     }
 }
 
