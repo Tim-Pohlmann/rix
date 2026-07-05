@@ -63,24 +63,27 @@ internal sealed class LocalApiServer : IAsyncDisposable
     )
     {
         app.MapGet("/health", () => Results.Ok());
-
-        app.MapPost
-        (
-            "/pr",
-            async (PrRequest req, CancellationToken ct)
-            => req.Validate() switch
-            {
-                ValidPr(var queuedPr) when !await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
-                    => EnqueuePr(pendingPrRequests, queuedPr),
-                ValidPr(var queuedPr)
-                    => Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote.")),
-                InvalidPr invalid
-                    => Results.BadRequest(new ErrorResponse(invalid.Reason)),
-                var other
-                    => throw new NotSupportedException($"Unexpected PR validation {other.GetType()}"),
-            }
-        );
+        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, ct, host, pendingPrRequests));
     }
+
+    private static async Task<IResult> HandlePrAsync
+    (
+        PrRequest req,
+        CancellationToken ct,
+        IRepositoryReadHost host,
+        ConcurrentQueue<QueuedPr> pendingPrRequests
+    )
+    => req.Validate() switch
+    {
+        ValidPr(var queuedPr) when !await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
+            => EnqueuePr(pendingPrRequests, queuedPr),
+        ValidPr(var queuedPr)
+            => Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote.")),
+        InvalidPr invalid
+            => Results.BadRequest(new ErrorResponse(invalid.Reason)),
+        var other
+            => throw new NotSupportedException($"Unexpected PR validation {other.GetType()}"),
+    };
 
     private static IResult EnqueuePr(ConcurrentQueue<QueuedPr> pendingPrRequests, QueuedPr queuedPr)
     {

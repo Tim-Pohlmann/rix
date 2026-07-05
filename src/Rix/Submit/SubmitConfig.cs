@@ -56,16 +56,14 @@ internal record SubmitConfig
             return new SubmitConfigInvalid([.. errors]);
 
         // Non-null here: any blank or unparseable input would have added an error above.
-        return new SubmitConfigValid
+        var config = new SubmitConfig
         (
-            new SubmitConfig
-            (
-                repo: parsedRepo!,
-                writeToken: new GitToken(writeToken),
-                inputDir: parsedInputDir!,
-                workDir: parsedWorkDir!
-            )
+            repo: parsedRepo!,
+            writeToken: new GitToken(writeToken),
+            inputDir: parsedInputDir!,
+            workDir: parsedWorkDir!
         );
+        return new SubmitConfigValid(config);
     }
 }
 

@@ -79,20 +79,18 @@ internal static class JobCommand
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var result = JobConfig.Create
+                var inputs = new JobInputs
                 (
-                    new JobInputs
-                    (
-                        Repo:           parsed.Str(RepoOption,      "RIX_REPO"),
-                        Prompt:         parsed.Str(PromptOption,    "RIX_PROMPT"),
-                        ReadToken:      parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"),
-                        MaxTokens:      parsed.Int(MaxTokensOption, "RIX_MAX_TOKENS"),
-                        TimeoutMinutes: parsed.Int(TimeoutOption,   "RIX_TIMEOUT"),
-                        WorkDir:        parsed.Str(WorkDirOption,   "RIX_WORK_DIR"),
-                        OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
-                        Agent:          parsed.Str(AgentOption,     "RIX_AGENT")
-                    )
+                    Repo:           parsed.Str(RepoOption,      "RIX_REPO"),
+                    Prompt:         parsed.Str(PromptOption,    "RIX_PROMPT"),
+                    ReadToken:      parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"),
+                    MaxTokens:      parsed.Int(MaxTokensOption, "RIX_MAX_TOKENS"),
+                    TimeoutMinutes: parsed.Int(TimeoutOption,   "RIX_TIMEOUT"),
+                    WorkDir:        parsed.Str(WorkDirOption,   "RIX_WORK_DIR"),
+                    OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
+                    Agent:          parsed.Str(AgentOption,     "RIX_AGENT")
                 );
+                var result = JobConfig.Create(inputs);
 
                 switch (result)
                 {

@@ -123,6 +123,12 @@ rules:
       the line.
     pattern-regex: =>[ \t]*\r?\n(?!\s*\{)
 
+  # Both rules below match one line at a time by design (no `\r\n` in any character class), which
+  # avoids catastrophic backtracking (ReDoS) since Dolphin's regex engine has no execution timeout.
+  # Each tolerates one level of same-line balanced parens (`\([^()\r\n]*\)`) as an approximation of
+  # real bracket matching, which plain regex can't do. Known gap: 2+ levels of unmatched-open parens
+  # split across lines on a single logical statement (e.g. `Outer(Inner(a,` then `b))`) can slip
+  # through undetected.
   - id: open-paren-own-line
     languages: [csharp]
     severity: ERROR
@@ -130,7 +136,7 @@ rules:
       When `(` and `)` end up on different lines, isolate `(` on its own line
       instead of trailing it after the declaration/call/first argument. (If
       `(` and `)` are on the same line, this doesn't apply.)
-    pattern-regex: ^(?![ \t]*(?:///|//|\*))(?!\s*\([ \t]*$)[ \t]*(?:[^()\r\n]|\([^()\r\n]*\))*\([^()\r\n]*$
+    pattern-regex: ^(?![ \t]*(?:///|//|\*))(?![ \t]*\([ \t]*$)[ \t]*(?:[^()\r\n]|\([^()\r\n]*\))*\([^()\r\n]*$
 
   - id: close-paren-own-line
     languages: [csharp]
