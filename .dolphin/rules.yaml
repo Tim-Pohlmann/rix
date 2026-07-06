@@ -118,8 +118,10 @@ rules:
     message: >-
       When a `=>` body doesn't fit on the same line as its signature/lambda
       parameters/switch-arm pattern, start the next line with `=>` instead of
-      trailing it at the end of the previous line.
-    pattern-regex: =>[ \t]*$
+      trailing it at the end of the previous line. Exception: a `=>` that
+      opens a block body (next line starts with `{`) may stay at the end of
+      the line.
+    pattern-regex: =>[ \t]*\r?\n(?!\s*\{)
 
   - id: open-paren-own-line
     languages: [csharp]

@@ -42,8 +42,8 @@ internal static class SubmitCommand
         command.AddOption(InputDirOption);
         command.AddOption(WorkDirOption);
 
-        command.SetHandler(async ctx
-        => {
+        command.SetHandler(async ctx =>
+        {
             var parsed = ctx.ParseResult;
             var result = SubmitConfig.Create
             (

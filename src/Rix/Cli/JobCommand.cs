@@ -74,8 +74,8 @@ internal static class JobCommand
         command.AddOption(OutputDirOption);
         command.AddOption(AgentOption);
 
-        command.SetHandler(async ctx
-        => {
+        command.SetHandler(async ctx =>
+        {
             var parsed = ctx.ParseResult;
             var result = JobConfig.Create(new JobInputs
             (
