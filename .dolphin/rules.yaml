@@ -123,8 +123,9 @@ rules:
       the line.
     pattern-regex: =>[ \t]*\r?\n(?!\s*\{)
 
-  # Both rules below match one line at a time by design (no `\r\n` in any character class), which
-  # avoids catastrophic backtracking (ReDoS) since Dolphin's regex engine has no execution timeout.
+  # Both rules below match one line at a time by design: every character class excludes \r and \n
+  # (e.g. `[^()\r\n]`), so a match can never cross a line boundary. This avoids catastrophic
+  # backtracking (ReDoS) since Dolphin's regex engine has no execution timeout.
   # Each tolerates one level of same-line balanced parens (`\([^()\r\n]*\)`) as an approximation of
   # real bracket matching, which plain regex can't do. Known gap: 2+ levels of unmatched-open parens
   # split across lines on a single logical statement (e.g. `Outer(Inner(a,` then `b))`) can slip
