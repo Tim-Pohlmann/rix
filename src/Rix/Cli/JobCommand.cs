@@ -74,35 +74,39 @@ internal static class JobCommand
         command.AddOption(OutputDirOption);
         command.AddOption(AgentOption);
 
-        command.SetHandler(async ctx =>
-        {
-            var parsed = ctx.ParseResult;
-            var result = JobConfig.Create(new JobInputs
-            (
-                Repo:           parsed.Str(RepoOption,      "RIX_REPO"),
-                Prompt:         parsed.Str(PromptOption,    "RIX_PROMPT"),
-                ReadToken:      parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"),
-                MaxTokens:      parsed.Int(MaxTokensOption, "RIX_MAX_TOKENS"),
-                TimeoutMinutes: parsed.Int(TimeoutOption,   "RIX_TIMEOUT"),
-                WorkDir:        parsed.Str(WorkDirOption,   "RIX_WORK_DIR"),
-                OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
-                Agent:          parsed.Str(AgentOption,     "RIX_AGENT")
-            ));
-
-            switch (result)
+        command.SetHandler
+        (
+            async ctx =>
             {
-                case JobConfigValid valid:
-                    ctx.ExitCode = await handler(valid.Config);
-                    break;
-                case JobConfigInvalid invalid:
-                    foreach (var error in invalid.Errors)
-                        Console.Error.WriteLine($"error: {error}");
-                    ctx.ExitCode = ExitCodes.SetupFailed;
-                    break;
-                default:
-                    throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
+                var parsed = ctx.ParseResult;
+                var inputs = new JobInputs
+                (
+                    Repo:           parsed.Str(RepoOption,      "RIX_REPO"),
+                    Prompt:         parsed.Str(PromptOption,    "RIX_PROMPT"),
+                    ReadToken:      parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"),
+                    MaxTokens:      parsed.Int(MaxTokensOption, "RIX_MAX_TOKENS"),
+                    TimeoutMinutes: parsed.Int(TimeoutOption,   "RIX_TIMEOUT"),
+                    WorkDir:        parsed.Str(WorkDirOption,   "RIX_WORK_DIR"),
+                    OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
+                    Agent:          parsed.Str(AgentOption,     "RIX_AGENT")
+                );
+                var result = JobConfig.Create(inputs);
+
+                switch (result)
+                {
+                    case JobConfigValid valid:
+                        ctx.ExitCode = await handler(valid.Config);
+                        break;
+                    case JobConfigInvalid invalid:
+                        foreach (var error in invalid.Errors)
+                            Console.Error.WriteLine($"error: {error}");
+                        ctx.ExitCode = ExitCodes.SetupFailed;
+                        break;
+                    default:
+                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
+                }
             }
-        });
+        );
 
         return command;
     }

@@ -29,8 +29,12 @@ internal static class PrRequestExtensions
                 (_, ParseError<BranchName> e, _, _) => new InvalidPr($"baseBranch: {e.Error}"),
                 (_, _, ParseError<PrTitle> e, _) => new InvalidPr($"title: {e.Error}"),
                 (_, _, _, ParseError<PrBody> e) => new InvalidPr($"body: {e.Error}"),
-                (ParseSuccess<RixBranchName> branch, ParseSuccess<BranchName> baseBranch,
-                 ParseSuccess<PrTitle> title, ParseSuccess<PrBody> body)
+                (
+                    ParseSuccess<RixBranchName> branch,
+                    ParseSuccess<BranchName> baseBranch,
+                    ParseSuccess<PrTitle> title,
+                    ParseSuccess<PrBody> body
+                )
                     => new ValidPr(new QueuedPr(branch.Value, baseBranch.Value, title.Value, body.Value)),
                 var other => throw new InvalidOperationException($"Unexpected parse results: {other}"),
             };

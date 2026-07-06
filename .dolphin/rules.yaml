@@ -123,14 +123,30 @@ rules:
       the line.
     pattern-regex: =>[ \t]*\r?\n(?!\s*\{)
 
+  # Both rules below match one line at a time by design: every character class excludes \r and \n
+  # (e.g. `[^()\r\n]`), so a match can never cross a line boundary. This avoids catastrophic
+  # backtracking (ReDoS) since Dolphin's regex engine has no execution timeout.
+  # Each tolerates one level of same-line balanced parens (`\([^()\r\n]*\)`) as an approximation of
+  # real bracket matching, which plain regex can't do. Known gap: 2+ levels of unmatched-open parens
+  # split across lines on a single logical statement (e.g. `Outer(Inner(a,` then `b))`) can slip
+  # through undetected.
   - id: open-paren-own-line
     languages: [csharp]
     severity: ERROR
     message: >-
-      When a parenthesized parameter/argument list doesn't fit on one line,
-      start the next line with `(` instead of trailing it at the end of the
-      declaration/call.
-    pattern-regex: \S.*\([ \t]*$
+      When `(` and `)` end up on different lines, isolate `(` on its own line
+      instead of trailing it after the declaration/call/first argument. (If
+      `(` and `)` are on the same line, this doesn't apply.)
+    pattern-regex: ^(?![ \t]*(?:///|//|\*))(?![ \t]*\([ \t]*$)[ \t]*(?:[^()\r\n]|\([^()\r\n]*\))*\([^()\r\n]*$
+
+  - id: close-paren-own-line
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      When `(` and `)` end up on different lines, isolate `)` on its own line
+      instead of trailing it after the last argument. (If `(` and `)` are on
+      the same line, this doesn't apply.)
+    pattern-regex: ^(?![ \t]*(?:///|//|\*))[ \t]*[^)\s\r\n](?:[^()\r\n]|\([^()\r\n]*\))*\)+[ \t]*[;,]?[ \t]*$
 
   - id: if-else-bool-assign
     languages: [csharp]

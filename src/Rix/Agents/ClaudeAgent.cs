@@ -35,10 +35,13 @@ internal sealed class ClaudeAgent : ICodingAgent
 
     private static decimal? ReadCost(JsonElement root)
     {
-        if (root.TryGetProperty("type", out var type) &&
+        if
+        (
+            root.TryGetProperty("type", out var type) &&
             type.ValueKind == JsonValueKind.String && type.GetString() == "result" &&
             root.TryGetProperty("total_cost_usd", out var cost) &&
-            cost.ValueKind == JsonValueKind.Number && cost.TryGetDecimal(out var v))
+            cost.ValueKind == JsonValueKind.Number && cost.TryGetDecimal(out var v)
+        )
             return v;
 
         return null;

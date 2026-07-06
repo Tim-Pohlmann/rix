@@ -42,31 +42,34 @@ internal static class SubmitCommand
         command.AddOption(InputDirOption);
         command.AddOption(WorkDirOption);
 
-        command.SetHandler(async ctx =>
-        {
-            var parsed = ctx.ParseResult;
-            var result = SubmitConfig.Create
-            (
-                repo:       parsed.Str(RepoOption,        "RIX_REPO"),
-                writeToken: parsed.Str(WriteTokenOption,  "RIX_WRITE_TOKEN"),
-                inputDir:   parsed.Str(InputDirOption,    "RIX_INPUT_DIR"),
-                workDir:    parsed.Str(WorkDirOption,     "RIX_WORK_DIR")
-            );
-
-            switch (result)
+        command.SetHandler
+        (
+            async ctx =>
             {
-                case SubmitConfigValid valid:
-                    ctx.ExitCode = await handler(valid.Config);
-                    break;
-                case SubmitConfigInvalid invalid:
-                    foreach (var error in invalid.Errors)
-                        Console.Error.WriteLine($"error: {error}");
-                    ctx.ExitCode = ExitCodes.SetupFailed;
-                    break;
-                default:
-                    throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
+                var parsed = ctx.ParseResult;
+                var result = SubmitConfig.Create
+                (
+                    repo:       parsed.Str(RepoOption,        "RIX_REPO"),
+                    writeToken: parsed.Str(WriteTokenOption,  "RIX_WRITE_TOKEN"),
+                    inputDir:   parsed.Str(InputDirOption,    "RIX_INPUT_DIR"),
+                    workDir:    parsed.Str(WorkDirOption,     "RIX_WORK_DIR")
+                );
+
+                switch (result)
+                {
+                    case SubmitConfigValid valid:
+                        ctx.ExitCode = await handler(valid.Config);
+                        break;
+                    case SubmitConfigInvalid invalid:
+                        foreach (var error in invalid.Errors)
+                            Console.Error.WriteLine($"error: {error}");
+                        ctx.ExitCode = ExitCodes.SetupFailed;
+                        break;
+                    default:
+                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
+                }
             }
-        });
+        );
 
         return command;
     }

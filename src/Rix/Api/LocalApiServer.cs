@@ -40,8 +40,10 @@ internal sealed class LocalApiServer : IAsyncDisposable
         // formatting every line only to drop it.
         if (logLine is not null)
             builder.Logging.AddProvider(new LogForwarder(logLine));
-        builder.Services.ConfigureHttpJsonOptions(options
-        => options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonContext.Default));
+        builder.Services.ConfigureHttpJsonOptions
+        (
+            options => options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonContext.Default)
+        );
 
         var app = builder.Build();
 
@@ -61,20 +63,27 @@ internal sealed class LocalApiServer : IAsyncDisposable
     )
     {
         app.MapGet("/health", () => Results.Ok());
-
-        app.MapPost("/pr", async (PrRequest req, CancellationToken ct)
-        => req.Validate() switch
-        {
-            ValidPr(var queuedPr) when !await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
-                => EnqueuePr(pendingPrRequests, queuedPr),
-            ValidPr(var queuedPr)
-                => Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote.")),
-            InvalidPr invalid
-                => Results.BadRequest(new ErrorResponse(invalid.Reason)),
-            var other
-                => throw new NotSupportedException($"Unexpected PR validation {other.GetType()}"),
-        });
+        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, pendingPrRequests, ct));
     }
+
+    private static async Task<IResult> HandlePrAsync
+    (
+        PrRequest req,
+        IRepositoryReadHost host,
+        ConcurrentQueue<QueuedPr> pendingPrRequests,
+        CancellationToken ct
+    )
+    => req.Validate() switch
+    {
+        ValidPr(var queuedPr) when !await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
+            => EnqueuePr(pendingPrRequests, queuedPr),
+        ValidPr(var queuedPr)
+            => Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote.")),
+        InvalidPr invalid
+            => Results.BadRequest(new ErrorResponse(invalid.Reason)),
+        var other
+            => throw new NotSupportedException($"Unexpected PR validation {other.GetType()}"),
+    };
 
     private static IResult EnqueuePr(ConcurrentQueue<QueuedPr> pendingPrRequests, QueuedPr queuedPr)
     {

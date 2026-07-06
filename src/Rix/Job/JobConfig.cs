@@ -91,7 +91,7 @@ internal record JobConfig
             return new JobConfigInvalid([.. errors]);
 
         // Non-null here: any blank or unparseable input would have added an error above.
-        return new JobConfigValid(new JobConfig
+        var config = new JobConfig
         (
             repo: parsedRepo!,
             readToken: new GitReadToken(readToken),
@@ -99,7 +99,8 @@ internal record JobConfig
             workDir: parsedWorkDir!,
             outputDir: parsedOutputDir!,
             agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens))
-        ));
+        );
+        return new JobConfigValid(config);
     }
 }
 
