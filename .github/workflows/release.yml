@@ -132,6 +132,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  tag-major:
+    name: Update floating major version tag
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ github.event.inputs.version }}
+      - name: Update floating major version tag
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          MAJOR="v$(echo "$VERSION" | grep -oP '(?<=^v)\d+')"
+          git tag -f "$MAJOR"
+          git push origin "$MAJOR" --force
+
   bump-version:
     name: Bump Version
     needs: publish
