@@ -1,0 +1,73 @@
+name: Version Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. v1.2.3). Leave empty to auto-bump current minor version.'
+        required: false
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  version-bump:
+    name: Version Bump
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Resolve version
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          current=$(grep -oPm1 '(?<=<Version>)[^<]+' src/Rix/Rix.csproj)
+          version="$INPUT_VERSION"
+          if [[ -z "$version" ]]; then
+            major="${current%%.*}"
+            minor="${current#*.}"
+            minor="${minor%%.*}"
+            version="v$major.$((minor + 1)).0"
+            echo "Auto-computed next version: $version"
+          fi
+          if [[ ! "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Error: version must match v<major>.<minor>.<patch> with no leading zeros (got: $version)"
+            exit 1
+          fi
+          echo "value=${version#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create version bump PR
+        run: |
+          semver="${{ steps.resolve.outputs.value }}"
+          branch="version-bump/v${semver}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          bash .github/scripts/set-version.sh "$semver"
+          git add src/Rix/Rix.csproj
+          if git diff --cached --quiet; then
+            echo "Version already set to $semver, no changes needed."
+            exit 0
+          fi
+          git commit -m "Bump version to v$semver"
+          git push origin "$branch" --force
+          if [[ $(gh pr list --head "$branch" --state open --repo "$GITHUB_REPOSITORY" --json number --jq length) -gt 0 ]]; then
+            echo "PR already exists."
+          else
+            gh pr create \
+              --title "Bump version to v$semver" \
+              --body "Automated version bump to v$semver." \
+              --base "${{ github.event.repository.default_branch }}" \
+              --head "$branch"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

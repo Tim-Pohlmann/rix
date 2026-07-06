@@ -22,18 +22,24 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
 
-      - name: Validate version format
+      - name: Validate
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          version="${{ github.event.inputs.version }}"
-          if [[ ! "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "Error: version must match v<major>.<minor>.<patch> with no leading zeros (got: $version)"
+          if [[ ! "$INPUT_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Error: version must match v<major>.<minor>.<patch> with no leading zeros (got: $INPUT_VERSION)"
+            exit 1
+          fi
+          semver="${INPUT_VERSION#v}"
+          csproj_version=$(grep -oPm1 '(?<=<Version>)[^<]+' src/Rix/Rix.csproj)
+          if [[ "$csproj_version" != "$semver" ]]; then
+            echo "Error: version mismatch. Expected $semver but found src/Rix/Rix.csproj=$csproj_version"
+            echo "Bump the version first by running the Version Bump workflow with version $INPUT_VERSION."
             exit 1
           fi
 
-      - name: Set version
+      - name: Create tag and GitHub Release
         run: |
-          semver="${{ github.event.inputs.version }}"
-          semver="${semver#v}"
           git fetch --tags origin
           if git rev-parse --verify "refs/tags/${{ github.event.inputs.version }}" >/dev/null 2>&1; then
             commits_after=$(git rev-list "refs/tags/${{ github.event.inputs.version }}..origin/${{ github.event.repository.default_branch }}" --count)
@@ -41,20 +47,11 @@ jobs:
               echo "Error: release ${{ github.event.inputs.version }} already completed ($commits_after commit(s) after tag)." >&2
               exit 1
             fi
-            echo "Partial re-run: tag already exists — skipping version commit."
-            exit 0
+            echo "Partial re-run: tag already exists — skipping."
+          else
+            git tag "${{ github.event.inputs.version }}"
+            git push origin "${{ github.event.inputs.version }}"
           fi
-          bash .github/scripts/set-version.sh "$semver"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add src/Rix/Rix.csproj
-          if ! git diff --cached --quiet; then
-            git commit -m "Release v$semver"
-            git push origin "${{ github.event.repository.default_branch }}"
-          fi
-
-      - name: Create GitHub Release
-        run: |
           gh release create "${{ github.event.inputs.version }}" \
             --title "Rix ${{ github.event.inputs.version }}" \
             --target "$(git rev-parse HEAD)" \
@@ -138,26 +135,7 @@ jobs:
   bump-version:
     name: Bump Version
     needs: publish
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/version-bump.yml
     permissions:
       contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-
-      - name: Bump minor version and commit
-        run: |
-          semver="${{ github.event.inputs.version }}"
-          semver="${semver#v}"
-          major="${semver%%.*}"
-          minor="${semver#*.}"
-          minor="${minor%%.*}"
-          next_version="$major.$((minor + 1)).0"
-          bash .github/scripts/set-version.sh "$next_version"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add src/Rix/Rix.csproj
-          git diff --cached --quiet && { echo "Version already bumped to $next_version"; exit 0; }
-          git commit -m "Bump version to $next_version"
-          git push origin "${{ github.event.repository.default_branch }}"
+      pull-requests: write
