@@ -125,7 +125,16 @@ jobs:
             /o:"tim-pohlmann" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.host.url="https://sonarcloud.io" \
-            /d:sonar.cs.opencover.reportsPaths="tests/**/coverage.opencover.xml"
+            /d:sonar.cs.opencover.reportsPaths="tests/**/coverage.opencover.xml" \
+            /d:sonar.issue.ignore.multicriteria="npmScripts,npmVersionPin" \
+            /d:sonar.issue.ignore.multicriteria.npmScripts.ruleKey="githubactions:S6505" \
+            /d:sonar.issue.ignore.multicriteria.npmScripts.resourceKey=".github/workflows/ci.yml" \
+            /d:sonar.issue.ignore.multicriteria.npmVersionPin.ruleKey="githubactions:S8543" \
+            /d:sonar.issue.ignore.multicriteria.npmVersionPin.resourceKey=".github/workflows/ci.yml"
+          # The agent-plumbing job's `npm install -g opencode-ai @anthropic-ai/claude-code` trips
+          # two rules that don't fit its purpose: S6505 (--ignore-scripts) would break opencode-ai's
+          # postinstall step, which symlinks its real binary; S8543 (pin versions) would defeat the
+          # job's entire point of testing against whatever's currently latest to catch CLI drift.
 
       - name: Build
         run: dotnet build Rix.slnx -c Release
