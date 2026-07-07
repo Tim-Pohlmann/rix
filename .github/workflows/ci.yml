@@ -110,11 +110,23 @@ jobs:
       - name: Assert expected outcome
         run: |
           status="${{ steps.run.outputs.status }}"
+          error="${{ steps.run.outputs.error }}"
           echo "rix job status: $status"
+          echo "rix job error: $error"
           if [ "${{ matrix.expect }}" = "success" ]; then
-            [ "$status" = "success" ] || { echo "expected success, got '$status'"; exit 1; }
+            [ "$status" = "success" ] || { echo "expected success, got '$status' ($error)"; exit 1; }
           else
-            [ "$status" = "failure" ] || { echo "expected an auth-shaped failure, got '$status'"; exit 1; }
+            # status alone isn't precise enough: "failure" also covers unrelated bugs like a
+            # git-bundle-delivery error, and "setupFailure" covers e.g. a broken agent-CLI
+            # install - neither is the auth-shaped failure these matrix legs expect. Pin down
+            # that the agent process itself ran and exited non-zero (not a setup failure, not a
+            # hang, not a later delivery-stage failure), so an unrelated regression can't
+            # masquerade as "expected failure".
+            [ "$status" = "failure" ] || { echo "expected status 'failure', got '$status' ($error)"; exit 1; }
+            case "$error" in
+              "agent failed: exited with code "*) ;;
+              *) echo "expected an agent-exit failure, got: $error"; exit 1 ;;
+            esac
           fi
 
       # Only for the success config: also runs the real submit composite action (the same one

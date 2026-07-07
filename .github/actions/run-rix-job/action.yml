@@ -54,6 +54,9 @@ outputs:
   status:
     description: "The job result's status field: success, failure, or setupFailure"
     value: ${{ steps.run.outputs.status }}
+  error:
+    description: "The job result's error field (empty on success)"
+    value: ${{ steps.run.outputs.error }}
 
 runs:
   using: composite
@@ -115,12 +118,17 @@ runs:
         mkdir -p out work
 
         # result.json is only written to disk on success (see Rix.Startup.ExecuteJobAsync), so
-        # capture stdout here too and expose its `status` field as a step output - the only way
-        # callers (e.g. a CI test asserting an expected failure) can observe the outcome.
+        # capture stdout here too and expose its `status`/`error` fields as step outputs - the
+        # only way callers (e.g. a CI test asserting an expected failure) can observe the outcome.
         set +e
         output="$("$RIX_BIN" job --agent "${RIX_AGENT:-opencode}" --output-dir out --work-dir work)"
         ec=$?
         set -e
         echo "$output"
         echo "status=$(printf '%s' "$output" | jq -r '.status // "unknown"')" >> "$GITHUB_OUTPUT"
+        {
+          echo "error<<RIX_ERROR_EOF"
+          printf '%s' "$output" | jq -r '.error // ""'
+          echo "RIX_ERROR_EOF"
+        } >> "$GITHUB_OUTPUT"
         exit $ec
