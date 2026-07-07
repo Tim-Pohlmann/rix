@@ -1,6 +1,7 @@
 name: TMP verify job.yml
 on:
-  workflow_dispatch:
+  push:
+    branches: [test/live-job-yml-plumbing]
 
 jobs:
   rix:
