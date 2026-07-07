@@ -1,0 +1,24 @@
+name: Download rix
+description: >-
+  Downloads and checksum-verifies the rix release binary for this runner's OS/arch, exporting
+  RIX_BIN. Assumes the calling job has already checked out Tim-Pohlmann/rix (e.g. via
+  actions/checkout, sparse or full) so .github/scripts/download-rix.sh is present at the job's
+  workspace root.
+
+inputs:
+  rix-version:
+    description: "Rix release tag to download, or 'latest'"
+    required: false
+    default: latest
+
+runs:
+  using: composite
+  steps:
+    - name: Download rix binary
+      env:
+        # The API call hits the rix repo's own releases, not any target repo, so use the
+        # caller's automatic token rather than a target-scoped PAT. The script exports RIX_BIN.
+        GH_TOKEN: ${{ github.token }}
+        VERSION: ${{ inputs.rix-version }}
+      shell: bash
+      run: bash .github/scripts/download-rix.sh
