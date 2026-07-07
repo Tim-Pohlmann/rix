@@ -75,12 +75,12 @@ assert_opencode_error_envelope() {
 
 @test "claude: no --model, no key -> auth failure (flags still accepted)" {
   run timeout 60 claude --output-format stream-json --print "Reply with exactly: OK" \
-    --append-system-prompt "You are a test."
+    --append-system-prompt "You are a test." --verbose
   assert_auth_failure "$output" "$status"
 }
 
 @test "claude: explicit --model, no key -> auth failure (flags still accepted)" {
   run timeout 60 claude --output-format stream-json --print "Reply with exactly: OK" \
-    --append-system-prompt "You are a test." --model claude-opus-4-1
+    --append-system-prompt "You are a test." --verbose --model claude-opus-4-1
   assert_auth_failure "$output" "$status"
 }
