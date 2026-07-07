@@ -14,11 +14,17 @@ inputs:
     description: "Rix repo to download from (owner/name)"
     required: false
     default: Tim-Pohlmann/rix
+  rix-bin:
+    description: >-
+      Path to an already-built rix binary to use instead of downloading a release (e.g. CI
+      testing this repo's own unreleased changes). Omit to download rix-version as normal.
+    required: false
 
 runs:
   using: composite
   steps:
     - name: Get download script
+      if: inputs.rix-bin == ''
       uses: actions/checkout@v4
       with:
         repository: ${{ inputs.repo-slug }}
@@ -30,6 +36,7 @@ runs:
         path: rix-src
 
     - name: Download rix binary
+      if: inputs.rix-bin == ''
       env:
         RIX_REPO_SLUG: ${{ inputs.repo-slug }}
         # The API call hits the rix repo's own releases, not any target repo, so use the
@@ -38,3 +45,8 @@ runs:
         VERSION: ${{ inputs.rix-version }}
       shell: bash
       run: bash rix-src/.github/scripts/download-rix.sh
+
+    - name: Use pre-built rix binary
+      if: inputs.rix-bin != ''
+      shell: bash
+      run: echo "RIX_BIN=${{ inputs.rix-bin }}" >> "$GITHUB_ENV"

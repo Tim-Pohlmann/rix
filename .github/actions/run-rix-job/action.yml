@@ -44,6 +44,9 @@ inputs:
     description: "Rix repo to download from (owner/name)"
     required: false
     default: Tim-Pohlmann/rix
+  rix-bin:
+    description: "Path to an already-built rix binary to use instead of downloading a release"
+    required: false
 
 runs:
   using: composite
@@ -58,6 +61,7 @@ runs:
       with:
         rix-version: ${{ inputs.rix-version }}
         repo-slug: ${{ inputs.repo-slug }}
+        rix-bin: ${{ inputs.rix-bin }}
 
     - name: Run rix job
       env:
