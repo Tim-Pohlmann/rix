@@ -11,7 +11,10 @@ internal abstract record ProcessResult
 /// <c>null</c> if the process wrote nothing — enough to read a terminal summary line without
 /// buffering the whole stream.</summary>
 internal sealed record ProcessSuccess(string? Output = null) : ProcessResult;
-internal sealed record ProcessFailure(string Reason) : ProcessResult;
+/// <summary><paramref name="Diagnostic"/> is the last non-empty line the process wrote (stderr
+/// preferred, falling back to stdout) — the closest thing to "why" a CLI that doesn't structure
+/// its errors gives us, e.g. an auth/usage message printed just before a non-zero exit.</summary>
+internal sealed record ProcessFailure(string Reason, string? Diagnostic = null) : ProcessResult;
 
 /// <summary>The single side-effect seam for running a subprocess. Every part of a job — agent
 /// install, the agent run itself, and git operations — flows through one of these so effects stay
@@ -43,7 +46,7 @@ internal static class ProcessWrapper
             FileName = fileName,
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
-            RedirectStandardError = false,
+            RedirectStandardError = true,
             UseShellExecute = false,
         };
 
@@ -61,9 +64,12 @@ internal static class ProcessWrapper
         catch (Win32Exception ex) { return new ProcessFailure(ex.Message); }
 
         var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
+        // Both streams must be drained concurrently (not just stdout), or a child that fills its
+        // stderr pipe while nothing is reading it can deadlock the whole run.
+        var stderrTask = ReadLinesAsync(process.StandardError, onLine: null, cancellationToken);
         var processTask = process.WaitForExitAsync(cancellationToken);
 
-        await Task.WhenAny(processTask, stdoutTask);
+        await Task.WhenAny(processTask, stdoutTask, stderrTask);
         if (stdoutTask.IsFaulted)
             try { process.Kill(entireProcessTree: true); }
             catch (InvalidOperationException) { /* process already exited */ }
@@ -78,17 +84,19 @@ internal static class ProcessWrapper
             catch (InvalidOperationException) { /* process already exited */ }
             await process.WaitForExitAsync(CancellationToken.None);
             await stdoutTask;
+            await stderrTask;
             return new ProcessFailure("timed out");
         }
 
         var lastLine = await stdoutTask;
+        var lastErrLine = await stderrTask;
         if (process.ExitCode == 0)
             return new ProcessSuccess(lastLine);
-        return new ProcessFailure($"exited with code {process.ExitCode}");
+        return new ProcessFailure($"exited with code {process.ExitCode}", Diagnostic: lastErrLine ?? lastLine);
     }
 
-    /// <summary>Forwards each stdout line to <paramref name="onLine"/> and returns the final
-    /// non-empty line read (or <c>null</c>).</summary>
+    /// <summary>Forwards each line read from <paramref name="reader"/> to <paramref name="onLine"/>
+    /// and returns the final non-empty line read (or <c>null</c>).</summary>
     private static async Task<string?> ReadLinesAsync
     (
         StreamReader reader,

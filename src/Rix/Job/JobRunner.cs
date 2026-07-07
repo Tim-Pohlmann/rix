@@ -45,9 +45,12 @@ internal static class JobRunner
         if (agentResult is ProcessFailure agentFailure)
         {
             stopwatch.Stop();
+            var detail = agentFailure.Reason;
+            if (!string.IsNullOrWhiteSpace(agentFailure.Diagnostic))
+                detail = $"{agentFailure.Reason}: {agentFailure.Diagnostic}";
             return new JobFailure
             (
-                $"agent failed: {agentFailure.Reason}",
+                $"agent failed: {detail}",
                 CostUsd: 0m,
                 Duration: stopwatch.Elapsed
             );

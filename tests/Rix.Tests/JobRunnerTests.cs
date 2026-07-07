@@ -372,6 +372,31 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_JobFailureError_IncludesAgentDiagnostic_WhenPresent()
+    {
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+            Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1", Diagnostic: "Invalid API key"));
+
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), runner, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        var failure = (JobFailure)result;
+        Assert.AreEqual("agent failed: exited with code 1: Invalid API key", failure.Error);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_JobFailureError_OmitsDiagnosticSuffix_WhenAbsent()
+    {
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), FakeRunner(claudeExitCode: 1), _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        var failure = (JobFailure)result;
+        Assert.AreEqual("agent failed: exited with code 1", failure.Error);
+    }
+
+    [TestMethod]
     public async Task RunAsync_ReturnsSetupFailure_WhenInstallerFails()
     {
         var result = await JobRunner.RunAsync(MakeConfig(),
