@@ -16,6 +16,9 @@ runs:
   steps:
     - name: Download rix binary
       env:
+        # Rix lives in this repo; adjust if it moves. Set here (rather than relied on from a
+        # caller's workflow-level env:) since this action must work standalone from any workflow.
+        RIX_REPO_SLUG: Tim-Pohlmann/rix
         # The API call hits the rix repo's own releases, not any target repo, so use the
         # caller's automatic token rather than a target-scoped PAT. The script exports RIX_BIN.
         GH_TOKEN: ${{ github.token }}
