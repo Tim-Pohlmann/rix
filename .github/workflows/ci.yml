@@ -50,6 +50,76 @@ jobs:
           sudo apt-get install -y bats
           bats tests/scripts
 
+  agent-plumbing:
+    name: "Agent plumbing: ${{ matrix.name }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    # Runs the real .github/actions/run-rix-job composite action (the same one job.yml's `run`
+    # job uses) against this repo itself, with no agent API key, across several (agent, model)
+    # configurations. This exercises the actual end-to-end plumbing - CLI parsing, agent CLI
+    # install, BuildInvocation, the real agent process - rather than a hand-copied mirror of it,
+    # so a real upstream break (e.g. an agent CLI needing a new required flag) fails CI here
+    # instead of only being discovered by a broken production run.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: opencode free default model succeeds with no key
+            agent: opencode
+            model: ''
+            expect: success
+          - name: opencode explicit paid model fails without a key
+            agent: opencode
+            model: openai/gpt-4o
+            expect: failure
+          - name: claude fails without a key
+            agent: claude
+            model: ''
+            expect: failure
+          - name: claude explicit model fails without a key
+            agent: claude
+            model: claude-opus-4-1
+            expect: failure
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run rix job
+        id: run
+        continue-on-error: true
+        uses: ./.github/actions/run-rix-job
+        with:
+          repo: ${{ github.repository }}
+          prompt: >-
+            Make no changes to any files and do not call the PR endpoint.
+            Just reply with the text: OK
+          read-token: ${{ github.token }}
+          agent: ${{ matrix.agent }}
+          model: ${{ matrix.model }}
+
+      - name: Assert expected outcome
+        run: |
+          status="${{ steps.run.outputs.status }}"
+          echo "rix job status: $status"
+          if [ "${{ matrix.expect }}" = "success" ]; then
+            [ "$status" = "success" ] || { echo "expected success, got '$status'"; exit 1; }
+          else
+            [ "$status" = "failure" ] || { echo "expected an auth-shaped failure, got '$status'"; exit 1; }
+          fi
+
+      # Only for the success config: also runs the real submit composite action (the same one
+      # job.yml's create-pr job uses), proving end to end that a garbage write-token is safe here
+      # - SubmitRunner never touches it because the prompt above guarantees zero PRs were queued.
+      - name: Submit (garbage write-token; safe because zero PRs were requested)
+        if: matrix.expect == 'success'
+        uses: ./.github/actions/submit-rix-job
+        with:
+          repo: ${{ github.repository }}
+          write-token: not-a-real-token
+          input-dir: out
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
