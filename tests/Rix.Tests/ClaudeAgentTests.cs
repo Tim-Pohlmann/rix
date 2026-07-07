@@ -141,6 +141,18 @@ public class ClaudeAgentTests
     }
 
     [TestMethod]
+    public void BuildInvocation_IncludesVerboseFlag()
+    {
+        // The real claude CLI rejects --print combined with --output-format=stream-json unless
+        // --verbose is also present ("requires --verbose"); this guards against dropping it.
+        var config = TestConfig.Valid(agent: "claude");
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        CollectionAssert.Contains(args, "--verbose");
+    }
+
+    [TestMethod]
     public void BuildInvocation_IncludesModelFlag_WhenModelSet()
     {
         var config = TestConfig.Valid(agent: "claude", model: "claude-opus-4");

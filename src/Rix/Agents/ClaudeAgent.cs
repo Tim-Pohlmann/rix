@@ -19,7 +19,9 @@ internal sealed class ClaudeAgent : ICodingAgent
     {
         List<string> args =
         [
-            "--output-format", "stream-json", "--print", config.Agent.Prompt,
+            // --verbose is required by the CLI whenever --print is combined with
+            // --output-format=stream-json; omitting it fails fast with a usage error.
+            "--output-format", "stream-json", "--print", "--verbose", config.Agent.Prompt,
             "--append-system-prompt", systemPrompt,
         ];
         if (!string.IsNullOrWhiteSpace(config.Agent.Model))
