@@ -70,9 +70,15 @@ jobs:
             agent: opencode
             model: ''
             expect: success
-          - name: opencode explicit paid model fails without a key
+          # opencode falls back to its own free default model when it has no usable credential
+          # for the requested provider, rather than erroring - so an *absent* key never exercises
+          # a real auth failure. An invalid key forces opencode to actually call out to the
+          # provider and fail there, matching a real expired/typo'd-credential failure.
+          - name: opencode explicit paid model fails with an invalid key
             agent: opencode
             model: openai/gpt-4o
+            agent-api-key-env: OPENAI_API_KEY
+            agent-api-key: sk-invalid-0000000000000000000000000000000000000000
             expect: failure
           - name: claude fails without a key
             agent: claude
@@ -98,6 +104,8 @@ jobs:
           read-token: ${{ github.token }}
           agent: ${{ matrix.agent }}
           model: ${{ matrix.model }}
+          agent-api-key: ${{ matrix.agent-api-key }}
+          agent-api-key-env: ${{ matrix.agent-api-key-env }}
 
       - name: Assert expected outcome
         run: |
