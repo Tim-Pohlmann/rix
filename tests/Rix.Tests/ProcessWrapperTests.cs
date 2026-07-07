@@ -20,6 +20,13 @@ public class ProcessWrapperTests
         false => $"echo ${{{varName}:-{fallback}}}",
     };
 
+    private static string EchoToStderr(string text)
+    => OperatingSystem.IsWindows() switch
+    {
+        true => $"[Console]::Error.WriteLine('{text}')",
+        false => $"echo {text} 1>&2",
+    };
+
     [TestMethod]
     public async Task RunAsync_CapturesStdoutLines()
     {
@@ -73,6 +80,42 @@ public class ProcessWrapperTests
 
         Assert.IsInstanceOfType<ProcessFailure>(result);
         Assert.AreEqual("exited with code 1", ((ProcessFailure)result).Reason);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Diagnostic_IsLastStderrLine_OnFailure()
+    {
+        var result = await ProcessWrapper.RunAsync(
+            Shell, ["-c", $"{EchoToStderr("boom")}; exit 1"],
+            workingDirectory: Path.GetTempPath(),
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsInstanceOfType<ProcessFailure>(result);
+        Assert.AreEqual("boom", ((ProcessFailure)result).Diagnostic);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Diagnostic_FallsBackToStdout_WhenStderrEmpty()
+    {
+        var result = await ProcessWrapper.RunAsync(
+            Shell, ["-c", $"{Echo("last stdout line")}; exit 1"],
+            workingDirectory: Path.GetTempPath(),
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsInstanceOfType<ProcessFailure>(result);
+        StringAssert.Contains(((ProcessFailure)result).Diagnostic, "last stdout line");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Diagnostic_IsNull_WhenNoOutputOnFailure()
+    {
+        var result = await ProcessWrapper.RunAsync(
+            Shell, ["-c", "exit 1"],
+            workingDirectory: Path.GetTempPath(),
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsInstanceOfType<ProcessFailure>(result);
+        Assert.IsNull(((ProcessFailure)result).Diagnostic);
     }
 
     [TestMethod]
