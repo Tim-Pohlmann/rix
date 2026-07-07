@@ -81,18 +81,21 @@ jobs:
     name: Run rix job
     runs-on: ${{ inputs.runner }}
     steps:
-      # Sparse-checkout of the rix repo (not the target). Composite actions referenced below via
-      # a relative `uses: ./...` resolve against this repo/ref regardless of this checkout, but
-      # their `run:` steps (e.g. download-rix.sh) need the file physically present in the
-      # workspace, which this provides.
+      # A local `uses: ./...` action reference resolves against whatever is already checked out
+      # at github.workspace - there's no such thing as it resolving against "the reusable
+      # workflow's own repo" automatically, so this checkout is required before the composite
+      # action step below (and its own nested `uses: ./.github/actions/download-rix`) can
+      # resolve. .github/scripts/download-rix.sh itself isn't needed here - download-rix fetches
+      # its own copy.
       - name: Get rix repo (for local composite actions)
         uses: actions/checkout@v4
         with:
           repository: ${{ env.RIX_REPO_SLUG }}
-          # Pin to the same release tag as the binary so a consumer pinning rix-version gets a
-          # matching script; empty ref falls back to the default branch only for "latest".
+          # Pin to the same release tag as the binary so a consumer pinning rix-version gets
+          # matching composite-action definitions; empty ref falls back to the default branch
+          # only for "latest".
           ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
-          sparse-checkout: .github/scripts/download-rix.sh
+          sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
       - name: Run rix job
@@ -120,13 +123,13 @@ jobs:
     needs: run
     runs-on: ${{ inputs.runner }}
     steps:
-      # Sparse-checkout of the rix repo (not the target); see the comment in the `run` job above.
+      # See the comment on the equivalent step in the `run` job above.
       - name: Get rix repo (for local composite actions)
         uses: actions/checkout@v4
         with:
           repository: ${{ env.RIX_REPO_SLUG }}
           ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
-          sparse-checkout: .github/scripts/download-rix.sh
+          sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
       - name: Download job output

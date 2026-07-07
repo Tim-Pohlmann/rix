@@ -1,9 +1,9 @@
 name: Download rix
 description: >-
   Downloads and checksum-verifies the rix release binary for this runner's OS/arch, exporting
-  RIX_BIN. Assumes the calling job has already checked out Tim-Pohlmann/rix (e.g. via
-  actions/checkout, sparse or full) so .github/scripts/download-rix.sh is present at the job's
-  workspace root.
+  RIX_BIN. Self-contained: fetches its own copy of .github/scripts/download-rix.sh into a
+  subdirectory, so it works standalone from any workflow without the caller checking anything
+  out first (and without clobbering a checkout the caller already has).
 
 inputs:
   rix-version:
@@ -14,14 +14,24 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Get download script
+      uses: actions/checkout@v4
+      with:
+        # Rix lives in this repo; adjust if it moves.
+        repository: Tim-Pohlmann/rix
+        # Pin to the same release tag as the binary so a consumer pinning rix-version gets a
+        # matching script; empty ref falls back to the default branch only for "latest".
+        ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
+        sparse-checkout: .github/scripts/download-rix.sh
+        sparse-checkout-cone-mode: false
+        path: rix-src
+
     - name: Download rix binary
       env:
-        # Rix lives in this repo; adjust if it moves. Set here (rather than relied on from a
-        # caller's workflow-level env:) since this action must work standalone from any workflow.
         RIX_REPO_SLUG: Tim-Pohlmann/rix
         # The API call hits the rix repo's own releases, not any target repo, so use the
         # caller's automatic token rather than a target-scoped PAT. The script exports RIX_BIN.
         GH_TOKEN: ${{ github.token }}
         VERSION: ${{ inputs.rix-version }}
       shell: bash
-      run: bash .github/scripts/download-rix.sh
+      run: bash rix-src/.github/scripts/download-rix.sh
