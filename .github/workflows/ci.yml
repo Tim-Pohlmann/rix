@@ -50,18 +50,44 @@ jobs:
           sudo apt-get install -y bats
           bats tests/scripts
 
+  build-rix:
+    name: Build rix (for agent-plumbing tests)
+    runs-on: ubuntu-latest
+
+    # Built from source rather than downloaded from the latest release, so agent-plumbing below
+    # exercises this PR's own rix changes (e.g. BuildInvocation, error handling) instead of
+    # whatever was last published - a release can lag behind an open PR by any number of fixes.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Publish rix
+        run: dotnet publish src/Rix/Rix.csproj -r linux-x64 -c Release -o rix-bin
+
+      - name: Upload rix binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin/rix
+
   agent-plumbing:
     name: "Agent plumbing: ${{ matrix.name }}"
     runs-on: ubuntu-latest
+    needs: build-rix
     permissions:
       contents: read
 
     # Runs the real .github/actions/run-rix-job composite action (the same one job.yml's `run`
     # job uses) against this repo itself, with no agent API key, across several (agent, model)
-    # configurations. This exercises the actual end-to-end plumbing - CLI parsing, agent CLI
-    # install, BuildInvocation, the real agent process - rather than a hand-copied mirror of it,
-    # so a real upstream break (e.g. an agent CLI needing a new required flag) fails CI here
-    # instead of only being discovered by a broken production run.
+    # configurations, using the binary build-rix just published from this PR's own source. This
+    # exercises the actual end-to-end plumbing - CLI parsing, agent CLI install, BuildInvocation,
+    # the real agent process - rather than a hand-copied mirror of it, so a real regression (e.g.
+    # an agent CLI needing a new required flag) fails CI here instead of only being discovered by
+    # a broken production run.
     strategy:
       fail-fast: false
       matrix:
@@ -90,7 +116,22 @@ jobs:
             expect: failure
 
     steps:
+      # Only the composite actions under .github/actions are needed here (the app source and
+      # test suites aren't touched directly by this job - build-rix above already built the
+      # binary under test).
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
 
       - name: Run rix job
         id: run
@@ -106,6 +147,7 @@ jobs:
           model: ${{ matrix.model }}
           agent-api-key: ${{ matrix.agent-api-key }}
           agent-api-key-env: ${{ matrix.agent-api-key-env }}
+          rix-bin: ${{ github.workspace }}/rix-bin/rix
 
       - name: Assert expected outcome
         run: |
@@ -139,6 +181,7 @@ jobs:
           repo: ${{ github.repository }}
           write-token: not-a-real-token
           input-dir: out
+          rix-bin: ${{ github.workspace }}/rix-bin/rix
 
   test:
     name: Test (${{ matrix.os }})
