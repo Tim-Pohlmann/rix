@@ -37,7 +37,30 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y bats
-          bats tests/scripts
+          bats tests/scripts/download-rix.bats
+
+  agent-plumbing:
+    name: Agent CLI plumbing (live)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node (installs opencode/claude the same way rix does)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install agent CLIs
+        run: npm install -g opencode-ai @anthropic-ai/claude-code
+
+      - name: Install bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      - name: Run live agent CLI plumbing tests
+        run: bats tests/scripts/agent-plumbing.bats
 
   test:
     name: Test (${{ matrix.os }})
