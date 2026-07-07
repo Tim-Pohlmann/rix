@@ -29,8 +29,8 @@ on:
         description: >-
           Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
           ANTHROPIC_API_KEY, OPENAI_API_KEY) — whatever the selected provider/model expects.
-          Omit to use a default based on agent: OPENCODE_API_KEY for opencode, ANTHROPIC_API_KEY
-          for claude.
+          Must end in _API_KEY. Omit to use a default based on agent: OPENCODE_API_KEY for
+          opencode, ANTHROPIC_API_KEY for claude.
         required: false
         type: string
       rix-version:
@@ -128,22 +128,19 @@ jobs:
             key_env="$AGENT_API_KEY_ENV"
             if [ -z "$key_env" ]; then
               # Caller didn't say which env var to use — default based on agent, since
-              # opencode and claude expect different credentials.
-              case "$RIX_AGENT" in
+              # opencode and claude expect different credentials. Normalize case/whitespace
+              # the same way rix's own AgentKindParser does, so e.g. "Claude" still matches.
+              agent_normalized=$(printf '%s' "$RIX_AGENT" | tr '[:upper:]' '[:lower:]' | xargs)
+              case "$agent_normalized" in
                 claude) key_env=ANTHROPIC_API_KEY ;;
                 *) key_env=OPENCODE_API_KEY ;;
               esac
             fi
-            # Guard against a garbled or dangerous agent-api-key-env value clobbering something
-            # other than a provider credential (e.g. PATH).
-            case "$key_env" in
-              PATH|IFS|LD_PRELOAD|BASH_ENV|SHELL|HOME)
-                echo "::error::agent-api-key-env '$key_env' is not allowed" >&2
-                exit 1
-                ;;
-            esac
-            if ! [[ "$key_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-              echo "::error::agent-api-key-env '$key_env' is not a valid environment variable name" >&2
+            # Restrict to the *_API_KEY naming convention every provider credential in this
+            # workflow follows, rather than deny-listing every internal/runtime variable
+            # (RIX_*, GITHUB_*, PATH, ...) a caller could otherwise clobber.
+            if ! [[ "$key_env" =~ ^[A-Z][A-Z0-9_]*_API_KEY$ ]]; then
+              echo "::error::agent-api-key-env '$key_env' must be a *_API_KEY environment variable name" >&2
               exit 1
             fi
             export "$key_env"="$AGENT_API_KEY"
