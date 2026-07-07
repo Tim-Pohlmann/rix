@@ -19,6 +19,10 @@ inputs:
     description: "Rix release tag to download, or 'latest'"
     required: false
     default: latest
+  repo-slug:
+    description: "Rix repo to download from (owner/name)"
+    required: false
+    default: Tim-Pohlmann/rix
 
 runs:
   using: composite
@@ -27,6 +31,7 @@ runs:
       uses: ./.github/actions/download-rix
       with:
         rix-version: ${{ inputs.rix-version }}
+        repo-slug: ${{ inputs.repo-slug }}
 
     - name: Push branches and open PRs
       env:

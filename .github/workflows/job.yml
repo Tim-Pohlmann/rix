@@ -111,6 +111,7 @@ jobs:
           max-tokens: ${{ inputs.max-tokens }}
           timeout: ${{ inputs.timeout }}
           rix-version: ${{ inputs.rix-version }}
+          repo-slug: ${{ env.RIX_REPO_SLUG }}
 
       - name: Upload job output
         uses: actions/upload-artifact@v4
@@ -145,3 +146,4 @@ jobs:
           write-token: ${{ secrets.write-token }}
           input-dir: out
           rix-version: ${{ inputs.rix-version }}
+          repo-slug: ${{ env.RIX_REPO_SLUG }}
