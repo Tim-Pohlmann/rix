@@ -1,0 +1,15 @@
+name: TMP verify job.yml
+on:
+  workflow_dispatch:
+
+jobs:
+  rix:
+    uses: Tim-Pohlmann/rix/.github/workflows/job.yml@test/live-job-yml-plumbing
+    with:
+      repo: Tim-Pohlmann/rix
+      prompt: >-
+        Make no changes to any files and do not call the PR endpoint.
+        Just reply with the text: OK
+    secrets:
+      read-token: ${{ secrets.GITHUB_TOKEN }}
+      write-token: not-a-real-token
