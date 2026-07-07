@@ -55,8 +55,8 @@ opencode supports many model providers beyond the free default. Pick a model wit
 ```
 
 `claude` (Anthropic's Claude Code CLI) only talks to Anthropic's own models; for that agent,
-`model` (if set) just picks among Claude's models and `agent-api-key-env` should stay/be set
-to `ANTHROPIC_API_KEY`.
+`model` (if set) just picks among Claude's models, and `agent-api-key-env` defaults to
+`ANTHROPIC_API_KEY` automatically (no need to set it unless using a non-default env var name).
 
 Local/self-hosted backends (e.g. Ollama, LM Studio) aren't supported yet — opencode reaches
 those through a generated config file rather than a model string + API key, which is a
@@ -65,13 +65,13 @@ separate mechanism this workflow doesn't build today.
 `@main` tracks the latest workflow; once a release is tagged, pin to that tag or a commit
 SHA (e.g. `...job.yml@v1.0.0`) for reproducible, supply-chain-safe runs.
 
-### Required secrets
+### Secrets
 
 | Secret | Purpose |
 | --- | --- |
-| `read-token` | PAT with read access to the target repo; used to clone it during the agent run. |
-| `write-token` | PAT with `contents:write` + `pull-requests:write` on the target repo; used to push branches and open PRs. |
-| `agent-api-key` | Optional. API key for the selected agent's model provider, exported as the env var named by `agent-api-key-env` (default `OPENCODE_API_KEY`). Not needed when leaving `model` unset, since opencode then picks its own free default model. |
+| `read-token` | Required. PAT with read access to the target repo; used to clone it during the agent run. |
+| `write-token` | Required. PAT with `contents:write` + `pull-requests:write` on the target repo; used to push branches and open PRs. |
+| `agent-api-key` | Optional. API key for the selected agent's model provider, exported as the env var named by `agent-api-key-env` (default `OPENCODE_API_KEY` for opencode, `ANTHROPIC_API_KEY` for claude). Not needed when leaving `model` unset, since opencode then picks its own free default model. |
 
 The read/write split keeps the agent run (which executes untrusted, model-generated work)
 on a read-only token; only the final, deterministic PR-creation step holds write access.
