@@ -106,14 +106,17 @@ jobs:
             agent-api-key-env: OPENAI_API_KEY
             agent-api-key: sk-invalid-0000000000000000000000000000000000000000
             expect: failure
+            expect-diagnostic: "Incorrect API key"
           - name: claude fails without a key
             agent: claude
             model: ''
             expect: failure
+            expect-diagnostic: "Not logged in"
           - name: claude explicit model fails without a key
             agent: claude
             model: claude-opus-4-1
             expect: failure
+            expect-diagnostic: "Not logged in"
 
     steps:
       # Only the composite actions under .github/actions are needed here (the app source and
@@ -157,6 +160,7 @@ jobs:
         env:
           STATUS: ${{ steps.run.outputs.status }}
           ERROR: ${{ steps.run.outputs.error }}
+          EXPECT_DIAGNOSTIC: ${{ matrix.expect-diagnostic }}
         run: |
           status="$STATUS"
           error="$ERROR"
@@ -176,6 +180,13 @@ jobs:
               "agent failed: exited with code "*) ;;
               *) echo "expected an agent-exit failure, got: $error"; exit 1 ;;
             esac
+            # Beyond the exit-stage check above, pin the failure to its expected *reason* (e.g.
+            # auth vs. a bad flag) using the diagnostic text captured from the agent's own
+            # stderr/stdout - otherwise any same-exit-code failure would satisfy this leg.
+            if [ -n "$EXPECT_DIAGNOSTIC" ] && [[ "$error" != *"$EXPECT_DIAGNOSTIC"* ]]; then
+              echo "expected diagnostic containing '$EXPECT_DIAGNOSTIC', got: $error"
+              exit 1
+            fi
           fi
 
       # Only for the success config: also runs the real submit composite action (the same one
