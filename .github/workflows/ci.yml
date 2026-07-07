@@ -150,9 +150,16 @@ jobs:
           rix-bin: ${{ github.workspace }}/rix-bin/rix
 
       - name: Assert expected outcome
+        # status/error come from the agent process's own output (via steps.run.outputs), so they
+        # must be passed through env rather than interpolated directly into the script - inline
+        # ${{ }} substitution happens before bash parses the script, so a message containing
+        # spaces/quotes/backticks would otherwise be interpreted as extra shell code.
+        env:
+          STATUS: ${{ steps.run.outputs.status }}
+          ERROR: ${{ steps.run.outputs.error }}
         run: |
-          status="${{ steps.run.outputs.status }}"
-          error="${{ steps.run.outputs.error }}"
+          status="$STATUS"
+          error="$ERROR"
           echo "rix job status: $status"
           echo "rix job error: $error"
           if [ "${{ matrix.expect }}" = "success" ]; then
