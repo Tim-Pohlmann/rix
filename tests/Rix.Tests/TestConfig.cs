@@ -16,7 +16,8 @@ internal static class TestConfig
         int? timeoutMinutes = null,
         string? workDir = null,
         string? outputDir = null,
-        string? agent = null
+        string? agent = null,
+        string? model = null
     )
     => JobConfig.Create(new JobInputs
     (
@@ -27,7 +28,8 @@ internal static class TestConfig
         TimeoutMinutes: timeoutMinutes,
         WorkDir: workDir ?? Path.GetTempPath(),
         OutputDir: outputDir ?? Path.GetTempPath(),
-        Agent: agent
+        Agent: agent,
+        Model: model
     )) switch
     {
         JobConfigValid v => v.Config,

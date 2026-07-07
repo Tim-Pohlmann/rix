@@ -18,6 +18,12 @@ namespace Rix.Agents;
 /// <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so <see cref="AgentConfig.MaxTokens"/> is not forwarded;
 /// the invocation carries no environment overrides.</item>
 /// </list>
+/// Unlike Claude (Anthropic-only), OpenCode supports many model providers via
+/// <see cref="AgentConfig.Model"/> (a <c>provider/model</c> string forwarded verbatim as
+/// <c>--model</c>); the caller is responsible for exporting whatever credential env var that
+/// provider expects, since rix inherits its process environment into the spawned CLI unchanged.
+/// Local/self-hosted backends (Ollama, LM Studio) aren't covered by this — they need a generated
+/// <c>opencode.json</c> config rather than a model string + API key, which is a future extension.
 /// </remarks>
 internal sealed class OpenCodeAgent : ICodingAgent
 {
@@ -27,12 +33,19 @@ internal sealed class OpenCodeAgent : ICodingAgent
     => CodingAgentHelper.EnsureInstalledViaNpmAsync(runProcess, "opencode", Package, cancellationToken);
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
-    => new
-    (
-        FileName: "opencode",
-        Arguments: ["run", $"{systemPrompt}\n\n{config.Agent.Prompt}", "--format", "json"],
-        EnvironmentOverrides: new Dictionary<string, string>()
-    );
+    {
+        List<string> args = ["run", $"{systemPrompt}\n\n{config.Agent.Prompt}"];
+        if (!string.IsNullOrWhiteSpace(config.Agent.Model))
+            args.AddRange(["--model", config.Agent.Model]);
+        args.AddRange(["--format", "json"]);
+
+        return new
+        (
+            FileName: "opencode",
+            Arguments: args,
+            EnvironmentOverrides: new Dictionary<string, string>()
+        );
+    }
 
     /// <summary>
     /// Reads cost from an OpenCode JSON event line. The cost (when known) rides on a

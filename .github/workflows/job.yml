@@ -14,10 +14,24 @@ on:
         required: true
         type: string
       agent:
-        description: "Coding agent to run: 'claude' (default) or 'opencode'"
+        description: "Coding agent to run: 'opencode' (default) or 'claude'"
         required: false
         type: string
-        default: claude
+        default: opencode
+      model:
+        description: >-
+          Model identifier passed to the agent CLI via --model (e.g. 'openai/gpt-4o' for
+          opencode). Provider-specific; omit to use the agent's own default model (opencode
+          picks a free model on its own, needing no API key).
+        required: false
+        type: string
+      agent-api-key-env:
+        description: >-
+          Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
+          ANTHROPIC_API_KEY, OPENAI_API_KEY) — whatever the selected provider/model expects.
+        required: false
+        type: string
+        default: OPENCODE_API_KEY
       rix-version:
         description: "Rix release tag to download (default: latest)"
         required: false
@@ -45,9 +59,10 @@ on:
         required: true
       agent-api-key:
         description: >-
-          API key for the selected coding agent's model provider. Mapped to the provider
-          environment variable the agent reads (ANTHROPIC_API_KEY for 'claude' and 'opencode').
-        required: true
+          API key for the selected coding agent's model provider, exported as the env var named
+          by agent-api-key-env. Optional: leaving model unset lets opencode pick its own free
+          default model, needing no key; set this when picking a specific provider/model.
+        required: false
 
 # Rix lives in this repo; consumers reference it as
 # Tim-Pohlmann/rix/.github/workflows/job.yml@main. Adjust if the repo moves.
@@ -96,7 +111,9 @@ jobs:
       - name: Run rix job
         env:
           AGENT_API_KEY: ${{ secrets.agent-api-key }}
+          AGENT_API_KEY_ENV: ${{ inputs.agent-api-key-env }}
           RIX_AGENT: ${{ inputs.agent }}
+          RIX_MODEL: ${{ inputs.model }}
           RIX_READ_TOKEN: ${{ secrets.read-token }}
           RIX_REPO: ${{ inputs.repo }}
           RIX_PROMPT: ${{ inputs.prompt }}
@@ -104,13 +121,13 @@ jobs:
           RIX_TIMEOUT: ${{ inputs.timeout }}
         shell: bash
         run: |
-          # Map the generic agent API key onto the provider env var the selected agent reads.
-          case "${RIX_AGENT:-claude}" in
-            claude|opencode) export ANTHROPIC_API_KEY="$AGENT_API_KEY" ;;
-            *) echo "Unknown agent: $RIX_AGENT" >&2; exit 1 ;;
-          esac
+          # Export the secret under whatever env var name the selected provider/model expects.
+          # No key is required when model is left unset — opencode then picks its own free model.
+          if [ -n "$AGENT_API_KEY" ]; then
+            export "${AGENT_API_KEY_ENV:-OPENCODE_API_KEY}"="$AGENT_API_KEY"
+          fi
           mkdir -p out work
-          "$RIX_BIN" job --agent "${RIX_AGENT:-claude}" --output-dir out --work-dir work
+          "$RIX_BIN" job --agent "${RIX_AGENT:-opencode}" --output-dir out --work-dir work
 
       - name: Upload job output
         uses: actions/upload-artifact@v4

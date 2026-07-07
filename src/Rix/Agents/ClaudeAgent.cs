@@ -16,15 +16,25 @@ internal sealed class ClaudeAgent : ICodingAgent
     => CodingAgentHelper.EnsureInstalledViaNpmAsync(runProcess, "claude", Package, cancellationToken);
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
-    => new
-    (
-        FileName: "claude",
-        Arguments: ["--output-format", "stream-json", "--print", config.Agent.Prompt, "--append-system-prompt", systemPrompt],
-        EnvironmentOverrides: new Dictionary<string, string>
-        {
-            ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.Agent.MaxTokens.Value.ToString(),
-        }
-    );
+    {
+        List<string> args =
+        [
+            "--output-format", "stream-json", "--print", config.Agent.Prompt,
+            "--append-system-prompt", systemPrompt,
+        ];
+        if (!string.IsNullOrWhiteSpace(config.Agent.Model))
+            args.AddRange(["--model", config.Agent.Model]);
+
+        return new
+        (
+            FileName: "claude",
+            Arguments: args,
+            EnvironmentOverrides: new Dictionary<string, string>
+            {
+                ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.Agent.MaxTokens.Value.ToString(),
+            }
+        );
+    }
 
     /// <summary>
     /// Reads cost from Claude's NDJSON output. Claude emits a single terminal <c>result</c> line

@@ -133,4 +133,28 @@ public class OpenCodeAgentTests
         // OpenCode has no output-token cap equivalent, so no environment overrides are set.
         Assert.AreEqual(0, invocation.EnvironmentOverrides.Count);
     }
+
+    [TestMethod]
+    public void BuildInvocation_OmitsModelFlag_ByDefault()
+    {
+        // Unset means "let opencode pick its own default model" — it already does this for
+        // free without rix hardcoding a model id.
+        var config = TestConfig.Valid();
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        CollectionAssert.DoesNotContain(args, "--model");
+    }
+
+    [TestMethod]
+    public void BuildInvocation_IncludesModelFlag_WhenModelOverridden()
+    {
+        var config = TestConfig.Valid(model: "openai/gpt-4o");
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        var modelIndex = args.IndexOf("--model");
+        Assert.AreNotEqual(-1, modelIndex);
+        Assert.AreEqual("openai/gpt-4o", args[modelIndex + 1]);
+    }
 }
