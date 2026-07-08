@@ -89,7 +89,10 @@ internal static class Startup
     /// <summary>
     /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: runs the job,
     /// then performs all output effects — forwards the agent's stream to stderr, writes the result
-    /// JSON to stdout, persists <c>result.json</c> on success, and maps the result to an exit code.
+    /// JSON to stdout, persists <c>result.json</c> regardless of outcome, and maps the result to an
+    /// exit code. Writing result.json on failure too (not just success) means callers - including
+    /// `rix submit`, which already rejects a non-success result.json - have one reliable place to
+    /// read the outcome from, instead of scraping stdout.
     /// </summary>
     internal static async Task<int> ExecuteJobAsync(JobConfig config, CancellationToken cancellationToken, JobContext? context = null)
     {
@@ -97,8 +100,7 @@ internal static class Startup
         var result = await JobRunner.RunAsync(config, context, cancellationToken);
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
         Console.WriteLine(json);
-        if (result is JobSuccess)
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, cancellationToken);
         return result switch
         {
             JobSuccess => ExitCodes.Success,

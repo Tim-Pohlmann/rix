@@ -86,11 +86,11 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_DoesNotWriteResultJson_OnFailure()
+    public async Task RunAsync_WritesResultJson_OnFailure()
     {
         await Run(claudeExitCode: 1);
 
-        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")));
+        Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "result.json")));
     }
 
     [TestMethod]
