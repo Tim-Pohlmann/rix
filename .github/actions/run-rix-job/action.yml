@@ -48,14 +48,6 @@ inputs:
     description: "Path to an already-built rix binary to use instead of downloading a release"
     required: false
 
-outputs:
-  status:
-    description: "The job result's status field: success, failure, or setupFailure"
-    value: ${{ steps.run.outputs.status }}
-  error:
-    description: "The job result's error field (empty on success)"
-    value: ${{ steps.run.outputs.error }}
-
 runs:
   using: composite
   steps:
@@ -72,7 +64,6 @@ runs:
         rix-bin: ${{ inputs.rix-bin }}
 
     - name: Run rix job
-      id: run
       env:
         AGENT_API_KEY: ${{ inputs.agent-api-key }}
         AGENT_API_KEY_ENV: ${{ inputs.agent-api-key-env }}
@@ -109,19 +100,4 @@ runs:
           export "$key_env"="$AGENT_API_KEY"
         fi
         mkdir -p out work
-
-        # result.json is only written to disk on success (see Rix.Startup.ExecuteJobAsync), so
-        # capture stdout here too and expose its `status`/`error` fields as step outputs - the
-        # only way callers (e.g. a CI test asserting an expected failure) can observe the outcome.
-        set +e
-        output="$("$RIX_BIN" job --agent "${RIX_AGENT:-opencode}" --output-dir out --work-dir work)"
-        ec=$?
-        set -e
-        echo "$output"
-        echo "status=$(printf '%s' "$output" | jq -r '.status // "unknown"')" >> "$GITHUB_OUTPUT"
-        {
-          echo "error<<RIX_ERROR_EOF"
-          printf '%s' "$output" | jq -r '.error // ""'
-          echo "RIX_ERROR_EOF"
-        } >> "$GITHUB_OUTPUT"
-        exit $ec
+        "$RIX_BIN" job --agent "${RIX_AGENT:-opencode}" --output-dir out --work-dir work
