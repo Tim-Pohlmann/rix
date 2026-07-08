@@ -136,6 +136,49 @@ jobs:
           input-dir: out
           rix-bin: ${{ env.RIX_BIN_PATH }}
 
+  rix-job-e2e:
+    name: rix job e2e
+    runs-on: ubuntu-latest
+    needs: build-rix
+    permissions:
+      contents: read
+    env:
+      RIX_BIN: ${{ github.workspace }}/rix-bin/rix
+      RIX_REPO: ${{ github.repository }}
+      RIX_READ_TOKEN: ${{ github.token }}
+
+    # One level deeper than agent-plumbing above: invokes the built rix binary directly (bypassing
+    # the composite-action/workflow layer) and does real JSON parsing on its result, so per-failure
+    # -mode assertions live in a proper, reviewable test script (tests/e2e/rix-job-e2e.bats) instead
+    # of workflow YAML.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tests/e2e
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node (rix installs the coding agent CLI via npm)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
+
+      - name: Install bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      - name: Run rix job e2e tests
+        run: bats tests/e2e
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
