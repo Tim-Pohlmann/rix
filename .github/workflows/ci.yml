@@ -79,7 +79,7 @@ jobs:
           retention-days: 1
 
   agent-plumbing:
-    name: "Agent plumbing: ${{ matrix.name }}"
+    name: Agent plumbing
     runs-on: ubuntu-latest
     needs: build-rix
     permissions:
@@ -88,42 +88,14 @@ jobs:
       RIX_BIN_PATH: ${{ github.workspace }}/rix-bin/rix
 
     # Runs the real .github/actions/run-rix-job composite action (the same one job.yml's `run`
-    # job uses) against this repo itself, with no agent API key, across several (agent, model)
-    # configurations, using the binary build-rix just published from this PR's own source. This
-    # exercises the actual end-to-end plumbing - CLI parsing, agent CLI install, BuildInvocation,
-    # the real agent process - rather than a hand-copied mirror of it, so a real regression (e.g.
-    # an agent CLI needing a new required flag) fails CI here instead of only being discovered by
-    # a broken production run.
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: opencode free default model succeeds with no key
-            agent: opencode
-            model: ''
-            expect: success
-          # opencode falls back to its own free default model when it has no usable credential
-          # for the requested provider, rather than erroring - so an *absent* key never exercises
-          # a real auth failure. An invalid key forces opencode to actually call out to the
-          # provider and fail there, matching a real expired/typo'd-credential failure.
-          - name: opencode explicit paid model fails with an invalid key
-            agent: opencode
-            model: openai/gpt-4o
-            agent-api-key-env: OPENAI_API_KEY
-            agent-api-key: sk-invalid-0000000000000000000000000000000000000000
-            expect: failure
-            expect-diagnostic: "Incorrect API key"
-          - name: claude fails without a key
-            agent: claude
-            model: ''
-            expect: failure
-            expect-diagnostic: "Not logged in"
-          - name: claude explicit model fails without a key
-            agent: claude
-            model: claude-opus-4-1
-            expect: failure
-            expect-diagnostic: "Not logged in"
-
+    # job uses) against this repo itself with opencode's free default model (no API key needed),
+    # using the binary build-rix just published from this PR's own source. This exercises the
+    # actual end-to-end plumbing - CLI parsing, agent CLI install, BuildInvocation, the real agent
+    # process - rather than a hand-copied mirror of it, so a real regression (e.g. an agent CLI
+    # needing a new required flag) fails CI here instead of only being discovered by a broken
+    # production run. Failure-mode assertions (auth errors, bad models, ...) live in the
+    # `rix-job-e2e` bats test instead, where they can do real JSON parsing without embedding that
+    # logic in workflow YAML.
     steps:
       # Only the composite actions under .github/actions are needed here (the app source and
       # test suites aren't touched directly by this job - build-rix above already built the
@@ -143,8 +115,6 @@ jobs:
         run: chmod +x rix-bin/rix
 
       - name: Run rix job
-        id: run
-        continue-on-error: true
         uses: ./.github/actions/run-rix-job
         with:
           repo: ${{ github.repository }}
@@ -152,51 +122,13 @@ jobs:
             Make no changes to any files and do not call the PR endpoint.
             Just reply with the text: OK
           read-token: ${{ github.token }}
-          agent: ${{ matrix.agent }}
-          model: ${{ matrix.model }}
-          agent-api-key: ${{ matrix.agent-api-key }}
-          agent-api-key-env: ${{ matrix.agent-api-key-env }}
+          agent: opencode
           rix-bin: ${{ env.RIX_BIN_PATH }}
 
-      - name: Assert expected outcome
-        # status/error come from the agent process's own output (via steps.run.outputs), so they
-        # must be passed through env rather than interpolated directly into the script - inline
-        # ${{ }} substitution happens before bash parses the script, so a message containing
-        # spaces/quotes/backticks would otherwise be interpreted as extra shell code.
-        env:
-          STATUS: ${{ steps.run.outputs.status }}
-          ERROR: ${{ steps.run.outputs.error }}
-          EXPECT_DIAGNOSTIC: ${{ matrix.expect-diagnostic }}
-        run: |
-          status="$STATUS"
-          error="$ERROR"
-          echo "rix job status: $status"
-          echo "rix job error: $error"
-          if [ "${{ matrix.expect }}" = "success" ]; then
-            [ "$status" = "success" ] || { echo "expected success, got '$status' ($error)"; exit 1; }
-          else
-            # status alone isn't precise enough: "failure" also covers unrelated bugs like a
-            # git-bundle-delivery error, and "setupFailure" covers e.g. a broken agent-CLI
-            # install - neither is the auth-shaped failure these matrix legs expect. Pin down
-            # that the agent process itself ran and exited non-zero (not a setup failure, not a
-            # hang, not a later delivery-stage failure), so an unrelated regression can't
-            # masquerade as "expected failure".
-            [ "$status" = "failure" ] || { echo "expected status 'failure', got '$status' ($error)"; exit 1; }
-            [[ "$error" == "agent failed: exited with code "* ]] || { echo "expected an agent-exit failure, got: $error"; exit 1; }
-            # Beyond the exit-stage check above, pin the failure to its expected *reason* (e.g.
-            # auth vs. a bad flag) using the diagnostic text captured from the agent's own
-            # stderr/stdout - otherwise any same-exit-code failure would satisfy this leg.
-            if [ -n "$EXPECT_DIAGNOSTIC" ] && [[ "$error" != *"$EXPECT_DIAGNOSTIC"* ]]; then
-              echo "expected diagnostic containing '$EXPECT_DIAGNOSTIC', got: $error"
-              exit 1
-            fi
-          fi
-
-      # Only for the success config: also runs the real submit composite action (the same one
-      # job.yml's create-pr job uses), proving end to end that a garbage write-token is safe here
-      # - SubmitRunner never touches it because the prompt above guarantees zero PRs were queued.
+      # Runs the real submit composite action (the same one job.yml's create-pr job uses), proving
+      # end to end that a garbage write-token is safe here - SubmitRunner never touches it because
+      # the prompt above guarantees zero PRs were queued.
       - name: Submit (garbage write-token; safe because zero PRs were requested)
-        if: matrix.expect == 'success'
         uses: ./.github/actions/submit-rix-job
         with:
           repo: ${{ github.repository }}
