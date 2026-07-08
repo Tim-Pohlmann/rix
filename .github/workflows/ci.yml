@@ -73,6 +73,10 @@ jobs:
         with:
           name: rix-bin
           path: rix-bin/rix
+          # A self-contained single-file executable is already compressed dotnet-side and only
+          # needed for this run's own lifetime, not the repo's default long retention.
+          compression-level: 0
+          retention-days: 1
 
   agent-plumbing:
     name: "Agent plumbing: ${{ matrix.name }}"
@@ -80,6 +84,8 @@ jobs:
     needs: build-rix
     permissions:
       contents: read
+    env:
+      RIX_BIN_PATH: ${{ github.workspace }}/rix-bin/rix
 
     # Runs the real .github/actions/run-rix-job composite action (the same one job.yml's `run`
     # job uses) against this repo itself, with no agent API key, across several (agent, model)
@@ -150,7 +156,7 @@ jobs:
           model: ${{ matrix.model }}
           agent-api-key: ${{ matrix.agent-api-key }}
           agent-api-key-env: ${{ matrix.agent-api-key-env }}
-          rix-bin: ${{ github.workspace }}/rix-bin/rix
+          rix-bin: ${{ env.RIX_BIN_PATH }}
 
       - name: Assert expected outcome
         # status/error come from the agent process's own output (via steps.run.outputs), so they
@@ -176,10 +182,7 @@ jobs:
             # hang, not a later delivery-stage failure), so an unrelated regression can't
             # masquerade as "expected failure".
             [ "$status" = "failure" ] || { echo "expected status 'failure', got '$status' ($error)"; exit 1; }
-            case "$error" in
-              "agent failed: exited with code "*) ;;
-              *) echo "expected an agent-exit failure, got: $error"; exit 1 ;;
-            esac
+            [[ "$error" == "agent failed: exited with code "* ]] || { echo "expected an agent-exit failure, got: $error"; exit 1; }
             # Beyond the exit-stage check above, pin the failure to its expected *reason* (e.g.
             # auth vs. a bad flag) using the diagnostic text captured from the agent's own
             # stderr/stdout - otherwise any same-exit-code failure would satisfy this leg.
@@ -199,7 +202,7 @@ jobs:
           repo: ${{ github.repository }}
           write-token: not-a-real-token
           input-dir: out
-          rix-bin: ${{ github.workspace }}/rix-bin/rix
+          rix-bin: ${{ env.RIX_BIN_PATH }}
 
   test:
     name: Test (${{ matrix.os }})
