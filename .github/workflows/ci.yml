@@ -34,9 +34,12 @@ jobs:
           # job.workflow_sha context properties, even though they're documented and supported by
           # the runner - see https://github.com/rhysd/actionlint/issues/260 for the same gap on an
           # earlier context property. Narrowly ignore just these false positives.
-          flags: >-
-            -ignore 'property "workflow_(repository|sha)" is not defined in object type
-            \{check_run_id:'
+          #
+          # No literal spaces/quotes in the pattern (using \s and . instead) - raven-actions/
+          # actionlint's flag tokenizer only understands double-quote grouping with no escaping,
+          # so a quoted pattern containing literal double quotes gets mis-split into several
+          # bogus positional args instead of a single -ignore value.
+          flags: '-ignore property\s.workflow_(repository|sha).\sis\snot\sdefined\sin\sobject\stype\s\{check_run_id:'
 
       - name: Lint shell scripts (shellcheck)
         run: shellcheck .github/scripts/*.sh
