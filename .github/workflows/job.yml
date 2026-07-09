@@ -65,8 +65,9 @@ on:
           default model, needing no key; set this when picking a specific provider/model.
         required: false
 
-# Rix lives in this repo; consumers reference it as
-# Tim-Pohlmann/rix/.github/workflows/job.yml@main. Adjust if the repo moves.
+# Default repo to download the rix release binary from - passed to the composite actions as
+# repo-slug, independent of job.workflow_repository (which locates *this* job.yml's own source,
+# not necessarily where releases are published).
 env:
   RIX_REPO_SLUG: Tim-Pohlmann/rix
 
@@ -87,14 +88,16 @@ jobs:
       # action step below (and its own nested `uses: ./.github/actions/download-rix`) can
       # resolve. .github/scripts/download-rix.sh itself isn't needed here - download-rix fetches
       # its own copy.
+      #
+      # Pinned to job.workflow_sha - the exact commit of *this* job.yml file that's actually
+      # running - rather than rix-version. rix-version only selects which release binary to
+      # download; it's a separate, caller-controlled input that can point at a tag cut before
+      # this composite-action refactor existed, which would leave these actions missing here.
       - name: Get rix repo (for local composite actions)
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.RIX_REPO_SLUG }}
-          # Pin to the same release tag as the binary so a consumer pinning rix-version gets
-          # matching composite-action definitions; empty ref falls back to the default branch
-          # only for "latest".
-          ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
@@ -128,8 +131,8 @@ jobs:
       - name: Get rix repo (for local composite actions)
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.RIX_REPO_SLUG }}
-          ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
