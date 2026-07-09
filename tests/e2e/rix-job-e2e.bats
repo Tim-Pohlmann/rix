@@ -12,9 +12,10 @@
 # agent CLI's own last-written line verbatim (see ProcessWrapper.Diagnostic) - for every runtime
 # failure both CLIs support (auth, bad key, ...), that line is itself a JSON object from the CLI's
 # own structured output/error protocol, whereas a usage error is plain, non-JSON text emitted
-# before either CLI ever entered that protocol. Asserting the diagnostic parses as JSON therefore
-# catches the same class of regression the old prose-matching assertions did, without needing to
-# track exact vendor wording.
+# before either CLI ever entered that protocol. Asserting the diagnostic parses as a JSON object
+# (not just any JSON value - `jq empty` alone would also accept a bare `null`) therefore catches
+# the same class of regression the old prose-matching assertions did, without needing to track
+# exact vendor wording.
 #
 # For the two claude tests specifically, we go one step further and assert the diagnostic's
 # "is_error" field is true. The diagnostic is the CLI's last-written stdout line, which for
@@ -69,6 +70,7 @@ diagnostic_of() {
   [ "$(result_field status)" = failure ]
   diagnostic="$(result_field error | diagnostic_of)"
   echo "$diagnostic" | jq empty
+  [ "$(echo "$diagnostic" | jq -r 'type')" = object ]
 }
 
 @test "claude fails without a key with a structured (not plain-text) diagnostic" {
