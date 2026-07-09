@@ -148,9 +148,9 @@ jobs:
       RIX_READ_TOKEN: ${{ github.token }}
 
     # One level deeper than agent-plumbing above: invokes the built rix binary directly (bypassing
-    # the composite-action/workflow layer) and does real JSON parsing on its result, so per-failure
-    # -mode assertions live in a proper, reviewable test script (tests/e2e/rix-job-e2e.bats) instead
-    # of workflow YAML.
+    # the composite-action/workflow layer) and does real JSON parsing on its result, so
+    # per-failure-mode assertions live in a proper, reviewable test script
+    # (tests/e2e/rix-job-e2e.bats) instead of workflow YAML.
     steps:
       - uses: actions/checkout@v4
         with:
