@@ -76,6 +76,7 @@ diagnostic_of() {
   [ "$(result_field status)" = failure ]
   diagnostic="$(result_field error | diagnostic_of)"
   echo "$diagnostic" | jq empty
+  echo "DEBUG diagnostic: $diagnostic" >&2
   [ "$(echo "$diagnostic" | jq -r .error)" = authentication_failed ]
 }
 
