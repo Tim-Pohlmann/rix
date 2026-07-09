@@ -29,6 +29,14 @@ jobs:
 
       - name: Lint workflows (actionlint)
         uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
+        with:
+          # actionlint (as of v1.7.12) doesn't yet know about the job.workflow_repository /
+          # job.workflow_sha context properties, even though they're documented and supported by
+          # the runner - see https://github.com/rhysd/actionlint/issues/260 for the same gap on an
+          # earlier context property. Narrowly ignore just these false positives.
+          flags: >-
+            -ignore 'property "workflow_(repository|sha)" is not defined in object type
+            \{check_run_id:'
 
       - name: Lint shell scripts (shellcheck)
         run: shellcheck .github/scripts/*.sh
