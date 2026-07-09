@@ -90,7 +90,9 @@ public class JobRunnerTests
     {
         await Run(claudeExitCode: 1);
 
-        Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "result.json")));
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("failure", doc.RootElement.GetProperty("status").GetString());
     }
 
     [TestMethod]
