@@ -16,6 +16,13 @@
 # catches the same class of regression the old prose-matching assertions did, without needing to
 # track exact vendor wording.
 #
+# For the two claude tests specifically, we go one step further and assert the CLI's own
+# "error" field equals "authentication_failed" - confirmed (by running the real CLI locally,
+# both with an explicit invalid key and with no credentials at all) to be the one field that's
+# stable across both real auth-failure paths, unlike e.g. api_error_status (only set when the
+# API itself rejects the call; null when the CLI catches "not logged in" client-side). This
+# rules out a false pass from some other JSON-shaped CLI error unrelated to auth.
+#
 # Requires: RIX_BIN (a built rix binary), RIX_REPO/RIX_READ_TOKEN (a real repo + token to clone),
 # and network access to install/run the real agent CLIs via npm.
 
@@ -69,6 +76,7 @@ diagnostic_of() {
   [ "$(result_field status)" = failure ]
   diagnostic="$(result_field error | diagnostic_of)"
   echo "$diagnostic" | jq empty
+  [ "$(echo "$diagnostic" | jq -r .error)" = authentication_failed ]
 }
 
 @test "claude with an explicit model fails without a key with a structured (not plain-text) diagnostic" {
@@ -78,4 +86,5 @@ diagnostic_of() {
   [ "$(result_field status)" = failure ]
   diagnostic="$(result_field error | diagnostic_of)"
   echo "$diagnostic" | jq empty
+  [ "$(echo "$diagnostic" | jq -r .error)" = authentication_failed ]
 }
