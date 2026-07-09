@@ -23,8 +23,8 @@ public class ProcessWrapperTests
     private static string EchoToStderr(string text)
     => OperatingSystem.IsWindows() switch
     {
-        true => $"[Console]::Error.WriteLine('{text}')",
-        false => $"echo {text} 1>&2",
+        true => $"[Console]::Error.WriteLine('{text.Replace("'", "''")}')",
+        false => $"echo '{text.Replace("'", "'\\''")}' 1>&2",
     };
 
     [TestMethod]

@@ -71,8 +71,15 @@ internal static class ProcessWrapper
 
         await Task.WhenAny(processTask, stdoutTask, stderrTask);
         if (stdoutTask.IsFaulted)
+        {
             try { process.Kill(entireProcessTree: true); }
             catch (InvalidOperationException) { /* process already exited */ }
+            // Drain stderr now, before stdoutTask's exception propagates below - otherwise this
+            // method returns without ever awaiting stderrTask, leaving its read loop running
+            // against a stream whose process is about to be disposed.
+            try { await stderrTask; }
+            catch { /* best-effort: stdoutTask's exception is what actually fails this run */ }
+        }
 
         try
         {
