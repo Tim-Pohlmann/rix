@@ -65,18 +65,18 @@ internal static class ProcessWrapper
 
         var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
         // Both streams must be drained concurrently (not just stdout), or a child that fills its
-        // stderr pipe while nothing is reading it can deadlock the whole run. Forwarded through
-        // the caller's callback (prefixed) when one is supplied, or straight to Console.Error
-        // otherwise - callers that pass onStdoutLine: null (git, npm) relied on stderr being
-        // inherited straight from the console before this method started redirecting/capturing
-        // it, and would otherwise lose that output entirely now that it's piped.
-        var forwardStderrLine = onStdoutLine ?? Console.Error.WriteLine;
-        var stderrTask = ReadLinesAsync
-        (
-            process.StandardError,
-            onLine: line => forwardStderrLine($"[stderr] {line}"),
-            cancellationToken
-        );
+        // stderr pipe while nothing is reading it can deadlock the whole run. When a callback is
+        // supplied, stderr is forwarded through it prefixed, since it shares that single stream
+        // with stdout and needs to stay distinguishable there. Callers that pass onStdoutLine:
+        // null (git, npm) relied on stderr being inherited straight from the console before this
+        // method started redirecting/capturing it, so those get the raw line written straight to
+        // Console.Error instead - its own stream, so no prefix is needed to disambiguate it.
+        Action<string> forwardStderrLine = onStdoutLine switch
+        {
+            { } forward => line => forward($"[stderr] {line}"),
+            null => Console.Error.WriteLine,
+        };
+        var stderrTask = ReadLinesAsync(process.StandardError, forwardStderrLine, cancellationToken);
         var processTask = process.WaitForExitAsync(cancellationToken);
 
         await Task.WhenAny(processTask, stdoutTask, stderrTask);
