@@ -107,7 +107,7 @@ internal static class Startup
         {
             await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, CancellationToken.None);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             await Console.Error.WriteLineAsync($"warning: failed to write result.json: {ex.Message}");
         }
