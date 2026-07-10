@@ -91,7 +91,7 @@ public class JobRunnerTests
         await Run(claudeExitCode: 1);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
-        var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json);
         Assert.AreEqual("failure", doc.RootElement.GetProperty("status").GetString());
     }
 
