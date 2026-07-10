@@ -100,7 +100,17 @@ internal static class Startup
         var result = await JobRunner.RunAsync(config, context, cancellationToken);
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
         Console.WriteLine(json);
-        await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, cancellationToken);
+        // Best-effort and uncancellable: this runs after the job itself is already decided, so a
+        // cancellation requested in this narrow window (or a transient disk error) must not stop
+        // the correct exit code from being returned - only the result.json copy would be lost.
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, CancellationToken.None);
+        }
+        catch (IOException ex)
+        {
+            Console.Error.WriteLine($"warning: failed to write result.json: {ex.Message}");
+        }
         return result switch
         {
             JobSuccess => ExitCodes.Success,
