@@ -65,18 +65,8 @@ internal static class ProcessWrapper
 
         var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
         // Both streams must be drained concurrently (not just stdout), or a child that fills its
-        // stderr pipe while nothing is reading it can deadlock the whole run. When a callback is
-        // supplied, stderr is forwarded through it prefixed, since it shares that single stream
-        // with stdout and needs to stay distinguishable there. Callers that pass onStdoutLine:
-        // null (git, npm) relied on stderr being inherited straight from the console before this
-        // method started redirecting/capturing it, so those get the raw line written straight to
-        // Console.Error instead - its own stream, so no prefix is needed to disambiguate it.
-        Action<string> forwardStderrLine = onStdoutLine switch
-        {
-            { } forward => line => forward($"[stderr] {line}"),
-            null => Console.Error.WriteLine,
-        };
-        var stderrTask = ReadLinesAsync(process.StandardError, forwardStderrLine, cancellationToken);
+        // stderr pipe while nothing is reading it can deadlock the whole run.
+        var stderrTask = ReadLinesAsync(process.StandardError, BuildStderrForwarder(onStdoutLine), cancellationToken);
         var processTask = process.WaitForExitAsync(cancellationToken);
 
         await Task.WhenAny(processTask, stdoutTask, stderrTask);
@@ -112,6 +102,18 @@ internal static class ProcessWrapper
         if (process.ExitCode == 0)
             return new ProcessSuccess(lastLine);
         return new ProcessFailure($"exited with code {process.ExitCode}", Diagnostic: lastErrLine ?? lastLine);
+    }
+
+    /// <summary>When a callback is supplied, stderr is forwarded through it prefixed, since it
+    /// shares that single stream with stdout and needs to stay distinguishable there. Callers that
+    /// pass <c>onStdoutLine: null</c> (git, npm) relied on stderr being inherited straight from the
+    /// console before this method started redirecting/capturing it, so those get the raw line
+    /// written straight to <see cref="Console.Error"/> instead - its own stream, so no prefix is
+    /// needed to disambiguate it.</summary>
+    private static Action<string> BuildStderrForwarder(Action<string>? onStdoutLine)
+    {
+        if (onStdoutLine is null) return Console.Error.WriteLine;
+        return line => onStdoutLine($"[stderr] {line}");
     }
 
     /// <summary>Forwards each line read from <paramref name="reader"/> to <paramref name="onLine"/>
