@@ -109,6 +109,18 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task ExecuteJobAsync_StillReturnsExitCode_WhenResultJsonCannotBeWritten()
+    {
+        // Forces the write to fail with UnauthorizedAccessException: "result.json" already exists
+        // as a directory at that path, so it can't be opened as a file.
+        Directory.CreateDirectory(Path.Combine(_outputDir, "result.json"));
+
+        var result = await Run();
+
+        Assert.AreEqual(0, result);
+    }
+
+    [TestMethod]
     public async Task RunAsync_ResultJson_ContainsPendingPrRequests()
     {
         await Run(pr: new("rix/my-fix", "main", "My fix", "body"));
