@@ -14,7 +14,7 @@ on:
         required: true
         type: string
       agent:
-        description: "Coding agent to run: 'opencode' (default) or 'claude'"
+        description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
         required: false
         type: string
         default: opencode
@@ -30,7 +30,8 @@ on:
           Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
           ANTHROPIC_API_KEY, OPENAI_API_KEY) — whatever the selected provider/model expects.
           Must end in _API_KEY. Omit to use a default based on agent: OPENCODE_API_KEY for
-          opencode, ANTHROPIC_API_KEY for claude.
+          opencode, ANTHROPIC_API_KEY for claude. Required for pi whenever agent-api-key is set,
+          since pi has no single default provider to fall back on.
         required: false
         type: string
       rix-version:

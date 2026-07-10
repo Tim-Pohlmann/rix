@@ -31,6 +31,7 @@ internal static class Startup
     {
         AgentKind.Claude => new ClaudeAgent(),
         AgentKind.OpenCode => new OpenCodeAgent(),
+        AgentKind.Pi => new PiAgent(),
         _ => throw new NotSupportedException($"Unsupported agent: {agent}"),
     };
 

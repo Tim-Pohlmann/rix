@@ -15,7 +15,7 @@ inputs:
     description: GitHub PAT (or equivalent token) with read access to the target repo
     required: true
   agent:
-    description: "Coding agent to run: 'opencode' (default) or 'claude'"
+    description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
     required: false
     default: opencode
   model:
@@ -28,7 +28,8 @@ inputs:
     description: >-
       Name of the environment variable agent-api-key is exported as. Must end in _API_KEY. Omit
       to use a default based on agent: OPENCODE_API_KEY for opencode, ANTHROPIC_API_KEY for
-      claude.
+      claude. Required for pi whenever agent-api-key is set, since pi has no single default
+      provider to fall back on.
     required: false
   max-tokens:
     description: Coding agent token budget cap
@@ -87,6 +88,12 @@ runs:
             agent_normalized=$(printf '%s' "$RIX_AGENT" | tr '[:upper:]' '[:lower:]' | xargs)
             case "$agent_normalized" in
               claude) key_env=ANTHROPIC_API_KEY ;;
+              pi)
+                # pi is multi-provider with no single default credential, unlike opencode's
+                # own free-model provider — the caller must say which env var to use.
+                echo "::error::agent-api-key-env is required when agent=pi and agent-api-key is set" >&2
+                exit 1
+                ;;
               *) key_env=OPENCODE_API_KEY ;;
             esac
           fi

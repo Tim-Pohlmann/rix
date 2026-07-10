@@ -57,7 +57,7 @@ internal static class JobCommand
     private static readonly Option<string> AgentOption = new
     (
         name: "--agent",
-        description: "Coding agent to run: 'opencode' (default) or 'claude'"
+        description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
     )
     { IsRequired = false };
 

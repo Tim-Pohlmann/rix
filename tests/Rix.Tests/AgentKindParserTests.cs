@@ -17,6 +17,7 @@ public class AgentKindParserTests
     {
         Assert.AreEqual(AgentKind.Claude, Unwrap(AgentKindParser.Parse(" Claude ")));
         Assert.AreEqual(AgentKind.OpenCode, Unwrap(AgentKindParser.Parse("OPENCODE")));
+        Assert.AreEqual(AgentKind.Pi, Unwrap(AgentKindParser.Parse(" PI ")));
     }
 
     [TestMethod]

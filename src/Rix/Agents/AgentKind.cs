@@ -8,6 +8,9 @@ internal enum AgentKind
 
     /// <summary>The open-source, multi-provider OpenCode CLI (<see cref="OpenCodeAgent"/>) — the default.</summary>
     OpenCode,
+
+    /// <summary>The open-source, multi-provider Pi coding agent CLI (<see cref="PiAgent"/>).</summary>
+    Pi,
 }
 
 internal static class AgentKindParser
@@ -25,7 +28,8 @@ internal static class AgentKindParser
         {
             "claude" => new ParseSuccess<AgentKind>(AgentKind.Claude),
             "opencode" => new ParseSuccess<AgentKind>(AgentKind.OpenCode),
-            _ => new ParseError<AgentKind>($"unknown agent '{normalized}' (expected 'claude' or 'opencode')"),
+            "pi" => new ParseSuccess<AgentKind>(AgentKind.Pi),
+            _ => new ParseError<AgentKind>($"unknown agent '{normalized}' (expected 'claude', 'opencode', or 'pi')"),
         };
     }
 }
