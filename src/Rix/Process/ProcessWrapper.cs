@@ -11,9 +11,11 @@ internal abstract record ProcessResult
 /// <c>null</c> if the process wrote nothing — enough to read a terminal summary line without
 /// buffering the whole stream.</summary>
 internal sealed record ProcessSuccess(string? Output = null) : ProcessResult;
-/// <summary><paramref name="Diagnostic"/> is the last non-empty line the process wrote (stderr
-/// preferred, falling back to stdout) — the closest thing to "why" a CLI that doesn't structure
-/// its errors gives us, e.g. an auth/usage message printed just before a non-zero exit.</summary>
+/// <summary><paramref name="Diagnostic"/> is <c>null</c> unless the process actually ran and
+/// exited non-zero, in which case it's the last non-empty line it wrote (stderr preferred,
+/// falling back to stdout) — the closest thing to "why" a CLI that doesn't structure its errors
+/// gives us, e.g. an auth/usage message printed just before a non-zero exit. A process that never
+/// started (see <see cref="Win32Exception"/>) or timed out carries no diagnostic.</summary>
 internal sealed record ProcessFailure(string Reason, string? Diagnostic = null) : ProcessResult;
 
 /// <summary>The single side-effect seam for running a subprocess. Every part of a job — agent
@@ -104,12 +106,13 @@ internal static class ProcessWrapper
         return new ProcessFailure($"exited with code {process.ExitCode}", Diagnostic: lastErrLine ?? lastLine);
     }
 
-    /// <summary>When a callback is supplied, stderr is forwarded through it prefixed, since it
-    /// shares that single stream with stdout and needs to stay distinguishable there. Callers that
-    /// pass <c>onStdoutLine: null</c> (git, npm) relied on stderr being inherited straight from the
-    /// console before this method started redirecting/capturing it, so those get the raw line
-    /// written straight to <see cref="Console.Error"/> instead - its own stream, so no prefix is
-    /// needed to disambiguate it.</summary>
+    /// <summary>When a callback is supplied, stderr is forwarded through it prefixed, since stdout
+    /// is forwarded through that same callback and the prefix is what keeps the two
+    /// distinguishable there. Callers that pass <c>onStdoutLine: null</c> (git, npm) relied on
+    /// stderr being inherited straight from the console before this method started
+    /// redirecting/capturing it, so those get the raw line written straight to
+    /// <see cref="Console.Error"/> instead - its own stream, so no prefix is needed to
+    /// disambiguate it.</summary>
     private static Action<string> BuildStderrForwarder(Action<string>? onStdoutLine)
     {
         if (onStdoutLine is null) return Console.Error.WriteLine;
