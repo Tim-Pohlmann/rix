@@ -109,7 +109,7 @@ internal static class Startup
         }
         catch (IOException ex)
         {
-            Console.Error.WriteLine($"warning: failed to write result.json: {ex.Message}");
+            await Console.Error.WriteLineAsync($"warning: failed to write result.json: {ex.Message}");
         }
         return result switch
         {
