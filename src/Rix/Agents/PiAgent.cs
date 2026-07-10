@@ -64,6 +64,8 @@ internal sealed class PiAgent : ICodingAgent
         {
             if
             (
+                message.TryGetProperty("role", out var role) &&
+                role.ValueKind == JsonValueKind.String && role.GetString() == "assistant" &&
                 message.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object &&
                 usage.TryGetProperty("cost", out var cost) && cost.ValueKind == JsonValueKind.Object &&
                 cost.TryGetProperty("total", out var totalCost) &&

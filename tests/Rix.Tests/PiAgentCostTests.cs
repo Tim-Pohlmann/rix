@@ -51,6 +51,21 @@ public class PiAgentCostTests
     }
 
     [TestMethod]
+    public void ParseCost_IgnoresNonAssistantMessages_EvenWithNumericCost()
+    {
+        // Only AssistantMessage carries usage/cost in Pi's schema, but a malformed or
+        // unexpected event shouldn't let a non-assistant message inflate the total.
+        const string line = """
+            {"type":"agent_end","messages":[
+                {"role":"toolResult","usage":{"cost":{"total":99}}},
+                {"role":"assistant","usage":{"cost":{"total":0.5}}}
+            ]}
+            """;
+
+        Assert.AreEqual(0.5m, new PiAgent().ParseCost(line));
+    }
+
+    [TestMethod]
     public void ParseCost_IgnoresMessagesWithNonNumericCost()
     {
         const string line = """
