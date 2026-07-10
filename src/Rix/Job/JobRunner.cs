@@ -41,7 +41,7 @@ internal static class JobRunner
         }
         catch (InvalidOperationException ex)
         {
-            return new SetupFailure($"clone failed: {ex.Message}");
+            return new SetupFailure(ex.Message);
         }
 
         await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct, context.LogLine.Invoke);

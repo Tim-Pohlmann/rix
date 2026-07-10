@@ -96,6 +96,19 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_WritesResultJson_OnSetupFailure()
+    {
+        await Startup.ExecuteJobAsync(
+            MakeConfig(), CancellationToken.None,
+            Context(new StubRepositoryHost(), FakeRunner(),
+                _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))));
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("setupFailure", doc.RootElement.GetProperty("status").GetString());
+    }
+
+    [TestMethod]
     public async Task RunAsync_ResultJson_ContainsPendingPrRequests()
     {
         await Run(pr: new("rix/my-fix", "main", "My fix", "body"));
