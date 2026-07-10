@@ -65,10 +65,15 @@ internal static class ProcessWrapper
         try { process.Start(); }
         catch (Win32Exception ex) { return new ProcessFailure(ex.Message); }
 
-        var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
+        // Stdout and stderr are drained by two concurrent tasks (see below), so a caller-supplied
+        // callback can now be invoked from either one at the same time. Synchronizing it here - once,
+        // shared by both call sites - keeps calls serialized regardless of which stream a line came
+        // from, instead of leaving every future caller to notice and guard against the race itself.
+        var syncedOnStdoutLine = Synchronize(onStdoutLine);
+        var stdoutTask = ReadLinesAsync(process.StandardOutput, syncedOnStdoutLine, cancellationToken);
         // Both streams must be drained concurrently (not just stdout), or a child that fills its
         // stderr pipe while nothing is reading it can deadlock the whole run.
-        var stderrTask = ReadLinesAsync(process.StandardError, BuildStderrForwarder(onStdoutLine), cancellationToken);
+        var stderrTask = ReadLinesAsync(process.StandardError, BuildStderrForwarder(syncedOnStdoutLine), cancellationToken);
         var processTask = process.WaitForExitAsync(cancellationToken);
 
         await Task.WhenAny(processTask, stdoutTask, stderrTask);
@@ -104,6 +109,19 @@ internal static class ProcessWrapper
         if (process.ExitCode == 0)
             return new ProcessSuccess(lastLine);
         return new ProcessFailure($"exited with code {process.ExitCode}", Diagnostic: lastErrLine ?? lastLine);
+    }
+
+    /// <summary>Wraps <paramref name="callback"/> so calls through the returned delegate never
+    /// overlap, even when made concurrently from stdout's and stderr's independent reader tasks -
+    /// callers (test spies, non-thread-safe loggers) are entitled to assume one line is fully
+    /// handled before the next arrives. Internal (rather than private) so this guarantee can be
+    /// pinned down directly, deterministically, from a test - real stdout/stderr delivery from an
+    /// actual OS pipe can't be forced to overlap on demand across platforms.</summary>
+    internal static Action<string>? Synchronize(Action<string>? callback)
+    {
+        if (callback is null) return null;
+        var gate = new object();
+        return line => { lock (gate) { callback(line); } };
     }
 
     /// <summary>When a callback is supplied, stderr is forwarded through it prefixed, since stdout
