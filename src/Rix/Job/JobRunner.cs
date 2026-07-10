@@ -35,7 +35,14 @@ internal static class JobRunner
 
         using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-clone");
 
-        await context.Host.CloneAsync(cloneDir.Path, ct);
+        try
+        {
+            await context.Host.CloneAsync(cloneDir.Path, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new SetupFailure($"clone failed: {ex.Message}");
+        }
 
         await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct, context.LogLine.Invoke);
 
