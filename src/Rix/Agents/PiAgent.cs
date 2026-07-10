@@ -43,10 +43,19 @@ internal sealed class PiAgent : ICodingAgent
 
     /// <summary>
     /// Reads cost from Pi's JSON event stream. Pi emits per-message cost (<c>usage.cost.total</c>
-    /// on each assistant message), not a single cumulative total, so the run's cost is the sum of
-    /// every assistant message's cost from the terminal <c>agent_end</c> event, which carries the
-    /// full message list; other lines yield <c>null</c> so the caller keeps the last known value.
+    /// on each assistant message), not a single cumulative total, so this sums every assistant
+    /// message's cost from the <c>agent_end</c> event, which carries the full message list.
     /// </summary>
+    /// <remarks>
+    /// In practice Pi's actual last stdout line is always a payload-free <c>agent_settled</c>
+    /// event that Pi unconditionally emits after <c>agent_end</c> — and <see cref="JobRunner"/>
+    /// only ever passes this method the single final line. So this correctly reads cost if ever
+    /// given an <c>agent_end</c> line (e.g. if Pi's protocol changes, and for direct unit testing),
+    /// but under the current one-line architecture it will reliably return <c>null</c>, and the
+    /// run's reported cost will be <c>0</c> — the same kind of known limitation
+    /// <see cref="OpenCodeAgent"/> documents for its own frequent zero-cost reports, just total
+    /// rather than intermittent.
+    /// </remarks>
     public decimal? ParseCost(string outputLine) => CostLine.Read(outputLine, "\"agent_end\"", ReadCost);
 
     private static decimal? ReadCost(JsonElement root)
