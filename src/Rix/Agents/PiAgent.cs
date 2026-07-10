@@ -47,41 +47,35 @@ internal sealed class PiAgent : ICodingAgent
     /// message's cost from the <c>agent_end</c> event, which carries the full message list.
     /// </summary>
     /// <remarks>
-    /// In practice Pi's actual last stdout line is always a payload-free <c>agent_settled</c>
-    /// event that Pi unconditionally emits after <c>agent_end</c> — and <see cref="JobRunner"/>
-    /// only ever passes this method the single final line. So this correctly reads cost if ever
-    /// given an <c>agent_end</c> line (e.g. if Pi's protocol changes, and for direct unit testing),
-    /// but under the current one-line architecture it will reliably return <c>null</c>, and the
-    /// run's reported cost will be <c>0</c> — the same kind of known limitation
-    /// <see cref="OpenCodeAgent"/> documents for its own frequent zero-cost reports, just total
-    /// rather than intermittent.
+    /// Only <c>agent_end</c> lines carry the message list; the caller's other stdout lines only
+    /// ever have <c>agent_settled</c> as the final line, so this reliably returns <c>null</c>
+    /// (reported cost <c>0</c>) in normal operation today.
     /// </remarks>
     public decimal? ParseCost(string outputLine) => CostLine.Read(outputLine, "\"agent_end\"", ReadCost);
 
     private static decimal? ReadCost(JsonElement root)
     {
-        if
-        (
-            !root.TryGetProperty("type", out var type) ||
-            type.ValueKind != JsonValueKind.String || type.GetString() != "agent_end" ||
-            !root.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array
-        )
+        if (!root.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
             return null;
 
         decimal total = 0m;
         foreach (var message in messages.EnumerateArray())
-        {
-            if
-            (
-                message.TryGetProperty("role", out var role) &&
-                role.ValueKind == JsonValueKind.String && role.GetString() == "assistant" &&
-                message.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object &&
-                usage.TryGetProperty("cost", out var cost) && cost.ValueKind == JsonValueKind.Object &&
-                cost.TryGetProperty("total", out var totalCost) &&
-                totalCost.ValueKind == JsonValueKind.Number && totalCost.TryGetDecimal(out var v)
-            )
-                total += v;
-        }
+            total += ReadAssistantCost(message);
         return total;
+    }
+
+    private static decimal ReadAssistantCost(JsonElement message)
+    {
+        if (!message.TryGetProperty("role", out var role) || role.GetString() != "assistant")
+            return 0m;
+        if (!message.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
+            return 0m;
+        if (!usage.TryGetProperty("cost", out var cost) || cost.ValueKind != JsonValueKind.Object)
+            return 0m;
+        if (!cost.TryGetProperty("total", out var totalCost) || totalCost.ValueKind != JsonValueKind.Number)
+            return 0m;
+        if (!totalCost.TryGetDecimal(out var v))
+            return 0m;
+        return v;
     }
 }

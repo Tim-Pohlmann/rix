@@ -112,13 +112,8 @@ diagnostic_of() {
   run "$RIX_BIN" job
   [ "$status" -eq 1 ]
   [ "$(result_field status)" = failure ]
-  # pi indents this line with leading spaces as part of its own formatting (see
-  # auth-guidance.js's getProviderLoginHelp) - trim it, or the path below won't resolve.
+  # See the file header for why this is a .md path rather than JSON, and why it needs trimming.
   diagnostic="$(result_field error | diagnostic_of | xargs)"
-  # No provider is resolvable at all, so unlike opencode/claude this diagnostic is plain prose,
-  # not JSON (see the file header) - a real path to a .md file the pi package installs alongside
-  # itself is the structural signal that pi reached its own login-guidance code, rather than e.g.
-  # rejecting one of our flags as unknown.
   [[ "$diagnostic" == *.md ]]
   [ -f "$diagnostic" ]
 }
