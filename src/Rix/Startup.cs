@@ -109,7 +109,9 @@ internal static class Startup
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await Console.Error.WriteLineAsync($"warning: failed to write result.json: {ex.Message}");
+            // Also best-effort: a closed/broken stderr must not defeat the exit-code guarantee above.
+            try { await Console.Error.WriteLineAsync($"warning: failed to write result.json: {ex.Message}"); }
+            catch (IOException) { /* nothing left to report to */ }
         }
         return result switch
         {
