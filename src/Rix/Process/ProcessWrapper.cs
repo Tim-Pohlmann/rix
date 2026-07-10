@@ -65,20 +65,30 @@ internal static class ProcessWrapper
 
         var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
         // Both streams must be drained concurrently (not just stdout), or a child that fills its
-        // stderr pipe while nothing is reading it can deadlock the whole run.
-        var stderrTask = ReadLinesAsync(process.StandardError, onLine: null, cancellationToken);
+        // stderr pipe while nothing is reading it can deadlock the whole run. Forwarded through
+        // the same callback (prefixed) so stderr stays visible in logs, as it was before this
+        // method started redirecting/capturing it instead of letting the child inherit the
+        // console handle directly.
+        var stderrTask = ReadLinesAsync
+        (
+            process.StandardError,
+            onLine: line => onStdoutLine?.Invoke($"[stderr] {line}"),
+            cancellationToken
+        );
         var processTask = process.WaitForExitAsync(cancellationToken);
 
         await Task.WhenAny(processTask, stdoutTask, stderrTask);
-        if (stdoutTask.IsFaulted)
+        if (stdoutTask.IsFaulted || stderrTask.IsFaulted)
         {
             try { process.Kill(entireProcessTree: true); }
             catch (InvalidOperationException) { /* process already exited */ }
-            // Drain stderr now, before stdoutTask's exception propagates below - otherwise this
-            // method returns without ever awaiting stderrTask, leaving its read loop running
-            // against a stream whose process is about to be disposed.
+            // Drain both now, before whichever fault propagates below - otherwise this method
+            // can return (or throw) without ever awaiting one of them, leaving its read loop
+            // running against a stream whose process is about to be disposed.
+            try { await stdoutTask; }
+            catch { /* best-effort: whichever task actually faulted first is what fails this run */ }
             try { await stderrTask; }
-            catch { /* best-effort: stdoutTask's exception is what actually fails this run */ }
+            catch { /* same */ }
         }
 
         try
