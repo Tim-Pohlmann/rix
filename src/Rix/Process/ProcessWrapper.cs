@@ -66,13 +66,15 @@ internal static class ProcessWrapper
         var stdoutTask = ReadLinesAsync(process.StandardOutput, onStdoutLine, cancellationToken);
         // Both streams must be drained concurrently (not just stdout), or a child that fills its
         // stderr pipe while nothing is reading it can deadlock the whole run. Forwarded through
-        // the same callback (prefixed) so stderr stays visible in logs, as it was before this
-        // method started redirecting/capturing it instead of letting the child inherit the
-        // console handle directly.
+        // the caller's callback (prefixed) when one is supplied, or straight to Console.Error
+        // otherwise - callers that pass onStdoutLine: null (git, npm) relied on stderr being
+        // inherited straight from the console before this method started redirecting/capturing
+        // it, and would otherwise lose that output entirely now that it's piped.
+        var forwardStderrLine = onStdoutLine ?? Console.Error.WriteLine;
         var stderrTask = ReadLinesAsync
         (
             process.StandardError,
-            onLine: line => onStdoutLine?.Invoke($"[stderr] {line}"),
+            onLine: line => forwardStderrLine($"[stderr] {line}"),
             cancellationToken
         );
         var processTask = process.WaitForExitAsync(cancellationToken);
