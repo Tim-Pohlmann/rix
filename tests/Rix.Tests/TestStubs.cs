@@ -7,9 +7,14 @@ namespace Rix.Tests;
 
 internal sealed class StubRepositoryHost(
     Func<BranchName, Task<bool>>? branchExists = null,
-    Func<string, Task>? createBundle = null) : IRepositoryReadHost
+    Func<string, Task>? createBundle = null,
+    Func<Task>? clone = null) : IRepositoryReadHost
 {
-    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken) => Task.CompletedTask;
+    /// <summary>Succeeds by default; override via <paramref name="clone"/> to simulate a git
+    /// clone failure (e.g. throwing <see cref="InvalidOperationException"/>, as the real
+    /// <see cref="Repository.GitHubReadHost.CloneAsync"/> does).</summary>
+    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
+    => clone switch { { } check => check(), _ => Task.CompletedTask };
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     => branchExists switch { { } check => check(branch), _ => Task.FromResult(false) };
 

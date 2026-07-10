@@ -408,6 +408,18 @@ public class JobRunnerTests
         Assert.IsInstanceOfType<SetupFailure>(result);
     }
 
+    [TestMethod]
+    public async Task RunAsync_ReturnsSetupFailure_WhenCloneFails()
+    {
+        var host = new StubRepositoryHost(clone: () => throw new InvalidOperationException("git clone failed: exit code 128"));
+
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsInstanceOfType<SetupFailure>(result);
+    }
+
     // ---- helpers ----
 
     private static JobContext Context(
