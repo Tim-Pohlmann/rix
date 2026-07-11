@@ -99,7 +99,11 @@ internal static class Startup
         context ??= DefaultContext(config);
         var result = await JobRunner.RunAsync(config, context, cancellationToken);
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
-        Console.WriteLine(json);
+        // Best-effort: once the job outcome above is decided, a broken/closed stdout pipe must not
+        // stop the correct exit code from being returned any more than a result.json write failure
+        // does below.
+        try { await Console.Out.WriteLineAsync(json); }
+        catch (IOException) { /* nothing left to report to */ }
         // Best-effort and uncancellable: this runs after the job itself is already decided, so a
         // cancellation requested in this narrow window (or a transient disk error) must not stop
         // the correct exit code from being returned - only the result.json copy would be lost.
