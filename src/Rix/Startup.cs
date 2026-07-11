@@ -102,8 +102,7 @@ internal static class Startup
         // Best-effort: once the job outcome above is decided, a broken/closed stdout pipe must not
         // stop the correct exit code from being returned any more than a result.json write failure
         // does below.
-        try { await Console.Out.WriteLineAsync(json); }
-        catch (IOException) { /* nothing left to report to */ }
+        await WriteBestEffortAsync(Console.Out, json);
         // Best-effort and uncancellable: this runs after the job itself is already decided, so a
         // cancellation requested in this narrow window (or a transient disk error) must not stop
         // the correct exit code from being returned - only the result.json copy would be lost.
@@ -114,8 +113,7 @@ internal static class Startup
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Also best-effort: a closed/broken stderr must not defeat the exit-code guarantee above.
-            try { await Console.Error.WriteLineAsync($"warning: failed to write result.json: {ex.Message}"); }
-            catch (IOException) { /* nothing left to report to */ }
+            await WriteBestEffortAsync(Console.Error, $"warning: failed to write result.json: {ex.Message}");
         }
         return result switch
         {
@@ -124,6 +122,17 @@ internal static class Startup
             SetupFailure => ExitCodes.SetupFailed,
             _ => throw new NotSupportedException($"Unexpected job result type: {result.GetType()}"),
         };
+    }
+
+    /// <summary>Writes <paramref name="line"/> to <paramref name="writer"/>, swallowing the ways a
+    /// closed/broken console stream can fail a write (<see cref="IOException"/> for a broken pipe,
+    /// <see cref="ObjectDisposedException"/> if the stream was already disposed) - used by
+    /// <see cref="ExecuteJobAsync"/> for output that must never prevent the correct exit code from
+    /// being returned.</summary>
+    private static async Task WriteBestEffortAsync(TextWriter writer, string line)
+    {
+        try { await writer.WriteLineAsync(line); }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException) { /* nothing left to report to */ }
     }
 
     /// <summary>

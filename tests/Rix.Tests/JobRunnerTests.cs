@@ -121,10 +121,17 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task ExecuteJobAsync_StillWritesResultJson_WhenStdoutCannotBeWritten()
+    public async Task ExecuteJobAsync_StillWritesResultJson_WhenStdoutIsABrokenPipe()
+    => await AssertSurvivesStdoutFailure(new IOException("broken pipe"));
+
+    [TestMethod]
+    public async Task ExecuteJobAsync_StillWritesResultJson_WhenStdoutIsAlreadyDisposed()
+    => await AssertSurvivesStdoutFailure(new ObjectDisposedException(nameof(TextWriter)));
+
+    private async Task AssertSurvivesStdoutFailure(Exception writeException)
     {
         var original = Console.Out;
-        Console.SetOut(new ThrowingWriter());
+        Console.SetOut(new ThrowingWriter(writeException));
         int result;
         try { result = await Run(); }
         finally { Console.SetOut(original); }
@@ -133,15 +140,17 @@ public class JobRunnerTests
         Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "result.json")));
     }
 
-    /// <summary>Simulates a broken/closed stdout pipe: every line write fails with
-    /// <see cref="IOException"/>, the same way a real closed pipe would. Overrides the synchronous
-    /// <see cref="WriteLine(string?)"/> rather than <c>WriteLineAsync</c> - <see cref="Console.SetOut"/>
-    /// wraps the writer in a synchronized <see cref="TextWriter"/> whose async methods delegate to
-    /// the synchronous ones under a lock, so an override of the async method alone is never reached.</summary>
-    private sealed class ThrowingWriter : TextWriter
+    /// <summary>Simulates a broken/closed stdout: every line write fails with
+    /// <paramref name="exception"/>, e.g. <see cref="IOException"/> for a broken pipe or
+    /// <see cref="ObjectDisposedException"/> for an already-disposed stream. Overrides the
+    /// synchronous <see cref="WriteLine(string?)"/> rather than <c>WriteLineAsync</c> -
+    /// <see cref="Console.SetOut"/> wraps the writer in a synchronized <see cref="TextWriter"/>
+    /// whose async methods delegate to the synchronous ones under a lock, so an override of the
+    /// async method alone is never reached.</summary>
+    private sealed class ThrowingWriter(Exception exception) : TextWriter
     {
         public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
-        public override void WriteLine(string? value) => throw new IOException("broken pipe");
+        public override void WriteLine(string? value) => throw exception;
     }
 
     [TestMethod]
