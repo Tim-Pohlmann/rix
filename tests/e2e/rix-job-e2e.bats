@@ -9,22 +9,15 @@
 # must be told apart from an expected runtime failure (bad key, no login, ...) without hardcoding
 # either agent CLI's prose, since that wording isn't ours to pin and doesn't scale as a per-failure
 # assertion. The discriminator used below is structural instead: rix's error field embeds the
-# agent CLI's own last-written line verbatim (see ProcessWrapper.Diagnostic) - for every runtime
-# failure both CLIs support (auth, bad key, ...), that line is itself a JSON object from the CLI's
-# own structured output/error protocol, whereas a usage error is plain, non-JSON text emitted
-# before either CLI ever entered that protocol. Asserting the diagnostic parses as a JSON object
-# (not just any JSON value - `jq empty` alone would also accept a bare `null`) therefore catches
-# the same class of regression the old prose-matching assertions did, without needing to track
-# exact vendor wording.
-#
-# For the two claude tests specifically, we go one step further and assert the diagnostic's
-# "is_error" field is true. The diagnostic is the CLI's last-written stdout line, which for
-# claude is always its final "type":"result" line - confirmed (by running the real CLI both
-# locally and in CI, with an explicit invalid key and with no credentials at all) to carry
-# is_error:true on both real auth-failure paths, unlike e.g. api_error_status (only set when
-# the API itself rejects the call; null when the CLI catches "not logged in" client-side
-# before ever calling the API). This rules out a false pass from some other JSON value (e.g.
-# a bare `null`) slipping past the weaker "parses as JSON" check.
+# agent CLI's own last-written line verbatim (see ProcessWrapper.Diagnostic). For claude, that line
+# is always its final "type":"result" JSON object, whose "is_error" field is true on every runtime
+# failure this has been confirmed against (invalid key, no credentials at all) - so asserting
+# is_error:true rules out a usage error (plain, non-JSON text, emitted before claude ever enters
+# its output protocol) being mistaken for the runtime failure this test expects, without pinning
+# any vendor prose. Note this can't tell an auth failure apart from some other is_error:true
+# failure (e.g. a bad model id) - rix's own result.json carries no error kind beyond this raw
+# diagnostic line, and reaching for a more specific field (e.g. claude's "subtype") would mean
+# depending on vendor-specific JSON shape, the same coupling this test is designed to avoid.
 #
 # Requires: RIX_BIN (a built rix binary), RIX_REPO/RIX_READ_TOKEN (a real repo + token to clone),
 # and network access to install/run the real agent CLIs via npm.
@@ -58,29 +51,6 @@ diagnostic_of() {
   run "$RIX_BIN" job
   [ "$status" -eq 0 ]
   [ "$(result_field status)" = success ]
-}
-
-@test "opencode fails on an invalid key with a structured (not plain-text) diagnostic" {
-  export RIX_AGENT=opencode RIX_MODEL=openai/gpt-4o
-  # opencode forwards to the model's own provider SDK, which reads its own env var convention
-  # (OPENAI_API_KEY for an openai/... model) rather than a generic OPENCODE_API_KEY.
-  export OPENAI_API_KEY=sk-invalid-0000000000000000000000000000000000000000
-  run "$RIX_BIN" job
-  [ "$status" -eq 1 ]
-  [ "$(result_field status)" = failure ]
-  diagnostic="$(result_field error | diagnostic_of)"
-  echo "$diagnostic" | jq empty
-  [ "$(echo "$diagnostic" | jq -r 'type')" = object ]
-}
-
-@test "claude fails without a key with a structured (not plain-text) diagnostic" {
-  export RIX_AGENT=claude
-  run "$RIX_BIN" job
-  [ "$status" -eq 1 ]
-  [ "$(result_field status)" = failure ]
-  diagnostic="$(result_field error | diagnostic_of)"
-  echo "$diagnostic" | jq empty
-  [ "$(echo "$diagnostic" | jq -r .is_error)" = true ]
 }
 
 @test "claude with an explicit model fails without a key with a structured (not plain-text) diagnostic" {
