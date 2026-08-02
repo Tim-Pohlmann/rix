@@ -13,7 +13,7 @@ internal record JobConfig
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
-    internal const AgentKind DefaultAgent = AgentKind.Claude;
+    internal const AgentKind DefaultAgent = AgentKind.OpenCode;
 
     /// <summary>Private so a <see cref="JobConfig"/> can only be produced by <see cref="Create"/>,
     /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
@@ -87,6 +87,8 @@ internal record JobConfig
             ),
         };
 
+        var resolvedModel = string.IsNullOrWhiteSpace(inputs.Model) ? null : inputs.Model;
+
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
 
@@ -98,16 +100,19 @@ internal record JobConfig
             timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
             workDir: parsedWorkDir!,
             outputDir: parsedOutputDir!,
-            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens))
+            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel)
         );
         return new JobConfigValid(config);
     }
 }
 
 /// <summary>How the coding agent should be run: which agent (<see cref="AgentKind"/>), the task
-/// <paramref name="Prompt"/> it receives, and its token budget. Groups the inputs the <c>--agent</c>,
-/// <c>--prompt</c>, and <c>--max-tokens</c> flags configure.</summary>
-internal sealed record AgentConfig(AgentKind Kind, string Prompt, MaxTokens MaxTokens);
+/// <paramref name="Prompt"/> it receives, its token budget, and an optional <paramref name="Model"/>
+/// identifier forwarded verbatim to the agent CLI (e.g. <c>openai/gpt-4o</c> for opencode) — rix
+/// does not interpret or validate it, since which providers/models an agent CLI accepts is entirely
+/// that CLI's concern. Groups the inputs the <c>--agent</c>, <c>--prompt</c>, <c>--max-tokens</c>,
+/// and <c>--model</c> flags configure.</summary>
+internal sealed record AgentConfig(AgentKind Kind, string Prompt, MaxTokens MaxTokens, string? Model = null);
 
 /// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
 /// values first, then the optional ones (which default to <c>null</c> so callers set only what they
@@ -122,7 +127,8 @@ internal record JobInputs
     int? TimeoutMinutes = null,
     string? WorkDir = null,
     string? OutputDir = null,
-    string? Agent = null
+    string? Agent = null,
+    string? Model = null
 );
 
 /// <summary>The result of <see cref="JobConfig.Create"/>: a validated config or the list of

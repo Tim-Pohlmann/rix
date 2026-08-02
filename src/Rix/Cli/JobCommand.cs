@@ -57,7 +57,15 @@ internal static class JobCommand
     private static readonly Option<string> AgentOption = new
     (
         name: "--agent",
-        description: "Coding agent to run: 'claude' (default) or 'opencode'"
+        description: "Coding agent to run: 'opencode' (default) or 'claude'"
+    )
+    { IsRequired = false };
+
+    private static readonly Option<string> ModelOption = new
+    (
+        name: "--model",
+        description: "Model identifier passed to the agent CLI (e.g. 'openai/gpt-4o' for opencode). " +
+            "Provider-specific; forwarded verbatim. Omit to use the agent CLI's own default model."
     )
     { IsRequired = false };
 
@@ -73,6 +81,7 @@ internal static class JobCommand
         command.AddOption(WorkDirOption);
         command.AddOption(OutputDirOption);
         command.AddOption(AgentOption);
+        command.AddOption(ModelOption);
 
         command.SetHandler
         (
@@ -88,7 +97,8 @@ internal static class JobCommand
                     TimeoutMinutes: parsed.Int(TimeoutOption,   "RIX_TIMEOUT"),
                     WorkDir:        parsed.Str(WorkDirOption,   "RIX_WORK_DIR"),
                     OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
-                    Agent:          parsed.Str(AgentOption,     "RIX_AGENT")
+                    Agent:          parsed.Str(AgentOption,     "RIX_AGENT"),
+                    Model:          parsed.Str(ModelOption,     "RIX_MODEL")
                 );
                 var result = JobConfig.Create(inputs);
 

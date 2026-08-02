@@ -29,6 +29,17 @@ jobs:
 
       - name: Lint workflows (actionlint)
         uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
+        with:
+          # actionlint (as of v1.7.12) doesn't yet know about the job.workflow_repository /
+          # job.workflow_sha context properties, even though they're documented and supported by
+          # the runner - see https://github.com/rhysd/actionlint/issues/260 for the same gap on an
+          # earlier context property. Narrowly ignore just these false positives.
+          #
+          # No literal spaces/quotes in the pattern (using \s and . instead) - raven-actions/
+          # actionlint's flag tokenizer only understands double-quote grouping with no escaping,
+          # so a quoted pattern containing literal double quotes gets mis-split into several
+          # bogus positional args instead of a single -ignore value.
+          flags: '-ignore property\s.workflow_(repository|sha).\sis\snot\sdefined\sin\sobject\stype\s\{check_run_id:'
 
       - name: Lint shell scripts (shellcheck)
         run: shellcheck .github/scripts/*.sh
@@ -38,6 +49,135 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bats
           bats tests/scripts
+
+  build-rix:
+    name: Build rix (for agent-plumbing tests)
+    runs-on: ubuntu-latest
+
+    # Built from source rather than downloaded from the latest release, so agent-plumbing below
+    # exercises this PR's own rix changes (e.g. BuildInvocation, error handling) instead of
+    # whatever was last published - a release can lag behind an open PR by any number of fixes.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Publish rix
+        run: dotnet publish src/Rix/Rix.csproj -r linux-x64 -c Release -o rix-bin
+
+      - name: Upload rix binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin/rix
+          # A self-contained single-file executable is already compressed dotnet-side and only
+          # needed for this run's own lifetime, not the repo's default long retention.
+          compression-level: 0
+          retention-days: 1
+
+  agent-plumbing:
+    name: Agent plumbing
+    runs-on: ubuntu-latest
+    needs: build-rix
+    permissions:
+      contents: read
+    env:
+      RIX_BIN_PATH: ${{ github.workspace }}/rix-bin/rix
+
+    # Runs the real .github/actions/run-rix-job composite action (the same one job.yml's `run`
+    # job uses) against this repo itself with opencode's free default model (no API key needed),
+    # using the binary build-rix just published from this PR's own source. This exercises the
+    # actual end-to-end plumbing - CLI parsing, agent CLI install, BuildInvocation, the real agent
+    # process - rather than a hand-copied mirror of it, so a real regression (e.g. an agent CLI
+    # needing a new required flag) fails CI here instead of only being discovered by a broken
+    # production run. Failure-mode assertions (auth errors, bad models, ...) live in the
+    # `rix-job-e2e` bats test instead, where they can do real JSON parsing without embedding that
+    # logic in workflow YAML.
+    steps:
+      # Only the composite actions under .github/actions are needed here (the app source and
+      # test suites aren't touched directly by this job - build-rix above already built the
+      # binary under test).
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
+
+      - name: Run rix job
+        uses: ./.github/actions/run-rix-job
+        with:
+          repo: ${{ github.repository }}
+          prompt: >-
+            Make no changes to any files and do not call the PR endpoint.
+            Just reply with the text: OK
+          read-token: ${{ github.token }}
+          agent: opencode
+          rix-bin: ${{ env.RIX_BIN_PATH }}
+
+      # Runs the real submit composite action (the same one job.yml's create-pr job uses), proving
+      # end to end that a garbage write-token is safe here - SubmitRunner never touches it because
+      # the prompt above guarantees zero PRs were queued.
+      - name: Submit (garbage write-token; safe because zero PRs were requested)
+        uses: ./.github/actions/submit-rix-job
+        with:
+          repo: ${{ github.repository }}
+          write-token: not-a-real-token
+          input-dir: out
+          rix-bin: ${{ env.RIX_BIN_PATH }}
+
+  rix-job-e2e:
+    name: rix job e2e
+    runs-on: ubuntu-latest
+    needs: build-rix
+    permissions:
+      contents: read
+    env:
+      RIX_BIN: ${{ github.workspace }}/rix-bin/rix
+      RIX_REPO: ${{ github.repository }}
+      RIX_READ_TOKEN: ${{ github.token }}
+
+    # One level deeper than agent-plumbing above: invokes the built rix binary directly (bypassing
+    # the composite-action/workflow layer) and does real JSON parsing on its result, so
+    # per-failure-mode assertions live in a proper, reviewable test script
+    # (tests/e2e/rix-job-e2e.bats) instead of workflow YAML.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tests/e2e
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node (rix installs the coding agent CLI via npm)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
+
+      - name: Install bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      - name: Run rix job e2e tests
+        run: bats tests/e2e
 
   test:
     name: Test (${{ matrix.os }})

@@ -130,7 +130,7 @@ public class ClaudeAgentTests
     [TestMethod]
     public void BuildInvocation_ProducesClaudePrintInvocation()
     {
-        var config = TestConfig.Valid(maxTokens: 1234);
+        var config = TestConfig.Valid(agent: "claude", maxTokens: 1234);
 
         var invocation = Agent.BuildInvocation(config, "SYSTEM");
 
@@ -138,5 +138,39 @@ public class ClaudeAgentTests
         CollectionAssert.Contains(invocation.Arguments.ToList(), "--append-system-prompt");
         CollectionAssert.Contains(invocation.Arguments.ToList(), "SYSTEM");
         Assert.AreEqual("1234", invocation.EnvironmentOverrides["CLAUDE_CODE_MAX_OUTPUT_TOKENS"]);
+    }
+
+    [TestMethod]
+    public void BuildInvocation_IncludesVerboseFlag()
+    {
+        // The real claude CLI rejects --print combined with --output-format=stream-json unless
+        // --verbose is also present ("requires --verbose"); this guards against dropping it.
+        var config = TestConfig.Valid(agent: "claude");
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        CollectionAssert.Contains(args, "--verbose");
+    }
+
+    [TestMethod]
+    public void BuildInvocation_IncludesModelFlag_WhenModelSet()
+    {
+        var config = TestConfig.Valid(agent: "claude", model: "claude-opus-4");
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        var modelIndex = args.IndexOf("--model");
+        Assert.AreNotEqual(-1, modelIndex);
+        Assert.AreEqual("claude-opus-4", args[modelIndex + 1]);
+    }
+
+    [TestMethod]
+    public void BuildInvocation_OmitsModelFlag_WhenModelNotSet()
+    {
+        var config = TestConfig.Valid(agent: "claude");
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        CollectionAssert.DoesNotContain(args, "--model");
     }
 }

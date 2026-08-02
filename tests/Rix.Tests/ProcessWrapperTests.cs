@@ -20,6 +20,13 @@ public class ProcessWrapperTests
         false => $"echo ${{{varName}:-{fallback}}}",
     };
 
+    private static string EchoToStderr(string text)
+    => OperatingSystem.IsWindows() switch
+    {
+        true => $"[Console]::Error.WriteLine('{text.Replace("'", "''")}')",
+        false => $"echo '{text.Replace("'", "'\\''")}' 1>&2",
+    };
+
     [TestMethod]
     public async Task RunAsync_CapturesStdoutLines()
     {
@@ -76,6 +83,42 @@ public class ProcessWrapperTests
     }
 
     [TestMethod]
+    public async Task RunAsync_Diagnostic_IsLastStderrLine_OnFailure()
+    {
+        var result = await ProcessWrapper.RunAsync(
+            Shell, ["-c", $"{EchoToStderr("boom")}; exit 1"],
+            workingDirectory: Path.GetTempPath(),
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsInstanceOfType<ProcessFailure>(result);
+        Assert.AreEqual("boom", ((ProcessFailure)result).Diagnostic);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Diagnostic_FallsBackToStdout_WhenStderrEmpty()
+    {
+        var result = await ProcessWrapper.RunAsync(
+            Shell, ["-c", $"{Echo("last stdout line")}; exit 1"],
+            workingDirectory: Path.GetTempPath(),
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsInstanceOfType<ProcessFailure>(result);
+        StringAssert.Contains(((ProcessFailure)result).Diagnostic, "last stdout line");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Diagnostic_IsNull_WhenNoOutputOnFailure()
+    {
+        var result = await ProcessWrapper.RunAsync(
+            Shell, ["-c", "exit 1"],
+            workingDirectory: Path.GetTempPath(),
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsInstanceOfType<ProcessFailure>(result);
+        Assert.IsNull(((ProcessFailure)result).Diagnostic);
+    }
+
+    [TestMethod]
     public async Task RunAsync_PropagatesOnStdoutLineException()
     {
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(
@@ -85,6 +128,39 @@ public class ProcessWrapperTests
                 onStdoutLine: _ => throw new InvalidOperationException("callback failed"),
                 cancellationToken: CancellationToken.None));
     }
+
+    // Real stdout/stderr delivery from an OS pipe can't be forced to overlap on demand (stdout is
+    // block-buffered by the shell and arrives in one end-of-process burst, while stderr trickles
+    // line by line, so an end-to-end test can go many iterations without ever truly racing). Driving
+    // ProcessWrapper.Synchronize directly with two threads under our own control instead proves the
+    // guarantee deterministically.
+    [TestMethod]
+    public void Synchronize_BlocksASecondConcurrentCaller_UntilTheFirstReturns()
+    {
+        using var firstEntered = new ManualResetEventSlim();
+        using var releaseFirst = new ManualResetEventSlim();
+        var synced = ProcessWrapper.Synchronize(line =>
+        {
+            if (line != "first") return;
+            firstEntered.Set();
+            Assert.IsTrue(releaseFirst.Wait(TimeSpan.FromSeconds(5)), "test setup: never released");
+        })!;
+
+        var firstCall = Task.Run(() => synced("first"));
+        Assert.IsTrue(firstEntered.Wait(TimeSpan.FromSeconds(5)), "first call never entered the callback");
+
+        var secondCall = Task.Run(() => synced("second"));
+        // The second call is blocked on the same gate the first call is holding, so it must not be
+        // able to complete yet - proving calls are serialized rather than merely usually-serialized.
+        Assert.IsFalse(secondCall.Wait(TimeSpan.FromMilliseconds(200)), "second call ran concurrently with the first");
+
+        releaseFirst.Set();
+        Assert.IsTrue(Task.WaitAll([firstCall, secondCall], TimeSpan.FromSeconds(5)));
+    }
+
+    [TestMethod]
+    public void Synchronize_ReturnsNull_WhenCallbackIsNull()
+    => Assert.IsNull(ProcessWrapper.Synchronize(null));
 
     [TestMethod]
     public async Task RunAsync_TimesOut_WhenCancelled()

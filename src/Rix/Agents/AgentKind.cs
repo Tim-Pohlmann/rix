@@ -3,10 +3,10 @@ namespace Rix.Agents;
 /// <summary>Selects which <see cref="ICodingAgent"/> implementation a job runs with.</summary>
 internal enum AgentKind
 {
-    /// <summary>Anthropic's Claude Code CLI (<see cref="ClaudeAgent"/>) — the default.</summary>
+    /// <summary>Anthropic's Claude Code CLI (<see cref="ClaudeAgent"/>).</summary>
     Claude,
 
-    /// <summary>The open-source OpenCode CLI (<see cref="OpenCodeAgent"/>).</summary>
+    /// <summary>The open-source, multi-provider OpenCode CLI (<see cref="OpenCodeAgent"/>) — the default.</summary>
     OpenCode,
 }
 

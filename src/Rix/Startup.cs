@@ -89,16 +89,32 @@ internal static class Startup
     /// <summary>
     /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: runs the job,
     /// then performs all output effects — forwards the agent's stream to stderr, writes the result
-    /// JSON to stdout, persists <c>result.json</c> on success, and maps the result to an exit code.
+    /// JSON to stdout, persists <c>result.json</c> regardless of outcome, and maps the result to an
+    /// exit code. Writing <c>result.json</c> on failure too (not just success) means callers —
+    /// including <c>rix submit</c>, which already rejects a non-success <c>result.json</c> — have
+    /// one reliable place to read the outcome from, instead of scraping stdout.
     /// </summary>
     internal static async Task<int> ExecuteJobAsync(JobConfig config, CancellationToken cancellationToken, JobContext? context = null)
     {
         context ??= DefaultContext(config);
         var result = await JobRunner.RunAsync(config, context, cancellationToken);
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
-        Console.WriteLine(json);
-        if (result is JobSuccess)
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, cancellationToken);
+        // Best-effort: once the job outcome above is decided, a broken/closed stdout pipe must not
+        // stop the correct exit code from being returned any more than a result.json write failure
+        // does below.
+        await WriteBestEffortAsync(Console.Out, json);
+        // Best-effort and uncancellable: this runs after the job itself is already decided, so a
+        // cancellation requested in this narrow window (or a transient disk error) must not stop
+        // the correct exit code from being returned - only the result.json copy would be lost.
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Also best-effort: a closed/broken stderr must not defeat the exit-code guarantee above.
+            await WriteBestEffortAsync(Console.Error, $"warning: failed to write result.json: {ex.Message}");
+        }
         return result switch
         {
             JobSuccess => ExitCodes.Success,
@@ -106,6 +122,17 @@ internal static class Startup
             SetupFailure => ExitCodes.SetupFailed,
             _ => throw new NotSupportedException($"Unexpected job result type: {result.GetType()}"),
         };
+    }
+
+    /// <summary>Writes <paramref name="line"/> to <paramref name="writer"/>, swallowing the ways a
+    /// closed/broken console stream can fail a write (<see cref="IOException"/> for a broken pipe,
+    /// <see cref="ObjectDisposedException"/> if the stream was already disposed) - used by
+    /// <see cref="ExecuteJobAsync"/> for output that must never prevent the correct exit code from
+    /// being returned.</summary>
+    private static async Task WriteBestEffortAsync(TextWriter writer, string line)
+    {
+        try { await writer.WriteLineAsync(line); }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException) { /* nothing left to report to */ }
     }
 
     /// <summary>

@@ -15,7 +15,8 @@ public class JobConfigTests
         int? timeoutMinutes = null,
         string? workDir = null,
         string? outputDir = null,
-        string? agent = null)
+        string? agent = null,
+        string? model = null)
     => JobConfig.Create(new JobInputs
     (
         Repo: repo,
@@ -25,7 +26,8 @@ public class JobConfigTests
         TimeoutMinutes: timeoutMinutes,
         WorkDir: workDir,
         OutputDir: outputDir ?? ExistingDir,
-        Agent: agent
+        Agent: agent,
+        Model: model
     ));
 
     private static JobConfig Valid(JobConfigResult result) => result switch
@@ -183,15 +185,32 @@ public class JobConfigTests
     }
 
     [TestMethod]
-    public void Create_DefaultsAgentToClaude_AndSelectsOpenCode()
+    public void Create_DefaultsAgentToOpenCode_AndSelectsClaude()
     {
-        Assert.AreEqual(Rix.Agents.AgentKind.Claude, Valid(Create()).Agent.Kind);
-        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, Valid(Create(agent: "opencode")).Agent.Kind);
+        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, Valid(Create()).Agent.Kind);
+        Assert.AreEqual(Rix.Agents.AgentKind.Claude, Valid(Create(agent: "claude")).Agent.Kind);
     }
 
     [TestMethod]
     public void Create_RejectsUnknownAgent()
     {
         Assert.IsTrue(Errors(Create(agent: "devin")).Any(e => e.Contains("--agent")));
+    }
+
+    [TestMethod]
+    public void Create_DefaultsModelToNull_WhenAbsentOrBlank()
+    {
+        // Unset means "let the agent CLI pick its own default" for every agent — opencode and
+        // claude both fall back to a free/default model on their own when --model is omitted.
+        Assert.IsNull(Valid(Create(agent: "opencode")).Agent.Model);
+        Assert.IsNull(Valid(Create(agent: "opencode", model: "")).Agent.Model);
+        Assert.IsNull(Valid(Create(agent: "claude")).Agent.Model);
+    }
+
+    [TestMethod]
+    public void Create_PassesThroughExplicitModel()
+    {
+        Assert.AreEqual("openai/gpt-4o", Valid(Create(agent: "opencode", model: "openai/gpt-4o")).Agent.Model);
+        Assert.AreEqual("claude-opus-4", Valid(Create(agent: "claude", model: "claude-opus-4")).Agent.Model);
     }
 }

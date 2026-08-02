@@ -14,10 +14,26 @@ on:
         required: true
         type: string
       agent:
-        description: "Coding agent to run: 'claude' (default) or 'opencode'"
+        description: "Coding agent to run: 'opencode' (default) or 'claude'"
         required: false
         type: string
-        default: claude
+        default: opencode
+      model:
+        description: >-
+          Model identifier passed to the agent CLI via --model (e.g. 'openai/gpt-4o' for
+          opencode). Provider-specific; omit to use the agent's own default model (opencode
+          picks a free model on its own, needing no API key).
+        required: false
+        type: string
+      agent-api-key-env:
+        description: >-
+          Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
+          ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_ACCESS_KEY_ID) — whatever the selected
+          provider/model expects. Must end in a credential-shaped suffix (_API_KEY, _TOKEN,
+          _ACCESS_KEY_ID, ...). Omit to use a default based on agent: OPENCODE_API_KEY for
+          opencode, ANTHROPIC_API_KEY for claude.
+        required: false
+        type: string
       rix-version:
         description: "Rix release tag to download (default: latest)"
         required: false
@@ -45,12 +61,14 @@ on:
         required: true
       agent-api-key:
         description: >-
-          API key for the selected coding agent's model provider. Mapped to the provider
-          environment variable the agent reads (ANTHROPIC_API_KEY for 'claude' and 'opencode').
-        required: true
+          API key for the selected coding agent's model provider, exported as the env var named
+          by agent-api-key-env. Optional: leaving model unset lets opencode pick its own free
+          default model, needing no key; set this when picking a specific provider/model.
+        required: false
 
-# Rix lives in this repo; consumers reference it as
-# Tim-Pohlmann/rix/.github/workflows/job.yml@main. Adjust if the repo moves.
+# Default repo to download the rix release binary from - passed to the composite actions as
+# repo-slug, independent of job.workflow_repository (which locates *this* job.yml's own source,
+# not necessarily where releases are published).
 env:
   RIX_REPO_SLUG: Tim-Pohlmann/rix
 
@@ -65,52 +83,39 @@ jobs:
     name: Run rix job
     runs-on: ${{ inputs.runner }}
     steps:
-      - name: Setup Node (rix installs the coding agent CLI via npm)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      # Sparse-checkout of the rix repo (not the target) for the cross-platform download helper,
-      # which is unit-tested in CI (tests/scripts/download-rix.bats).
-      - name: Get rix download helper
+      # A local `uses: ./...` action reference resolves against whatever is already checked out
+      # at github.workspace - there's no such thing as it resolving against "the reusable
+      # workflow's own repo" automatically, so this checkout is required before the composite
+      # action step below (and its own nested `uses: ./.github/actions/download-rix`) can
+      # resolve. .github/scripts/download-rix.sh itself isn't needed here - download-rix fetches
+      # its own copy.
+      #
+      # Pinned to job.workflow_sha - the exact commit of *this* job.yml file that's actually
+      # running - rather than rix-version. rix-version only selects which release binary to
+      # download; it's a separate, caller-controlled input that can point at a tag cut before
+      # this composite-action refactor existed, which would leave these actions missing here.
+      - name: Get rix repo (for local composite actions)
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.RIX_REPO_SLUG }}
-          # Pin the helper to the same release tag as the binary so a consumer pinning
-          # rix-version gets a matching script; empty ref falls back to the default branch
-          # only for "latest".
-          ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
-          sparse-checkout: .github/scripts/download-rix.sh
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
-          path: rix-src
-
-      - name: Download rix binary
-        env:
-          # The API call hits RIX_REPO_SLUG, not the target repo, so use the caller's automatic
-          # token rather than the target-scoped read PAT. The script exports RIX_BIN.
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.rix-version }}
-        shell: bash
-        run: bash rix-src/.github/scripts/download-rix.sh
 
       - name: Run rix job
-        env:
-          AGENT_API_KEY: ${{ secrets.agent-api-key }}
-          RIX_AGENT: ${{ inputs.agent }}
-          RIX_READ_TOKEN: ${{ secrets.read-token }}
-          RIX_REPO: ${{ inputs.repo }}
-          RIX_PROMPT: ${{ inputs.prompt }}
-          RIX_MAX_TOKENS: ${{ inputs.max-tokens }}
-          RIX_TIMEOUT: ${{ inputs.timeout }}
-        shell: bash
-        run: |
-          # Map the generic agent API key onto the provider env var the selected agent reads.
-          case "${RIX_AGENT:-claude}" in
-            claude|opencode) export ANTHROPIC_API_KEY="$AGENT_API_KEY" ;;
-            *) echo "Unknown agent: $RIX_AGENT" >&2; exit 1 ;;
-          esac
-          mkdir -p out work
-          "$RIX_BIN" job --agent "${RIX_AGENT:-claude}" --output-dir out --work-dir work
+        uses: ./.github/actions/run-rix-job
+        with:
+          repo: ${{ inputs.repo }}
+          prompt: ${{ inputs.prompt }}
+          read-token: ${{ secrets.read-token }}
+          agent: ${{ inputs.agent }}
+          model: ${{ inputs.model }}
+          agent-api-key: ${{ secrets.agent-api-key }}
+          agent-api-key-env: ${{ inputs.agent-api-key-env }}
+          max-tokens: ${{ inputs.max-tokens }}
+          timeout: ${{ inputs.timeout }}
+          rix-version: ${{ inputs.rix-version }}
+          repo-slug: ${{ env.RIX_REPO_SLUG }}
 
       - name: Upload job output
         uses: actions/upload-artifact@v4
@@ -123,29 +128,14 @@ jobs:
     needs: run
     runs-on: ${{ inputs.runner }}
     steps:
-      # Sparse-checkout of the rix repo (not the target) for the cross-platform download helper,
-      # which is unit-tested in CI (tests/scripts/download-rix.bats).
-      - name: Get rix download helper
+      # See the comment on the equivalent step in the `run` job above.
+      - name: Get rix repo (for local composite actions)
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.RIX_REPO_SLUG }}
-          # Pin the helper to the same release tag as the binary so a consumer pinning
-          # rix-version gets a matching script; empty ref falls back to the default branch
-          # only for "latest".
-          ref: ${{ inputs.rix-version != 'latest' && inputs.rix-version || '' }}
-          sparse-checkout: .github/scripts/download-rix.sh
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
-          path: rix-src
-
-      - name: Download rix binary
-        env:
-          # Downloads the rix release from RIX_REPO_SLUG, not the target repo, so use the
-          # caller's automatic token rather than the target-scoped write PAT. The script exports
-          # RIX_BIN.
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.rix-version }}
-        shell: bash
-        run: bash rix-src/.github/scripts/download-rix.sh
 
       - name: Download job output
         uses: actions/download-artifact@v4
@@ -153,11 +143,11 @@ jobs:
           name: rix-output
           path: out
 
-      - name: Push branches and open PRs
-        env:
-          RIX_REPO: ${{ inputs.repo }}
-          RIX_WRITE_TOKEN: ${{ secrets.write-token }}
-          RIX_INPUT_DIR: out
-        shell: bash
-        run: |
-          "$RIX_BIN" submit
+      - name: Submit rix job
+        uses: ./.github/actions/submit-rix-job
+        with:
+          repo: ${{ inputs.repo }}
+          write-token: ${{ secrets.write-token }}
+          input-dir: out
+          rix-version: ${{ inputs.rix-version }}
+          repo-slug: ${{ env.RIX_REPO_SLUG }}

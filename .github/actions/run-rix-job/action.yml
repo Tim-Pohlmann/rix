@@ -1,0 +1,110 @@
+name: Run rix job
+description: >-
+  Installs the coding agent CLI and runs `rix job` against a target repo, writing result.json
+  and any git bundles to ./out. Assumes the calling job has already checked out Tim-Pohlmann/rix
+  (see .github/actions/download-rix).
+
+inputs:
+  repo:
+    description: Target GitHub repo (owner/name)
+    required: true
+  prompt:
+    description: Task prompt for the coding agent
+    required: true
+  read-token:
+    description: GitHub PAT (or equivalent token) with read access to the target repo
+    required: true
+  agent:
+    description: "Coding agent to run: 'opencode' (default) or 'claude'"
+    required: false
+    default: opencode
+  model:
+    description: Model identifier passed to the agent CLI via --model; omit for the agent's own default
+    required: false
+  agent-api-key:
+    description: API key for the selected agent's model provider; optional (opencode's free default model needs none)
+    required: false
+  agent-api-key-env:
+    description: >-
+      Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
+      ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_ACCESS_KEY_ID) — whatever the selected
+      provider/model expects. Must end in a credential-shaped suffix (_API_KEY, _TOKEN,
+      _ACCESS_KEY_ID, ...). Omit to use a default based on agent: OPENCODE_API_KEY for
+      opencode, ANTHROPIC_API_KEY for claude.
+    required: false
+  max-tokens:
+    description: Coding agent token budget cap
+    required: false
+  timeout:
+    description: Wall-clock timeout in minutes
+    required: false
+  rix-version:
+    description: "Rix release tag to download, or 'latest'"
+    required: false
+    default: latest
+  repo-slug:
+    description: "Rix repo to download from (owner/name)"
+    required: false
+    default: Tim-Pohlmann/rix
+  rix-bin:
+    description: "Path to an already-built rix binary to use instead of downloading a release"
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node (rix installs the coding agent CLI via npm)
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Download rix
+      uses: ./.github/actions/download-rix
+      with:
+        rix-version: ${{ inputs.rix-version }}
+        repo-slug: ${{ inputs.repo-slug }}
+        rix-bin: ${{ inputs.rix-bin }}
+
+    - name: Run rix job
+      env:
+        AGENT_API_KEY: ${{ inputs.agent-api-key }}
+        AGENT_API_KEY_ENV: ${{ inputs.agent-api-key-env }}
+        RIX_AGENT: ${{ inputs.agent }}
+        RIX_MODEL: ${{ inputs.model }}
+        RIX_READ_TOKEN: ${{ inputs.read-token }}
+        RIX_REPO: ${{ inputs.repo }}
+        RIX_PROMPT: ${{ inputs.prompt }}
+        RIX_MAX_TOKENS: ${{ inputs.max-tokens }}
+        RIX_TIMEOUT: ${{ inputs.timeout }}
+      shell: bash
+      run: |
+        # Export the secret under whatever env var name the selected provider/model expects.
+        # No key is required when model is left unset - opencode then picks its own free model.
+        if [ -n "$AGENT_API_KEY" ]; then
+          key_env="$AGENT_API_KEY_ENV"
+          if [ -z "$key_env" ]; then
+            # Caller didn't say which env var to use - default based on agent, since opencode
+            # and claude expect different credentials. Normalize case/whitespace the same way
+            # rix's own AgentKindParser does, so e.g. "Claude" still matches.
+            agent_normalized=$(printf '%s' "$RIX_AGENT" | tr '[:upper:]' '[:lower:]' | xargs)
+            case "$agent_normalized" in
+              claude) key_env=ANTHROPIC_API_KEY ;;
+              *) key_env=OPENCODE_API_KEY ;;
+            esac
+          fi
+          # Restrict to credential-shaped suffixes covering opencode's supported providers
+          # (ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, GOOGLE_APPLICATION_CREDENTIALS,
+          # SNOWFLAKE_CORTEX_TOKEN, ...), rather than deny-listing every internal/runtime
+          # variable a caller could otherwise clobber. A couple of the allowed suffixes (e.g.
+          # _TOKEN) would otherwise overlap with vars this workflow relies on, so also block
+          # RIX_*/AGENT_API_KEY* (this script's own vars) and GITHUB_* (GITHUB_TOKEN etc) by
+          # name.
+          if [[ "$key_env" =~ ^(RIX_|AGENT_API_KEY|GITHUB_) ]] \
+            || ! [[ "$key_env" =~ ^[A-Z][A-Z0-9_]*_(API_KEY|TOKEN|KEY_ID|ACCESS_KEY|CREDENTIALS|PROFILE|ACCOUNT|PROJECT|PAT|ARN|RESOURCE_NAME)$ ]]; then
+            echo "::error::agent-api-key-env '$key_env' must be a credential-shaped environment variable name (e.g. *_API_KEY, *_TOKEN, *_ACCESS_KEY_ID) and not one of rix's own runtime variables" >&2
+            exit 1
+          fi
+          export "$key_env"="$AGENT_API_KEY"
+        fi
+        mkdir -p out work
+        "$RIX_BIN" job --agent "${RIX_AGENT:-opencode}" --output-dir out --work-dir work

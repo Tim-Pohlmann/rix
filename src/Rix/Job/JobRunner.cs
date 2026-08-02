@@ -35,7 +35,14 @@ internal static class JobRunner
 
         using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-clone");
 
-        await context.Host.CloneAsync(cloneDir.Path, ct);
+        try
+        {
+            await context.Host.CloneAsync(cloneDir.Path, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new SetupFailure(ex.Message);
+        }
 
         await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct, context.LogLine.Invoke);
 
@@ -45,9 +52,12 @@ internal static class JobRunner
         if (agentResult is ProcessFailure agentFailure)
         {
             stopwatch.Stop();
+            var detail = agentFailure.Reason;
+            if (!string.IsNullOrWhiteSpace(agentFailure.Diagnostic))
+                detail = $"{agentFailure.Reason}: {agentFailure.Diagnostic}";
             return new JobFailure
             (
-                $"agent failed: {agentFailure.Reason}",
+                $"agent failed: {detail}",
                 CostUsd: 0m,
                 Duration: stopwatch.Elapsed
             );

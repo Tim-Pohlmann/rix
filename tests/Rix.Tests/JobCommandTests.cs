@@ -103,7 +103,25 @@ public class JobCommandTests
     }
 
     [TestMethod]
-    public async Task Command_DefaultsToClaude_WhenAgentUnset()
+    public async Task Command_PassesThroughModel_FromFlag()
+    {
+        JobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r",
+             "--output-dir", Path.GetTempPath(), "--model", "openai/gpt-4o"]);
+
+        Assert.IsNotNull(captured);
+        Assert.AreEqual("openai/gpt-4o", captured.Agent.Model);
+    }
+
+    [TestMethod]
+    public async Task Command_DefaultsToOpenCode_WhenAgentUnset()
     {
         JobConfig? captured = null;
         var parser = BuildParser(config =>
@@ -116,6 +134,6 @@ public class JobCommandTests
             ["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r", "--output-dir", Path.GetTempPath()]);
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual(Rix.Agents.AgentKind.Claude, captured.Agent.Kind);
+        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, captured.Agent.Kind);
     }
 }

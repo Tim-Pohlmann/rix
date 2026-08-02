@@ -25,26 +25,53 @@ jobs:
     with:
       repo: ${{ github.repository }}
       prompt: ${{ inputs.prompt }}
-      # agent: opencode   # optional; defaults to 'claude'
+      # agent: claude   # optional; defaults to 'opencode'
     secrets:
       read-token: ${{ secrets.RIX_READ_TOKEN }}
       write-token: ${{ secrets.RIX_WRITE_TOKEN }}
-      agent-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-Pick the coding agent with the optional `agent` input — `claude` (default) or `opencode`.
-Both install their CLI via npm at run time.
+Pick the coding agent with the optional `agent` input — `opencode` (default) or `claude`.
+Both install their CLI via npm at run time. With no `model` set, `opencode` picks its own
+free default model, so the example above needs no `agent-api-key` at all.
+
+### Using a different provider or model
+
+opencode supports many model providers beyond the free default. Pick a model with the
+`model` input, forwarded verbatim as `--model` (rix does not interpret it), and set
+`agent-api-key`/`agent-api-key-env` to the credential that provider expects:
+
+```yaml
+    with:
+      repo: ${{ github.repository }}
+      prompt: ${{ inputs.prompt }}
+      agent: opencode
+      model: openai/gpt-4o
+      agent-api-key-env: OPENAI_API_KEY
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
+      agent-api-key: ${{ secrets.OPENAI_API_KEY }}
+```
+
+`claude` (Anthropic's Claude Code CLI) only talks to Anthropic's own models; for that agent,
+`model` (if set) just picks among Claude's models, and `agent-api-key-env` defaults to
+`ANTHROPIC_API_KEY` automatically (no need to set it unless using a non-default env var name).
+
+Local/self-hosted backends (e.g. Ollama, LM Studio) aren't supported yet — opencode reaches
+those through a generated config file rather than a model string + API key, which is a
+separate mechanism this workflow doesn't build today.
 
 `@main` tracks the latest workflow; once a release is tagged, pin to that tag or a commit
 SHA (e.g. `...job.yml@v1.0.0`) for reproducible, supply-chain-safe runs.
 
-### Required secrets
+### Secrets
 
 | Secret | Purpose |
 | --- | --- |
-| `read-token` | PAT with read access to the target repo; used to clone it during the agent run. |
-| `write-token` | PAT with `contents:write` + `pull-requests:write` on the target repo; used to push branches and open PRs. |
-| `agent-api-key` | API key for the selected agent's model provider. Mapped to the provider env var the agent reads (`ANTHROPIC_API_KEY` for both `claude` and `opencode`). |
+| `read-token` | Required. PAT with read access to the target repo; used to clone it during the agent run. |
+| `write-token` | Required. PAT with `contents:write` + `pull-requests:write` on the target repo; used to push branches and open PRs. |
+| `agent-api-key` | Optional. API key for the selected agent's model provider, exported as the env var named by `agent-api-key-env` (default `OPENCODE_API_KEY` for opencode, `ANTHROPIC_API_KEY` for claude). Not needed when leaving `model` unset, since opencode then picks its own free default model. |
 
 The read/write split keeps the agent run (which executes untrusted, model-generated work)
 on a read-only token; only the final, deterministic PR-creation step holds write access.

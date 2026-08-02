@@ -86,11 +86,71 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_DoesNotWriteResultJson_OnFailure()
+    public async Task RunAsync_WritesResultJson_OnFailure()
     {
         await Run(claudeExitCode: 1);
 
-        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")));
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("failure", doc.RootElement.GetProperty("status").GetString());
+    }
+
+    [TestMethod]
+    public async Task RunAsync_WritesResultJson_OnSetupFailure()
+    {
+        await Startup.ExecuteJobAsync(
+            MakeConfig(), CancellationToken.None,
+            Context(new StubRepositoryHost(), FakeRunner(),
+                _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))));
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("setupFailure", doc.RootElement.GetProperty("status").GetString());
+    }
+
+    [TestMethod]
+    public async Task ExecuteJobAsync_StillReturnsExitCode_WhenResultJsonCannotBeWritten()
+    {
+        // Forces the write to fail with UnauthorizedAccessException: "result.json" already exists
+        // as a directory at that path, so it can't be opened as a file.
+        Directory.CreateDirectory(Path.Combine(_outputDir, "result.json"));
+
+        var result = await Run();
+
+        Assert.AreEqual(0, result);
+    }
+
+    [TestMethod]
+    public async Task ExecuteJobAsync_StillWritesResultJson_WhenStdoutIsABrokenPipe()
+    => await AssertSurvivesStdoutFailure(new IOException("broken pipe"));
+
+    [TestMethod]
+    public async Task ExecuteJobAsync_StillWritesResultJson_WhenStdoutIsAlreadyDisposed()
+    => await AssertSurvivesStdoutFailure(new ObjectDisposedException(nameof(TextWriter)));
+
+    private async Task AssertSurvivesStdoutFailure(Exception writeException)
+    {
+        var original = Console.Out;
+        Console.SetOut(new ThrowingWriter(writeException));
+        int result;
+        try { result = await Run(); }
+        finally { Console.SetOut(original); }
+
+        Assert.AreEqual(0, result);
+        Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "result.json")));
+    }
+
+    /// <summary>Simulates a broken/closed stdout: every line write fails with
+    /// <paramref name="exception"/>, e.g. <see cref="IOException"/> for a broken pipe or
+    /// <see cref="ObjectDisposedException"/> for an already-disposed stream. Overrides the
+    /// synchronous <see cref="WriteLine(string?)"/> rather than <c>WriteLineAsync</c> -
+    /// <see cref="Console.SetOut"/> wraps the writer in a synchronized <see cref="TextWriter"/>
+    /// whose async methods delegate to the synchronous ones under a lock, so an override of the
+    /// async method alone is never reached.</summary>
+    private sealed class ThrowingWriter(Exception exception) : TextWriter
+    {
+        public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+        public override void WriteLine(string? value) => throw exception;
     }
 
     [TestMethod]
@@ -372,10 +432,47 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_JobFailureError_IncludesAgentDiagnostic_WhenPresent()
+    {
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+            Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1", Diagnostic: "Invalid API key"));
+
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), runner, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        var failure = (JobFailure)result;
+        Assert.AreEqual("agent failed: exited with code 1: Invalid API key", failure.Error);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_JobFailureError_OmitsDiagnosticSuffix_WhenAbsent()
+    {
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), FakeRunner(claudeExitCode: 1), _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        var failure = (JobFailure)result;
+        Assert.AreEqual("agent failed: exited with code 1", failure.Error);
+    }
+
+    [TestMethod]
     public async Task RunAsync_ReturnsSetupFailure_WhenInstallerFails()
     {
         var result = await JobRunner.RunAsync(MakeConfig(),
             Context(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("nope"))),
+            CancellationToken.None);
+
+        Assert.IsInstanceOfType<SetupFailure>(result);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsSetupFailure_WhenCloneFails()
+    {
+        var host = new StubRepositoryHost(clone: () => throw new InvalidOperationException("git clone failed: exit code 128"));
+
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         Assert.IsInstanceOfType<SetupFailure>(result);

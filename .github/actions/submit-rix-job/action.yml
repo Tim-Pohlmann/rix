@@ -1,0 +1,46 @@
+name: Submit rix job
+description: >-
+  Pushes the branches from a `rix job` result and opens their pull requests via `rix submit`.
+  Assumes the calling job has already checked out Tim-Pohlmann/rix (see
+  .github/actions/download-rix) and that input-dir holds a prior `rix job` run's result.json.
+
+inputs:
+  repo:
+    description: Target GitHub repo (owner/name)
+    required: true
+  write-token:
+    description: "GitHub PAT with contents:write + pull-requests:write on the target repo"
+    required: true
+  input-dir:
+    description: Directory holding result.json and the git bundles produced by `rix job`
+    required: false
+    default: out
+  rix-version:
+    description: "Rix release tag to download, or 'latest'"
+    required: false
+    default: latest
+  repo-slug:
+    description: "Rix repo to download from (owner/name)"
+    required: false
+    default: Tim-Pohlmann/rix
+  rix-bin:
+    description: "Path to an already-built rix binary to use instead of downloading a release"
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Download rix
+      uses: ./.github/actions/download-rix
+      with:
+        rix-version: ${{ inputs.rix-version }}
+        repo-slug: ${{ inputs.repo-slug }}
+        rix-bin: ${{ inputs.rix-bin }}
+
+    - name: Push branches and open PRs
+      env:
+        RIX_REPO: ${{ inputs.repo }}
+        RIX_WRITE_TOKEN: ${{ inputs.write-token }}
+        RIX_INPUT_DIR: ${{ inputs.input-dir }}
+      shell: bash
+      run: '"$RIX_BIN" submit'
