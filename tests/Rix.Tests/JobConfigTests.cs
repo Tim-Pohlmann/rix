@@ -189,6 +189,7 @@ public class JobConfigTests
     {
         Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, Valid(Create()).Agent.Kind);
         Assert.AreEqual(Rix.Agents.AgentKind.Claude, Valid(Create(agent: "claude")).Agent.Kind);
+        Assert.AreEqual(Rix.Agents.AgentKind.Pi, Valid(Create(agent: "pi")).Agent.Kind);
     }
 
     [TestMethod]
@@ -205,6 +206,7 @@ public class JobConfigTests
         Assert.IsNull(Valid(Create(agent: "opencode")).Agent.Model);
         Assert.IsNull(Valid(Create(agent: "opencode", model: "")).Agent.Model);
         Assert.IsNull(Valid(Create(agent: "claude")).Agent.Model);
+        Assert.IsNull(Valid(Create(agent: "pi")).Agent.Model);
     }
 
     [TestMethod]
@@ -212,5 +214,6 @@ public class JobConfigTests
     {
         Assert.AreEqual("openai/gpt-4o", Valid(Create(agent: "opencode", model: "openai/gpt-4o")).Agent.Model);
         Assert.AreEqual("claude-opus-4", Valid(Create(agent: "claude", model: "claude-opus-4")).Agent.Model);
+        Assert.AreEqual("openai/gpt-4o", Valid(Create(agent: "pi", model: "openai/gpt-4o")).Agent.Model);
     }
 }

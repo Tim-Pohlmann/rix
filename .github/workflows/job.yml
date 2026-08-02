@@ -14,7 +14,7 @@ on:
         required: true
         type: string
       agent:
-        description: "Coding agent to run: 'opencode' (default) or 'claude'"
+        description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
         required: false
         type: string
         default: opencode
@@ -31,7 +31,8 @@ on:
           ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_ACCESS_KEY_ID) — whatever the selected
           provider/model expects. Must end in a credential-shaped suffix (_API_KEY, _TOKEN,
           _ACCESS_KEY_ID, ...). Omit to use a default based on agent: OPENCODE_API_KEY for
-          opencode, ANTHROPIC_API_KEY for claude.
+          opencode, ANTHROPIC_API_KEY for claude. Required for pi whenever agent-api-key is set,
+          since pi has no single default provider to fall back on.
         required: false
         type: string
       rix-version:
