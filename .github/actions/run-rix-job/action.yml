@@ -113,5 +113,20 @@ runs:
           fi
           export "$key_env"="$AGENT_API_KEY"
         fi
+        # Only forward max-tokens/timeout when the caller supplied a positive value; leave them
+        # unset otherwise so rix's own defaults (50k tokens, 30 min) apply. A caller who omits
+        # both (the common case) has job.yml's workflow_call inputs - type: number, no default -
+        # resolve to 0 rather than empty/null, and rix rejects an explicit 0 as invalid, so
+        # forwarding that 0 straight through would fail every such run.
+        if [[ "${RIX_MAX_TOKENS:-}" =~ ^[1-9][0-9]*$ ]]; then
+          export RIX_MAX_TOKENS
+        else
+          unset RIX_MAX_TOKENS
+        fi
+        if [[ "${RIX_TIMEOUT:-}" =~ ^[1-9][0-9]*$ ]]; then
+          export RIX_TIMEOUT
+        else
+          unset RIX_TIMEOUT
+        fi
         mkdir -p out work
         "$RIX_BIN" job --agent "${RIX_AGENT:-opencode}" --output-dir out --work-dir work
