@@ -26,10 +26,12 @@ inputs:
     required: false
   agent-api-key-env:
     description: >-
-      Name of the environment variable agent-api-key is exported as. Must end in _API_KEY. Omit
-      to use a default based on agent: OPENCODE_API_KEY for opencode, ANTHROPIC_API_KEY for
-      claude. Required for pi whenever agent-api-key is set, since pi has no single default
-      provider to fall back on.
+      Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
+      ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_ACCESS_KEY_ID) — whatever the selected
+      provider/model expects. Must end in a credential-shaped suffix (_API_KEY, _TOKEN,
+      _ACCESS_KEY_ID, ...). Omit to use a default based on agent: OPENCODE_API_KEY for
+      opencode, ANTHROPIC_API_KEY for claude. Required for pi whenever agent-api-key is set,
+      since pi has no single default provider to fall back on.
     required: false
   max-tokens:
     description: Coding agent token budget cap
@@ -97,11 +99,16 @@ runs:
               *) key_env=OPENCODE_API_KEY ;;
             esac
           fi
-          # Restrict to the *_API_KEY naming convention every provider credential in this
-          # workflow follows, rather than deny-listing every internal/runtime variable
-          # (RIX_*, GITHUB_*, PATH, ...) a caller could otherwise clobber.
-          if ! [[ "$key_env" =~ ^[A-Z][A-Z0-9_]*_API_KEY$ ]]; then
-            echo "::error::agent-api-key-env '$key_env' must be a *_API_KEY environment variable name" >&2
+          # Restrict to credential-shaped suffixes covering opencode's supported providers
+          # (ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, GOOGLE_APPLICATION_CREDENTIALS,
+          # SNOWFLAKE_CORTEX_TOKEN, ...), rather than deny-listing every internal/runtime
+          # variable a caller could otherwise clobber. A couple of the allowed suffixes (e.g.
+          # _TOKEN) would otherwise overlap with vars this workflow relies on, so also block
+          # RIX_*/AGENT_API_KEY* (this script's own vars) and GITHUB_* (GITHUB_TOKEN etc) by
+          # name.
+          if [[ "$key_env" =~ ^(RIX_|AGENT_API_KEY|GITHUB_) ]] \
+            || ! [[ "$key_env" =~ ^[A-Z][A-Z0-9_]*_(API_KEY|TOKEN|KEY_ID|ACCESS_KEY|CREDENTIALS|PROFILE|ACCOUNT|PROJECT|PAT|ARN|RESOURCE_NAME)$ ]]; then
+            echo "::error::agent-api-key-env '$key_env' must be a credential-shaped environment variable name (e.g. *_API_KEY, *_TOKEN, *_ACCESS_KEY_ID) and not one of rix's own runtime variables" >&2
             exit 1
           fi
           export "$key_env"="$AGENT_API_KEY"
