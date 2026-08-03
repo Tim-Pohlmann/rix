@@ -85,14 +85,18 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
 
     public async Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
     {
-        // A missing ref is an expected outcome here, not a failure of the git binary itself, so this
-        // reads the ProcessResult directly rather than going through RunGitAsync (which throws on any
-        // non-zero exit). Purely local, like bundle create, so no auth env is needed either.
+        // A missing ref (exit 1) is an expected outcome here, not a failure of the git binary itself,
+        // so this reads the ProcessResult directly rather than going through RunGitAsync (which throws
+        // on any non-zero exit). Any other failure (bad working directory, git missing, timeout, ...)
+        // is a real operational problem and must still throw, or it would surface later as a
+        // misleading "branch not found". Purely local, like bundle create, so no auth env is needed.
         var result = await _runProcess
         (
             "git", ["rev-parse", "--verify", "--quiet", $"refs/heads/{branch.Value}"],
             repoDirectory, environmentOverrides: null, onStdoutLine: null, cancellationToken
         );
+        if (result is ProcessFailure { Reason: not "exited with code 1" } f)
+            throw new InvalidOperationException($"git rev-parse failed: {f.Reason}");
         return result is ProcessSuccess;
     }
 

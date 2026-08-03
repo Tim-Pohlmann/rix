@@ -72,6 +72,16 @@ public class GitHubHostTests
     }
 
     [TestMethod]
+    public async Task BranchExistsLocallyAsync_Throws_OnOperationalFailure_NotJustMissingRef()
+    {
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None));
+    }
+
+    [TestMethod]
     public async Task BranchExistsLocallyAsync_RunsGitRevParse_InRepoDirectory_NoAuthEnv()
     {
         string[]? capturedArgs = null;
