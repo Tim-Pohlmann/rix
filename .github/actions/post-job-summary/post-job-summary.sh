@@ -27,6 +27,7 @@ duration_label() {
   else
     printf '%ds' "$s"
   fi
+  return 0
 }
 
 # Appends the submit outcome - the opened pull requests, or the submit failure - to stdout.
@@ -38,7 +39,7 @@ render_submit() {
       echo ""
       echo "**Status:** failure"
       echo ""
-      echo "**Error:** $(head -n1 "$submit_log")"
+      echo "**Error:** $(head -n1 "$submit_log")" # NOSONAR: step-summary markdown content, not a diagnostic - must stay on stdout to reach $summary_file
       echo ""
     fi
     return 0
@@ -61,7 +62,7 @@ render_submit() {
     error="$(jq -r '.error // empty' "$submit_file" 2>/dev/null || true)"
     if [[ -n "$error" ]]; then
       echo ""
-      echo "**Error:** $error"
+      echo "**Error:** $error" # NOSONAR: step-summary markdown content, not a diagnostic - must stay on stdout to reach $summary_file
     fi
     echo ""
   fi
