@@ -89,6 +89,19 @@ write_submit() {
   [[ "$(summary)" == *"creating PR for rix/my-fix failed"* ]]
 }
 
+@test "submit failure is rendered from the error log when submit result is empty" {
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  : > "$SUBMIT"
+  printf 'panic: rix submit crashed' > "$ERROR_LOG"
+
+  run rix_post_job_summary "$RESULT" "$SUBMIT" "$ERROR_LOG"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" == *"### Submit"* ]]
+  [[ "$(summary)" == *"**Status:** failure"* ]]
+  [[ "$(summary)" == *"panic: rix submit crashed"* ]]
+}
+
 @test "missing result.json renders a notice, not a failure" {
   run rix_post_job_summary "$BATS_TEST_TMPDIR/nope.json"
 

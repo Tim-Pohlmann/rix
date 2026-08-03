@@ -48,14 +48,19 @@ render_submit_failure() {
 # Appends the submit outcome - the opened pull requests, or the submit failure - to stdout.
 render_submit() {
   local submit_file="$1" submit_log="$2" status count
-  if [[ ! -f "$submit_file" ]]; then
+  if [[ -f "$submit_file" ]]; then
+    status="$(jq -r '.status // empty' "$submit_file" 2>/dev/null || true)"
+  fi
+
+  # submit_file is missing, empty, or malformed (e.g. `rix submit` crashed before writing valid
+  # JSON to it) - fall back to the raw stderr log instead of silently rendering nothing.
+  if [[ -z "$status" ]]; then
     if [[ -n "$submit_log" && -s "$submit_log" ]]; then
       render_submit_failure "failure" "$(head -n1 "$submit_log")"
     fi
     return 0
   fi
 
-  status="$(jq -r '.status // empty' "$submit_file" 2>/dev/null || true)"
   if [[ "$status" == "success" ]]; then
     count="$(jq '(.createdPrs // []) | length' "$submit_file" 2>/dev/null || echo 0)"
     if ((count > 0)); then
