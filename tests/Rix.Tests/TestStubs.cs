@@ -39,7 +39,7 @@ internal sealed class StubRepositoryHost(
 
 internal sealed class StubSubmitHost(
     Func<BranchName, Task<bool>>? branchExists = null,
-    Func<PendingPr, Task>? createPullRequest = null,
+    Func<PendingPr, Task<string>>? createPullRequest = null,
     Func<BranchName, Task>? pushBranch = null) : IRepositoryHost
 {
     public List<PendingPr> CreatedPrs { get; } = [];
@@ -71,10 +71,14 @@ internal sealed class StubSubmitHost(
         return pushBranch switch { { } check => check(branch), _ => Task.CompletedTask };
     }
 
-    public Task CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
+    public Task<string> CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
     {
         CreatedPrs.Add(pullRequest);
-        return createPullRequest switch { { } check => check(pullRequest), _ => Task.CompletedTask };
+        return createPullRequest switch
+        {
+            { } check => check(pullRequest),
+            _ => Task.FromResult($"https://github.com/owner/repo/pull/{CreatedPrs.Count}"),
+        };
     }
 }
 

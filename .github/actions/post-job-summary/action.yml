@@ -1,0 +1,27 @@
+name: Post job summary
+description: >-
+  Appends a markdown summary of a rix job run (status, cost, duration, and any pull requests
+  opened) to the GitHub Actions step summary. Best-effort: never fails the step it's called
+  from. Used by the run-rix-job and submit-rix-job composite actions.
+
+inputs:
+  result-file:
+    description: Path to the result.json written by `rix job`
+    required: true
+  submit-file:
+    description: Path to the stdout of `rix submit` (submit-result.json), if a submit step ran
+    required: false
+  submit-log:
+    description: Path to the stderr of `rix submit` (submit-error.log), used to explain a submit failure
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Render job summary
+      shell: bash
+      run: |
+        "${{ github.action_path }}/post-job-summary.sh" \
+          "${{ inputs.result-file }}" \
+          "${{ inputs.submit-file }}" \
+          "${{ inputs.submit-log }}"

@@ -1,5 +1,6 @@
 using Rix.Process;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Rix.Repository;
@@ -48,7 +49,9 @@ internal sealed class GitHubHost : IRepositoryHost
         cancellationToken
     );
 
-    public async Task CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
+    /// <summary>Creates the pull request and returns its <c>html_url</c>, so the caller can report
+    /// (and link) the opened PR rather than only its branch name.</summary>
+    public async Task<string> CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
     {
         var url = $"https://api.github.com/repos/{_read.Repo.Value}/pulls";
         var request = new CreatePullRequestRequest
@@ -61,6 +64,20 @@ internal sealed class GitHubHost : IRepositoryHost
         using var content = JsonContent.Create(request, GitHubApiJsonContext.Default.CreatePullRequestRequest);
         using var response = await _read.Http.PostAsync(url, content, cancellationToken);
         response.EnsureSuccessStatusCode();
+        try
+        {
+            var created = await response.Content.ReadFromJsonAsync
+            (
+                GitHubApiJsonContext.Default.CreatePullRequestResponse, cancellationToken
+            );
+            if (created is null || created.HtmlUrl is null)
+                throw new HttpRequestException("create PR response did not include html_url");
+            return created.HtmlUrl;
+        }
+        catch (JsonException ex)
+        {
+            throw new HttpRequestException("could not parse create PR response", ex);
+        }
     }
 }
 
@@ -73,5 +90,13 @@ internal sealed record CreatePullRequestRequest
     [property: JsonPropertyName("body")] string Body
 );
 
+/// <summary>The field <c>rix submit</c> reads back from a successful "create a pull request"
+/// response.</summary>
+internal sealed record CreatePullRequestResponse
+(
+    [property: JsonPropertyName("html_url")] string? HtmlUrl
+);
+
 [JsonSerializable(typeof(CreatePullRequestRequest))]
+[JsonSerializable(typeof(CreatePullRequestResponse))]
 internal partial class GitHubApiJsonContext : JsonSerializerContext { }

@@ -35,6 +35,11 @@ Pick the coding agent with the optional `agent` input — `opencode` (default), 
 `pi`. All three install their CLI via npm at run time. With no `model` set, `opencode` picks
 its own free default model, so the example above needs no `agent-api-key` at all.
 
+The workflow posts a job summary to the run page after `rix submit`: the job's status, cost and
+duration, plus the pull requests that were actually opened (with links). The `run` job posts an
+early summary too, so a failed job still reports its outcome even when the PR-creation job is
+skipped.
+
 ### Using a different provider or model
 
 opencode supports many model providers beyond the free default. Pick a model with the
