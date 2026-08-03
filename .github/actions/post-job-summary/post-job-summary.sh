@@ -42,6 +42,7 @@ render_submit_failure() {
     echo "**Error:** $error" # NOSONAR: step-summary markdown content, not a diagnostic - must stay on stdout to reach $summary_file
   fi
   echo ""
+  return 0
 }
 
 # Appends the submit outcome - the opened pull requests, or the submit failure - to stdout.
