@@ -7,5 +7,5 @@ namespace Rix.Repository;
 internal interface IRepositoryHost : IRepositoryReadHost
 {
     Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken);
-    Task CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken);
+    Task<string> CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken);
 }

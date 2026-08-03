@@ -42,7 +42,7 @@ jobs:
           flags: '-ignore property\s.workflow_(repository|sha).\sis\snot\sdefined\sin\sobject\stype\s\{check_run_id:'
 
       - name: Lint shell scripts (shellcheck)
-        run: shellcheck .github/scripts/*.sh
+        run: shellcheck .github/scripts/*.sh .github/actions/post-job-summary/post-job-summary.sh
 
       - name: Run bats tests
         run: |

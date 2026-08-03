@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Appends a markdown summary of a rix job run to the GitHub Actions step summary file named by
+# $GITHUB_STEP_SUMMARY, so the workflow run page shows the job outcome (status, cost, duration)
+# and the pull requests that were actually opened. Used by the run-rix-job and submit-rix-job
+# composite actions.
+#
+# Usage: post-job-summary.sh <result.json> [submit-result.json] [submit-error.log]
+#
+#   result.json        the result of `rix job` (always present in a completed run)
+#   submit-result.json the stdout of `rix submit` (absent when the submit step wrote nothing)
+#   submit-error.log   the stderr of `rix submit` (used to explain a submit failure)
+#
+# Best-effort by design: the summary is informational only, so a missing file or a malformed JSON
+# renders whatever it can (or nothing) and the script always exits 0 - it must never fail the
+# workflow step it is called from.
+
+# Formats a whole number of seconds as "Xh Ym Zs", "Xm Zs", or "Zs".
+duration_label() {
+  local seconds="$1" h m s
+  h=$((seconds / 3600))
+  m=$((seconds % 3600 / 60))
+  s=$((seconds % 60))
+  if ((h > 0)); then
+    printf '%dh %dm %ds' "$h" "$m" "$s"
+  elif ((m > 0)); then
+    printf '%dm %ds' "$m" "$s"
+  else
+    printf '%ds' "$s"
+  fi
+}
+
+# Appends the submit outcome - the opened pull requests, or the submit failure - to stdout.
+render_submit() {
+  local submit_file="$1" submit_log="$2" status count
+  if [[ ! -f "$submit_file" ]]; then
+    if [[ -n "$submit_log" && -s "$submit_log" ]]; then
+      echo "### Submit"
+      echo ""
+      echo "**Status:** failure"
+      echo ""
+      echo "**Error:** $(head -n1 "$submit_log")"
+      echo ""
+    fi
+    return 0
+  fi
+
+  status="$(jq -r '.status // empty' "$submit_file" 2>/dev/null || true)"
+  if [[ "$status" == "success" ]]; then
+    count="$(jq '(.createdPrs // []) | length' "$submit_file" 2>/dev/null || echo 0)"
+    if ((count > 0)); then
+      echo "### Pull requests opened"
+      echo ""
+      jq -r '.createdPrs[] | "- [" + .branch + "](" + .url + ")"' "$submit_file" 2>/dev/null || true
+      echo ""
+    fi
+  else
+    echo "### Submit"
+    echo ""
+    echo "**Status:** ${status:-failure}"
+    local error
+    error="$(jq -r '.error // empty' "$submit_file" 2>/dev/null || true)"
+    if [[ -n "$error" ]]; then
+      echo ""
+      echo "**Error:** $error"
+    fi
+    echo ""
+  fi
+}
+
+rix_post_job_summary() {
+  local result_file="$1" submit_file="${2:-}" submit_log="${3:-}"
+  local summary_file="${GITHUB_STEP_SUMMARY:-}"
+
+  if [[ -z "$summary_file" ]]; then
+    echo "GITHUB_STEP_SUMMARY is not set; skipping rix job summary." >&2
+    return 0
+  fi
+  [[ -f "$summary_file" ]] || : > "$summary_file"
+
+  {
+    echo "## Rix job summary"
+    echo ""
+    if [[ ! -f "$result_file" ]]; then
+      echo "The rix job produced no result.json - it never completed."
+      echo ""
+      return 0
+    fi
+
+    local status
+    status="$(jq -r '.status // empty' "$result_file" 2>/dev/null || true)"
+    if [[ -z "$status" ]]; then
+      echo "result.json did not contain a status."
+      echo ""
+      return 0
+    fi
+
+    if [[ "$status" == "success" ]]; then
+      local cost duration
+      cost="$(jq -r '.costUsd // 0' "$result_file" 2>/dev/null || echo 0)"
+      duration="$(jq -r '.durationSeconds // 0' "$result_file" 2>/dev/null || echo 0)"
+      echo "**Status:** success"
+      echo "**Cost:** \$$cost"
+      echo "**Duration:** $(duration_label "$duration")"
+    else
+      echo "**Status:** $status"
+      local error
+      error="$(jq -r '.error // empty' "$result_file" 2>/dev/null || true)"
+      if [[ -n "$error" ]]; then
+        echo ""
+        echo "**Error:** $error"
+      fi
+    fi
+    echo ""
+    render_submit "$submit_file" "$submit_log"
+  } >> "$summary_file"
+  return 0
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  set -euo pipefail
+  rix_post_job_summary "$@"
+fi

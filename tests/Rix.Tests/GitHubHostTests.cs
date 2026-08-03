@@ -241,7 +241,7 @@ public class GitHubHostTests
     }
 
     [TestMethod]
-    public async Task CreatePullRequestAsync_PostsToPullsEndpoint_WithPrFields()
+    public async Task CreatePullRequestAsync_PostsToPullsEndpoint_AndReturnsHtmlUrl()
     {
         HttpRequestMessage? captured = null;
         string? body = null;
@@ -249,11 +249,18 @@ public class GitHubHostTests
         {
             captured = req;
             body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
-            return new HttpResponseMessage(HttpStatusCode.Created);
+            return new HttpResponseMessage(HttpStatusCode.Created)
+            {
+                Content = new StringContent(
+                    """{"number":12,"html_url":"https://github.com/owner/repo/pull/12"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+            };
         });
 
-        await host.CreatePullRequestAsync(SamplePr("My title", "My body"), CancellationToken.None);
+        var url = await host.CreatePullRequestAsync(SamplePr("My title", "My body"), CancellationToken.None);
 
+        Assert.AreEqual("https://github.com/owner/repo/pull/12", url);
         Assert.IsNotNull(captured);
         Assert.AreEqual(HttpMethod.Post, captured.Method);
         StringAssert.EndsWith(captured.RequestUri!.AbsoluteUri, "/repos/owner/repo/pulls");
@@ -267,6 +274,18 @@ public class GitHubHostTests
     public async Task CreatePullRequestAsync_Throws_OnErrorResponse()
     {
         var host = BuildWriteHost(_ => new HttpResponseMessage(HttpStatusCode.UnprocessableEntity));
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(
+            () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task CreatePullRequestAsync_Throws_WhenResponseIsNotParseableJson()
+    {
+        var host = BuildWriteHost(_ => new HttpResponseMessage(HttpStatusCode.Created)
+        {
+            Content = new StringContent("not json"),
+        });
 
         await Assert.ThrowsExactlyAsync<HttpRequestException>(
             () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));

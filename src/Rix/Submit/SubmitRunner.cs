@@ -47,20 +47,28 @@ internal static class SubmitRunner
 
         await context.Host.CloneAsync(cloneDir.Path, cancellationToken);
 
-        var created = new List<string>();
+        var created = new List<CreatedPr>();
         foreach (var pr in success.PendingPrRequests)
         {
-            if (await SubmitOneAsync(config, context, cloneDir.Path, pr, cancellationToken) is { } failure)
-                return failure;
-            created.Add(pr.Branch.Value);
+            switch (await SubmitOneAsync(config, context, cloneDir.Path, pr, cancellationToken))
+            {
+                case SubmitOneFailed(var failure):
+                    return failure;
+                case SubmitOneSucceeded(var url):
+                    created.Add(new CreatedPr(pr.Branch.Value, url));
+                    break;
+                default:
+                    throw new NotSupportedException($"Unexpected submit outcome for {pr.Branch.Value}");
+            }
         }
 
         return new SubmitSuccess(created);
     }
 
-    /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns a
-    /// <see cref="SubmitFailure"/> on the first problem, or <c>null</c> on success.</summary>
-    private static async Task<SubmitFailure?> SubmitOneAsync
+    /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns the opened
+    /// PR's URL on success, or a <see cref="SubmitFailure"/> (nested in <see cref="SubmitOneFailed"/>)
+    /// on the first problem, which aborts the whole run.</summary>
+    private static async Task<SubmitOneOutcome> SubmitOneAsync
     (
         SubmitConfig config,
         SubmitContext context,
@@ -70,26 +78,27 @@ internal static class SubmitRunner
     )
     {
         if (await context.Host.BranchExistsOnRemoteAsync(pr.Branch, cancellationToken))
-            return new SubmitFailure($"branch already exists on remote: {pr.Branch.Value}");
+            return new SubmitOneFailed(new SubmitFailure($"branch already exists on remote: {pr.Branch.Value}"));
 
         var bundlePath = Path.Combine(config.InputDir.Value, pr.BundleFile);
         if (!File.Exists(bundlePath))
-            return new SubmitFailure($"bundle file not found: {pr.BundleFile}");
+            return new SubmitOneFailed(new SubmitFailure($"bundle file not found: {pr.BundleFile}"));
 
         if (await DeliverBranchAsync(context, cloneDir, bundlePath, pr.Branch, cancellationToken) is { } deliverFailure)
-            return deliverFailure;
+            return new SubmitOneFailed(deliverFailure);
 
+        string url;
         try
         {
-            await context.Host.CreatePullRequestAsync(pr, cancellationToken);
+            url = await context.Host.CreatePullRequestAsync(pr, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
-            return new SubmitFailure($"creating PR for {pr.Branch.Value} failed: {ex.Message}");
+            return new SubmitOneFailed(new SubmitFailure($"creating PR for {pr.Branch.Value} failed: {ex.Message}"));
         }
 
         context.LogLine($"opened PR for {pr.Branch.Value}");
-        return null;
+        return new SubmitOneSucceeded(url);
     }
 
     /// <summary>Unbundles the PR's branch from its local bundle and pushes it to the remote.
@@ -126,4 +135,15 @@ internal static class SubmitRunner
         CancellationToken cancellationToken
     )
     => context.RunProcess("git", ["-C", repoDir, .. args], repoDir, null, null, cancellationToken);
+
+    /// <summary>The result of submitting one pending PR: either the opened PR's URL, or a failure
+    /// (nested so the caller keeps the typed <see cref="SubmitFailure"/> rather than re-deriving it).
+    /// Modeled on <see cref="Rix.Job.JobRunner"/>'s delivery outcome, so the loop below pattern
+    /// matches rather than distinguishing by nullability.</summary>
+    private abstract record SubmitOneOutcome
+    {
+        private protected SubmitOneOutcome() { }
+    }
+    private sealed record SubmitOneSucceeded(string Url) : SubmitOneOutcome;
+    private sealed record SubmitOneFailed(SubmitFailure Failure) : SubmitOneOutcome;
 }

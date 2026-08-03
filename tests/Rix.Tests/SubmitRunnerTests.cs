@@ -65,9 +65,12 @@ public class SubmitRunnerTests
 
         var result = await Run(host, GitRunner(commands));
 
-        AssertSuccess(result);
+        var success = AssertSuccess(result);
         Assert.AreEqual(1, host.CreatedPrs.Count);
         Assert.AreEqual("rix/my-fix", host.CreatedPrs[0].Branch.Value);
+        Assert.AreEqual(1, success.CreatedPrs.Count);
+        Assert.AreEqual("rix/my-fix", success.CreatedPrs[0].Branch);
+        Assert.AreEqual("https://github.com/owner/repo/pull/1", success.CreatedPrs[0].Url);
         CollectionAssert.Contains(commands, "fetch");
         CollectionAssert.AreEqual(
             ExpectedPushedBranches, host.PushedBranches.Select(b => b.Value).ToArray());

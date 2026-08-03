@@ -43,4 +43,23 @@ runs:
         RIX_WRITE_TOKEN: ${{ inputs.write-token }}
         RIX_INPUT_DIR: ${{ inputs.input-dir }}
       shell: bash
-      run: '"$RIX_BIN" submit'
+      run: |
+        # Keep rix submit's stdout (the submit result JSON) for the job-summary step below, and its
+        # stderr (the progress/error lines) alongside it; replay the log so the step stays readable.
+        set +e
+        "$RIX_BIN" submit > "$RIX_INPUT_DIR/submit-result.json" 2> "$RIX_INPUT_DIR/submit-error.log"
+        status=$?
+        set -e
+        cat "$RIX_INPUT_DIR/submit-error.log" >&2
+        exit $status
+
+    - name: Post job summary
+      if: always()
+      env:
+        RIX_INPUT_DIR: ${{ inputs.input-dir }}
+      shell: bash
+      run: |
+        "${GITHUB_ACTION_PATH:?}"/../post-job-summary/post-job-summary.sh \
+          "$RIX_INPUT_DIR/result.json" \
+          "$RIX_INPUT_DIR/submit-result.json" \
+          "$RIX_INPUT_DIR/submit-error.log"
