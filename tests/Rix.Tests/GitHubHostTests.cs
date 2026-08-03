@@ -229,6 +229,41 @@ public class GitHubHostTests
     }
 
     [TestMethod]
+    public async Task ConfigureGitAsync_SetsUserName_ThenEmail_InRepoDirectory_NoAuthEnv()
+    {
+        var runs = new List<(string[] Args, string WorkingDir, IReadOnlyDictionary<string, string>? Env)>();
+        var host = BuildHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, args, workingDir, env, _, _) =>
+            {
+                runs.Add((args.ToArray(), workingDir, env));
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await host.ConfigureGitAsync("/tmp/clone", CancellationToken.None);
+
+        Assert.AreEqual(2, runs.Count);
+        CollectionAssert.AreEqual(new[] { "config", "user.name", "rix" }, runs[0].Args);
+        CollectionAssert.AreEqual(new[] { "config", "user.email", "rix@noreply.invalid" }, runs[1].Args);
+        Assert.AreEqual("/tmp/clone", runs[0].WorkingDir);
+        Assert.AreEqual("/tmp/clone", runs[1].WorkingDir);
+        Assert.IsNull(runs[0].Env, "local-only config must not receive the credential env");
+        Assert.IsNull(runs[1].Env, "local-only config must not receive the credential env");
+    }
+
+    [TestMethod]
+    public async Task ConfigureGitAsync_Throws_WhenGitFails()
+    {
+        var host = BuildHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.ConfigureGitAsync("/tmp/clone", CancellationToken.None));
+        StringAssert.Contains(ex.Message, "config");
+    }
+
+    [TestMethod]
     public async Task CloneAsync_Throws_WhenGitFails()
     {
         var host = BuildHost(

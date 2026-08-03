@@ -83,6 +83,16 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
         cancellationToken
     );
 
+    /// <summary>Sets <c>user.name</c> and <c>user.email</c> inside the clone so the coding agent's
+    /// commits carry the <see cref="GitIdentity"/> instead of whatever the agent would otherwise
+    /// guess. Purely local, so no auth env is needed; each key is set in its own invocation so a
+    /// failure names the key it failed on.</summary>
+    public async Task ConfigureGitAsync(string repoDirectory, CancellationToken cancellationToken)
+    {
+        await RunGitAsync(["config", "user.name", GitIdentity.Name], repoDirectory, authenticated: false, cancellationToken);
+        await RunGitAsync(["config", "user.email", GitIdentity.Email], repoDirectory, authenticated: false, cancellationToken);
+    }
+
     public async Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
     {
         // A missing ref (exit 1) is an expected outcome here, not a failure of the git binary itself,

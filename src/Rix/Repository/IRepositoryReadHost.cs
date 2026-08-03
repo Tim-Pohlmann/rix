@@ -16,6 +16,11 @@ internal interface IRepositoryReadHost
     /// mistake is caught immediately, instead of surfacing later as an opaque git-bundle failure.</summary>
     Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken);
 
+    /// <summary>Sets the commit identity inside the already-cloned <paramref name="repoDirectory"/>
+    /// (see <see cref="GitIdentity"/>), so the coding agent can commit without guessing author
+    /// metadata. Must run after <see cref="CloneAsync"/> and before the agent starts.</summary>
+    Task ConfigureGitAsync(string repoDirectory, CancellationToken cancellationToken);
+
     /// <summary>Bundles the commits on <paramref name="branch"/> not on <paramref name="baseBranch"/>
     /// into a git bundle at <paramref name="bundlePath"/>, run inside the cloned
     /// <paramref name="repoDirectory"/>.</summary>

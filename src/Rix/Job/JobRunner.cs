@@ -38,6 +38,9 @@ internal static class JobRunner
         try
         {
             await context.Host.CloneAsync(cloneDir.Path, ct);
+            // Set the commit identity before the agent starts, so it can commit without guessing
+            // author metadata.
+            await context.Host.ConfigureGitAsync(cloneDir.Path, ct);
         }
         catch (InvalidOperationException ex)
         {

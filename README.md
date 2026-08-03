@@ -6,6 +6,10 @@ AI software factory.
 bundle per proposed change. It is read-only — it never pushes or opens PRs itself, so the
 agent run needs only a read token. A separate, trusted step turns the bundles into PRs.
 
+Before the agent starts, rix configures the clone's git identity as
+`rix <rix@noreply.invalid>`, so commits the agent creates carry a consistent author instead
+of guessed metadata.
+
 ## Run via GitHub Actions
 
 `rix` ships a reusable workflow (`.github/workflows/job.yml`) that runs the job and opens
