@@ -55,11 +55,8 @@ runs:
 
     - name: Post job summary
       if: always()
-      env:
-        RIX_INPUT_DIR: ${{ inputs.input-dir }}
-      shell: bash
-      run: |
-        "${GITHUB_ACTION_PATH:?}"/../post-job-summary/post-job-summary.sh \
-          "$RIX_INPUT_DIR/result.json" \
-          "$RIX_INPUT_DIR/submit-result.json" \
-          "$RIX_INPUT_DIR/submit-error.log"
+      uses: ./.github/actions/post-job-summary
+      with:
+        result-file: ${{ inputs.input-dir }}/result.json
+        submit-file: ${{ inputs.input-dir }}/submit-result.json
+        submit-log: ${{ inputs.input-dir }}/submit-error.log

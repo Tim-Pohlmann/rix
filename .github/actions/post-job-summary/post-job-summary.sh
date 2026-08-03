@@ -30,17 +30,26 @@ duration_label() {
   return 0
 }
 
+# Appends a "### Submit" / status / error block to stdout. Shared by both render_submit branches
+# below - the only difference between them is where the error text comes from.
+render_submit_failure() {
+  local status="$1" error="$2"
+  echo "### Submit"
+  echo ""
+  echo "**Status:** ${status:-failure}"
+  if [[ -n "$error" ]]; then
+    echo ""
+    echo "**Error:** $error" # NOSONAR: step-summary markdown content, not a diagnostic - must stay on stdout to reach $summary_file
+  fi
+  echo ""
+}
+
 # Appends the submit outcome - the opened pull requests, or the submit failure - to stdout.
 render_submit() {
   local submit_file="$1" submit_log="$2" status count
   if [[ ! -f "$submit_file" ]]; then
     if [[ -n "$submit_log" && -s "$submit_log" ]]; then
-      echo "### Submit"
-      echo ""
-      echo "**Status:** failure"
-      echo ""
-      echo "**Error:** $(head -n1 "$submit_log")" # NOSONAR: step-summary markdown content, not a diagnostic - must stay on stdout to reach $summary_file
-      echo ""
+      render_submit_failure "failure" "$(head -n1 "$submit_log")"
     fi
     return 0
   fi
@@ -55,16 +64,9 @@ render_submit() {
       echo ""
     fi
   else
-    echo "### Submit"
-    echo ""
-    echo "**Status:** ${status:-failure}"
     local error
     error="$(jq -r '.error // empty' "$submit_file" 2>/dev/null || true)"
-    if [[ -n "$error" ]]; then
-      echo ""
-      echo "**Error:** $error" # NOSONAR: step-summary markdown content, not a diagnostic - must stay on stdout to reach $summary_file
-    fi
-    echo ""
+    render_submit_failure "$status" "$error"
   fi
 }
 

@@ -90,11 +90,10 @@ internal sealed record CreatePullRequestRequest
     [property: JsonPropertyName("body")] string Body
 );
 
-/// <summary>The fields <c>rix submit</c> reads back from a successful "create a pull request"
+/// <summary>The field <c>rix submit</c> reads back from a successful "create a pull request"
 /// response.</summary>
 internal sealed record CreatePullRequestResponse
 (
-    [property: JsonPropertyName("number")] int Number,
     [property: JsonPropertyName("html_url")] string? HtmlUrl
 );
 

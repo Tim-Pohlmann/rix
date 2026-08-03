@@ -129,11 +129,10 @@ runs:
         "$RIX_BIN" job --agent "${RIX_AGENT:-opencode}" --output-dir out --work-dir work
 
     - name: Post job summary
+      # result.json is always written by rix job - on failure too (see Startup.ExecuteJobAsync) -
+      # so this renders the job outcome even when the step above failed and the later create-pr
+      # job is skipped.
       if: always()
-      shell: bash
-      run: |
-        # result.json is always written by rix job - on failure too (see Startup.ExecuteJobAsync) -
-        # so this renders the job outcome even when the step above failed and the later create-pr
-        # job is skipped.
-        "${GITHUB_ACTION_PATH:?}"/../post-job-summary/post-job-summary.sh \
-          "$GITHUB_WORKSPACE/out/result.json"
+      uses: ./.github/actions/post-job-summary
+      with:
+        result-file: ${{ github.workspace }}/out/result.json
