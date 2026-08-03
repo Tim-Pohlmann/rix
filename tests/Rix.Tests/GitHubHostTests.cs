@@ -15,6 +15,9 @@ public class GitHubHostTests
 
     private static readonly string[] ExpectedPushArgs = ["push", "origin", "rix/fix"];
 
+    private static readonly string[] ExpectedBranchExistsLocallyArgs =
+        ["rev-parse", "--verify", "--quiet", "refs/heads/rix/fix"];
+
     private static GitHubReadHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
@@ -85,7 +88,7 @@ public class GitHubHostTests
 
         await host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None);
 
-        CollectionAssert.AreEqual(new[] { "rev-parse", "--verify", "--quiet", "refs/heads/rix/fix" }, capturedArgs);
+        CollectionAssert.AreEqual(ExpectedBranchExistsLocallyArgs, capturedArgs);
         Assert.AreEqual("/tmp/clone", capturedWorkingDir);
         Assert.IsNull(capturedEnv, "local-only check must not receive the credential env");
     }
