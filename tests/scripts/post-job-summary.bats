@@ -102,6 +102,21 @@ write_submit() {
   [[ "$(summary)" == *"panic: rix submit crashed"* ]]
 }
 
+@test "running as a real process with no submit args does not hit set -u" {
+  # The sourced tests above call rix_post_job_summary directly, which never trips the script's
+  # `set -euo pipefail` guard (only armed when run as its own process, not sourced) - so they
+  # can't catch a local left unbound on some code path. Invoke the real script as a subprocess,
+  # exactly like the composite action does for a plain `rix job` run (no submit step, so both
+  # submit args are ""), to reproduce that class of bug.
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+
+  run bash "${BATS_TEST_DIRNAME}/../../.github/actions/post-job-summary/post-job-summary.sh" "$RESULT" "" ""
+
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"unbound variable"* ]]
+  [[ "$(summary)" == *"**Status:** success"* ]]
+}
+
 @test "missing result.json renders a notice, not a failure" {
   run rix_post_job_summary "$BATS_TEST_TMPDIR/nope.json"
 

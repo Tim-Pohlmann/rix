@@ -47,7 +47,7 @@ render_submit_failure() {
 
 # Appends the submit outcome - the opened pull requests, or the submit failure - to stdout.
 render_submit() {
-  local submit_file="$1" submit_log="$2" status count
+  local submit_file="$1" submit_log="$2" status="" count=0
   if [[ -f "$submit_file" ]]; then
     status="$(jq -r '.status // empty' "$submit_file" 2>/dev/null || true)"
   fi
