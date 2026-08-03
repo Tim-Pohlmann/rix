@@ -123,6 +123,16 @@ jobs:
             Just reply with the text: OK
           read-token: ${{ github.token }}
           agent: opencode
+          # max-tokens/timeout are deliberately 0, not omitted: job.yml declares them as
+          # workflow_call inputs of type: number with no default, so a caller who omits them
+          # (the common case) makes GitHub Actions resolve the expressions to 0 rather than
+          # empty/null and pass that 0 through to this action. run-rix-job must treat that 0 as
+          # "unset" and let rix's own defaults (50k tokens, 30 min) apply instead of forwarding
+          # it - rix rejects an explicit 0, so a regression that forwards it fails this job with
+          # "--max-tokens must be a positive integer". (Omitting the inputs entirely would only
+          # exercise the empty-string path, which never hits that validation.)
+          max-tokens: 0
+          timeout: 0
           rix-bin: ${{ env.RIX_BIN_PATH }}
 
       # Runs the real submit composite action (the same one job.yml's create-pr job uses), proving

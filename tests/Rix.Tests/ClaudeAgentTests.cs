@@ -130,7 +130,7 @@ public class ClaudeAgentTests
     [TestMethod]
     public void BuildInvocation_ProducesClaudePrintInvocation()
     {
-        var config = TestConfig.Valid(agent: "claude", maxTokens: 1234);
+        var config = TestConfig.Valid(agent: "claude", maxTokens: "1234");
 
         var invocation = Agent.BuildInvocation(config, "SYSTEM");
 

@@ -119,7 +119,7 @@ public class OpenCodeAgentTests
     [TestMethod]
     public void BuildInvocation_ProducesOpenCodeRunInvocation()
     {
-        var config = TestConfig.Valid(maxTokens: 1234);
+        var config = TestConfig.Valid(maxTokens: "1234");
 
         var invocation = Agent.BuildInvocation(config, "SYSTEM");
 

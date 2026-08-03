@@ -113,5 +113,17 @@ runs:
           fi
           export "$key_env"="$AGENT_API_KEY"
         fi
+        # A caller who omits max-tokens/timeout (the common case) has job.yml's workflow_call
+        # inputs - type: number, no default - resolve to 0 rather than empty/null, which is
+        # indistinguishable here from a caller explicitly passing 0. Treat only that one
+        # ambiguous value as "unset" so rix's own default (50k tokens, 30 min) applies; forward
+        # anything else unchanged, including other invalid values (negative, non-numeric), so
+        # rix's own validation reports a clear error instead of this glue code silently masking
+        # a caller's mistake behind its default.
+        for var in RIX_MAX_TOKENS RIX_TIMEOUT; do
+          if [ -z "${!var:-}" ] || [ "${!var}" = "0" ]; then
+            unset "$var"
+          fi
+        done
         mkdir -p out work
         "$RIX_BIN" job --agent "${RIX_AGENT:-opencode}" --output-dir out --work-dir work

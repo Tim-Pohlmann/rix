@@ -56,13 +56,8 @@ internal record JobConfig
         if (string.IsNullOrWhiteSpace(readToken))
             errors.Add("--read-token is required");
 
-        var resolvedMaxTokens = inputs.MaxTokens ?? DefaultMaxTokens;
-        if (resolvedMaxTokens <= 0)
-            errors.Add("--max-tokens must be a positive integer");
-
-        var resolvedTimeout = inputs.TimeoutMinutes ?? DefaultTimeoutMinutes;
-        if (resolvedTimeout <= 0)
-            errors.Add("--timeout must be a positive integer");
+        var resolvedMaxTokens = ParsePositiveInt(inputs.MaxTokens, DefaultMaxTokens, "--max-tokens", errors);
+        var resolvedTimeout = ParsePositiveInt(inputs.TimeoutMinutes, DefaultTimeoutMinutes, "--timeout", errors);
 
         var resolvedWorkDir = string.IsNullOrWhiteSpace(inputs.WorkDir) switch
         {
@@ -104,6 +99,28 @@ internal record JobConfig
         );
         return new JobConfigValid(config);
     }
+
+    /// <summary>Parses a raw <c>--max-tokens</c>/<c>--timeout</c>-style value: blank resolves to
+    /// <paramref name="defaultValue"/> (the flag was never set), and anything else must parse as a
+    /// positive integer or <paramref name="errors"/> gets a message naming exactly what was wrong -
+    /// unparseable text or a non-positive number - rather than silently falling back to the default,
+    /// which would hide a caller's typo instead of reporting it.</summary>
+    private static int ParsePositiveInt(string? raw, int defaultValue, string flag, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return defaultValue;
+        if (!int.TryParse(raw, out var value))
+        {
+            errors.Add($"{flag} must be an integer, got '{raw}'");
+            return defaultValue;
+        }
+        if (value <= 0)
+        {
+            errors.Add($"{flag} must be a positive integer");
+            return defaultValue;
+        }
+        return value;
+    }
 }
 
 /// <summary>How the coding agent should be run: which agent (<see cref="AgentKind"/>), the task
@@ -123,8 +140,8 @@ internal record JobInputs
     string Repo,
     string Prompt,
     string ReadToken,
-    int? MaxTokens = null,
-    int? TimeoutMinutes = null,
+    string? MaxTokens = null,
+    string? TimeoutMinutes = null,
     string? WorkDir = null,
     string? OutputDir = null,
     string? Agent = null,

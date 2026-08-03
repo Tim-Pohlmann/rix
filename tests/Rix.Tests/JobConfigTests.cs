@@ -11,8 +11,8 @@ public class JobConfigTests
         string repo = "owner/repo",
         string prompt = "Fix the bug",
         string readToken = "read-tok",
-        int? maxTokens = null,
-        int? timeoutMinutes = null,
+        string? maxTokens = null,
+        string? timeoutMinutes = null,
         string? workDir = null,
         string? outputDir = null,
         string? agent = null,
@@ -56,7 +56,7 @@ public class JobConfigTests
     [TestMethod]
     public void Create_OverridesDefaults()
     {
-        var config = Valid(Create(maxTokens: 1000, timeoutMinutes: 5, workDir: Path.GetTempPath()));
+        var config = Valid(Create(maxTokens: "1000", timeoutMinutes: "5", workDir: Path.GetTempPath()));
 
         Assert.AreEqual(1000, config.Agent.MaxTokens.Value);
         Assert.AreEqual(5, config.TimeoutMinutes.Value);
@@ -123,13 +123,27 @@ public class JobConfigTests
     [TestMethod]
     public void Create_RejectsNonPositiveMaxTokens()
     {
-        Assert.IsTrue(Errors(Create(maxTokens: 0)).Count > 0);
+        Assert.IsTrue(Errors(Create(maxTokens: "0")).Count > 0);
     }
 
     [TestMethod]
     public void Create_RejectsNonPositiveTimeout()
     {
-        Assert.IsTrue(Errors(Create(timeoutMinutes: -1)).Count > 0);
+        Assert.IsTrue(Errors(Create(timeoutMinutes: "-1")).Count > 0);
+    }
+
+    [TestMethod]
+    public void Create_RejectsNonNumericMaxTokens()
+    {
+        var errors = Errors(Create(maxTokens: "abc"));
+        Assert.IsTrue(errors.Any(e => e.Contains("--max-tokens") && e.Contains("integer")), $"expected an integer-format error, got: {string.Join("; ", errors)}");
+    }
+
+    [TestMethod]
+    public void Create_RejectsNonNumericTimeout()
+    {
+        var errors = Errors(Create(timeoutMinutes: "abc"));
+        Assert.IsTrue(errors.Any(e => e.Contains("--timeout") && e.Contains("integer")), $"expected an integer-format error, got: {string.Join("; ", errors)}");
     }
 
     [TestMethod]
