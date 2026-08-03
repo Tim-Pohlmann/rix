@@ -44,7 +44,7 @@ internal static class JobRunner
             return new SetupFailure(ex.Message);
         }
 
-        await using var apiServer = await LocalApiServer.StartAsync(context.Host, ct, context.LogLine.Invoke);
+        await using var apiServer = await LocalApiServer.StartAsync(context.Host, cloneDir.Path, ct, context.LogLine.Invoke);
 
         var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
         var agentResult = await RunAgentAsync(config, context, systemPrompt, cloneDir.Path, ct);

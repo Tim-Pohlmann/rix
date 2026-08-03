@@ -15,7 +15,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task GetHealth_Returns200()
     {
-        await using var server = await LocalApiServer.StartAsync(FakeHost(false), CancellationToken.None);
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         var response = await client.GetAsync(new Uri(server.BaseUrl, "/health"));
@@ -25,7 +25,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPr_Returns200WithQueuedStatus()
     {
-        await using var server = await LocalApiServer.StartAsync(FakeHost(false), CancellationToken.None);
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
@@ -45,7 +45,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPr_RecordsPendingRequest()
     {
-        await using var server = await LocalApiServer.StartAsync(FakeHost(false), CancellationToken.None);
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
@@ -66,7 +66,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPr_Returns400_ForNonRixBranch()
     {
-        await using var server = await LocalApiServer.StartAsync(FakeHost(false), CancellationToken.None);
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
@@ -92,7 +92,7 @@ public class LocalApiServerTests
     public async Task PostPr_Returns400_ForMissingRequiredField(
         string branch, string baseBranch, string title, string body, string expectedError)
     {
-        await using var server = await LocalApiServer.StartAsync(FakeHost(false), CancellationToken.None);
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
@@ -109,7 +109,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPr_Returns409_WhenBranchAlreadyExists()
     {
-        await using var server = await LocalApiServer.StartAsync(FakeHost(true), CancellationToken.None);
+        await using var server = await LocalApiServer.StartAsync(FakeHost(true), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
@@ -121,6 +121,28 @@ public class LocalApiServerTests
         });
 
         Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task PostPr_Returns400_WhenBranchNotFoundLocally()
+    {
+        var host = new StubRepositoryHost(branchExistsLocally: _ => Task.FromResult(false));
+        await using var server = await LocalApiServer.StartAsync(host, Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/ghost",
+            title = "Title",
+            body = "body",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/ghost");
+        StringAssert.Contains(result["error"], "working directory");
     }
 
 }

@@ -51,6 +51,46 @@ public class GitHubHostTests
     }
 
     [TestMethod]
+    public async Task BranchExistsLocallyAsync_ReturnsTrue_WhenGitRevParseSucceeds()
+    {
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess()));
+
+        Assert.IsTrue(await host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task BranchExistsLocallyAsync_ReturnsFalse_WhenGitRevParseFails()
+    {
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
+
+        Assert.IsFalse(await host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/missing"), CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task BranchExistsLocallyAsync_RunsGitRevParse_InRepoDirectory_NoAuthEnv()
+    {
+        string[]? capturedArgs = null;
+        string? capturedWorkingDir = null;
+        IReadOnlyDictionary<string, string>? capturedEnv = null;
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, args, workingDir, env, _, _) =>
+            {
+                capturedArgs = args.ToArray();
+                capturedWorkingDir = workingDir;
+                capturedEnv = env;
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "rev-parse", "--verify", "--quiet", "refs/heads/rix/fix" }, capturedArgs);
+        Assert.AreEqual("/tmp/clone", capturedWorkingDir);
+        Assert.IsNull(capturedEnv, "local-only check must not receive the credential env");
+    }
+
+    [TestMethod]
     public async Task CloneAsync_CallsGitClone_WithPlainUrl_NoTokenInArgs()
     {
         string[]? capturedArgs = null;

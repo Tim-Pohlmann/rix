@@ -8,7 +8,8 @@ namespace Rix.Tests;
 internal sealed class StubRepositoryHost(
     Func<BranchName, Task<bool>>? branchExists = null,
     Func<string, Task>? createBundle = null,
-    Func<Task>? clone = null) : IRepositoryReadHost
+    Func<Task>? clone = null,
+    Func<BranchName, Task<bool>>? branchExistsLocally = null) : IRepositoryReadHost
 {
     /// <summary>Succeeds by default; override via the <c>clone</c> constructor parameter to
     /// simulate a git clone failure (e.g. throwing <see cref="InvalidOperationException"/>, as the
@@ -17,6 +18,12 @@ internal sealed class StubRepositoryHost(
     => clone switch { { } check => check(), _ => Task.CompletedTask };
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     => branchExists switch { { } check => check(branch), _ => Task.FromResult(false) };
+
+    /// <summary>Exists by default, since most tests care about simulating the agent's own
+    /// process/git behaviour rather than this guard; override via <c>branchExistsLocally</c> to
+    /// simulate an agent that queued a PR for a branch it never actually committed.</summary>
+    public Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
+    => branchExistsLocally switch { { } check => check(branch), _ => Task.FromResult(true) };
 
     /// <summary>By default writes a placeholder bundle file so callers that inspect the output
     /// directory see it; override via the <c>createBundle</c> constructor parameter to simulate
@@ -52,6 +59,11 @@ internal sealed class StubSubmitHost(
 
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     => branchExists switch { { } check => check(branch), _ => Task.FromResult(false) };
+
+    /// <summary>The submit flow never bundles, so this guard is irrelevant to it; always reports the
+    /// branch as present.</summary>
+    public Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
+    => Task.FromResult(true);
 
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
     {

@@ -26,6 +26,9 @@ internal sealed class GitHubHost : IRepositoryHost
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     => _read.BranchExistsOnRemoteAsync(branch, cancellationToken);
 
+    public Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
+    => _read.BranchExistsLocallyAsync(repoDirectory, branch, cancellationToken);
+
     public Task CreateBundleAsync
     (
         string repoDirectory,

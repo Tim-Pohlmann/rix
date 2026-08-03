@@ -557,6 +557,8 @@ public class JobRunnerTests
         }
         public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
         => Task.FromResult(false);
+        public Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
+        => Task.FromResult(true);
         public Task CreateBundleAsync(
             string repoDirectory,
             string bundlePath,

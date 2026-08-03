@@ -83,6 +83,19 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
         cancellationToken
     );
 
+    public async Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
+    {
+        // A missing ref is an expected outcome here, not a failure of the git binary itself, so this
+        // reads the ProcessResult directly rather than going through RunGitAsync (which throws on any
+        // non-zero exit). Purely local, like bundle create, so no auth env is needed either.
+        var result = await _runProcess
+        (
+            "git", ["rev-parse", "--verify", "--quiet", $"refs/heads/{branch.Value}"],
+            repoDirectory, environmentOverrides: null, onStdoutLine: null, cancellationToken
+        );
+        return result is ProcessSuccess;
+    }
+
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
         var url = $"https://api.github.com/repos/{Repo.Value}/branches/{Uri.EscapeDataString(branch.Value)}";
