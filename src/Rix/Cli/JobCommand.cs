@@ -26,14 +26,14 @@ internal static class JobCommand
     )
     { IsRequired = false };
 
-    private static readonly Option<int?> MaxTokensOption = new
+    private static readonly Option<string> MaxTokensOption = new
     (
         name: "--max-tokens",
         description: $"Coding agent token budget cap (default: {JobConfig.DefaultMaxTokens})"
     )
     { IsRequired = false };
 
-    private static readonly Option<int?> TimeoutOption = new
+    private static readonly Option<string> TimeoutOption = new
     (
         name: "--timeout",
         description: $"Wall-clock timeout in minutes (default: {JobConfig.DefaultTimeoutMinutes})"
@@ -93,8 +93,8 @@ internal static class JobCommand
                     Repo:           parsed.Str(RepoOption,      "RIX_REPO"),
                     Prompt:         parsed.Str(PromptOption,    "RIX_PROMPT"),
                     ReadToken:      parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"),
-                    MaxTokens:      parsed.Int(MaxTokensOption, "RIX_MAX_TOKENS"),
-                    TimeoutMinutes: parsed.Int(TimeoutOption,   "RIX_TIMEOUT"),
+                    MaxTokens:      parsed.Str(MaxTokensOption, "RIX_MAX_TOKENS"),
+                    TimeoutMinutes: parsed.Str(TimeoutOption,   "RIX_TIMEOUT"),
                     WorkDir:        parsed.Str(WorkDirOption,   "RIX_WORK_DIR"),
                     OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
                     Agent:          parsed.Str(AgentOption,     "RIX_AGENT"),

@@ -119,7 +119,7 @@ public class PiAgentTests
     [TestMethod]
     public void BuildInvocation_ProducesPiJsonModeInvocation()
     {
-        var config = TestConfig.Valid(agent: "pi", maxTokens: 1234);
+        var config = TestConfig.Valid(agent: "pi", maxTokens: "1234");
 
         var invocation = Agent.BuildInvocation(config, "SYSTEM");
 
