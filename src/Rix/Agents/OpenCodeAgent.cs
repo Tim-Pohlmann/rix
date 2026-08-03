@@ -10,13 +10,20 @@ namespace Rix.Agents;
 /// that stream.
 /// </summary>
 /// <remarks>
-/// Two deliberate differences from <see cref="ClaudeAgent"/>, both rooted in OpenCode's CLI:
+/// Three deliberate differences from <see cref="ClaudeAgent"/>, all rooted in OpenCode's CLI:
 /// <list type="bullet">
 /// <item>OpenCode has no <c>--append-system-prompt</c> flag, so rix's system prompt (which carries
 /// the local PR API URL) is folded into the run message ahead of the user's prompt.</item>
 /// <item>OpenCode exposes no per-run output-token cap equivalent to
 /// <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so <see cref="AgentConfig.MaxTokens"/> is not forwarded;
 /// the invocation carries no environment overrides.</item>
+/// <item>The invocation always carries <c>--auto</c>. Without it, an unattended run has no way to
+/// answer an "ask"-level permission request (there's no terminal to prompt), so OpenCode
+/// auto-rejects it — and, unlike Claude Code, OpenCode's session then stops outright rather than
+/// letting the agent recover, silently abandoning the job while still exiting 0. <c>--auto</c>
+/// resolves "ask" to allowed instead (explicit <c>deny</c> rules, of which rix configures none,
+/// would still be enforced); acceptable here because the agent already runs confined to a
+/// disposable <see cref="Rix.TempDirectory"/> clone on an ephemeral CI runner.</item>
 /// </list>
 /// Unlike Claude (Anthropic-only), OpenCode supports many model providers via
 /// <see cref="AgentConfig.Model"/> (a <c>provider/model</c> string forwarded verbatim as
@@ -34,7 +41,7 @@ internal sealed class OpenCodeAgent : ICodingAgent
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
     {
-        List<string> args = ["run", $"{systemPrompt}\n\n{config.Agent.Prompt}"];
+        List<string> args = ["run", $"{systemPrompt}\n\n{config.Agent.Prompt}", "--auto"];
         if (!string.IsNullOrWhiteSpace(config.Agent.Model))
             args.AddRange(["--model", config.Agent.Model]);
         args.AddRange(["--format", "json"]);
