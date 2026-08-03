@@ -15,6 +15,9 @@ public class GitHubHostTests
 
     private static readonly string[] ExpectedPushArgs = ["push", "origin", "rix/fix"];
 
+    private static readonly string[] ExpectedBranchExistsLocallyArgs =
+        ["rev-parse", "--verify", "--quiet", "refs/heads/rix/fix"];
+
     private static GitHubReadHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
@@ -48,6 +51,56 @@ public class GitHubHostTests
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
         await Assert.ThrowsExactlyAsync<HttpRequestException>(
             () => host.BranchExistsOnRemoteAsync(new BranchName("rix/branch"), CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task BranchExistsLocallyAsync_ReturnsTrue_WhenGitRevParseSucceeds()
+    {
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess()));
+
+        Assert.IsTrue(await host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task BranchExistsLocallyAsync_ReturnsFalse_WhenGitRevParseFails()
+    {
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
+
+        Assert.IsFalse(await host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/missing"), CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task BranchExistsLocallyAsync_Throws_OnOperationalFailure_NotJustMissingRef()
+    {
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task BranchExistsLocallyAsync_RunsGitRevParse_InRepoDirectory_NoAuthEnv()
+    {
+        string[]? capturedArgs = null;
+        string? capturedWorkingDir = null;
+        IReadOnlyDictionary<string, string>? capturedEnv = null;
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, args, workingDir, env, _, _) =>
+            {
+                capturedArgs = args.ToArray();
+                capturedWorkingDir = workingDir;
+                capturedEnv = env;
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None);
+
+        CollectionAssert.AreEqual(ExpectedBranchExistsLocallyArgs, capturedArgs);
+        Assert.AreEqual("/tmp/clone", capturedWorkingDir);
+        Assert.IsNull(capturedEnv, "local-only check must not receive the credential env");
     }
 
     [TestMethod]

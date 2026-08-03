@@ -24,9 +24,12 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
     /// <param name="logLine">Sink for the server's own diagnostic log lines, forwarded live so they
     /// interleave with the agent's output on the same seam. When <c>null</c>, server logs are dropped.</param>
+    /// <param name="cloneDir">The job's own clone of the target repo — the only directory a queued
+    /// branch is accepted from, since it's also the directory <c>rix</c> later bundles from.</param>
     internal static async Task<LocalApiServer> StartAsync
     (
         IRepositoryReadHost host,
+        string cloneDir,
         CancellationToken cancellationToken,
         Action<string>? logLine = null
     )
@@ -47,7 +50,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         var app = builder.Build();
 
-        MapEndpoints(app, host, pendingPrRequests);
+        MapEndpoints(app, host, cloneDir, pendingPrRequests);
 
         await app.StartAsync(cancellationToken);
 
@@ -59,31 +62,45 @@ internal sealed class LocalApiServer : IAsyncDisposable
     (
         WebApplication app,
         IRepositoryReadHost host,
+        string cloneDir,
         ConcurrentQueue<QueuedPr> pendingPrRequests
     )
     {
         app.MapGet("/health", () => Results.Ok());
-        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, pendingPrRequests, ct));
+        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
     }
 
     private static async Task<IResult> HandlePrAsync
     (
         PrRequest req,
         IRepositoryReadHost host,
+        string cloneDir,
         ConcurrentQueue<QueuedPr> pendingPrRequests,
         CancellationToken ct
     )
-    => req.Validate() switch
     {
-        ValidPr(var queuedPr) when !await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct)
-            => EnqueuePr(pendingPrRequests, queuedPr),
-        ValidPr(var queuedPr)
-            => Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote.")),
-        InvalidPr invalid
-            => Results.BadRequest(new ErrorResponse(invalid.Reason)),
-        var other
-            => throw new NotSupportedException($"Unexpected PR validation {other.GetType()}"),
-    };
+        var validation = req.Validate();
+        if (validation is InvalidPr(var reason))
+            return Results.BadRequest(new ErrorResponse(reason));
+        if (validation is not ValidPr(var queuedPr))
+            throw new NotSupportedException($"Unexpected PR validation {validation.GetType()}");
+
+        if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
+            return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
+
+        // Catches an agent that queues a branch it never actually committed into its assigned
+        // working directory (e.g. because it made the change somewhere else on the runner) — without
+        // this, the mistake surfaces only later, as an opaque git-bundle failure after the agent's
+        // session has already ended and it's too late to retry.
+        if (!await host.BranchExistsLocallyAsync(cloneDir, queuedPr.Branch, ct))
+        {
+            var message = $"Branch {queuedPr.Branch.Value} was not found in your working directory. " +
+                "Make sure you committed it there (not in a different directory) before calling /pr.";
+            return Results.BadRequest(new ErrorResponse(message));
+        }
+
+        return EnqueuePr(pendingPrRequests, queuedPr);
+    }
 
     private static IResult EnqueuePr(ConcurrentQueue<QueuedPr> pendingPrRequests, QueuedPr queuedPr)
     {
