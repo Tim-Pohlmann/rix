@@ -126,6 +126,7 @@ public class OpenCodeAgentTests
         Assert.AreEqual("opencode", invocation.FileName);
         var args = invocation.Arguments.ToList();
         CollectionAssert.Contains(args, "run");
+        CollectionAssert.Contains(args, "--auto");
         CollectionAssert.Contains(args, "--format");
         CollectionAssert.Contains(args, "json");
         // System prompt is folded into the run message ahead of the user prompt.
