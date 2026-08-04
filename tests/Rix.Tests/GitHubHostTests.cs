@@ -18,6 +18,11 @@ public class GitHubHostTests
     private static readonly string[] ExpectedBranchExistsLocallyArgs =
         ["rev-parse", "--verify", "--quiet", "refs/heads/rix/fix"];
 
+    private static readonly string[] ExpectedConfigureUserNameArgs = ["config", "user.name", "rix"];
+
+    private static readonly string[] ExpectedConfigureUserEmailArgs =
+        ["config", "user.email", "rix@noreply.invalid"];
+
     private static GitHubReadHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
@@ -226,6 +231,41 @@ public class GitHubHostTests
             () => host.CreateBundleAsync("/tmp/clone", "/tmp/out/fix.bundle",
                 new BranchName("main"), new BranchName("rix/fix"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "bundle");
+    }
+
+    [TestMethod]
+    public async Task ConfigureGitAsync_SetsUserName_ThenEmail_InRepoDirectory_NoAuthEnv()
+    {
+        var runs = new List<(string[] Args, string WorkingDir, IReadOnlyDictionary<string, string>? Env)>();
+        var host = BuildHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, args, workingDir, env, _, _) =>
+            {
+                runs.Add((args.ToArray(), workingDir, env));
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await host.ConfigureGitAsync("/tmp/clone", CancellationToken.None);
+
+        Assert.AreEqual(2, runs.Count);
+        CollectionAssert.AreEqual(ExpectedConfigureUserNameArgs, runs[0].Args);
+        CollectionAssert.AreEqual(ExpectedConfigureUserEmailArgs, runs[1].Args);
+        Assert.AreEqual("/tmp/clone", runs[0].WorkingDir);
+        Assert.AreEqual("/tmp/clone", runs[1].WorkingDir);
+        Assert.IsNull(runs[0].Env, "local-only config must not receive the credential env");
+        Assert.IsNull(runs[1].Env, "local-only config must not receive the credential env");
+    }
+
+    [TestMethod]
+    public async Task ConfigureGitAsync_Throws_WhenGitFails()
+    {
+        var host = BuildHost(
+            _ => new HttpResponseMessage(HttpStatusCode.OK),
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.ConfigureGitAsync("/tmp/clone", CancellationToken.None));
+        StringAssert.Contains(ex.Message, "config");
     }
 
     [TestMethod]

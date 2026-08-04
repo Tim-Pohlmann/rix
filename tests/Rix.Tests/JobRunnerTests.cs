@@ -236,6 +236,39 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_ConfiguresGitIdentity_InCloneDir()
+    {
+        var host = new TrackingRepositoryHost();
+        string? agentWorkingDir = null;
+        RunProcessAsync tracker = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") agentWorkingDir = d;
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(host, tracker, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsTrue(host.ConfigureGitCalled, "the clone must be left commit-ready for the agent");
+        Assert.AreEqual(agentWorkingDir, host.ConfigureGitDirectory,
+            "git identity must be configured in the same directory the agent runs in");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsSetupFailure_WhenGitConfigFails()
+    {
+        var host = new StubRepositoryHost(
+            configureGit: () => throw new InvalidOperationException("git config failed: exited with code 128"));
+
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsInstanceOfType<SetupFailure>(result);
+    }
+
+    [TestMethod]
     public async Task RunAsync_CleansUpCloneDir()
     {
         string? capturedCloneDir = null;
@@ -550,6 +583,8 @@ public class JobRunnerTests
     private sealed class TrackingRepositoryHost : IRepositoryReadHost
     {
         public bool CloneCalled { get; private set; }
+        public bool ConfigureGitCalled { get; private set; }
+        public string? ConfigureGitDirectory { get; private set; }
         public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
         {
             CloneCalled = true;
@@ -559,6 +594,12 @@ public class JobRunnerTests
         => Task.FromResult(false);
         public Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
         => Task.FromResult(true);
+        public Task ConfigureGitAsync(string repoDirectory, CancellationToken cancellationToken)
+        {
+            ConfigureGitCalled = true;
+            ConfigureGitDirectory = repoDirectory;
+            return Task.CompletedTask;
+        }
         public Task CreateBundleAsync(
             string repoDirectory,
             string bundlePath,
