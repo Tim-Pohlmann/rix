@@ -18,6 +18,11 @@ public class GitHubHostTests
     private static readonly string[] ExpectedBranchExistsLocallyArgs =
         ["rev-parse", "--verify", "--quiet", "refs/heads/rix/fix"];
 
+    private static readonly string[] ExpectedConfigureUserNameArgs = ["config", "user.name", "rix"];
+
+    private static readonly string[] ExpectedConfigureUserEmailArgs =
+        ["config", "user.email", "rix@noreply.invalid"];
+
     private static GitHubReadHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
@@ -243,8 +248,8 @@ public class GitHubHostTests
         await host.ConfigureGitAsync("/tmp/clone", CancellationToken.None);
 
         Assert.AreEqual(2, runs.Count);
-        CollectionAssert.AreEqual(new[] { "config", "user.name", "rix" }, runs[0].Args);
-        CollectionAssert.AreEqual(new[] { "config", "user.email", "rix@noreply.invalid" }, runs[1].Args);
+        CollectionAssert.AreEqual(ExpectedConfigureUserNameArgs, runs[0].Args);
+        CollectionAssert.AreEqual(ExpectedConfigureUserEmailArgs, runs[1].Args);
         Assert.AreEqual("/tmp/clone", runs[0].WorkingDir);
         Assert.AreEqual("/tmp/clone", runs[1].WorkingDir);
         Assert.IsNull(runs[0].Env, "local-only config must not receive the credential env");
