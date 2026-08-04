@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>rix</AssemblyName>
     <RootNamespace>Rix</RootNamespace>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
   </PropertyGroup>
