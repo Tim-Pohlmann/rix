@@ -11,6 +11,7 @@ namespace Rix.Job;
 [JsonSerializable(typeof(JobFailure))]
 [JsonSerializable(typeof(SetupFailure))]
 [JsonSerializable(typeof(PendingPr))]
+[JsonSerializable(typeof(PendingPush))]
 internal partial class JobJsonContext : JsonSerializerContext { }
 
 internal static class JobRunner
@@ -72,14 +73,14 @@ internal static class JobRunner
             _ => 0m,
         };
 
-        var delivery = await BundlePendingPrsAsync(config, context, apiServer.QueuedPrRequests, cloneDir.Path, ct);
+        var delivery = await BundlePendingAsync(config, context, apiServer.QueuedPrRequests, apiServer.QueuedPushRequests, cloneDir.Path, ct);
 
         stopwatch.Stop();
 
         return delivery switch
         {
-            Delivered { PendingPrs: var pendingPrs }
-                => new JobSuccess(pendingPrs, CostUsd: costUsd, Duration: stopwatch.Elapsed),
+            Delivered { PendingPrs: var pendingPrs, PendingPushes: var pendingPushes }
+                => new JobSuccess(pendingPrs, pendingPushes, CostUsd: costUsd, Duration: stopwatch.Elapsed),
             DeliveryFailed { Branch: var branch }
                 => new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
             _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
@@ -105,16 +106,25 @@ internal static class JobRunner
     }
 
     /// <summary>
-    /// Creates a git bundle for each queued PR. Returns <see cref="Delivered"/> with the bundled
-    /// PRs, or — if a bundle fails — <see cref="DeliveryFailed"/> naming the branch, so the caller
-    /// can map it to a <see cref="JobFailure"/> while preserving the accumulated cost.
+    /// Creates a git bundle for each queued PR and each queued push. Returns
+    /// <see cref="Delivered"/> with the bundled PRs and pushes, or — if a bundle fails —
+    /// <see cref="DeliveryFailed"/> naming the branch, so the caller can map it to a
+    /// <see cref="JobFailure"/> while preserving the accumulated cost. PRs and pushes share one
+    /// dedup set: the same branch must not be bundled twice in a single run, no matter which
+    /// queue it was queued from.
     /// </summary>
-    private static async Task<DeliveryOutcome> BundlePendingPrsAsync
+    private static async Task<DeliveryOutcome> BundlePendingAsync
     (
-        JobConfig config, JobContext context, IEnumerable<QueuedPr> queuedPrs, string cloneDir, CancellationToken ct
+        JobConfig config,
+        JobContext context,
+        IEnumerable<QueuedPr> queuedPrs,
+        IEnumerable<QueuedPush> queuedPushes,
+        string cloneDir,
+        CancellationToken ct
     )
     {
         var pendingPrs = new List<PendingPr>();
+        var pendingPushes = new List<PendingPush>();
         var seenBranches = new HashSet<string>(StringComparer.Ordinal);
         foreach (var req in queuedPrs)
         {
@@ -142,16 +152,42 @@ internal static class JobRunner
             pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
         }
 
-        return new Delivered(pendingPrs);
+        foreach (var push in queuedPushes)
+        {
+            // A push for a branch that was already queued as a PR (or vice versa) must not produce
+            // a second bundle with a colliding file name, so the two queues share one dedup set.
+            if (!seenBranches.Add(push.Branch.Value))
+            {
+                context.LogLine($"skipping duplicate queued push for branch {push.Branch.Value}");
+                continue;
+            }
+
+            var safeName = Uri.EscapeDataString(push.Branch.Value).Replace('%', '_');
+            var bundleFile = $"{safeName}.bundle";
+            var bundlePath = Path.Combine(config.OutputDir.Value, bundleFile);
+
+            try
+            {
+                await context.Host.CreateBundleAsync(cloneDir, bundlePath, push.BaseBranch, push.Branch, ct);
+            }
+            catch (InvalidOperationException)
+            {
+                return new DeliveryFailed(push.Branch.Value);
+            }
+
+            pendingPushes.Add(new PendingPush(push.Branch, push.BaseBranch, bundleFile));
+        }
+
+        return new Delivered(pendingPrs, pendingPushes);
     }
 
-    /// <summary>The result of bundling the queued PRs: either all were turned into deliverables,
-    /// or one failed (identified by its branch).</summary>
+    /// <summary>The result of bundling the queued requests: either all were turned into
+    /// deliverables, or one failed (identified by its branch).</summary>
     private abstract record DeliveryOutcome
     {
         private protected DeliveryOutcome() { }
     }
-    private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs) : DeliveryOutcome;
+    private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs, IReadOnlyList<PendingPush> PendingPushes) : DeliveryOutcome;
     private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
     private static string BuildSystemPrompt(Uri apiBaseUrl) => $$"""
@@ -161,10 +197,16 @@ internal static class JobRunner
 
         Endpoints:
         - POST {{new Uri(apiBaseUrl, "/pr")}}     — create a pull request when satisfied with your changes
+        - POST {{new Uri(apiBaseUrl, "/push")}}   — push new commits onto a branch that already exists on the remote
 
         Split your work in multiple PRs if applicable. For each:
         1. Create a branch named rix/<short-description> for your work
         2. When done, call POST {{new Uri(apiBaseUrl, "/pr")}} with JSON body:
            {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
+
+        To add commits to a branch that already exists on the remote (e.g. continuing work from a
+        previous run), commit them locally on that branch, then call POST {{new Uri(apiBaseUrl, "/push")}}
+        with JSON body:
+           {"branch":"rix/<existing-branch>","baseBranch":"<base branch>"}
         """;
 }

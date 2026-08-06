@@ -453,6 +453,115 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_ResultJson_ContainsPendingPushRequests()
+    {
+        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/push"), new
+                {
+                    branch = "rix/my-fix", baseBranch = "main",
+                }, ct);
+                response.EnsureSuccessStatusCode();
+            }
+            return new ProcessSuccess();
+        };
+
+        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(1, doc.RootElement.GetProperty("pendingPushRequests").GetArrayLength());
+        Assert.AreEqual("rix/my-fix", doc.RootElement.GetProperty("pendingPushRequests")[0].GetProperty("branch").GetString());
+    }
+
+    [TestMethod]
+    public async Task RunAsync_CreatesBundleFile_ForPush()
+    {
+        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/push"), new
+                {
+                    branch = "rix/my-fix", baseBranch = "main",
+                }, ct);
+                response.EnsureSuccessStatusCode();
+            }
+            return new ProcessSuccess();
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "rix_2Fmy-fix.bundle")));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_SkipsDuplicateQueuedPush()
+    {
+        var log = new ConcurrentQueue<string>();
+        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
+                for (var i = 0; i < 2; i++)
+                {
+                    using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/push"), new
+                    {
+                        branch = "rix/dup", baseBranch = "main",
+                    }, ct);
+                    response.EnsureSuccessStatusCode();
+                }
+            }
+            return new ProcessSuccess();
+        };
+
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed()), logLine: log.Enqueue),
+            CancellationToken.None);
+
+        var success = (JobSuccess)result;
+        Assert.AreEqual(1, success.PendingPushRequests.Count);
+        Assert.AreEqual(1, Directory.GetFiles(_outputDir, "*.bundle").Length);
+        Assert.IsTrue(log.Any(l => l.Contains("duplicate")));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_SystemPrompt_MentionsPushEndpoint()
+    {
+        string? systemPrompt = null;
+
+        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var argList = a.ToList();
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 0 && idx + 1 < argList.Count)
+                    systemPrompt = argList[idx + 1];
+            }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsNotNull(systemPrompt);
+        StringAssert.Contains(systemPrompt, "/push");
+    }
+
+    [TestMethod]
     public async Task RunAsync_ReturnsJobSuccess_WithoutWritingResultJson()
     {
         var result = await JobRunner.RunAsync(MakeConfig(),

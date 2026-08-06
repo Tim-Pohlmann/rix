@@ -11,15 +11,24 @@ internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
     private readonly ConcurrentQueue<QueuedPr> _pendingPrRequests;
+    private readonly ConcurrentQueue<QueuedPush> _pendingPushRequests;
 
     internal Uri BaseUrl { get; }
     internal IReadOnlyList<QueuedPr> QueuedPrRequests => _pendingPrRequests.ToArray();
+    internal IReadOnlyList<QueuedPush> QueuedPushRequests => _pendingPushRequests.ToArray();
 
-    private LocalApiServer(WebApplication app, Uri baseUrl, ConcurrentQueue<QueuedPr> pendingPrRequests)
+    private LocalApiServer
+    (
+        WebApplication app,
+        Uri baseUrl,
+        ConcurrentQueue<QueuedPr> pendingPrRequests,
+        ConcurrentQueue<QueuedPush> pendingPushRequests
+    )
     {
         _app = app;
         BaseUrl = baseUrl;
         _pendingPrRequests = pendingPrRequests;
+        _pendingPushRequests = pendingPushRequests;
     }
 
     /// <param name="logLine">Sink for the server's own diagnostic log lines, forwarded live so they
@@ -35,6 +44,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     )
     {
         var pendingPrRequests = new ConcurrentQueue<QueuedPr>();
+        var pendingPushRequests = new ConcurrentQueue<QueuedPush>();
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
@@ -50,12 +60,12 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         var app = builder.Build();
 
-        MapEndpoints(app, host, cloneDir, pendingPrRequests);
+        MapEndpoints(app, host, cloneDir, pendingPrRequests, pendingPushRequests);
 
         await app.StartAsync(cancellationToken);
 
         var baseUrl = new Uri(app.Urls.First());
-        return new LocalApiServer(app, baseUrl, pendingPrRequests);
+        return new LocalApiServer(app, baseUrl, pendingPrRequests, pendingPushRequests);
     }
 
     private static void MapEndpoints
@@ -63,11 +73,13 @@ internal sealed class LocalApiServer : IAsyncDisposable
         WebApplication app,
         IRepositoryReadHost host,
         string cloneDir,
-        ConcurrentQueue<QueuedPr> pendingPrRequests
+        ConcurrentQueue<QueuedPr> pendingPrRequests,
+        ConcurrentQueue<QueuedPush> pendingPushRequests
     )
     {
         app.MapGet("/health", () => Results.Ok());
         app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
+        app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, ct));
     }
 
     private static async Task<IResult> HandlePrAsync
@@ -100,6 +112,42 @@ internal sealed class LocalApiServer : IAsyncDisposable
         }
 
         return EnqueuePr(pendingPrRequests, queuedPr);
+    }
+
+    private static async Task<IResult> HandlePushAsync
+    (
+        PushRequest req,
+        IRepositoryReadHost host,
+        string cloneDir,
+        ConcurrentQueue<QueuedPush> pendingPushRequests,
+        CancellationToken ct
+    )
+    {
+        var validation = req.Validate();
+        if (validation is InvalidPush(var reason))
+            return Results.BadRequest(new ErrorResponse(reason));
+        if (validation is not ValidPush(var queuedPush))
+            throw new NotSupportedException($"Unexpected push validation {validation.GetType()}");
+
+        // The point of /push is delivering to a branch that already exists on the remote, so the
+        // opposite guard from /pr: if the branch does not exist there, the agent should have used
+        // /pr instead.
+        if (!await host.BranchExistsOnRemoteAsync(queuedPush.Branch, ct))
+            return Results.Conflict(new ErrorResponse($"Branch {queuedPush.Branch.Value} does not exist on the remote. Use /pr to create a new branch."));
+
+        // Same "committed it into your assigned working directory" guard as /pr — a queued push for
+        // a branch the agent never actually committed would otherwise fail much later, as an opaque
+        // git-bundle failure after the session has ended.
+        if (!await host.BranchExistsLocallyAsync(cloneDir, queuedPush.Branch, ct))
+            return Results.BadRequest(new ErrorResponse($"Branch {queuedPush.Branch.Value} was not found in your working directory. Make sure you committed it there before calling /push."));
+
+        return EnqueuePush(pendingPushRequests, queuedPush);
+    }
+
+    private static IResult EnqueuePush(ConcurrentQueue<QueuedPush> pendingPushRequests, QueuedPush queuedPush)
+    {
+        pendingPushRequests.Enqueue(queuedPush);
+        return Results.Ok(new PrQueuedResponse("queued"));
     }
 
     private static IResult EnqueuePr(ConcurrentQueue<QueuedPr> pendingPrRequests, QueuedPr queuedPr)

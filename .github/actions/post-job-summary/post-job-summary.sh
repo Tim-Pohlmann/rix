@@ -69,6 +69,14 @@ render_submit() {
       jq -r '.createdPrs[] | "- [" + .branch + "](" + .url + ")"' "$submit_file" 2>/dev/null || true
       echo ""
     fi
+    local pushed_count
+    pushed_count="$(jq '(.pushedBranches // []) | length' "$submit_file" 2>/dev/null || echo 0)"
+    if ((pushed_count > 0)); then
+      echo "### Branches pushed"
+      echo ""
+      jq -r '.pushedBranches[] | "- `" + . + "`"' "$submit_file" 2>/dev/null || true
+      echo ""
+    fi
   else
     local error
     error="$(jq -r '.error // empty' "$submit_file" 2>/dev/null || true)"

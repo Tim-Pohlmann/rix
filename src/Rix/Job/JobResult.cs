@@ -26,6 +26,7 @@ internal abstract record JobResultBase
 internal record JobSuccess
 (
     [property: JsonPropertyName("pendingPrRequests")] IReadOnlyList<PendingPr> PendingPrRequests,
+    [property: JsonPropertyName("pendingPushRequests")] IReadOnlyList<PendingPush> PendingPushRequests,
     decimal CostUsd,
     TimeSpan Duration
 ) : JobResultBase(CostUsd, Duration);

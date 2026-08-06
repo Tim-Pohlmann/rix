@@ -6,9 +6,12 @@ namespace Rix.Submit;
 
 /// <summary>
 /// Turns the read-only output of <c>rix job</c> (a <c>result.json</c> plus one git bundle per
-/// proposed PR) into real pull requests: clone the target with a write credential, then for each
-/// pending PR fetch its bundle, push the branch, and open the PR. Fails fast if a branch already
-/// exists on the remote so an in-flight or previously merged branch is never silently overwritten.
+/// proposed change) into real remote state: clone the target with a write credential, then for
+/// each pending PR fetch its bundle, push the branch, and open the PR, and for each pending push
+/// fetch its bundle and push the commits onto the branch it already exists on. Fails fast if a
+/// PR's branch already exists on the remote so an in-flight or previously merged branch is never
+/// silently overwritten; a push onto an existing branch is left to git's own non-fast-forward
+/// guard to protect.
 /// </summary>
 internal static class SubmitRunner
 {
@@ -40,17 +43,20 @@ internal static class SubmitRunner
         if (jobResult is not JobSuccess success)
             return new SubmitFailure("result.json does not describe a successful job");
 
-        if (success.PendingPrRequests.Count == 0)
-            return new SubmitSuccess([]);
+        var pendingPushes = success.PendingPushRequests ?? [];
+
+        if (success.PendingPrRequests.Count == 0 && pendingPushes.Count == 0)
+            return new SubmitSuccess([], []);
 
         using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-submit");
 
         await context.Host.CloneAsync(cloneDir.Path, cancellationToken);
 
         var created = new List<CreatedPr>();
+        var pushed = new List<string>();
         foreach (var pr in success.PendingPrRequests)
         {
-            switch (await SubmitOneAsync(config, context, cloneDir.Path, pr, cancellationToken))
+            switch (await SubmitPrAsync(config, context, cloneDir.Path, pr, cancellationToken))
             {
                 case SubmitOneFailed(var failure):
                     return failure;
@@ -61,14 +67,27 @@ internal static class SubmitRunner
                     throw new NotSupportedException($"Unexpected submit outcome for {pr.Branch.Value}");
             }
         }
+        foreach (var push in pendingPushes)
+        {
+            switch (await SubmitPushAsync(config, context, cloneDir.Path, push, cancellationToken))
+            {
+                case SubmitOneFailed(var failure):
+                    return failure;
+                case SubmitOnePushed(var branch):
+                    pushed.Add(branch);
+                    break;
+                default:
+                    throw new NotSupportedException($"Unexpected submit outcome for {push.Branch.Value}");
+            }
+        }
 
-        return new SubmitSuccess(created);
+        return new SubmitSuccess(created, pushed);
     }
 
     /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns the opened
     /// PR's URL on success, or a <see cref="SubmitFailure"/> (nested in <see cref="SubmitOneFailed"/>)
     /// on the first problem, which aborts the whole run.</summary>
-    private static async Task<SubmitOneOutcome> SubmitOneAsync
+    private static async Task<SubmitOneOutcome> SubmitPrAsync
     (
         SubmitConfig config,
         SubmitContext context,
@@ -99,6 +118,30 @@ internal static class SubmitRunner
 
         context.LogLine($"opened PR for {pr.Branch.Value}");
         return new SubmitOneSucceeded(url);
+    }
+
+    /// <summary>Fetches one push's bundle and pushes the commits onto its branch — which already
+    /// exists on the remote by construction, so no PR is opened. Git's own fast-forward check
+    /// protects a branch that advanced on the remote while the job ran; that surfaces here as a
+    /// failed push rather than an overwrite.</summary>
+    private static async Task<SubmitOneOutcome> SubmitPushAsync
+    (
+        SubmitConfig config,
+        SubmitContext context,
+        string cloneDir,
+        PendingPush push,
+        CancellationToken cancellationToken
+    )
+    {
+        var bundlePath = Path.Combine(config.InputDir.Value, push.BundleFile);
+        if (!File.Exists(bundlePath))
+            return new SubmitOneFailed(new SubmitFailure($"bundle file not found: {push.BundleFile}"));
+
+        if (await DeliverBranchAsync(context, cloneDir, bundlePath, push.Branch, cancellationToken) is { } deliverFailure)
+            return new SubmitOneFailed(deliverFailure);
+
+        context.LogLine($"pushed commits to {push.Branch.Value}");
+        return new SubmitOnePushed(push.Branch.Value);
     }
 
     /// <summary>Unbundles the PR's branch from its local bundle and pushes it to the remote.
@@ -145,5 +188,6 @@ internal static class SubmitRunner
         private protected SubmitOneOutcome() { }
     }
     private sealed record SubmitOneSucceeded(string Url) : SubmitOneOutcome;
+    private sealed record SubmitOnePushed(string Branch) : SubmitOneOutcome;
     private sealed record SubmitOneFailed(SubmitFailure Failure) : SubmitOneOutcome;
 }
