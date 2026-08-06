@@ -230,9 +230,9 @@ internal static class JobRunner
         2. When done, call POST {{new Uri(apiBaseUrl, "/pr")}} with JSON body:
            {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
 
-        To add commits to a branch that already exists on the remote (e.g. continuing work from a
-        previous run), commit them locally on that branch, then call POST {{new Uri(apiBaseUrl, "/push")}}
-        with JSON body:
+        To add commits to a branch that already exists on the remote (e.g. resuming a previous run),
+        commit them locally on that branch, then call POST {{new Uri(apiBaseUrl, "/push")}} with JSON
+        body:
            {"branch":"rix/<existing-branch>","baseBranch":"<base branch>"}
         """;
 }

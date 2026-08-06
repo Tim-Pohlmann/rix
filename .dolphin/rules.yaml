@@ -129,7 +129,13 @@ rules:
   # Each tolerates one level of same-line balanced parens (`\([^()\r\n]*\)`) as an approximation of
   # real bracket matching, which plain regex can't do. Known gap: 2+ levels of unmatched-open parens
   # split across lines on a single logical statement (e.g. `Outer(Inner(a,` then `b))`) can slip
-  # through undetected.
+  # through undetected. Known false positive: an English parenthetical that spans two lines inside a
+  # raw string literal (e.g. a `$$"""..."""` system-prompt block) reads as an unmatched open/close
+  # paren to these rules, since pattern-regex matches raw file text with no notion of string
+  # boundaries. An AST-based `pattern-not-inside` exclusion isn't currently possible for `$$"""`
+  # raw strings specifically - Dolphin's C# grammar (Opengrep) fails to parse that syntax at all, so
+  # it can't be named as an exclusion pattern. Prefer wording the string so no parenthetical splits
+  # across a line instead of fighting the rule.
   - id: open-paren-own-line
     languages: [csharp]
     severity: ERROR
@@ -146,7 +152,13 @@ rules:
       When `(` and `)` end up on different lines, isolate `)` on its own line
       instead of trailing it after the last argument. (If `(` and `)` are on
       the same line, this doesn't apply.)
-    pattern-regex: ^(?![ \t]*(?:///|//|\*))[ \t]*[^)\s\r\n](?:[^()\r\n]|\([^()\r\n]*\))*\)+[ \t]*[;,]?[ \t]*$
+    # The required "is there real content before the close-paren run" unit must itself accept a
+    # same-line balanced paren group, not just a bare non-paren char - otherwise a line that is
+    # nothing but a self-contained "(...)" (e.g. a one-line tuple pattern) has its opening `(`
+    # swallowed as ordinary content, leaving the line's own closing `)` misread as if it closed a
+    # group opened on a previous line. Verified against Dolphin's own opengrep engine: catches
+    # genuine multi-line trailing-close-paren violations while no longer flagging a same-line tuple.
+    pattern-regex: ^(?![ \t]*(?:///|//|\*))[ \t]*(?:[^()\s\r\n]|\([^()\r\n]*\))(?:[^()\r\n]|\([^()\r\n]*\))*\)+[ \t]*[;,]?[ \t]*$
 
   - id: if-else-bool-assign
     languages: [csharp]
