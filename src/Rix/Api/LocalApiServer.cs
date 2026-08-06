@@ -111,7 +111,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             return Results.BadRequest(new ErrorResponse(message));
         }
 
-        return EnqueuePr(pendingPrRequests, queuedPr);
+        return Enqueue(pendingPrRequests, queuedPr);
     }
 
     private static async Task<IResult> HandlePushAsync
@@ -141,18 +141,12 @@ internal sealed class LocalApiServer : IAsyncDisposable
         if (!await host.BranchExistsLocallyAsync(cloneDir, queuedPush.Branch, ct))
             return Results.BadRequest(new ErrorResponse($"Branch {queuedPush.Branch.Value} was not found in your working directory. Make sure you committed it there before calling /push."));
 
-        return EnqueuePush(pendingPushRequests, queuedPush);
+        return Enqueue(pendingPushRequests, queuedPush);
     }
 
-    private static IResult EnqueuePush(ConcurrentQueue<QueuedPush> pendingPushRequests, QueuedPush queuedPush)
+    private static IResult Enqueue<T>(ConcurrentQueue<T> pendingRequests, T item)
     {
-        pendingPushRequests.Enqueue(queuedPush);
-        return Results.Ok(new PrQueuedResponse("queued"));
-    }
-
-    private static IResult EnqueuePr(ConcurrentQueue<QueuedPr> pendingPrRequests, QueuedPr queuedPr)
-    {
-        pendingPrRequests.Enqueue(queuedPr);
+        pendingRequests.Enqueue(item);
         return Results.Ok(new PrQueuedResponse("queued"));
     }
 

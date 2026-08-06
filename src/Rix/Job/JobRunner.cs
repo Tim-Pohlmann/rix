@@ -128,58 +128,84 @@ internal static class JobRunner
         var seenBranches = new HashSet<string>(StringComparer.Ordinal);
         foreach (var req in queuedPrs)
         {
-            // Two PRs queued in one run can name the same branch; their bundle file names would
-            // collide and the second would overwrite the first. Keep the first and skip the rest.
-            if (!seenBranches.Add(req.Branch.Value))
+            switch (await BundleBranchAsync(config, context, cloneDir, req.Branch, req.BaseBranch, seenBranches, "PR", ct))
             {
-                context.LogLine($"skipping duplicate queued PR for branch {req.Branch.Value}");
-                continue;
+                case BundleSkipped:
+                    continue;
+                case BundleFailed:
+                    return new DeliveryFailed(req.Branch.Value);
+                case Bundled(var bundleFile):
+                    pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
+                    break;
             }
-
-            var safeName = Uri.EscapeDataString(req.Branch.Value).Replace('%', '_');
-            var bundleFile = $"{safeName}.bundle";
-            var bundlePath = Path.Combine(config.OutputDir.Value, bundleFile);
-
-            try
-            {
-                await context.Host.CreateBundleAsync(cloneDir, bundlePath, req.BaseBranch, req.Branch, ct);
-            }
-            catch (InvalidOperationException)
-            {
-                return new DeliveryFailed(req.Branch.Value);
-            }
-
-            pendingPrs.Add(new PendingPr(req.Branch, req.BaseBranch, req.Title, req.Body, BundleFile: bundleFile));
         }
 
         foreach (var push in queuedPushes)
         {
-            // A push for a branch that was already queued as a PR (or vice versa) must not produce
-            // a second bundle with a colliding file name, so the two queues share one dedup set.
-            if (!seenBranches.Add(push.Branch.Value))
+            switch (await BundleBranchAsync(config, context, cloneDir, push.Branch, push.BaseBranch, seenBranches, "push", ct))
             {
-                context.LogLine($"skipping duplicate queued push for branch {push.Branch.Value}");
-                continue;
+                case BundleSkipped:
+                    continue;
+                case BundleFailed:
+                    return new DeliveryFailed(push.Branch.Value);
+                case Bundled(var bundleFile):
+                    pendingPushes.Add(new PendingPush(push.Branch, push.BaseBranch, bundleFile));
+                    break;
             }
-
-            var safeName = Uri.EscapeDataString(push.Branch.Value).Replace('%', '_');
-            var bundleFile = $"{safeName}.bundle";
-            var bundlePath = Path.Combine(config.OutputDir.Value, bundleFile);
-
-            try
-            {
-                await context.Host.CreateBundleAsync(cloneDir, bundlePath, push.BaseBranch, push.Branch, ct);
-            }
-            catch (InvalidOperationException)
-            {
-                return new DeliveryFailed(push.Branch.Value);
-            }
-
-            pendingPushes.Add(new PendingPush(push.Branch, push.BaseBranch, bundleFile));
         }
 
         return new Delivered(pendingPrs, pendingPushes);
     }
+
+    /// <summary>Dedups <paramref name="branch"/> against <paramref name="seenBranches"/> (shared
+    /// across the PR and push queues, so the same branch is never bundled twice in one run) and, if
+    /// new, creates its git bundle. <paramref name="requestKind"/> ("PR" or "push") only feeds the
+    /// skip log line.</summary>
+    private static async Task<BundleOutcome> BundleBranchAsync
+    (
+        JobConfig config,
+        JobContext context,
+        string cloneDir,
+        RixBranchName branch,
+        BranchName baseBranch,
+        HashSet<string> seenBranches,
+        string requestKind,
+        CancellationToken ct
+    )
+    {
+        // Two requests queued in one run can name the same branch; their bundle file names would
+        // collide and the second would overwrite the first. Keep the first and skip the rest.
+        if (!seenBranches.Add(branch.Value))
+        {
+            context.LogLine($"skipping duplicate queued {requestKind} for branch {branch.Value}");
+            return new BundleSkipped();
+        }
+
+        var safeName = Uri.EscapeDataString(branch.Value).Replace('%', '_');
+        var bundleFile = $"{safeName}.bundle";
+        var bundlePath = Path.Combine(config.OutputDir.Value, bundleFile);
+
+        try
+        {
+            await context.Host.CreateBundleAsync(cloneDir, bundlePath, baseBranch, branch, ct);
+        }
+        catch (InvalidOperationException)
+        {
+            return new BundleFailed();
+        }
+
+        return new Bundled(bundleFile);
+    }
+
+    /// <summary>The result of bundling one queued branch: bundled, skipped as a same-run duplicate,
+    /// or failed.</summary>
+    private abstract record BundleOutcome
+    {
+        private protected BundleOutcome() { }
+    }
+    private sealed record Bundled(string BundleFile) : BundleOutcome;
+    private sealed record BundleSkipped : BundleOutcome;
+    private sealed record BundleFailed : BundleOutcome;
 
     /// <summary>The result of bundling the queued requests: either all were turned into
     /// deliverables, or one failed (identified by its branch).</summary>
