@@ -128,7 +128,8 @@ internal static class JobRunner
         var seenBranches = new HashSet<string>(StringComparer.Ordinal);
         foreach (var req in queuedPrs)
         {
-            switch (await BundleBranchAsync(config, context, cloneDir, req.Branch, req.BaseBranch, seenBranches, "PR", ct))
+            var request = new BundleRequest(req.Branch, req.BaseBranch, "PR");
+            switch (await BundleBranchAsync(config, context, cloneDir, request, seenBranches, ct))
             {
                 case BundleSkipped:
                     continue;
@@ -142,7 +143,8 @@ internal static class JobRunner
 
         foreach (var push in queuedPushes)
         {
-            switch (await BundleBranchAsync(config, context, cloneDir, push.Branch, push.BaseBranch, seenBranches, "push", ct))
+            var request = new BundleRequest(push.Branch, push.BaseBranch, "push");
+            switch (await BundleBranchAsync(config, context, cloneDir, request, seenBranches, ct))
             {
                 case BundleSkipped:
                     continue;
@@ -157,37 +159,39 @@ internal static class JobRunner
         return new Delivered(pendingPrs, pendingPushes);
     }
 
-    /// <summary>Dedups <paramref name="branch"/> against <paramref name="seenBranches"/> (shared
-    /// across the PR and push queues, so the same branch is never bundled twice in one run) and, if
-    /// new, creates its git bundle. <paramref name="requestKind"/> ("PR" or "push") only feeds the
-    /// skip log line.</summary>
+    /// <summary>A queued branch to bundle, stripped down to what <see cref="BundleBranchAsync"/>
+    /// needs: identity (<paramref name="Branch"/>/<paramref name="BaseBranch"/>) plus
+    /// <paramref name="Kind"/> ("PR" or "push") for the skip log line.</summary>
+    private readonly record struct BundleRequest(RixBranchName Branch, BranchName BaseBranch, string Kind);
+
+    /// <summary>Dedups <paramref name="request"/>'s branch against <paramref name="seenBranches"/>
+    /// (shared across the PR and push queues, so the same branch is never bundled twice in one run)
+    /// and, if new, creates its git bundle.</summary>
     private static async Task<BundleOutcome> BundleBranchAsync
     (
         JobConfig config,
         JobContext context,
         string cloneDir,
-        RixBranchName branch,
-        BranchName baseBranch,
+        BundleRequest request,
         HashSet<string> seenBranches,
-        string requestKind,
         CancellationToken ct
     )
     {
         // Two requests queued in one run can name the same branch; their bundle file names would
         // collide and the second would overwrite the first. Keep the first and skip the rest.
-        if (!seenBranches.Add(branch.Value))
+        if (!seenBranches.Add(request.Branch.Value))
         {
-            context.LogLine($"skipping duplicate queued {requestKind} for branch {branch.Value}");
+            context.LogLine($"skipping duplicate queued {request.Kind} for branch {request.Branch.Value}");
             return new BundleSkipped();
         }
 
-        var safeName = Uri.EscapeDataString(branch.Value).Replace('%', '_');
+        var safeName = Uri.EscapeDataString(request.Branch.Value).Replace('%', '_');
         var bundleFile = $"{safeName}.bundle";
         var bundlePath = Path.Combine(config.OutputDir.Value, bundleFile);
 
         try
         {
-            await context.Host.CreateBundleAsync(cloneDir, bundlePath, baseBranch, branch, ct);
+            await context.Host.CreateBundleAsync(cloneDir, bundlePath, request.BaseBranch, request.Branch, ct);
         }
         catch (InvalidOperationException)
         {

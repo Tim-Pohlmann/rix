@@ -57,6 +57,7 @@ render_list_section() {
     jq -r "$render_filter" "$file" 2>/dev/null || true
     echo ""
   fi
+  return 0
 }
 
 # Appends the submit outcome - the opened pull requests, or the submit failure - to stdout.
