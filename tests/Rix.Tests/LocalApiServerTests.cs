@@ -259,4 +259,99 @@ public class LocalApiServerTests
         StringAssert.Contains(result["error"], "working directory");
     }
 
+    [TestMethod]
+    public async Task PostPush_Returns403_WhenBranchNotAllowed()
+    {
+        await using var server = await LocalApiServer.StartAsync(
+            FakeHost(true), Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new RixBranchName("rix/other")]);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
+        {
+            branch = "rix/my-fix",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/my-fix");
+        StringAssert.Contains(result["error"], "not allowed");
+        StringAssert.Contains(result["error"], "rix/other");
+    }
+
+    [TestMethod]
+    public async Task PostPush_DoesNotQueue_WhenBranchNotAllowed()
+    {
+        await using var server = await LocalApiServer.StartAsync(
+            FakeHost(true), Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new RixBranchName("rix/other")]);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
+        {
+            branch = "rix/my-fix",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.AreEqual(0, server.QueuedPushRequests.Count);
+    }
+
+    [TestMethod]
+    public async Task PostPush_Returns200_WhenBranchIsAllowed()
+    {
+        await using var server = await LocalApiServer.StartAsync(
+            FakeHost(true), Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new RixBranchName("rix/my-fix")]);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
+        {
+            branch = "rix/my-fix",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(1, server.QueuedPushRequests.Count);
+    }
+
+    [TestMethod]
+    public async Task PostPush_RejectsAllowedBranch_ThatIsNotInTheAllowList_CaseSensitively()
+    {
+        await using var server = await LocalApiServer.StartAsync(
+            FakeHost(true), Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new RixBranchName("rix/My-Fix")]);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
+        {
+            branch = "rix/my-fix",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task PostPr_IsUnaffected_ByAllowedPushBranches()
+    {
+        await using var server = await LocalApiServer.StartAsync(
+            FakeHost(false), Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new RixBranchName("rix/other")]);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/my-fix",
+            title = "Title",
+            body = "body",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(1, server.QueuedPrRequests.Count);
+    }
+
 }

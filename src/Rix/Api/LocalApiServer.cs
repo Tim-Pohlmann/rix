@@ -35,12 +35,15 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// interleave with the agent's output on the same seam. When <c>null</c>, server logs are dropped.</param>
     /// <param name="cloneDir">The job's own clone of the target repo — the only directory a queued
     /// branch is accepted from, since it's also the directory <c>rix</c> later bundles from.</param>
+    /// <param name="allowedPushBranches">The only branches <c>/push</c> may deliver to; when
+    /// <c>null</c> or empty, any well-formed <c>rix/*</c> branch is accepted.</param>
     internal static async Task<LocalApiServer> StartAsync
     (
         IRepositoryReadHost host,
         string cloneDir,
         CancellationToken cancellationToken,
-        Action<string>? logLine = null
+        Action<string>? logLine = null,
+        IReadOnlyList<RixBranchName>? allowedPushBranches = null
     )
     {
         var pendingPrRequests = new ConcurrentQueue<QueuedPr>();
@@ -60,7 +63,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         var app = builder.Build();
 
-        MapEndpoints(app, host, cloneDir, pendingPrRequests, pendingPushRequests);
+        MapEndpoints(app, host, cloneDir, pendingPrRequests, pendingPushRequests, allowedPushBranches);
 
         await app.StartAsync(cancellationToken);
 
@@ -74,12 +77,13 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IRepositoryReadHost host,
         string cloneDir,
         ConcurrentQueue<QueuedPr> pendingPrRequests,
-        ConcurrentQueue<QueuedPush> pendingPushRequests
+        ConcurrentQueue<QueuedPush> pendingPushRequests,
+        IReadOnlyList<RixBranchName>? allowedPushBranches
     )
     {
         app.MapGet("/health", () => Results.Ok());
         app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
-        app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, ct));
+        app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct));
     }
 
     private static async Task<IResult> HandlePrAsync
@@ -120,6 +124,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IRepositoryReadHost host,
         string cloneDir,
         ConcurrentQueue<QueuedPush> pendingPushRequests,
+        IReadOnlyList<RixBranchName>? allowedPushBranches,
         CancellationToken ct
     )
     {
@@ -128,6 +133,17 @@ internal sealed class LocalApiServer : IAsyncDisposable
             return Results.BadRequest(new ErrorResponse(reason));
         if (validation is not ValidPush(var queuedPush))
             throw new NotSupportedException($"Unexpected push validation {validation.GetType()}");
+
+        // The job's configuration can restrict /push to a fixed list of branches (e.g. only the
+        // branch this run is resuming). That list is enforced here, before any remote/local checks,
+        // so a push the operator never allowed is refused regardless of where the branch lives.
+        if (allowedPushBranches is { Count: > 0 } && !allowedPushBranches.Contains(queuedPush.Branch))
+        {
+            var allowed = string.Join(", ", allowedPushBranches.Select(b => b.Value));
+            var message = $"Push to branch {queuedPush.Branch.Value} is not allowed. " +
+                $"This job permits pushes only to: {allowed}.";
+            return Results.Json(new ErrorResponse(message), statusCode: StatusCodes.Status403Forbidden);
+        }
 
         // The point of /push is delivering to a branch that already exists on the remote, so the
         // opposite guard from /pr: if the branch does not exist there, the agent should have used

@@ -44,6 +44,24 @@ duration, plus the pull requests that were actually opened (with links). The `ru
 early summary too, so a failed job still reports its outcome even when the PR-creation job is
 skipped.
 
+### Restricting where the agent can push
+
+`rix job` exposes a local API to the agent. Besides opening PRs (`/pr`), the agent can push new
+commits onto a branch that already exists on the remote (`/push`, e.g. resuming a previous run).
+By default it may push onto any `rix/*` branch that exists there; restrict that with the optional
+`allowed-push-branches` input, a comma-separated list of branches the `/push` endpoint accepts:
+
+```yaml
+    with:
+      repo: ${{ github.repository }}
+      prompt: ${{ inputs.prompt }}
+      allowed-push-branches: rix/continue-foo,rix/continue-bar
+```
+
+A push to any other branch is rejected with a 403, and the agent is told the allow-list in its
+system prompt. The input forwards verbatim as `--allowed-push-branches` (env
+`RIX_ALLOWED_PUSH_BRANCHES`); each entry must be a well-formed `rix/*` branch name.
+
 ### Using a different provider or model
 
 opencode supports many model providers beyond the free default. Pick a model with the

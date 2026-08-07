@@ -3,6 +3,7 @@ using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -537,6 +538,85 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_SystemPrompt_ListsAllowedPushBranches_WhenRestricted()
+    {
+        string? systemPrompt = null;
+
+        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var argList = a.ToList();
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 0 && idx + 1 < argList.Count)
+                    systemPrompt = argList[idx + 1];
+            }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/continue-a,rix/continue-b"),
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsNotNull(systemPrompt);
+        StringAssert.Contains(systemPrompt, "rix/continue-a");
+        StringAssert.Contains(systemPrompt, "rix/continue-b");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_SystemPrompt_HasNoRestrictionSection_WhenUnrestricted()
+    {
+        string? systemPrompt = null;
+
+        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var argList = a.ToList();
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 0 && idx + 1 < argList.Count)
+                    systemPrompt = argList[idx + 1];
+            }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsNotNull(systemPrompt);
+        Assert.IsFalse(systemPrompt.Contains("may only push onto the branches"), "unrestricted jobs must not mention a push restriction");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_RejectsPush_ToDisallowedBranch()
+    {
+        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/push"), new
+                {
+                    branch = "rix/not-allowed", baseBranch = "main",
+                }, ct);
+                if (response.StatusCode != HttpStatusCode.Forbidden)
+                    throw new InvalidOperationException($"expected 403 for disallowed push, got {response.StatusCode}");
+            }
+            return new ProcessSuccess();
+        };
+
+        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: "rix/allowed"),
+            CancellationToken.None,
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(0, doc.RootElement.GetProperty("pendingPushRequests").GetArrayLength());
+    }
+
+    [TestMethod]
     public async Task RunAsync_SystemPrompt_MentionsPushEndpoint()
     {
         string? systemPrompt = null;
@@ -635,8 +715,10 @@ public class JobRunnerTests
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
             _ => Task.FromResult<InstallResult>(new Installed())));
 
-    private JobConfig MakeConfig()
-    => TestConfig.Valid(prompt: "Do something", workDir: _workDir, outputDir: _outputDir);
+    private JobConfig MakeConfig(string? allowedPushBranches = null)
+    => TestConfig.Valid(
+        prompt: "Do something", workDir: _workDir, outputDir: _outputDir,
+        allowedPushBranches: allowedPushBranches);
 
     private static RunProcessAsync FakeRunner(
         int claudeExitCode = 0,

@@ -48,6 +48,13 @@ on:
         description: Wall-clock timeout in minutes
         required: false
         type: number
+      allowed-push-branches:
+        description: >-
+          Comma-separated list of rix/* branches the /push endpoint may deliver to
+          (e.g. 'rix/resume-a,rix/resume-b'). When set, the agent cannot push onto any
+          other branch. Omit to allow pushes to any rix/* branch that exists on the remote.
+        required: false
+        type: string
       runner:
         description: runs-on label for both jobs (e.g. a self-hosted runner label)
         required: false
@@ -115,6 +122,7 @@ jobs:
           agent-api-key-env: ${{ inputs.agent-api-key-env }}
           max-tokens: ${{ inputs.max-tokens }}
           timeout: ${{ inputs.timeout }}
+          allowed-push-branches: ${{ inputs.allowed-push-branches }}
           rix-version: ${{ inputs.rix-version }}
           repo-slug: ${{ env.RIX_REPO_SLUG }}
 
