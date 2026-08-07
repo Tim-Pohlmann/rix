@@ -53,7 +53,76 @@ public class SubmitRunnerTests
 
         var success = AssertSuccess(result);
         Assert.AreEqual(0, success.CreatedPrs.Count);
+        Assert.AreEqual(0, success.PushedBranches.Count);
         Assert.IsFalse(host.CloneCalled, "must not clone when there is nothing to push");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PushesCommitsToExistingBranch_WhenOnlyPushQueued()
+    {
+        WriteOnePendingPush();
+        var host = new StubSubmitHost();
+        var commands = new List<string>();
+
+        var result = await Run(host, GitRunner(commands));
+
+        var success = AssertSuccess(result);
+        Assert.AreEqual(0, success.CreatedPrs.Count, "a push must not open a PR");
+        CollectionAssert.AreEqual(ExpectedPushedBranches, success.PushedBranches.ToArray());
+        CollectionAssert.AreEqual(ExpectedPushedBranches, host.PushedBranches.Select(b => b.Value).ToArray());
+        CollectionAssert.Contains(commands, "fetch");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PushesToBranchThatExistsOnRemote_DoesNotFailFast()
+    {
+        // The branch already existing on the remote is the whole point of a push, so the submit
+        // guard that fails a PR for that reason must not apply here.
+        WriteOnePendingPush();
+        var host = new StubSubmitHost(branchExists: _ => Task.FromResult(true));
+
+        var result = await Run(host);
+
+        AssertSuccess(result);
+        CollectionAssert.AreEqual(ExpectedPushedBranches, host.PushedBranches.Select(b => b.Value).ToArray());
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PushesAndOpensPr_ForBothPrAndPush()
+    {
+        WriteResultJson(OnePrAndOnePushJson());
+        File.WriteAllText(Path.Combine(_inputDir, "rix_2Fmy-fix.bundle"), "fake-bundle");
+        var host = new StubSubmitHost();
+
+        var result = await Run(host);
+
+        var success = AssertSuccess(result);
+        Assert.AreEqual(1, host.CreatedPrs.Count);
+        Assert.AreEqual(1, success.CreatedPrs.Count);
+        CollectionAssert.AreEqual(ExpectedPushedBranches, success.PushedBranches.ToArray());
+        Assert.AreEqual(2, host.PushedBranches.Count, "both the PR branch and the pushed branch are pushed");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Fails_WhenPushBundleFileMissing()
+    {
+        WriteResultJson(OnePendingPushJson(bundleFile: "missing.bundle"));
+
+        var result = await Run(new StubSubmitHost());
+
+        AssertFailure(result, "bundle file not found");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Fails_WhenPushGitPushFails()
+    {
+        WriteOnePendingPush();
+        var host = new StubSubmitHost(
+            pushBranch: _ => throw new InvalidOperationException("exited with code 1"));
+
+        var result = await Run(host);
+
+        AssertFailure(result, "git push failed");
     }
 
     [TestMethod]
@@ -155,8 +224,24 @@ public class SubmitRunnerTests
         File.WriteAllText(Path.Combine(_inputDir, "rix_2Fmy-fix.bundle"), "fake-bundle");
     }
 
+    private void WriteOnePendingPush()
+    {
+        WriteResultJson(OnePendingPushJson(bundleFile: "rix_2Fmy-fix.bundle"));
+        File.WriteAllText(Path.Combine(_inputDir, "rix_2Fmy-fix.bundle"), "fake-bundle");
+    }
+
     private static string OnePendingPrJson(string bundleFile) =>
         $$"""
         {"status":"success","pendingPrRequests":[{"branch":"rix/my-fix","baseBranch":"main","title":"My fix","body":"body","bundleFile":"{{bundleFile}}"}],"costUsd":0,"durationSeconds":1}
+        """;
+
+    private static string OnePendingPushJson(string bundleFile) =>
+        $$"""
+        {"status":"success","pendingPrRequests":[],"pendingPushRequests":[{"branch":"rix/my-fix","baseBranch":"main","bundleFile":"{{bundleFile}}"}],"costUsd":0,"durationSeconds":1}
+        """;
+
+    private static string OnePrAndOnePushJson() =>
+        $$"""
+        {"status":"success","pendingPrRequests":[{"branch":"rix/my-fix","baseBranch":"main","title":"My fix","body":"body","bundleFile":"rix_2Fmy-fix.bundle"}],"pendingPushRequests":[{"branch":"rix/my-fix","baseBranch":"main","bundleFile":"rix_2Fmy-fix.bundle"}],"costUsd":0,"durationSeconds":1}
         """;
 }

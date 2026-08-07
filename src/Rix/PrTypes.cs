@@ -41,3 +41,15 @@ internal record PendingPr
     [property: JsonPropertyName("body")] PrBody Body,
     [property: JsonPropertyName("bundleFile")] string BundleFile
 );
+
+/// <summary>A request to push the agent's new commits onto a branch that already exists on the
+/// remote (e.g. continuing work from a previous run). Unlike a <see cref="QueuedPr"/>, no PR is
+/// opened — the commits are delivered straight to the existing branch.</summary>
+internal record QueuedPush(RixBranchName Branch, BranchName BaseBranch);
+
+internal record PendingPush
+(
+    [property: JsonPropertyName("branch")] RixBranchName Branch,
+    [property: JsonPropertyName("baseBranch")] BranchName BaseBranch,
+    [property: JsonPropertyName("bundleFile")] string BundleFile
+);

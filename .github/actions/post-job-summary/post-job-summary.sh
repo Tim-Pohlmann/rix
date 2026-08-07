@@ -45,9 +45,24 @@ render_submit_failure() {
   return 0
 }
 
+# Appends a "### $heading" section listing a JSON array's entries, or nothing if it's empty/absent.
+# Shared by createdPrs and pushedBranches in render_submit - the only difference between them is
+# the heading, the array's field name, and the jq filter that renders each entry as a line.
+render_list_section() {
+  local file="$1" heading="$2" field="$3" render_filter="$4" count
+  count="$(jq "(.$field // []) | length" "$file" 2>/dev/null || echo 0)"
+  if ((count > 0)); then
+    echo "### $heading"
+    echo ""
+    jq -r "$render_filter" "$file" 2>/dev/null || true
+    echo ""
+  fi
+  return 0
+}
+
 # Appends the submit outcome - the opened pull requests, or the submit failure - to stdout.
 render_submit() {
-  local submit_file="$1" submit_log="$2" status="" count=0
+  local submit_file="$1" submit_log="$2" status=""
   if [[ -f "$submit_file" ]]; then
     status="$(jq -r '.status // empty' "$submit_file" 2>/dev/null || true)"
   fi
@@ -62,13 +77,11 @@ render_submit() {
   fi
 
   if [[ "$status" == "success" ]]; then
-    count="$(jq '(.createdPrs // []) | length' "$submit_file" 2>/dev/null || echo 0)"
-    if ((count > 0)); then
-      echo "### Pull requests opened"
-      echo ""
-      jq -r '.createdPrs[] | "- [" + .branch + "](" + .url + ")"' "$submit_file" 2>/dev/null || true
-      echo ""
-    fi
+    render_list_section "$submit_file" "Pull requests opened" "createdPrs" \
+      '.createdPrs[] | "- [" + .branch + "](" + .url + ")"'
+    # shellcheck disable=SC2016 # backticks are jq's markdown code-fence output, not command substitution
+    render_list_section "$submit_file" "Branches pushed" "pushedBranches" \
+      '.pushedBranches[] | "- `" + . + "`"'
   else
     local error
     error="$(jq -r '.error // empty' "$submit_file" 2>/dev/null || true)"

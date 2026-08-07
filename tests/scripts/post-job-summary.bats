@@ -55,6 +55,27 @@ write_submit() {
   [[ "$(summary)" != *"Pull requests opened"* ]]
 }
 
+@test "success renders pushed branches" {
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0.42,"durationSeconds":372}'
+  write_submit '{"status":"success","createdPrs":[],"pushedBranches":["rix/my-fix"]}'
+
+  run rix_post_job_summary "$RESULT" "$SUBMIT"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" == *"### Branches pushed"* ]]
+  [[ "$(summary)" == *"- \`rix/my-fix\`"* ]]
+}
+
+@test "success with no pushed branches omits the pushed-branches section" {
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_submit '{"status":"success","createdPrs":[]}'
+
+  run rix_post_job_summary "$RESULT" "$SUBMIT"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" != *"Branches pushed"* ]]
+}
+
 @test "failure renders status and error" {
   write_result '{"status":"failure","error":"agent failed: boom","costUsd":0,"durationSeconds":10}'
 
