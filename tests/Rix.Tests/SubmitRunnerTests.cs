@@ -182,6 +182,93 @@ public class SubmitRunnerTests
         Assert.AreEqual(0, host.CreatedPrs.Count);
     }
 
+    [TestMethod]
+    public async Task RunAsync_UpdatesSubmittedTask_WhenUpdateQueued()
+    {
+        WriteResultJson(OnePendingUpdateJson());
+        var host = new StubSubmitHost();
+
+        var result = await Run(host);
+
+        var success = AssertSuccess(result);
+        Assert.AreEqual(1, host.UpdatedTasks.Count);
+        Assert.AreEqual("rix/my-fix", host.UpdatedTasks[0].Branch.Value);
+        Assert.AreEqual(new PrTitle("New title"), host.UpdatedTasks[0].Title);
+        Assert.AreEqual(1, success.UpdatedPrs.Count);
+        Assert.AreEqual("rix/my-fix", success.UpdatedPrs[0].Branch);
+        Assert.AreEqual("https://github.com/owner/repo/pull/1", success.UpdatedPrs[0].Url);
+        Assert.IsFalse(host.CloneCalled, "an update needs no clone — it patches the existing PR");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_RevertsSubmittedTask_WhenRevertQueued()
+    {
+        WriteResultJson(OnePendingRevertJson());
+        var host = new StubSubmitHost();
+
+        var result = await Run(host);
+
+        var success = AssertSuccess(result);
+        Assert.AreEqual(1, host.RevertedTasks.Count);
+        Assert.AreEqual("rix/my-fix", host.RevertedTasks[0].Branch.Value);
+        Assert.AreEqual(1, success.ClosedPrs.Count);
+        Assert.AreEqual("rix/my-fix", success.ClosedPrs[0].Branch);
+        Assert.AreEqual("https://github.com/owner/repo/pull/1", success.ClosedPrs[0].Url);
+        Assert.IsFalse(host.CloneCalled, "a revert needs no clone — it closes the existing PR");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DoesNotClone_WhenOnlyUpdatesAndRevertsQueued()
+    {
+        WriteResultJson(
+            """{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"pendingUpdateRequests":[{"branch":"rix/a","title":"t"}],"pendingRevertRequests":[{"branch":"rix/b"}],"costUsd":0,"durationSeconds":1}""");
+        var host = new StubSubmitHost();
+
+        await Run(host);
+
+        Assert.IsFalse(host.CloneCalled, "patches and closes never need a clone");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Fails_WhenUpdatePatchFails()
+    {
+        WriteResultJson(OnePendingUpdateJson());
+        var host = new StubSubmitHost(
+            updatePullRequest: _ => throw new InvalidOperationException("no open pull request found"));
+
+        var result = await Run(host);
+
+        AssertFailure(result, "updating task rix/my-fix failed");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Fails_WhenRevertCloseFails()
+    {
+        WriteResultJson(OnePendingRevertJson());
+        var host = new StubSubmitHost(
+            closePullRequest: _ => throw new HttpRequestException("no open pull request found"));
+
+        var result = await Run(host);
+
+        AssertFailure(result, "reverting task rix/my-fix failed");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DoesNotApplyEarlierRevert_WhenAQueuedUpdateFails()
+    {
+        // Fail-fast: a later failure aborts the run, and an earlier revert must not have been
+        // applied yet because the update was processed first.
+        WriteResultJson(
+            """{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"pendingUpdateRequests":[{"branch":"rix/a","title":"t"}],"pendingRevertRequests":[{"branch":"rix/b"}],"costUsd":0,"durationSeconds":1}""");
+        var host = new StubSubmitHost(
+            updatePullRequest: _ => throw new HttpRequestException("boom"));
+
+        var result = await Run(host);
+
+        AssertFailure(result, "updating task rix/a failed");
+        Assert.AreEqual(0, host.RevertedTasks.Count);
+    }
+
     // ---- helpers ----
 
     private Task<ISubmitResult> Run(StubSubmitHost host, RunProcessAsync? runner = null)
@@ -243,5 +330,15 @@ public class SubmitRunnerTests
     private static string OnePrAndOnePushJson() =>
         $$"""
         {"status":"success","pendingPrRequests":[{"branch":"rix/my-fix","baseBranch":"main","title":"My fix","body":"body","bundleFile":"rix_2Fmy-fix.bundle"}],"pendingPushRequests":[{"branch":"rix/my-fix","baseBranch":"main","bundleFile":"rix_2Fmy-fix.bundle"}],"costUsd":0,"durationSeconds":1}
+        """;
+
+    private static string OnePendingUpdateJson() =>
+        """
+        {"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"pendingUpdateRequests":[{"branch":"rix/my-fix","title":"New title"}],"pendingRevertRequests":[],"costUsd":0,"durationSeconds":1}
+        """;
+
+    private static string OnePendingRevertJson() =>
+        """
+        {"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"pendingUpdateRequests":[],"pendingRevertRequests":[{"branch":"rix/my-fix"}],"costUsd":0,"durationSeconds":1}
         """;
 }

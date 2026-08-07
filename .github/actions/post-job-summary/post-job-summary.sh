@@ -82,6 +82,10 @@ render_submit() {
     # shellcheck disable=SC2016 # backticks are jq's markdown code-fence output, not command substitution
     render_list_section "$submit_file" "Branches pushed" "pushedBranches" \
       '.pushedBranches[] | "- `" + . + "`"'
+    render_list_section "$submit_file" "Tasks updated" "updatedPrs" \
+      '.updatedPrs[] | "- [" + .branch + "](" + .url + ")"'
+    render_list_section "$submit_file" "Tasks reverted" "closedPrs" \
+      '.closedPrs[] | "- [" + .branch + "](" + .url + ")"'
   else
     local error
     error="$(jq -r '.error // empty' "$submit_file" 2>/dev/null || true)"

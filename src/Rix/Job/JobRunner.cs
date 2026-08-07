@@ -12,6 +12,8 @@ namespace Rix.Job;
 [JsonSerializable(typeof(SetupFailure))]
 [JsonSerializable(typeof(PendingPr))]
 [JsonSerializable(typeof(PendingPush))]
+[JsonSerializable(typeof(PendingTaskUpdate))]
+[JsonSerializable(typeof(PendingTaskRevert))]
 internal partial class JobJsonContext : JsonSerializerContext { }
 
 internal static class JobRunner
@@ -73,14 +75,24 @@ internal static class JobRunner
             _ => 0m,
         };
 
-        var delivery = await BundlePendingAsync(config, context, apiServer.QueuedPrRequests, apiServer.QueuedPushRequests, cloneDir.Path, ct);
+        var delivery = await BundlePendingAsync
+        (
+            config,
+            context,
+            apiServer.QueuedPrRequests,
+            apiServer.QueuedPushRequests,
+            apiServer.QueuedUpdateRequests,
+            apiServer.QueuedRevertRequests,
+            cloneDir.Path,
+            ct
+        );
 
         stopwatch.Stop();
 
         return delivery switch
         {
-            Delivered { PendingPrs: var pendingPrs, PendingPushes: var pendingPushes }
-                => new JobSuccess(pendingPrs, pendingPushes, CostUsd: costUsd, Duration: stopwatch.Elapsed),
+            Delivered { PendingPrs: var pendingPrs, PendingPushes: var pendingPushes, PendingUpdates: var pendingUpdates, PendingReverts: var pendingReverts }
+                => new JobSuccess(pendingPrs, pendingPushes, pendingUpdates, pendingReverts, CostUsd: costUsd, Duration: stopwatch.Elapsed),
             DeliveryFailed { Branch: var branch }
                 => new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
             _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
@@ -106,10 +118,11 @@ internal static class JobRunner
     }
 
     /// <summary>
-    /// Creates a git bundle for each queued PR and each queued push. Returns
-    /// <see cref="Delivered"/> with the bundled PRs and pushes, or — if a bundle fails —
-    /// <see cref="DeliveryFailed"/> naming the branch, so the caller can map it to a
-    /// <see cref="JobFailure"/> while preserving the accumulated cost. PRs and pushes share one
+    /// Creates a git bundle for each queued PR and each queued push, and passes the queued task
+    /// updates and reverts straight through (they carry no commits, so nothing to bundle). Returns
+    /// <see cref="Delivered"/> with the bundled PRs and pushes and the pending updates/reverts, or —
+    /// if a bundle fails — <see cref="DeliveryFailed"/> naming the branch, so the caller can map it
+    /// to a <see cref="JobFailure"/> while preserving the accumulated cost. PRs and pushes share one
     /// dedup set: the same branch must not be bundled twice in a single run, no matter which
     /// queue it was queued from.
     /// </summary>
@@ -119,6 +132,8 @@ internal static class JobRunner
         JobContext context,
         IEnumerable<QueuedPr> queuedPrs,
         IEnumerable<QueuedPush> queuedPushes,
+        IEnumerable<QueuedTaskUpdate> queuedUpdates,
+        IEnumerable<QueuedTaskRevert> queuedReverts,
         string cloneDir,
         CancellationToken ct
     )
@@ -156,7 +171,14 @@ internal static class JobRunner
             }
         }
 
-        return new Delivered(pendingPrs, pendingPushes);
+        var pendingUpdates = queuedUpdates
+            .Select(u => new PendingTaskUpdate(u.Branch, u.Title, u.Body))
+            .ToList();
+        var pendingReverts = queuedReverts
+            .Select(r => new PendingTaskRevert(r.Branch))
+            .ToList();
+
+        return new Delivered(pendingPrs, pendingPushes, pendingUpdates, pendingReverts);
     }
 
     /// <summary>A queued branch to bundle, stripped down to what <see cref="BundleBranchAsync"/>
@@ -217,7 +239,13 @@ internal static class JobRunner
     {
         private protected DeliveryOutcome() { }
     }
-    private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs, IReadOnlyList<PendingPush> PendingPushes) : DeliveryOutcome;
+    private sealed record Delivered
+    (
+        IReadOnlyList<PendingPr> PendingPrs,
+        IReadOnlyList<PendingPush> PendingPushes,
+        IReadOnlyList<PendingTaskUpdate> PendingUpdates,
+        IReadOnlyList<PendingTaskRevert> PendingReverts
+    ) : DeliveryOutcome;
     private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
     private static string BuildSystemPrompt(Uri apiBaseUrl) => $$"""
@@ -226,8 +254,11 @@ internal static class JobRunner
         A local API is available at {{apiBaseUrl}}.
 
         Endpoints:
-        - POST {{new Uri(apiBaseUrl, "/pr")}}     — create a pull request when satisfied with your changes
-        - POST {{new Uri(apiBaseUrl, "/push")}}   — push new commits onto a branch that already exists on the remote
+        - GET  {{new Uri(apiBaseUrl, "/tasks")}}          — review already submitted tasks: the repo's open pull requests from rix/* branches
+        - POST {{new Uri(apiBaseUrl, "/tasks/update")}}   — update an already submitted task's pull request (title and/or body)
+        - POST {{new Uri(apiBaseUrl, "/tasks/revert")}}   — revert an already submitted task by closing its pull request
+        - POST {{new Uri(apiBaseUrl, "/pr")}}             — create a pull request when satisfied with your changes
+        - POST {{new Uri(apiBaseUrl, "/push")}}           — push new commits onto a branch that already exists on the remote
 
         Split your work in multiple PRs if applicable. For each:
         1. Create a branch named rix/<short-description> for your work
@@ -238,5 +269,13 @@ internal static class JobRunner
         commit them locally on that branch, then call POST {{new Uri(apiBaseUrl, "/push")}} with JSON
         body:
            {"branch":"rix/<existing-branch>","baseBranch":"<base branch>"}
+
+        To update an already submitted task, call POST {{new Uri(apiBaseUrl, "/tasks/update")}} with JSON
+        body (title and/or body; omitted fields keep their current value):
+           {"branch":"rix/<existing-branch>","title":"<new title>"}
+
+        To revert an already submitted task, call POST {{new Uri(apiBaseUrl, "/tasks/revert")}} with
+        JSON body:
+           {"branch":"rix/<existing-branch>"}
         """;
 }

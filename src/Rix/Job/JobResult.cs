@@ -27,6 +27,8 @@ internal record JobSuccess
 (
     [property: JsonPropertyName("pendingPrRequests")] IReadOnlyList<PendingPr> PendingPrRequests,
     [property: JsonPropertyName("pendingPushRequests")] IReadOnlyList<PendingPush> PendingPushRequests,
+    [property: JsonPropertyName("pendingUpdateRequests")] IReadOnlyList<PendingTaskUpdate> PendingUpdateRequests,
+    [property: JsonPropertyName("pendingRevertRequests")] IReadOnlyList<PendingTaskRevert> PendingRevertRequests,
     decimal CostUsd,
     TimeSpan Duration
 ) : JobResultBase(CostUsd, Duration);

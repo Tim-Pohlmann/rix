@@ -331,6 +331,159 @@ public class GitHubHostTests
             () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
     }
 
+    [TestMethod]
+    public async Task ListOpenPullRequestsAsync_ReturnsOnlyTargetReposPrs()
+    {
+        var host = BuildHost(_ => JsonResponse(HttpStatusCode.OK, """
+            [
+              {"number":1,"title":"My task","state":"open","html_url":"https://github.com/owner/repo/pull/1",
+               "head":{"ref":"rix/my-task","repo":{"full_name":"owner/repo"}},"base":{"ref":"main"}},
+              {"number":2,"title":"Fork PR","state":"open","html_url":"https://github.com/owner/repo/pull/2",
+               "head":{"ref":"rix/fork","repo":{"full_name":"forker/repo"}},"base":{"ref":"main"}}
+            ]
+            """));
+
+        var prs = await host.ListOpenPullRequestsAsync(CancellationToken.None);
+
+        Assert.AreEqual(1, prs.Count, "fork PRs are not the target repo's tasks");
+        Assert.AreEqual(1, prs[0].Number);
+        Assert.AreEqual("My task", prs[0].Title);
+        Assert.AreEqual("open", prs[0].State);
+        Assert.AreEqual("rix/my-task", prs[0].Branch);
+        Assert.AreEqual("main", prs[0].BaseBranch);
+        Assert.AreEqual("https://github.com/owner/repo/pull/1", prs[0].Url);
+    }
+
+    [TestMethod]
+    public async Task ListOpenPullRequestsAsync_Throws_WhenResponseIsNotParseableJson()
+    {
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("not json") });
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(
+            () => host.ListOpenPullRequestsAsync(CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task UpdatePullRequestAsync_PatchesTitleAndBody_OfMatchingPr()
+    {
+        HttpRequestMessage? captured = null;
+        string? patchBody = null;
+        var host = BuildWriteHost(req =>
+        {
+            if (req.Method == HttpMethod.Get)
+                return ListWithOneMatchingPr();
+            captured = req;
+            patchBody = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        var url = await host.UpdatePullRequestAsync(
+            new PendingTaskUpdate(new RixBranchName("rix/my-task"), new PrTitle("New title"), new PrBody("New body")),
+            CancellationToken.None);
+
+        Assert.AreEqual("https://github.com/owner/repo/pull/1", url);
+        Assert.IsNotNull(captured);
+        Assert.AreEqual(HttpMethod.Patch, captured.Method);
+        StringAssert.EndsWith(captured.RequestUri!.AbsoluteUri, "/repos/owner/repo/pulls/1");
+        Assert.IsNotNull(patchBody);
+        StringAssert.Contains(patchBody, "\"title\":\"New title\"");
+        StringAssert.Contains(patchBody, "\"body\":\"New body\"");
+        Assert.IsFalse(patchBody.Contains("state"), "an update must not touch the PR's state");
+    }
+
+    [TestMethod]
+    public async Task UpdatePullRequestAsync_OmitsNullFields_SoOmittedOnesKeepTheirValue()
+    {
+        string? patchBody = null;
+        var host = BuildWriteHost(req =>
+        {
+            if (req.Method == HttpMethod.Get)
+                return ListWithOneMatchingPr();
+            patchBody = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        await host.UpdatePullRequestAsync(
+            new PendingTaskUpdate(new RixBranchName("rix/my-task"), Title: null, Body: new PrBody("Only body changed")),
+            CancellationToken.None);
+
+        Assert.IsNotNull(patchBody);
+        StringAssert.Contains(patchBody, "\"body\":\"Only body changed\"");
+        Assert.IsFalse(patchBody.Contains("title"), "an omitted title must not be sent, or GitHub would blank it");
+        Assert.IsFalse(patchBody.Contains("state"));
+    }
+
+    [TestMethod]
+    public async Task UpdatePullRequestAsync_Throws_WhenBranchHasNoOpenPullRequest()
+    {
+        var host = BuildWriteHost(_ => JsonResponse(HttpStatusCode.OK, "[]"));
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.UpdatePullRequestAsync(
+                new PendingTaskUpdate(new RixBranchName("rix/missing"), Title: new PrTitle("t"), Body: null),
+                CancellationToken.None));
+        StringAssert.Contains(ex.Message, "rix/missing");
+    }
+
+    [TestMethod]
+    public async Task ClosePullRequestAsync_PatchesStateToClosed()
+    {
+        HttpRequestMessage? captured = null;
+        string? patchBody = null;
+        var host = BuildWriteHost(req =>
+        {
+            if (req.Method == HttpMethod.Get)
+                return ListWithOneMatchingPr();
+            captured = req;
+            patchBody = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        var url = await host.ClosePullRequestAsync(new PendingTaskRevert(new RixBranchName("rix/my-task")), CancellationToken.None);
+
+        Assert.AreEqual("https://github.com/owner/repo/pull/1", url);
+        Assert.IsNotNull(captured);
+        Assert.AreEqual(HttpMethod.Patch, captured.Method);
+        StringAssert.EndsWith(captured.RequestUri!.AbsoluteUri, "/repos/owner/repo/pulls/1");
+        Assert.IsNotNull(patchBody);
+        StringAssert.Contains(patchBody, "\"state\":\"closed\"");
+        Assert.IsFalse(patchBody.Contains("title"), "a close must not send title/body, or GitHub would blank them");
+        Assert.IsFalse(patchBody.Contains("body"));
+    }
+
+    [TestMethod]
+    public async Task ClosePullRequestAsync_Throws_WhenBranchHasNoOpenPullRequest()
+    {
+        var host = BuildWriteHost(_ => JsonResponse(HttpStatusCode.OK, "[]"));
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.ClosePullRequestAsync(new PendingTaskRevert(new RixBranchName("rix/missing")), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "rix/missing");
+    }
+
+    [TestMethod]
+    public async Task UpdatePullRequestAsync_Throws_WhenListPullRequestsFails()
+    {
+        var host = BuildWriteHost(_ => new HttpResponseMessage(HttpStatusCode.Forbidden));
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(
+            () => host.UpdatePullRequestAsync(
+                new PendingTaskUpdate(new RixBranchName("rix/my-task"), Title: new PrTitle("t"), Body: null),
+                CancellationToken.None));
+    }
+
+    private static HttpResponseMessage ListWithOneMatchingPr() => JsonResponse(HttpStatusCode.OK, """
+        [
+          {"number":1,"title":"Old title","state":"open","html_url":"https://github.com/owner/repo/pull/1",
+           "head":{"ref":"rix/my-task","repo":{"full_name":"owner/repo"}},"base":{"ref":"main"}}
+        ]
+        """);
+
+    private static HttpResponseMessage JsonResponse(HttpStatusCode status, string json) => new(status)
+    {
+        Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+    };
+
     private static PendingPr SamplePr(string title, string body)
     => new
     (

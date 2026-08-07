@@ -537,6 +537,90 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_ResultJson_ContainsPendingUpdateRequests()
+    {
+        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/tasks/update"), new
+                {
+                    branch = "rix/my-fix", title = "New title",
+                }, ct);
+                response.EnsureSuccessStatusCode();
+            }
+            return new ProcessSuccess();
+        };
+
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        var success = (JobSuccess)result;
+        Assert.AreEqual(1, success.PendingUpdateRequests.Count);
+        Assert.AreEqual(new RixBranchName("rix/my-fix"), success.PendingUpdateRequests[0].Branch);
+        Assert.AreEqual(new PrTitle("New title"), success.PendingUpdateRequests[0].Title);
+        Assert.AreEqual(0, success.PendingRevertRequests.Count);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ResultJson_ContainsPendingRevertRequests()
+    {
+        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/tasks/revert"), new
+                {
+                    branch = "rix/my-fix",
+                }, ct);
+                response.EnsureSuccessStatusCode();
+            }
+            return new ProcessSuccess();
+        };
+
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        var success = (JobSuccess)result;
+        Assert.AreEqual(1, success.PendingRevertRequests.Count);
+        Assert.AreEqual(new RixBranchName("rix/my-fix"), success.PendingRevertRequests[0].Branch);
+        Assert.AreEqual(0, success.PendingUpdateRequests.Count);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_SystemPrompt_MentionsReviewUpdateAndRevertEndpoints()
+    {
+        string? systemPrompt = null;
+
+        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var argList = a.ToList();
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 0 && idx + 1 < argList.Count)
+                    systemPrompt = argList[idx + 1];
+            }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsNotNull(systemPrompt);
+        StringAssert.Contains(systemPrompt, "/tasks");
+        StringAssert.Contains(systemPrompt, "/tasks/update");
+        StringAssert.Contains(systemPrompt, "/tasks/revert");
+    }
+
+    [TestMethod]
     public async Task RunAsync_SystemPrompt_MentionsPushEndpoint()
     {
         string? systemPrompt = null;
@@ -716,5 +800,8 @@ public class JobRunnerTests
             BranchName branch,
             CancellationToken cancellationToken)
         => Task.CompletedTask;
+
+        public Task<IReadOnlyList<RemotePr>> ListOpenPullRequestsAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<RemotePr>>([]);
     }
 }

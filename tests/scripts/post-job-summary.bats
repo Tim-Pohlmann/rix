@@ -76,6 +76,29 @@ write_submit() {
   [[ "$(summary)" != *"Branches pushed"* ]]
 }
 
+@test "success renders updated and reverted tasks" {
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_submit '{"status":"success","createdPrs":[],"updatedPrs":[{"branch":"rix/my-fix","url":"https://github.com/owner/repo/pull/12"}],"closedPrs":[{"branch":"rix/my-fix","url":"https://github.com/owner/repo/pull/12"}]}'
+
+  run rix_post_job_summary "$RESULT" "$SUBMIT"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" == *"### Tasks updated"* ]]
+  [[ "$(summary)" == *"- [rix/my-fix](https://github.com/owner/repo/pull/12)"* ]]
+  [[ "$(summary)" == *"### Tasks reverted"* ]]
+}
+
+@test "success with no updated or reverted tasks omits both sections" {
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_submit '{"status":"success","createdPrs":[]}'
+
+  run rix_post_job_summary "$RESULT" "$SUBMIT"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" != *"Tasks updated"* ]]
+  [[ "$(summary)" != *"Tasks reverted"* ]]
+}
+
 @test "failure renders status and error" {
   write_result '{"status":"failure","error":"agent failed: boom","costUsd":0,"durationSeconds":10}'
 

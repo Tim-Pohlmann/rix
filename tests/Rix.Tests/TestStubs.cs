@@ -10,7 +10,8 @@ internal sealed class StubRepositoryHost(
     Func<string, Task>? createBundle = null,
     Func<Task>? clone = null,
     Func<BranchName, Task<bool>>? branchExistsLocally = null,
-    Func<Task>? configureGit = null) : IRepositoryReadHost
+    Func<Task>? configureGit = null,
+    Func<Task<IReadOnlyList<RemotePr>>>? listOpenPullRequests = null) : IRepositoryReadHost
 {
     /// <summary>Succeeds by default; override via the <c>clone</c> constructor parameter to
     /// simulate a git clone failure (e.g. throwing <see cref="InvalidOperationException"/>, as the
@@ -41,15 +42,24 @@ internal sealed class StubRepositoryHost(
         { } check => check(bundlePath),
         _ => File.WriteAllTextAsync(bundlePath, "fake-bundle", cancellationToken),
     };
+
+    /// <summary>Empty by default; override via <c>listOpenPullRequests</c> to simulate the review
+    /// endpoint seeing already-submitted tasks.</summary>
+    public Task<IReadOnlyList<RemotePr>> ListOpenPullRequestsAsync(CancellationToken cancellationToken)
+    => listOpenPullRequests switch { { } check => check(), _ => Task.FromResult<IReadOnlyList<RemotePr>>([]) };
 }
 
 internal sealed class StubSubmitHost(
     Func<BranchName, Task<bool>>? branchExists = null,
     Func<PendingPr, Task<string>>? createPullRequest = null,
-    Func<BranchName, Task>? pushBranch = null) : IRepositoryHost
+    Func<BranchName, Task>? pushBranch = null,
+    Func<PendingTaskUpdate, Task<string>>? updatePullRequest = null,
+    Func<PendingTaskRevert, Task<string>>? closePullRequest = null) : IRepositoryHost
 {
     public List<PendingPr> CreatedPrs { get; } = [];
     public List<BranchName> PushedBranches { get; } = [];
+    public List<PendingTaskUpdate> UpdatedTasks { get; } = [];
+    public List<PendingTaskRevert> RevertedTasks { get; } = [];
     public bool CloneCalled { get; private set; }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
@@ -76,6 +86,11 @@ internal sealed class StubSubmitHost(
     public Task ConfigureGitAsync(string repoDirectory, CancellationToken cancellationToken)
     => Task.CompletedTask;
 
+    /// <summary>Empty by default; override via <c>listOpenPullRequests</c> to simulate the review
+    /// endpoint seeing already-submitted tasks.</summary>
+    public Task<IReadOnlyList<RemotePr>> ListOpenPullRequestsAsync(CancellationToken cancellationToken)
+    => Task.FromResult<IReadOnlyList<RemotePr>>([]);
+
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
     {
         PushedBranches.Add(branch);
@@ -89,6 +104,26 @@ internal sealed class StubSubmitHost(
         {
             { } check => check(pullRequest),
             _ => Task.FromResult($"https://github.com/owner/repo/pull/{CreatedPrs.Count}"),
+        };
+    }
+
+    public Task<string> UpdatePullRequestAsync(PendingTaskUpdate update, CancellationToken cancellationToken)
+    {
+        UpdatedTasks.Add(update);
+        return updatePullRequest switch
+        {
+            { } check => check(update),
+            _ => Task.FromResult($"https://github.com/owner/repo/pull/{UpdatedTasks.Count}"),
+        };
+    }
+
+    public Task<string> ClosePullRequestAsync(PendingTaskRevert revert, CancellationToken cancellationToken)
+    {
+        RevertedTasks.Add(revert);
+        return closePullRequest switch
+        {
+            { } check => check(revert),
+            _ => Task.FromResult($"https://github.com/owner/repo/pull/{RevertedTasks.Count}"),
         };
     }
 }

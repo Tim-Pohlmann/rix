@@ -1,9 +1,10 @@
 namespace Rix.Repository;
 
 /// <summary>The read-only repository operations <c>rix job</c> needs against a target it only clones
-/// and inspects: clone, check whether a branch exists, and bundle a branch's commits. Carries no
-/// write capability, so the job path can run with a read-only credential. <see cref="IRepositoryHost"/>
-/// extends this with the write operations.</summary>
+/// and inspects: clone, check whether a branch exists, bundle a branch's commits, and list the
+/// pull requests already opened on the remote. Carries no write capability, so the job path can run
+/// with a read-only credential. <see cref="IRepositoryHost"/> extends this with the write
+/// operations.</summary>
 internal interface IRepositoryReadHost
 {
     Task CloneAsync(string targetDirectory, CancellationToken cancellationToken);
@@ -32,4 +33,8 @@ internal interface IRepositoryReadHost
         BranchName branch,
         CancellationToken cancellationToken
     );
+
+    /// <summary>Lists the open pull requests on the remote repo — the "already submitted tasks" the
+    /// local API lets the agent review. Read-only, so it works with the job's read credential.</summary>
+    Task<IReadOnlyList<RemotePr>> ListOpenPullRequestsAsync(CancellationToken cancellationToken);
 }

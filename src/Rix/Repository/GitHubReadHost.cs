@@ -1,6 +1,8 @@
 using Rix.Process;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 
 namespace Rix.Repository;
 
@@ -118,6 +120,37 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
             return false;
         response.EnsureSuccessStatusCode();
         return true;
+    }
+
+    /// <summary>
+    /// Lists the open pull requests on the repo, each with its head ref, so callers can recognise
+    /// the factory's own tasks (branches following <c>rix/*</c>). PRs from forks are excluded: the
+    /// head repo of a fork PR is the fork, not <see cref="Repo"/>. Only the first 100 open PRs are
+    /// returned (the API default page) — enough for the agent to review its own recently submitted
+    /// tasks.
+    /// </summary>
+    public async Task<IReadOnlyList<RemotePr>> ListOpenPullRequestsAsync(CancellationToken cancellationToken)
+    {
+        var url = $"https://api.github.com/repos/{Repo.Value}/pulls?state=open&per_page=100";
+        using var response = await Http.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        try
+        {
+            var items = await response.Content.ReadFromJsonAsync
+            (
+                GitHubApiJsonContext.Default.GitHubPullRequestItemArray, cancellationToken
+            );
+            return items is null
+                ? []
+                : items
+                    .Where(i => i.Head.Repo?.FullName == Repo.Value)
+                    .Select(i => new RemotePr(i.Number, i.Title, i.State, i.Head.Ref, i.Base.Ref, i.HtmlUrl))
+                    .ToList();
+        }
+        catch (JsonException ex)
+        {
+            throw new HttpRequestException("could not parse list pull requests response", ex);
+        }
     }
 
     /// <summary>Runs <c>git</c>, injecting the credential only when <paramref name="authenticated"/>

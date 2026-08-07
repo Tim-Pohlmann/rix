@@ -7,11 +7,12 @@ namespace Rix.Submit;
 /// <summary>
 /// Turns the read-only output of <c>rix job</c> (a <c>result.json</c> plus one git bundle per
 /// proposed change) into real remote state: clone the target with a write credential, then for
-/// each pending PR fetch its bundle, push the branch, and open the PR, and for each pending push
-/// fetch its bundle and push the commits onto the branch it already exists on. Fails fast if a
-/// PR's branch already exists on the remote so an in-flight or previously merged branch is never
-/// silently overwritten; a push onto an existing branch is left to git's own non-fast-forward
-/// guard to protect.
+/// each pending PR fetch its bundle, push the branch, and open the PR, for each pending push
+/// fetch its bundle and push the commits onto the branch it already exists on, and for each
+/// pending task update/revert patch or close the already-submitted task's pull request. Fails
+/// fast if a PR's branch already exists on the remote so an in-flight or previously merged branch
+/// is never silently overwritten; a push onto an existing branch is left to git's own
+/// non-fast-forward guard to protect.
 /// </summary>
 internal static class SubmitRunner
 {
@@ -44,16 +45,28 @@ internal static class SubmitRunner
             return new SubmitFailure("result.json does not describe a successful job");
 
         var pendingPushes = success.PendingPushRequests ?? [];
+        var pendingUpdates = success.PendingUpdateRequests ?? [];
+        var pendingReverts = success.PendingRevertRequests ?? [];
 
-        if (success.PendingPrRequests.Count == 0 && pendingPushes.Count == 0)
-            return new SubmitSuccess([], []);
+        if (success.PendingPrRequests.Count == 0
+            && pendingPushes.Count == 0
+            && pendingUpdates.Count == 0
+            && pendingReverts.Count == 0)
+            return new SubmitSuccess([], [], [], []);
 
         using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-submit");
 
-        await context.Host.CloneAsync(cloneDir.Path, cancellationToken);
+        // Only PRs and pushes need a clone: their bundles are fetched into it and the branches
+        // pushed from there. Updates and reverts patch or close an already-submitted task's PR
+        // straight through the API, so a pure update/revert run must not clone the repo (nor
+        // require its write token to be clone-capable).
+        if (success.PendingPrRequests.Count > 0 || pendingPushes.Count > 0)
+            await context.Host.CloneAsync(cloneDir.Path, cancellationToken);
 
         var created = new List<CreatedPr>();
         var pushed = new List<string>();
+        var updated = new List<UpdatedPr>();
+        var closed = new List<ClosedPr>();
         foreach (var pr in success.PendingPrRequests)
         {
             switch (await SubmitPrAsync(config, context, cloneDir.Path, pr, cancellationToken))
@@ -80,8 +93,34 @@ internal static class SubmitRunner
                     throw new NotSupportedException($"Unexpected submit outcome for {push.Branch.Value}");
             }
         }
+        foreach (var update in pendingUpdates)
+        {
+            switch (await SubmitUpdateAsync(context, update, cancellationToken))
+            {
+                case SubmitOneFailed(var failure):
+                    return failure;
+                case SubmitOneUpdated(var branch, var url):
+                    updated.Add(new UpdatedPr(branch, url));
+                    break;
+                default:
+                    throw new NotSupportedException($"Unexpected submit outcome for {update.Branch.Value}");
+            }
+        }
+        foreach (var revert in pendingReverts)
+        {
+            switch (await SubmitRevertAsync(context, revert, cancellationToken))
+            {
+                case SubmitOneFailed(var failure):
+                    return failure;
+                case SubmitOneClosed(var branch, var url):
+                    closed.Add(new ClosedPr(branch, url));
+                    break;
+                default:
+                    throw new NotSupportedException($"Unexpected submit outcome for {revert.Branch.Value}");
+            }
+        }
 
-        return new SubmitSuccess(created, pushed);
+        return new SubmitSuccess(created, pushed, updated, closed);
     }
 
     /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns the opened
@@ -144,6 +183,52 @@ internal static class SubmitRunner
         return new SubmitOnePushed(push.Branch.Value);
     }
 
+    /// <summary>Patches the already-submitted task's pull request — its title and/or body — via the
+    /// write host, which locates the open PR by the task's branch.</summary>
+    private static async Task<SubmitOneOutcome> SubmitUpdateAsync
+    (
+        SubmitContext context,
+        PendingTaskUpdate update,
+        CancellationToken cancellationToken
+    )
+    {
+        string url;
+        try
+        {
+            url = await context.Host.UpdatePullRequestAsync(update, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            return new SubmitOneFailed(new SubmitFailure($"updating task {update.Branch.Value} failed: {ex.Message}"));
+        }
+
+        context.LogLine($"updated PR for {update.Branch.Value}");
+        return new SubmitOneUpdated(update.Branch.Value, url);
+    }
+
+    /// <summary>Closes the already-submitted task's pull request via the write host, which locates
+    /// the open PR by the task's branch.</summary>
+    private static async Task<SubmitOneOutcome> SubmitRevertAsync
+    (
+        SubmitContext context,
+        PendingTaskRevert revert,
+        CancellationToken cancellationToken
+    )
+    {
+        string url;
+        try
+        {
+            url = await context.Host.ClosePullRequestAsync(revert, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            return new SubmitOneFailed(new SubmitFailure($"reverting task {revert.Branch.Value} failed: {ex.Message}"));
+        }
+
+        context.LogLine($"closed PR for {revert.Branch.Value}");
+        return new SubmitOneClosed(revert.Branch.Value, url);
+    }
+
     /// <summary>Unbundles the PR's branch from its local bundle and pushes it to the remote.
     /// Returns a <see cref="SubmitFailure"/> on the first problem, or <c>null</c> on success.</summary>
     private static async Task<SubmitFailure?> DeliverBranchAsync
@@ -189,5 +274,7 @@ internal static class SubmitRunner
     }
     private sealed record SubmitOneSucceeded(string Url) : SubmitOneOutcome;
     private sealed record SubmitOnePushed(string Branch) : SubmitOneOutcome;
+    private sealed record SubmitOneUpdated(string Branch, string Url) : SubmitOneOutcome;
+    private sealed record SubmitOneClosed(string Branch, string Url) : SubmitOneOutcome;
     private sealed record SubmitOneFailed(SubmitFailure Failure) : SubmitOneOutcome;
 }
