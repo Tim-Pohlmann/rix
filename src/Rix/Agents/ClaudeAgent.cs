@@ -45,6 +45,14 @@ internal sealed class ClaudeAgent : ICodingAgent
     /// </summary>
     public decimal? ParseCost(string outputLine) => CostLine.Read(outputLine, "\"total_cost_usd\"", ReadCost);
 
+    /// <summary>
+    /// Reads transcript content from Claude's NDJSON output: each <c>assistant</c> envelope's
+    /// <c>message.content</c> blocks, rendered as text verbatim and tool calls as a compact
+    /// one-liner. System, user (tool-result feedback — can be large/binary) and result lines
+    /// (already consumed by <see cref="ParseCost"/>) yield <c>null</c>.
+    /// </summary>
+    public string? ParseTranscriptLine(string outputLine) => TranscriptLine.Read(outputLine, "\"type\":\"assistant\"", ReadTranscript);
+
     private static decimal? ReadCost(JsonElement root)
     {
         if
@@ -57,5 +65,44 @@ internal sealed class ClaudeAgent : ICodingAgent
             return v;
 
         return null;
+    }
+
+    private static string? ReadTranscript(JsonElement root)
+    {
+        if
+        (
+            root.TryGetProperty("type", out var type) &&
+            type.ValueKind == JsonValueKind.String && type.GetString() == "assistant" &&
+            root.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.Object &&
+            message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
+        )
+        {
+            var blocks = new List<string>();
+            foreach (var block in content.EnumerateArray())
+            {
+                if (RenderContentBlock(block) is { } rendered)
+                    blocks.Add(rendered);
+            }
+            if (blocks.Count == 0)
+                return null;
+            return string.Join("\n", blocks);
+        }
+
+        return null;
+    }
+
+    private static string? RenderContentBlock(JsonElement block)
+    {
+        if (!block.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String)
+            return null;
+        switch (type.GetString())
+        {
+            case "text" when block.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String:
+                return text.GetString();
+            case "tool_use" when block.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String:
+                return $"→ {name.GetString()}(...)";
+            default:
+                return null;
+        }
     }
 }
