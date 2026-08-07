@@ -147,7 +147,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static IResult Enqueue<T>(ConcurrentQueue<T> pendingRequests, T item)
     {
         pendingRequests.Enqueue(item);
-        return Results.Ok(new PrQueuedResponse("queued"));
+        return Results.Ok(new QueuedResponse("queued"));
     }
 
     public async ValueTask DisposeAsync()

@@ -19,12 +19,12 @@ internal record PushRequest
     [property: JsonPropertyName("baseBranch")] string BaseBranch
 );
 
-internal record PrQueuedResponse([property: JsonPropertyName("status")] string Status);
+internal record QueuedResponse([property: JsonPropertyName("status")] string Status);
 
 internal record ErrorResponse([property: JsonPropertyName("error")] string Error);
 
 [JsonSerializable(typeof(PrRequest))]
 [JsonSerializable(typeof(PushRequest))]
-[JsonSerializable(typeof(PrQueuedResponse))]
+[JsonSerializable(typeof(QueuedResponse))]
 [JsonSerializable(typeof(ErrorResponse))]
 internal partial class ApiJsonContext : JsonSerializerContext { }
