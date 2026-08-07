@@ -16,14 +16,17 @@ internal static class Startup
 {
     /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
-    /// from <paramref name="config"/>.</summary>
-    internal static JobContext DefaultContext(JobConfig config)
+    /// from <paramref name="config"/>. <paramref name="transcriptLine"/> is the sink each extracted
+    /// agent transcript chunk is forwarded to; the shell (see <see cref="ExecuteJobAsync"/>) is
+    /// the caller that supplies it.</summary>
+    internal static JobContext DefaultContext(JobConfig config, LogLine? transcriptLine = null)
     => new
     (
         Host: new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
         RunProcess: ProcessWrapper.RunAsync,
         Agent: SelectAgent(config.Agent.Kind),
-        LogLine: Console.Error.WriteLine
+        LogLine: Console.Error.WriteLine,
+        TranscriptLine: transcriptLine ?? (_ => { })
     );
 
     private static ICodingAgent SelectAgent(AgentKind agent)
@@ -90,14 +93,26 @@ internal static class Startup
     /// <summary>
     /// Imperative shell around the pure-ish <see cref="JobRunner.RunAsync"/> core: runs the job,
     /// then performs all output effects — forwards the agent's stream to stderr, writes the result
-    /// JSON to stdout, persists <c>result.json</c> regardless of outcome, and maps the result to an
-    /// exit code. Writing <c>result.json</c> on failure too (not just success) means callers —
-    /// including <c>rix submit</c>, which already rejects a non-success <c>result.json</c> — have
-    /// one reliable place to read the outcome from, instead of scraping stdout.
+    /// JSON to stdout, persists <c>result.json</c> regardless of outcome, writes the agent's
+    /// extracted transcript to <c>transcript.md</c>, and maps the result to an exit code. Writing
+    /// <c>result.json</c> on failure too (not just success) means callers — including
+    /// <c>rix submit</c>, which already rejects a non-success <c>result.json</c> — have one
+    /// reliable place to read the outcome from, instead of scraping stdout. <c>transcript.md</c>
+    /// is best-effort the same way: it's a human-readable log of what the agent said/did, skipped
+    /// entirely when nothing was extracted.
     /// </summary>
     internal static async Task<int> ExecuteJobAsync(JobConfig config, CancellationToken cancellationToken, JobContext? context = null)
     {
-        context ??= DefaultContext(config);
+        var transcriptLines = new List<string>();
+        if (context is null)
+        {
+            context = DefaultContext(config, transcriptLines.Add);
+        }
+        else
+        {
+            var transcriptLine = context.TranscriptLine;
+            context = context with { TranscriptLine = line => { transcriptLine(line); transcriptLines.Add(line); } };
+        }
         var result = await JobRunner.RunAsync(config, context, cancellationToken);
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
         // Best-effort: once the job outcome above is decided, a broken/closed stdout pipe must not
@@ -116,6 +131,7 @@ internal static class Startup
             // Also best-effort: a closed/broken stderr must not defeat the exit-code guarantee above.
             await WriteBestEffortAsync(Console.Error, $"warning: failed to write result.json: {ex.Message}");
         }
+        await WriteTranscriptAsync(config, transcriptLines);
         return result switch
         {
             JobSuccess => ExitCodes.Success,
@@ -123,6 +139,30 @@ internal static class Startup
             SetupFailure => ExitCodes.SetupFailed,
             _ => throw new NotSupportedException($"Unexpected job result type: {result.GetType()}"),
         };
+    }
+
+    /// <summary>
+    /// Persists the collected agent transcript to <c>transcript.md</c> in the output directory,
+    /// joining each extracted chunk with a blank line. Best-effort and uncancellable, mirroring the
+    /// <c>result.json</c> write above: a disk error must never affect the exit code. Skipped
+    /// entirely when nothing was extracted, so the artifact only exists when there is content.
+    /// </summary>
+    private static async Task WriteTranscriptAsync(JobConfig config, List<string> transcriptLines)
+    {
+        if (transcriptLines.Count == 0) return;
+        try
+        {
+            await File.WriteAllTextAsync
+            (
+                Path.Combine(config.OutputDir.Value, "transcript.md"),
+                string.Join("\n\n", transcriptLines),
+                CancellationToken.None
+            );
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await WriteBestEffortAsync(Console.Error, $"warning: failed to write transcript.md: {ex.Message}");
+        }
     }
 
     /// <summary>Writes <paramref name="line"/> to <paramref name="writer"/>, swallowing the ways a

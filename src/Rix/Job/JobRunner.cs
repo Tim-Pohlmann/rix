@@ -100,9 +100,16 @@ internal static class JobRunner
             invocation.Arguments,
             cloneDir,
             invocation.EnvironmentOverrides,
-            context.LogLine.Invoke,
+            ForwardLine,
             ct
         );
+
+        void ForwardLine(string line)
+        {
+            context.LogLine(line);
+            if (context.Agent.ParseTranscriptLine(line) is { } transcriptLine)
+                context.TranscriptLine(transcriptLine);
+        }
     }
 
     /// <summary>

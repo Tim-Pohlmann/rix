@@ -109,4 +109,6 @@ internal sealed class StubAgent(Func<CancellationToken, Task<InstallResult>> ins
     => _real.BuildInvocation(config, systemPrompt);
 
     public decimal? ParseCost(string outputLine) => _real.ParseCost(outputLine);
+
+    public string? ParseTranscriptLine(string outputLine) => _real.ParseTranscriptLine(outputLine);
 }
