@@ -116,7 +116,7 @@ internal record JobConfig
     /// <c>rix/*</c> branch name, and any malformed entry is collected as an error via
     /// <see cref="ParseResultExtensions.Collect{T}"/> so the caller's typo is reported instead of
     /// silently dropping the restriction. Duplicates are dropped.</summary>
-    private static IReadOnlyList<RixBranchName> ParseAllowedPushBranches(string? raw, List<string> errors)
+    private static List<RixBranchName> ParseAllowedPushBranches(string? raw, List<string> errors)
     {
         if (string.IsNullOrWhiteSpace(raw))
             return [];
