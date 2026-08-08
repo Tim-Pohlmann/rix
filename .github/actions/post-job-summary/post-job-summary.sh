@@ -100,15 +100,21 @@ render_transcript() {
     return 0
   fi
 
-  local truncate_bytes=900000 size
-  size="$(wc -c < "$transcript_file" 2>/dev/null || echo 0)"
+  local truncate_bytes=900000
+  # Read at most truncate_bytes+1 bytes in one pass, instead of a separate unbounded `wc -c` over
+  # the whole (potentially huge) file just to detect truncation. The trailing 'x' sentinel stops
+  # $() from eating a real trailing newline in the transcript, so the byte count stays exact.
+  local head_bytes byte_count
+  head_bytes="$(head -c $((truncate_bytes + 1)) "$transcript_file"; printf x)"
+  head_bytes="${head_bytes%x}"
+  byte_count="$(printf '%s' "$head_bytes" | wc -c)"
 
   echo "<details>"
   echo "<summary>Agent transcript</summary>"
   echo ""
-  head -c "$truncate_bytes" "$transcript_file" || true
+  printf '%s' "$head_bytes" | head -c "$truncate_bytes"
   echo ""
-  if (( size > truncate_bytes )); then
+  if (( byte_count > truncate_bytes )); then
     echo ""
     echo "_Transcript truncated at ~900KB; the full file is in the rix-output artifact._"
   fi
