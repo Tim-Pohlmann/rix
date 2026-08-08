@@ -98,33 +98,13 @@ internal sealed class PiAgent : ICodingAgent
             if
             (
                 message.TryGetProperty("role", out var role) && role.GetString() == "assistant" &&
-                message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
+                message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array &&
+                TranscriptLine.JoinContentBlocks(content, "toolCall") is { } rendered
             )
-            {
-                foreach (var block in content.EnumerateArray())
-                {
-                    if (RenderContentBlock(block) is { } rendered)
-                        blocks.Add(rendered);
-                }
-            }
+                blocks.Add(rendered);
         }
         if (blocks.Count == 0)
             return null;
         return string.Join("\n", blocks);
-    }
-
-    private static string? RenderContentBlock(JsonElement block)
-    {
-        if (!block.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String)
-            return null;
-        switch (type.GetString())
-        {
-            case "text" when block.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String:
-                return text.GetString();
-            case "toolCall" when block.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String:
-                return $"→ {name.GetString()}(...)";
-            default:
-                return null;
-        }
     }
 }

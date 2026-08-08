@@ -76,33 +76,8 @@ internal sealed class ClaudeAgent : ICodingAgent
             root.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.Object &&
             message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
         )
-        {
-            var blocks = new List<string>();
-            foreach (var block in content.EnumerateArray())
-            {
-                if (RenderContentBlock(block) is { } rendered)
-                    blocks.Add(rendered);
-            }
-            if (blocks.Count == 0)
-                return null;
-            return string.Join("\n", blocks);
-        }
+            return TranscriptLine.JoinContentBlocks(content, "tool_use");
 
         return null;
-    }
-
-    private static string? RenderContentBlock(JsonElement block)
-    {
-        if (!block.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String)
-            return null;
-        switch (type.GetString())
-        {
-            case "text" when block.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String:
-                return text.GetString();
-            case "tool_use" when block.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String:
-                return $"→ {name.GetString()}(...)";
-            default:
-                return null;
-        }
     }
 }
