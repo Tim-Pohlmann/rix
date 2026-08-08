@@ -73,7 +73,7 @@ internal static class JobCommand
     (
         name: "--allowed-push-branches",
         description: "Comma-separated list of rix/* branches the /push API endpoint may deliver to " +
-            "(default: any rix/* branch)"
+            "(default: none — /push is disabled until this is set)"
     )
     { IsRequired = false };
 

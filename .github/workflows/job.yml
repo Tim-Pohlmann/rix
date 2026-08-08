@@ -51,8 +51,8 @@ on:
       allowed-push-branches:
         description: >-
           Comma-separated list of rix/* branches the /push endpoint may deliver to
-          (e.g. 'rix/resume-a,rix/resume-b'). When set, the agent cannot push onto any
-          other branch. Omit to allow pushes to any rix/* branch that exists on the remote.
+          (e.g. 'rix/resume-a,rix/resume-b'). /push rejects every branch until this is set;
+          omit it to disable /push entirely.
         required: false
         type: string
       runner:

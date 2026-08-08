@@ -36,7 +36,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// <param name="cloneDir">The job's own clone of the target repo — the only directory a queued
     /// branch is accepted from, since it's also the directory <c>rix</c> later bundles from.</param>
     /// <param name="allowedPushBranches">The only branches <c>/push</c> may deliver to; when
-    /// <c>null</c> or empty, any well-formed <c>rix/*</c> branch is accepted.</param>
+    /// <c>null</c> or empty, <c>/push</c> rejects every branch — an operator opts in by naming the
+    /// branches this run may touch.</param>
     internal static async Task<LocalApiServer> StartAsync
     (
         IRepositoryReadHost host,
@@ -134,14 +135,19 @@ internal sealed class LocalApiServer : IAsyncDisposable
         if (validation is not ValidPush(var queuedPush))
             throw new NotSupportedException($"Unexpected push validation {validation.GetType()}");
 
-        // The job's configuration can restrict /push to a fixed list of branches (e.g. only the
-        // branch this run is resuming). That list is enforced here, before any remote/local checks,
-        // so a push the operator never allowed is refused regardless of where the branch lives.
-        if (allowedPushBranches is { Count: > 0 } && !allowedPushBranches.Contains(queuedPush.Branch))
+        // The job's configuration names the only branches /push may deliver to (e.g. just the branch
+        // this run is resuming); an empty/unset list means none are allowed. Enforced here, before
+        // any remote/local checks, so a push the operator never allowed is refused regardless of
+        // where the branch lives.
+        var allowed = allowedPushBranches ?? [];
+        if (!allowed.Contains(queuedPush.Branch))
         {
-            var allowed = string.Join(", ", allowedPushBranches.Select(b => b.Value));
-            var message = $"Push to branch {queuedPush.Branch.Value} is not allowed. " +
-                $"This job permits pushes only to: {allowed}.";
+            var message = allowed.Count switch
+            {
+                0 => $"Push to branch {queuedPush.Branch.Value} is not allowed. This job does not permit pushing to any branch.",
+                _ => $"Push to branch {queuedPush.Branch.Value} is not allowed. " +
+                    $"This job permits pushes only to: {string.Join(", ", allowed.Select(b => b.Value))}.",
+            };
             return Results.Json(new ErrorResponse(message), statusCode: StatusCodes.Status403Forbidden);
         }
 

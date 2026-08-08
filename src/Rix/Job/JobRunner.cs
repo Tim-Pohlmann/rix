@@ -247,13 +247,14 @@ internal static class JobRunner
         {{AllowedPushBranchesPrompt(allowedPushBranches)}}
         """;
 
-    /// <summary>Renders the push restriction (when the operator configured one) as instructions the
-    /// agent must follow, so it learns the allow-list from the prompt instead of only from rejected
-    /// requests. Unrestricted jobs get an empty string, keeping the prompt unchanged.</summary>
+    /// <summary>Renders the push restriction as instructions the agent must follow, so it learns
+    /// what /push will accept from the prompt instead of only from rejected requests. /push denies
+    /// every branch unless the operator explicitly allowed some, so the empty case still needs a
+    /// sentence — silence there would read as "unrestricted" to the agent.</summary>
     private static string AllowedPushBranchesPrompt(IReadOnlyList<RixBranchName> allowedPushBranches)
     => allowedPushBranches.Count switch
     {
-        0 => string.Empty,
+        0 => "This job has not allowed any push branches, so /push will reject every request; use /pr for all changes.",
         _ => $"This job's push endpoint is restricted: you may only push onto the branches: {string.Join(", ", allowedPushBranches.Select(b => b.Value))}.",
     };
 }

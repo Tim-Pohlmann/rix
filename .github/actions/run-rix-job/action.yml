@@ -42,7 +42,7 @@ inputs:
   allowed-push-branches:
     description: >-
       Comma-separated list of rix/* branches the /push endpoint may deliver to; omit to
-      allow pushes to any rix/* branch that exists on the remote
+      disable /push entirely
     required: false
   rix-version:
     description: "Rix release tag to download, or 'latest'"

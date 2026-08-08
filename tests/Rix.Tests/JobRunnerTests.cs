@@ -357,23 +357,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_PassesApiUrlInSystemPromptArg()
     {
-        string? systemPrompt = null;
-
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude")
-            {
-                var argList = a.ToList();
-                var idx = argList.IndexOf("--append-system-prompt");
-                if (idx >= 0 && idx + 1 < argList.Count)
-                    systemPrompt = argList[idx + 1];
-            }
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
-            CancellationToken.None);
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig());
 
         Assert.IsNotNull(systemPrompt);
         StringAssert.Contains(systemPrompt, "A local API is available at http://");
@@ -471,7 +455,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: "rix/my-fix"), CancellationToken.None,
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
@@ -498,7 +482,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/my-fix"),
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -527,7 +511,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        var result = await JobRunner.RunAsync(MakeConfig(),
+        var result = await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/dup"),
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed()), logLine: log.Enqueue),
             CancellationToken.None);
 
@@ -540,23 +524,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_SystemPrompt_ListsAllowedPushBranches_WhenRestricted()
     {
-        string? systemPrompt = null;
-
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude")
-            {
-                var argList = a.ToList();
-                var idx = argList.IndexOf("--append-system-prompt");
-                if (idx >= 0 && idx + 1 < argList.Count)
-                    systemPrompt = argList[idx + 1];
-            }
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/continue-a,rix/continue-b"),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
-            CancellationToken.None);
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig(allowedPushBranches: "rix/continue-a,rix/continue-b"));
 
         Assert.IsNotNull(systemPrompt);
         StringAssert.Contains(systemPrompt, "rix/continue-a");
@@ -564,28 +532,13 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_SystemPrompt_HasNoRestrictionSection_WhenUnrestricted()
+    public async Task RunAsync_SystemPrompt_ExplainsPushIsDisabled_ByDefault()
     {
-        string? systemPrompt = null;
-
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude")
-            {
-                var argList = a.ToList();
-                var idx = argList.IndexOf("--append-system-prompt");
-                if (idx >= 0 && idx + 1 < argList.Count)
-                    systemPrompt = argList[idx + 1];
-            }
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
-            CancellationToken.None);
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig());
 
         Assert.IsNotNull(systemPrompt);
-        Assert.IsFalse(systemPrompt.Contains("may only push onto the branches"), "unrestricted jobs must not mention a push restriction");
+        Assert.IsFalse(systemPrompt.Contains("may only push onto the branches"), "a default job has no allow-list to name");
+        StringAssert.Contains(systemPrompt, "not allowed any push branches");
     }
 
     [TestMethod]
@@ -619,23 +572,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_SystemPrompt_MentionsPushEndpoint()
     {
-        string? systemPrompt = null;
-
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude")
-            {
-                var argList = a.ToList();
-                var idx = argList.IndexOf("--append-system-prompt");
-                if (idx >= 0 && idx + 1 < argList.Count)
-                    systemPrompt = argList[idx + 1];
-            }
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
-            CancellationToken.None);
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig());
 
         Assert.IsNotNull(systemPrompt);
         StringAssert.Contains(systemPrompt, "/push");
@@ -729,6 +666,30 @@ public class JobRunnerTests
         "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, args, ct),
         _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
     };
+
+    /// <summary>Runs a job with a no-op agent and returns the system prompt claude was invoked with,
+    /// for tests that assert on prompt content rather than agent behavior.</summary>
+    private static async Task<string?> CaptureSystemPromptAsync(JobConfig config)
+    {
+        string? systemPrompt = null;
+        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var argList = a.ToList();
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 0 && idx + 1 < argList.Count)
+                    systemPrompt = argList[idx + 1];
+            }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(config,
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        return systemPrompt;
+    }
 
     private static string ExtractApiUrlFromSystemPrompt(IEnumerable<string> args)
     {

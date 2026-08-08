@@ -205,7 +205,7 @@ public class JobCommandTests
     }
 
     [TestMethod]
-    public async Task Command_LeavesAllowedPushBranchesUnrestricted_WhenUnset()
+    public async Task Command_DefaultsAllowedPushBranchesToEmpty_WhenUnset()
     {
         JobConfig? captured = null;
         var parser = BuildParser(config =>

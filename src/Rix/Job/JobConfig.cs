@@ -10,6 +10,9 @@ internal record JobConfig
     internal DirectoryPath WorkDir { get; }
     internal DirectoryPath OutputDir { get; }
     internal AgentConfig Agent { get; }
+
+    /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
+    /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.</summary>
     internal IReadOnlyList<RixBranchName> AllowedPushBranches { get; }
 
     internal const int DefaultMaxTokens = 50_000;
@@ -108,34 +111,22 @@ internal record JobConfig
 
     /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
     /// <c>rix/*</c> branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
-    /// never set) means unrestricted, so the result is the empty list; each non-blank entry must be
-    /// a well-formed <c>rix/*</c> branch name, and any malformed entry is collected as an error so
-    /// the caller's typo is reported instead of silently dropping the restriction. Duplicates are
-    /// dropped.</summary>
+    /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
+    /// must opt in to letting the agent push at all. Each non-blank entry must be a well-formed
+    /// <c>rix/*</c> branch name, and any malformed entry is collected as an error via
+    /// <see cref="ParseResultExtensions.Collect{T}"/> so the caller's typo is reported instead of
+    /// silently dropping the restriction. Duplicates are dropped.</summary>
     private static IReadOnlyList<RixBranchName> ParseAllowedPushBranches(string? raw, List<string> errors)
     {
-        var branches = new List<RixBranchName>();
         if (string.IsNullOrWhiteSpace(raw))
-            return branches;
+            return [];
 
-        foreach (var entry in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var parse = RixBranchName.Parse(entry);
-            switch (parse)
-            {
-                case ParseSuccess<RixBranchName> ok when branches.All(b => b.Value != ok.Value.Value):
-                    branches.Add(ok.Value);
-                    break;
-                case ParseSuccess<RixBranchName>:
-                    break; // duplicate — nothing new to restrict to
-                case ParseError<RixBranchName> bad:
-                    errors.Add($"--allowed-push-branches: {bad.Error}");
-                    break;
-                default:
-                    throw new NotSupportedException($"Unexpected parse result: {parse}");
-            }
-        }
-        return branches;
+        return raw
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(entry => RixBranchName.Parse(entry).Collect(errors, "--allowed-push-branches"))
+            .OfType<RixBranchName>()
+            .Distinct()
+            .ToList();
     }
 
     /// <summary>Parses a raw <c>--max-tokens</c>/<c>--timeout</c>-style value: blank resolves to
