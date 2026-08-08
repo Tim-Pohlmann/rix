@@ -43,7 +43,7 @@ internal sealed class ClaudeAgent : ICodingAgent
     /// whose <c>total_cost_usd</c> is the run's cumulative cost; other lines (and results without a
     /// cost) yield <c>null</c> so the caller keeps the last known value.
     /// </summary>
-    public decimal? ParseCost(string outputLine) => CostLine.Read(outputLine, "\"total_cost_usd\"", ReadCost);
+    public decimal? ParseCost(string outputLine) => JsonLine.Read(outputLine, "\"total_cost_usd\"", ReadCost);
 
     /// <summary>
     /// Reads transcript content from Claude's NDJSON output: each <c>assistant</c> envelope's
@@ -51,7 +51,7 @@ internal sealed class ClaudeAgent : ICodingAgent
     /// one-liner. System, user (tool-result feedback — can be large/binary) and result lines
     /// (already consumed by <see cref="ParseCost"/>) yield <c>null</c>.
     /// </summary>
-    public string? ParseTranscriptLine(string outputLine) => TranscriptLine.Read(outputLine, "\"type\":\"assistant\"", ReadTranscript);
+    public string? ParseTranscriptLine(string outputLine) => JsonLine.Read(outputLine, "\"type\":\"assistant\"", ReadTranscript);
 
     private static decimal? ReadCost(JsonElement root)
     {

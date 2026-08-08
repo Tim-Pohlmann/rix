@@ -51,7 +51,7 @@ internal sealed class PiAgent : ICodingAgent
     /// ever have <c>agent_settled</c> as the final line, so this reliably returns <c>null</c>
     /// (reported cost <c>0</c>) in normal operation today.
     /// </remarks>
-    public decimal? ParseCost(string outputLine) => CostLine.Read(outputLine, "\"agent_end\"", ReadCost);
+    public decimal? ParseCost(string outputLine) => JsonLine.Read(outputLine, "\"agent_end\"", ReadCost);
 
     /// <summary>
     /// Reads transcript content from Pi's JSON event stream, reusing the <c>agent_end</c> line that
@@ -59,7 +59,7 @@ internal sealed class PiAgent : ICodingAgent
     /// content is rendered into one combined chunk. Other lines yield <c>null</c>, so — exactly as
     /// with cost — the transcript stays empty until <c>agent_end</c> reliably appears in the stream.
     /// </summary>
-    public string? ParseTranscriptLine(string outputLine) => TranscriptLine.Read(outputLine, "\"agent_end\"", ReadTranscript);
+    public string? ParseTranscriptLine(string outputLine) => JsonLine.Read(outputLine, "\"agent_end\"", ReadTranscript);
 
     private static decimal? ReadCost(JsonElement root)
     {
@@ -92,19 +92,17 @@ internal sealed class PiAgent : ICodingAgent
         if (!root.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
             return null;
 
-        var blocks = new List<string>();
-        foreach (var message in messages.EnumerateArray())
-        {
-            if
-            (
-                message.TryGetProperty("role", out var role) && role.GetString() == "assistant" &&
-                message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array &&
-                TranscriptLine.JoinContentBlocks(content, "toolCall") is { } rendered
-            )
-                blocks.Add(rendered);
-        }
-        if (blocks.Count == 0)
-            return null;
-        return string.Join("\n", blocks);
+        return TranscriptLine.JoinNonNull(messages.EnumerateArray().Select(ReadAssistantTranscript));
+    }
+
+    private static string? ReadAssistantTranscript(JsonElement message)
+    {
+        if
+        (
+            message.TryGetProperty("role", out var role) && role.GetString() == "assistant" &&
+            message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
+        )
+            return TranscriptLine.JoinContentBlocks(content, "toolCall");
+        return null;
     }
 }

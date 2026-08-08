@@ -3,29 +3,13 @@ using System.Text.Json;
 namespace Rix.Job;
 
 /// <summary>
-/// Shared scaffold for the agent transcript parsers. Guards a single stdout line, parses it as a
-/// JSON object, and hands the root element to <paramref name="readTranscript"/>. Returns
-/// <c>null</c> for blank lines, non-object or malformed JSON, or lines that don't contain
-/// <paramref name="marker"/> — so each agent's parser only has to express how to read the
-/// human-readable content, not how to validate the line.
+/// Rendering helpers shared by the agent transcript parsers (line-guarding itself is
+/// <see cref="JsonLine.Read{T}"/>).
 /// </summary>
 internal static class TranscriptLine
 {
-    internal static string? Read(string line, string marker, Func<JsonElement, string?> readTranscript)
-    {
-        var trimmed = line.TrimStart();
-        if (trimmed.Length == 0 || trimmed[0] != '{') return null;
-        if (!trimmed.Contains(marker)) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(trimmed);
-            if (doc.RootElement.ValueKind == JsonValueKind.Object)
-                return readTranscript(doc.RootElement);
-            return null;
-        }
-        catch (JsonException) { /* malformed JSON line — skip */ }
-        return null;
-    }
+    /// <summary>Formats a tool call as the compact one-liner used across every agent's transcript.</summary>
+    internal static string FormatToolCall(string name) => $"→ {name}(...)";
 
     /// <summary>
     /// Renders a single Anthropic-style content block — <c>{"type":"text","text":...}</c> verbatim,
@@ -42,7 +26,7 @@ internal static class TranscriptLine
         if (blockType == "text" && block.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String)
             return text.GetString();
         if (blockType == toolUseType && block.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
-            return $"→ {name.GetString()}(...)";
+            return FormatToolCall(name.GetString()!);
         return null;
     }
 
@@ -52,14 +36,16 @@ internal static class TranscriptLine
     /// </summary>
     internal static string? JoinContentBlocks(JsonElement content, string toolUseType)
     {
-        var blocks = new List<string>();
-        foreach (var block in content.EnumerateArray())
-        {
-            if (RenderContentBlock(block, toolUseType) is { } rendered)
-                blocks.Add(rendered);
-        }
-        if (blocks.Count == 0)
+        var rendered = content.EnumerateArray().Select(block => RenderContentBlock(block, toolUseType));
+        return JoinNonNull(rendered);
+    }
+
+    /// <summary>Joins the non-null items with newlines, or returns <c>null</c> when none are.</summary>
+    internal static string? JoinNonNull(IEnumerable<string?> items)
+    {
+        var present = items.Where(item => item is not null).ToList();
+        if (present.Count == 0)
             return null;
-        return string.Join("\n", blocks);
+        return string.Join("\n", present);
     }
 }

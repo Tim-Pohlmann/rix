@@ -61,14 +61,14 @@ internal sealed class OpenCodeAgent : ICodingAgent
     /// (costs derive from external LiteLLM pricing that may be unavailable), so a missing cost is
     /// treated as unknown (<c>null</c>).
     /// </summary>
-    public decimal? ParseCost(string outputLine) => CostLine.Read(outputLine, "\"cost\"", ReadCost);
+    public decimal? ParseCost(string outputLine) => JsonLine.Read(outputLine, "\"cost\"", ReadCost);
 
     /// <summary>
     /// Reads transcript content from an OpenCode JSON event line: <c>text</c> events' <c>part.text</c>
     /// verbatim, and <c>tool_use</c> events as a compact tool-name one-liner. Everything else
     /// (step bookkeeping, cost-bearing <c>step_finish</c> lines) yields <c>null</c>.
     /// </summary>
-    public string? ParseTranscriptLine(string outputLine) => TranscriptLine.Read(outputLine, "\"part\"", ReadTranscript);
+    public string? ParseTranscriptLine(string outputLine) => JsonLine.Read(outputLine, "\"part\"", ReadTranscript);
 
     private static decimal? ReadCost(JsonElement root)
     {
@@ -106,7 +106,7 @@ internal sealed class OpenCodeAgent : ICodingAgent
             case "text" when part.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String:
                 return text.GetString();
             case "tool_use" when part.TryGetProperty("tool", out var tool) && tool.ValueKind == JsonValueKind.String:
-                return $"→ {tool.GetString()}(...)";
+                return TranscriptLine.FormatToolCall(tool.GetString()!);
             default:
                 return null;
         }

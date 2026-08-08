@@ -16,17 +16,17 @@ internal static class Startup
 {
     /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
-    /// from <paramref name="config"/>. <paramref name="transcriptLine"/> is the sink each extracted
-    /// agent transcript chunk is forwarded to; the shell (see <see cref="ExecuteJobAsync"/>) is
-    /// the caller that supplies it.</summary>
-    internal static JobContext DefaultContext(JobConfig config, LogLine? transcriptLine = null)
+    /// from <paramref name="config"/>. <see cref="JobContext.TranscriptLine"/> is a no-op here;
+    /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
+    /// it ends up using.</summary>
+    internal static JobContext DefaultContext(JobConfig config)
     => new
     (
         Host: new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
         RunProcess: ProcessWrapper.RunAsync,
         Agent: SelectAgent(config.Agent.Kind),
         LogLine: Console.Error.WriteLine,
-        TranscriptLine: transcriptLine ?? (_ => { })
+        TranscriptLine: _ => { }
     );
 
     private static ICodingAgent SelectAgent(AgentKind agent)
@@ -104,15 +104,9 @@ internal static class Startup
     internal static async Task<int> ExecuteJobAsync(JobConfig config, CancellationToken cancellationToken, JobContext? context = null)
     {
         var transcriptLines = new List<string>();
-        if (context is null)
-        {
-            context = DefaultContext(config, transcriptLines.Add);
-        }
-        else
-        {
-            var transcriptLine = context.TranscriptLine;
-            context = context with { TranscriptLine = line => { transcriptLine(line); transcriptLines.Add(line); } };
-        }
+        context ??= DefaultContext(config);
+        var transcriptSink = context.TranscriptLine;
+        context = context with { TranscriptLine = line => { transcriptSink(line); transcriptLines.Add(line); } };
         var result = await JobRunner.RunAsync(config, context, cancellationToken);
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
         // Best-effort: once the job outcome above is decided, a broken/closed stdout pipe must not
