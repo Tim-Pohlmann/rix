@@ -4,11 +4,12 @@
 # and the pull requests that were actually opened. Used by the run-rix-job and submit-rix-job
 # composite actions.
 #
-# Usage: post-job-summary.sh <result.json> [submit-result.json] [submit-error.log]
+# Usage: post-job-summary.sh <result.json> [submit-result.json] [submit-error.log] [transcript.md]
 #
 #   result.json        the result of `rix job` (always present in a completed run)
 #   submit-result.json the stdout of `rix submit` (absent when the submit step wrote nothing)
 #   submit-error.log   the stderr of `rix submit` (used to explain a submit failure)
+#   transcript.md      the coding agent's session transcript (absent when none was written)
 #
 # Best-effort by design: the summary is informational only, so a missing file or a malformed JSON
 # renders whatever it can (or nothing) and the script always exits 0 - it must never fail the
@@ -89,8 +90,35 @@ render_submit() {
   fi
 }
 
+# Appends a collapsible <details> section with the coding agent's session transcript, so the
+# workflow run page shows what the agent actually did. The transcript can be huge, and the step
+# summary has a ~1MB size limit, so it is cut at ~900KB; when the file was longer, a note points
+# at the full file, which the job's rix-output artifact uploads alongside result.json.
+render_transcript() {
+  local transcript_file="$1"
+  if [[ -z "$transcript_file" || ! -s "$transcript_file" ]]; then
+    return 0
+  fi
+
+  local truncate_bytes=900000 size
+  size="$(wc -c < "$transcript_file" 2>/dev/null || echo 0)"
+
+  echo "<details>"
+  echo "<summary>Agent transcript</summary>"
+  echo ""
+  head -c "$truncate_bytes" "$transcript_file" || true
+  echo ""
+  if (( size > truncate_bytes )); then
+    echo ""
+    echo "_Transcript truncated at ~900KB; the full file is in the rix-output artifact._"
+  fi
+  echo "</details>"
+  echo ""
+  return 0
+}
+
 rix_post_job_summary() {
-  local result_file="$1" submit_file="${2:-}" submit_log="${3:-}"
+  local result_file="$1" submit_file="${2:-}" submit_log="${3:-}" transcript_file="${4:-}"
   local summary_file="${GITHUB_STEP_SUMMARY:-}"
 
   if [[ -z "$summary_file" ]]; then
@@ -134,6 +162,7 @@ rix_post_job_summary() {
     fi
     echo ""
     render_submit "$submit_file" "$submit_log"
+    render_transcript "$transcript_file"
   } >> "$summary_file"
   return 0
 }

@@ -26,6 +26,9 @@ inputs:
   rix-bin:
     description: "Path to an already-built rix binary to use instead of downloading a release"
     required: false
+  transcript-file:
+    description: Path to the coding agent's session transcript (transcript.md), if one was written; appended to the job summary as a collapsible, truncated section
+    required: false
 
 runs:
   using: composite
@@ -60,3 +63,4 @@ runs:
         result-file: ${{ inputs.input-dir }}/result.json
         submit-file: ${{ inputs.input-dir }}/submit-result.json
         submit-log: ${{ inputs.input-dir }}/submit-error.log
+        transcript-file: ${{ inputs.transcript-file }}
