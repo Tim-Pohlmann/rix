@@ -1,28 +1,28 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Rix.Repository;
-using System.Collections.Concurrent;
 
 namespace Rix.Api;
 
 internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
-    private readonly ConcurrentQueue<QueuedPr> _pendingPrRequests;
-    private readonly ConcurrentQueue<QueuedPush> _pendingPushRequests;
+    private readonly PendingQueue<QueuedPr> _pendingPrRequests;
+    private readonly PendingQueue<QueuedPush> _pendingPushRequests;
 
     internal Uri BaseUrl { get; }
-    internal IReadOnlyList<QueuedPr> QueuedPrRequests => _pendingPrRequests.ToArray();
-    internal IReadOnlyList<QueuedPush> QueuedPushRequests => _pendingPushRequests.ToArray();
+    internal IReadOnlyList<QueuedPr> QueuedPrRequests => _pendingPrRequests.Snapshot();
+    internal IReadOnlyList<QueuedPush> QueuedPushRequests => _pendingPushRequests.Snapshot();
 
     private LocalApiServer
     (
         WebApplication app,
         Uri baseUrl,
-        ConcurrentQueue<QueuedPr> pendingPrRequests,
-        ConcurrentQueue<QueuedPush> pendingPushRequests
+        PendingQueue<QueuedPr> pendingPrRequests,
+        PendingQueue<QueuedPush> pendingPushRequests
     )
     {
         _app = app;
@@ -43,8 +43,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
         Action<string>? logLine = null
     )
     {
-        var pendingPrRequests = new ConcurrentQueue<QueuedPr>();
-        var pendingPushRequests = new ConcurrentQueue<QueuedPush>();
+        var pendingPrRequests = new PendingQueue<QueuedPr>();
+        var pendingPushRequests = new PendingQueue<QueuedPush>();
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
@@ -73,13 +73,17 @@ internal sealed class LocalApiServer : IAsyncDisposable
         WebApplication app,
         IRepositoryReadHost host,
         string cloneDir,
-        ConcurrentQueue<QueuedPr> pendingPrRequests,
-        ConcurrentQueue<QueuedPush> pendingPushRequests
+        PendingQueue<QueuedPr> pendingPrRequests,
+        PendingQueue<QueuedPush> pendingPushRequests
     )
     {
         app.MapGet("/health", () => Results.Ok());
         app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
+        app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Snapshot()));
+        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDeletePr(req, pendingPrRequests));
         app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, ct));
+        app.MapGet("/push", () => Results.Ok(pendingPushRequests.Snapshot()));
+        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDeletePush(req, pendingPushRequests));
     }
 
     private static async Task<IResult> HandlePrAsync
@@ -87,7 +91,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         PrRequest req,
         IRepositoryReadHost host,
         string cloneDir,
-        ConcurrentQueue<QueuedPr> pendingPrRequests,
+        PendingQueue<QueuedPr> pendingPrRequests,
         CancellationToken ct
     )
     {
@@ -119,7 +123,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         PushRequest req,
         IRepositoryReadHost host,
         string cloneDir,
-        ConcurrentQueue<QueuedPush> pendingPushRequests,
+        PendingQueue<QueuedPush> pendingPushRequests,
         CancellationToken ct
     )
     {
@@ -144,10 +148,52 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return Enqueue(pendingPushRequests, queuedPush);
     }
 
-    private static IResult Enqueue<T>(ConcurrentQueue<T> pendingRequests, T item)
+    private static IResult Enqueue<T>(PendingQueue<T> pendingRequests, T item)
     {
         pendingRequests.Enqueue(item);
         return Results.Ok(new QueuedResponse("queued"));
+    }
+
+    private static IResult HandleDeletePr(DeleteRequest req, PendingQueue<QueuedPr> pendingPrRequests)
+    => HandleDelete(req, pendingPrRequests, "PR");
+
+    private static IResult HandleDeletePush(DeleteRequest req, PendingQueue<QueuedPush> pendingPushRequests)
+    => HandleDelete(req, pendingPushRequests, "push");
+
+    /// <summary>Cancels the queued request(s) for <paramref name="req"/>'s branch. Every queued item
+    /// for the branch is removed — including same-run duplicates, since any of them would bundle into
+    /// the same PR/push. A well-formed branch with nothing queued is a 404 so the agent learns its
+    /// cancel was a no-op rather than assuming it took.</summary>
+    private static IResult HandleDelete<T>
+    (
+        DeleteRequest req,
+        PendingQueue<T> pendingRequests,
+        string kind
+    )
+        where T : IQueuedRequest
+    {
+        if (string.IsNullOrWhiteSpace(req.Branch))
+            return Results.BadRequest(new ErrorResponse("branch is required"));
+
+        return RixBranchName.Parse(req.Branch) switch
+        {
+            ParseError<RixBranchName> error => Results.BadRequest(new ErrorResponse($"branch: {error.Error}")),
+            ParseSuccess<RixBranchName> branch => RemoveQueued(pendingRequests, branch.Value.Value, kind),
+            var other => throw new InvalidOperationException($"Unexpected parse result: {other}"),
+        };
+    }
+
+    private static IResult RemoveQueued<T>
+    (
+        PendingQueue<T> pendingRequests,
+        string branch,
+        string kind
+    )
+        where T : IQueuedRequest
+    {
+        if (pendingRequests.RemoveAll(queued => queued.Branch.Value == branch) == 0)
+            return Results.NotFound(new ErrorResponse($"No queued {kind} for branch {branch}."));
+        return Results.Ok(new DeleteResponse("deleted"));
     }
 
     public async ValueTask DisposeAsync()

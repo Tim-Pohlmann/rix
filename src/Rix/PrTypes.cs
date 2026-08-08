@@ -31,7 +31,21 @@ internal sealed class PrBodyJsonConverter : StringValueJsonConverter<PrBody>
     protected override string Extract(PrBody value) => value.Value;
 }
 
-internal record QueuedPr(RixBranchName Branch, BranchName BaseBranch, PrTitle Title, PrBody Body);
+/// <summary>What the local API's queues hold: a request the agent has submitted but <c>rix</c> has not
+/// yet bundled. The branch is the shared key — <c>rix</c> dedups same-run duplicates on it and the
+/// agent cancels queued requests by it.</summary>
+internal interface IQueuedRequest
+{
+    RixBranchName Branch { get; }
+}
+
+internal record QueuedPr
+(
+    [property: JsonPropertyName("branch")] RixBranchName Branch,
+    [property: JsonPropertyName("baseBranch")] BranchName BaseBranch,
+    [property: JsonPropertyName("title")] PrTitle Title,
+    [property: JsonPropertyName("body")] PrBody Body
+) : IQueuedRequest;
 
 internal record PendingPr
 (
@@ -45,7 +59,11 @@ internal record PendingPr
 /// <summary>A request to push the agent's new commits onto a branch that already exists on the
 /// remote (e.g. continuing work from a previous run). Unlike a <see cref="QueuedPr"/>, no PR is
 /// opened — the commits are delivered straight to the existing branch.</summary>
-internal record QueuedPush(RixBranchName Branch, BranchName BaseBranch);
+internal record QueuedPush
+(
+    [property: JsonPropertyName("branch")] RixBranchName Branch,
+    [property: JsonPropertyName("baseBranch")] BranchName BaseBranch
+) : IQueuedRequest;
 
 internal record PendingPush
 (

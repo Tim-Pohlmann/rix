@@ -12,6 +12,15 @@ public class LocalApiServerTests
 
     private static StubRepositoryHost FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
 
+    private static Task<HttpResponseMessage> DeleteAsJsonAsync(HttpClient client, Uri uri, object body)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Delete, uri)
+        {
+            Content = JsonContent.Create(body, options: JsonOpts),
+        };
+        return client.SendAsync(request);
+    }
+
     [TestMethod]
     public async Task GetHealth_Returns200()
     {
@@ -257,6 +266,244 @@ public class LocalApiServerTests
         var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
         StringAssert.Contains(result["error"], "rix/ghost");
         StringAssert.Contains(result["error"], "working directory");
+    }
+
+    [TestMethod]
+    public async Task GetPr_Returns200WithEmptyList()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await client.GetAsync(new Uri(server.BaseUrl, "/pr"));
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<List<Dictionary<string, string>>>(json, JsonOpts)!;
+        Assert.AreEqual(0, result.Count);
+    }
+
+    [TestMethod]
+    public async Task GetPr_ReturnsQueuedRequests()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/feat",
+            title = "Add feature",
+            body = "body",
+            baseBranch = "main",
+        });
+
+        var response = await client.GetAsync(new Uri(server.BaseUrl, "/pr"));
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<List<Dictionary<string, string>>>(json, JsonOpts)!;
+        Assert.AreEqual(1, result.Count);
+        Assert.AreEqual("rix/feat", result[0]["branch"]);
+        Assert.AreEqual("main", result[0]["baseBranch"]);
+        Assert.AreEqual("Add feature", result[0]["title"]);
+        Assert.AreEqual("body", result[0]["body"]);
+    }
+
+    [TestMethod]
+    public async Task GetPush_ReturnsQueuedRequests()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(true), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
+        {
+            branch = "rix/feat",
+            baseBranch = "main",
+        });
+
+        var response = await client.GetAsync(new Uri(server.BaseUrl, "/push"));
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<List<Dictionary<string, string>>>(json, JsonOpts)!;
+        Assert.AreEqual(1, result.Count);
+        Assert.AreEqual("rix/feat", result[0]["branch"]);
+        Assert.AreEqual("main", result[0]["baseBranch"]);
+    }
+
+    [TestMethod]
+    public async Task DeletePr_Returns200_WhenQueued()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/feat",
+            title = "Add feature",
+            body = "body",
+            baseBranch = "main",
+        });
+
+        var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/pr"),
+            new { branch = "rix/feat" });
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        Assert.AreEqual("deleted", result["status"]);
+        Assert.AreEqual(0, server.QueuedPrRequests.Count);
+    }
+
+    [TestMethod]
+    public async Task DeletePr_Returns404_WhenNotQueued()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/pr"),
+            new { branch = "rix/ghost" });
+
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/ghost");
+        StringAssert.Contains(result["error"], "PR");
+    }
+
+    [TestMethod]
+    public async Task DeletePr_Returns400_ForNonRixBranch()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/pr"),
+            new { branch = "main" });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/*");
+        StringAssert.StartsWith(result["error"], "branch:");
+    }
+
+    [TestMethod]
+    public async Task DeletePr_Returns400_ForMissingBranch()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/pr"),
+            new { branch = "" });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        Assert.AreEqual("branch is required", result["error"]);
+    }
+
+    [TestMethod]
+    public async Task DeletePr_RemovesOnlyMatchingBranch()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/keep",
+            title = "Keep",
+            body = "body",
+            baseBranch = "main",
+        });
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/drop",
+            title = "Drop",
+            body = "body",
+            baseBranch = "main",
+        });
+
+        await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/pr"),
+            new { branch = "rix/drop" });
+
+        Assert.AreEqual(1, server.QueuedPrRequests.Count);
+        Assert.AreEqual(new RixBranchName("rix/keep"), server.QueuedPrRequests[0].Branch);
+    }
+
+    [TestMethod]
+    public async Task DeletePr_RemovesAllDuplicatesForBranch()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        for (var i = 0; i < 2; i++)
+        {
+            await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+            {
+                branch = "rix/dup",
+                title = "T",
+                body = "b",
+                baseBranch = "main",
+            });
+        }
+
+        await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/pr"),
+            new { branch = "rix/dup" });
+
+        Assert.AreEqual(0, server.QueuedPrRequests.Count);
+    }
+
+    [TestMethod]
+    public async Task DeletePush_Returns200_WhenQueued()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(true), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
+        {
+            branch = "rix/feat",
+            baseBranch = "main",
+        });
+
+        var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/push"),
+            new { branch = "rix/feat" });
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        Assert.AreEqual("deleted", result["status"]);
+        Assert.AreEqual(0, server.QueuedPushRequests.Count);
+    }
+
+    [TestMethod]
+    public async Task DeletePush_Returns404_WhenNotQueued()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(true), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/push"),
+            new { branch = "rix/ghost" });
+
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/ghost");
+        StringAssert.Contains(result["error"], "push");
+    }
+
+    [TestMethod]
+    public async Task DeletePush_Returns400_ForNonRixBranch()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(true), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/push"),
+            new { branch = "main" });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/*");
+        StringAssert.StartsWith(result["error"], "branch:");
     }
 
 }

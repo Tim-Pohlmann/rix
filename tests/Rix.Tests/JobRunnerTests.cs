@@ -562,6 +562,34 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_SystemPrompt_DescribesGetAndDeleteEndpoints()
+    {
+        string? systemPrompt = null;
+
+        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var argList = a.ToList();
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 0 && idx + 1 < argList.Count)
+                    systemPrompt = argList[idx + 1];
+            }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsNotNull(systemPrompt);
+        StringAssert.Contains(systemPrompt, "list your queued pull requests");
+        StringAssert.Contains(systemPrompt, "cancel a queued pull request");
+        StringAssert.Contains(systemPrompt, "list your queued pushes");
+        StringAssert.Contains(systemPrompt, "cancel a queued push");
+    }
+
+    [TestMethod]
     public async Task RunAsync_ReturnsJobSuccess_WithoutWritingResultJson()
     {
         var result = await JobRunner.RunAsync(MakeConfig(),
