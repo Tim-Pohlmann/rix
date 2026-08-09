@@ -105,14 +105,16 @@ render_transcript() {
   # the whole (potentially huge) file just to detect truncation. The trailing 'x' sentinel stops
   # $() from eating a real trailing newline in the transcript, so the byte count stays exact.
   local head_bytes byte_count
-  head_bytes="$(head -c $((truncate_bytes + 1)) "$transcript_file"; printf x)"
+  head_bytes="$(head -c $((truncate_bytes + 1)) "$transcript_file" 2>/dev/null || true; printf x)"
   head_bytes="${head_bytes%x}"
-  byte_count="$(printf '%s' "$head_bytes" | wc -c)"
+  byte_count="$(printf '%s' "$head_bytes" | wc -c || echo 0)"
 
   echo "<details>"
   echo "<summary>Agent transcript</summary>"
   echo ""
-  printf '%s' "$head_bytes" | head -c "$truncate_bytes"
+  # Escape HTML-sensitive characters so transcript content (agent-written, untrusted) can't close
+  # the <details> tag early or render as unintended markup - markdown syntax uses none of them.
+  printf '%s' "$head_bytes" | head -c "$truncate_bytes" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' || true
   echo ""
   if (( byte_count > truncate_bytes )); then
     echo ""

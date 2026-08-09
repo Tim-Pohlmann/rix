@@ -145,6 +145,17 @@ assistant: explored the codebase and applied the fix
   [[ "$(summary)" == *"</details>"* ]]
 }
 
+@test "transcript with HTML-sensitive characters is escaped so it can't break the details block" {
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_transcript 'a </details> <script>alert(1)</script> & b'
+
+  run rix_post_job_summary "$RESULT" "" "" "$TRANSCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" == *"&lt;/details&gt; &lt;script&gt;alert(1)&lt;/script&gt; &amp; b"* ]]
+  [[ "$(summary)" != *"a </details> <script>"* ]]
+}
+
 @test "transcript is omitted when the arg is empty, missing, or the file is empty" {
   write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
 
