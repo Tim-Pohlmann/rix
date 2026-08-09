@@ -74,7 +74,7 @@ internal sealed class PiAgent : ICodingAgent
 
     private static decimal ReadAssistantCost(JsonElement message)
     {
-        if (!message.TryGetProperty("role", out var role) || role.GetString() != "assistant")
+        if (!message.TryGetProperty("role", out var role) || role.ValueKind != JsonValueKind.String || role.GetString() != "assistant")
             return 0m;
         if (!message.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
             return 0m;
@@ -99,7 +99,7 @@ internal sealed class PiAgent : ICodingAgent
     {
         if
         (
-            message.TryGetProperty("role", out var role) && role.GetString() == "assistant" &&
+            message.TryGetProperty("role", out var role) && role.ValueKind == JsonValueKind.String && role.GetString() == "assistant" &&
             message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
         )
             return TranscriptLine.JoinContentBlocks(content, "toolCall");

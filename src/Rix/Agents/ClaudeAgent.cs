@@ -51,7 +51,7 @@ internal sealed class ClaudeAgent : ICodingAgent
     /// one-liner. System, user (tool-result feedback — can be large/binary) and result lines
     /// (already consumed by <see cref="ParseCost"/>) yield <c>null</c>.
     /// </summary>
-    public string? ParseTranscriptLine(string outputLine) => JsonLine.Read(outputLine, "\"type\":\"assistant\"", ReadTranscript);
+    public string? ParseTranscriptLine(string outputLine) => JsonLine.Read(outputLine, "\"assistant\"", ReadTranscript);
 
     private static decimal? ReadCost(JsonElement root)
     {
