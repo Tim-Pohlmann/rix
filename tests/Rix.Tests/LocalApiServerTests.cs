@@ -513,7 +513,7 @@ public class LocalApiServerTests
         var json = await response.Content.ReadAsStringAsync();
         var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
         Assert.AreEqual("deleted", result["status"]);
-        Assert.AreEqual(0, server.QueuedPrRequests.Count);
+        Assert.AreEqual(0, server.GetQueuedPrRequests().Count);
     }
 
     [TestMethod]
@@ -587,8 +587,8 @@ public class LocalApiServerTests
         await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/pr"),
             new { branch = "rix/drop" });
 
-        Assert.AreEqual(1, server.QueuedPrRequests.Count);
-        Assert.AreEqual(new RixBranchName("rix/keep"), server.QueuedPrRequests[0].Branch);
+        Assert.AreEqual(1, server.GetQueuedPrRequests().Count);
+        Assert.AreEqual(new RixBranchName("rix/keep"), server.GetQueuedPrRequests()[0].Branch);
     }
 
     [TestMethod]
@@ -612,7 +612,7 @@ public class LocalApiServerTests
         var json = await response.Content.ReadAsStringAsync();
         var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
         Assert.AreEqual("deleted", result["status"]);
-        Assert.AreEqual(0, server.QueuedPushRequests.Count);
+        Assert.AreEqual(0, server.GetQueuedPushRequests().Count);
     }
 
     [TestMethod]
