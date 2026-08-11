@@ -22,8 +22,8 @@ internal record PushRequest
 internal record QueuedResponse([property: JsonPropertyName("status")] string Status);
 
 /// <summary>The body of a DELETE to <c>/pr</c> or <c>/push</c>: the branch whose queued request the
-/// agent wants to cancel. Branches are the queue's natural key — every queued item for the branch is
-/// removed, including same-run duplicates.</summary>
+/// agent wants to cancel. Branches are the queue's key, so at most one request per branch is ever
+/// queued and removing it clears that branch's slot entirely.</summary>
 internal record DeleteRequest([property: JsonPropertyName("branch")] string Branch);
 
 internal record ErrorResponse([property: JsonPropertyName("error")] string Error);

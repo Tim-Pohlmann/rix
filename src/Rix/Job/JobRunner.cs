@@ -231,13 +231,10 @@ internal static class JobRunner
     private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs, IReadOnlyList<PendingPush> PendingPushes) : DeliveryOutcome;
     private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
-    private const string PrEndpoint = "/pr";
-    private const string PushEndpoint = "/push";
-
     private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<RixBranchName> allowedPushBranches)
     {
-        var prUri = new Uri(apiBaseUrl, PrEndpoint);
-        var pushUri = new Uri(apiBaseUrl, PushEndpoint);
+        var prUri = new Uri(apiBaseUrl, "/pr");
+        var pushUri = new Uri(apiBaseUrl, "/push");
         return $$"""
         You are `rix job`, an autonomous coding agent and part of the `rix` autonomous software factory.
 

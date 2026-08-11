@@ -15,8 +15,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private readonly ConcurrentDictionary<string, QueuedPush> _pendingPushRequests;
 
     internal Uri BaseUrl { get; }
-    internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => _pendingPrRequests.Values.ToArray();
-    internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => _pendingPushRequests.Values.ToArray();
+    internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => SnapshotQueue(_pendingPrRequests);
+    internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => SnapshotQueue(_pendingPushRequests);
 
     private LocalApiServer
     (
@@ -85,10 +85,10 @@ internal sealed class LocalApiServer : IAsyncDisposable
     {
         app.MapGet("/health", () => Results.Ok());
         app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
-        app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Values.ToArray()));
+        app.MapGet("/pr", () => Results.Ok(SnapshotQueue(pendingPrRequests)));
         app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests, "PR"));
         app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct));
-        app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()));
+        app.MapGet("/push", () => Results.Ok(SnapshotQueue(pendingPushRequests)));
         app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPushRequests, "push"));
     }
 
@@ -171,6 +171,9 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return Enqueue(pendingPushRequests, queuedPush.Branch.Value, queuedPush);
     }
 
+    private static IReadOnlyList<T> SnapshotQueue<T>(ConcurrentDictionary<string, T> pendingRequests)
+        => pendingRequests.Values.ToArray();
+
     // A branch already queued keeps its slot: without this, a second POST for the same branch would
     // report 200 "queued" while silently overwriting the first request, so the caller would have no
     // way to tell its first call never went through.
@@ -192,22 +195,15 @@ internal sealed class LocalApiServer : IAsyncDisposable
         string kind
     )
     {
-        if (string.IsNullOrWhiteSpace(req.Branch))
-            return Results.BadRequest(new ErrorResponse("branch is required"));
+        var validation = req.Validate();
+        if (validation is InvalidDelete(var reason))
+            return Results.BadRequest(new ErrorResponse(reason));
+        if (validation is not ValidDelete(var branch))
+            throw new NotSupportedException($"Unexpected delete validation {validation.GetType()}");
 
-        return RixBranchName.Parse(req.Branch) switch
-        {
-            ParseError<RixBranchName> error => Results.BadRequest(new ErrorResponse($"branch: {error.Error}")),
-            ParseSuccess<RixBranchName> branch => RemoveQueued(pendingRequests, branch.Value.Value, kind),
-            var other => throw new InvalidOperationException($"Unexpected parse result: {other}"),
-        };
-    }
-
-    private static IResult RemoveQueued<T>(ConcurrentDictionary<string, T> pendingRequests, string branch, string kind)
-    {
-        if (pendingRequests.TryRemove(branch, out _))
+        if (pendingRequests.TryRemove(branch.Value, out _))
             return Results.Ok(new QueuedResponse("deleted"));
-        return Results.NotFound(new ErrorResponse($"No queued {kind} for branch {branch}."));
+        return Results.NotFound(new ErrorResponse($"No queued {kind} for branch {branch.Value}."));
     }
 
     public async ValueTask DisposeAsync()
