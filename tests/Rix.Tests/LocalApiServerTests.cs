@@ -56,11 +56,11 @@ public class LocalApiServerTests
             baseBranch = "main",
         });
 
-        Assert.AreEqual(1, server.QueuedPrRequests.Count);
-        Assert.AreEqual(new RixBranchName("rix/feat"), server.QueuedPrRequests[0].Branch);
-        Assert.AreEqual(new BranchName("main"), server.QueuedPrRequests[0].BaseBranch);
-        Assert.AreEqual(new PrTitle("Add feature"), server.QueuedPrRequests[0].Title);
-        Assert.AreEqual(new PrBody("body"), server.QueuedPrRequests[0].Body);
+        Assert.AreEqual(1, server.GetQueuedPrRequests().Count);
+        Assert.AreEqual(new RixBranchName("rix/feat"), server.GetQueuedPrRequests()[0].Branch);
+        Assert.AreEqual(new BranchName("main"), server.GetQueuedPrRequests()[0].BaseBranch);
+        Assert.AreEqual(new PrTitle("Add feature"), server.GetQueuedPrRequests()[0].Title);
+        Assert.AreEqual(new PrBody("body"), server.GetQueuedPrRequests()[0].Body);
     }
 
     [TestMethod]
@@ -138,7 +138,7 @@ public class LocalApiServerTests
         var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
         StringAssert.Contains(result["error"], "rix/feat");
         StringAssert.Contains(result["error"], "already queued");
-        Assert.AreEqual(1, server.QueuedPrRequests.Count);
+        Assert.AreEqual(1, server.GetQueuedPrRequests().Count);
     }
 
     [TestMethod]
@@ -197,9 +197,9 @@ public class LocalApiServerTests
             baseBranch = "main",
         });
 
-        Assert.AreEqual(1, server.QueuedPushRequests.Count);
-        Assert.AreEqual(new RixBranchName("rix/feat"), server.QueuedPushRequests[0].Branch);
-        Assert.AreEqual(new BranchName("main"), server.QueuedPushRequests[0].BaseBranch);
+        Assert.AreEqual(1, server.GetQueuedPushRequests().Count);
+        Assert.AreEqual(new RixBranchName("rix/feat"), server.GetQueuedPushRequests()[0].Branch);
+        Assert.AreEqual(new BranchName("main"), server.GetQueuedPushRequests()[0].BaseBranch);
     }
 
     [TestMethod]
@@ -278,7 +278,7 @@ public class LocalApiServerTests
         var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
         StringAssert.Contains(result["error"], "rix/feat");
         StringAssert.Contains(result["error"], "already queued");
-        Assert.AreEqual(1, server.QueuedPushRequests.Count);
+        Assert.AreEqual(1, server.GetQueuedPushRequests().Count);
     }
 
     [TestMethod]
@@ -361,7 +361,7 @@ public class LocalApiServerTests
         });
 
         Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.AreEqual(0, server.QueuedPushRequests.Count);
+        Assert.AreEqual(0, server.GetQueuedPushRequests().Count);
     }
 
     [TestMethod]
@@ -379,7 +379,7 @@ public class LocalApiServerTests
         });
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-        Assert.AreEqual(1, server.QueuedPushRequests.Count);
+        Assert.AreEqual(1, server.GetQueuedPushRequests().Count);
     }
 
     [TestMethod]
@@ -416,7 +416,7 @@ public class LocalApiServerTests
         });
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-        Assert.AreEqual(1, server.QueuedPrRequests.Count);
+        Assert.AreEqual(1, server.GetQueuedPrRequests().Count);
     }
 
 }
