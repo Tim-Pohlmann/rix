@@ -60,3 +60,4 @@ runs:
         result-file: ${{ inputs.input-dir }}/result.json
         submit-file: ${{ inputs.input-dir }}/submit-result.json
         submit-log: ${{ inputs.input-dir }}/submit-error.log
+        transcript-file: ${{ inputs.input-dir }}/transcript.md

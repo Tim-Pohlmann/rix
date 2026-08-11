@@ -69,6 +69,14 @@ internal static class JobCommand
     )
     { IsRequired = false };
 
+    private static readonly Option<string> AllowedPushBranchesOption = new
+    (
+        name: "--allowed-push-branches",
+        description: "Comma-separated list of rix/* branches the /push API endpoint may deliver to " +
+            "(default: none — /push is disabled until this is set)"
+    )
+    { IsRequired = false };
+
     internal static Command Build(Func<JobConfig, Task<int>> handler)
     {
         var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
@@ -82,6 +90,7 @@ internal static class JobCommand
         command.AddOption(OutputDirOption);
         command.AddOption(AgentOption);
         command.AddOption(ModelOption);
+        command.AddOption(AllowedPushBranchesOption);
 
         command.SetHandler
         (
@@ -98,7 +107,8 @@ internal static class JobCommand
                     WorkDir:        parsed.Str(WorkDirOption,   "RIX_WORK_DIR"),
                     OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
                     Agent:          parsed.Str(AgentOption,     "RIX_AGENT"),
-                    Model:          parsed.Str(ModelOption,     "RIX_MODEL")
+                    Model:          parsed.Str(ModelOption,     "RIX_MODEL"),
+                    AllowedPushBranches: parsed.Str(AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES")
                 );
                 var result = JobConfig.Create(inputs);
 

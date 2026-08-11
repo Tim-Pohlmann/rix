@@ -14,5 +14,6 @@ internal sealed record JobContext
     IRepositoryReadHost Host,
     RunProcessAsync RunProcess,
     ICodingAgent Agent,
-    LogLine LogLine
+    LogLine LogLine,
+    LogLine TranscriptLine
 );

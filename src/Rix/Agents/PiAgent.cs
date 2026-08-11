@@ -51,7 +51,15 @@ internal sealed class PiAgent : ICodingAgent
     /// ever have <c>agent_settled</c> as the final line, so this reliably returns <c>null</c>
     /// (reported cost <c>0</c>) in normal operation today.
     /// </remarks>
-    public decimal? ParseCost(string outputLine) => CostLine.Read(outputLine, "\"agent_end\"", ReadCost);
+    public decimal? ParseCost(string outputLine) => JsonLine.Read(outputLine, "\"agent_end\"", ReadCost);
+
+    /// <summary>
+    /// Reads transcript content from Pi's JSON event stream, reusing the <c>agent_end</c> line that
+    /// <see cref="ParseCost"/> already relies on: every assistant message's text and tool-call
+    /// content is rendered into one combined chunk. Other lines yield <c>null</c>, so — exactly as
+    /// with cost — the transcript stays empty until <c>agent_end</c> reliably appears in the stream.
+    /// </summary>
+    public string? ParseTranscriptLine(string outputLine) => JsonLine.Read(outputLine, "\"agent_end\"", ReadTranscript);
 
     private static decimal? ReadCost(JsonElement root)
     {
@@ -66,7 +74,7 @@ internal sealed class PiAgent : ICodingAgent
 
     private static decimal ReadAssistantCost(JsonElement message)
     {
-        if (!message.TryGetProperty("role", out var role) || role.GetString() != "assistant")
+        if (!message.TryGetProperty("role", out var role) || role.ValueKind != JsonValueKind.String || role.GetString() != "assistant")
             return 0m;
         if (!message.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
             return 0m;
@@ -77,5 +85,24 @@ internal sealed class PiAgent : ICodingAgent
         if (!totalCost.TryGetDecimal(out var v))
             return 0m;
         return v;
+    }
+
+    private static string? ReadTranscript(JsonElement root)
+    {
+        if (!root.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
+            return null;
+
+        return TranscriptLine.JoinNonNull(messages.EnumerateArray().Select(ReadAssistantTranscript));
+    }
+
+    private static string? ReadAssistantTranscript(JsonElement message)
+    {
+        if
+        (
+            message.TryGetProperty("role", out var role) && role.ValueKind == JsonValueKind.String && role.GetString() == "assistant" &&
+            message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
+        )
+            return TranscriptLine.JoinContentBlocks(content, "toolCall");
+        return null;
     }
 }

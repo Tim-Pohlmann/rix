@@ -17,7 +17,8 @@ internal static class TestConfig
         string? workDir = null,
         string? outputDir = null,
         string? agent = null,
-        string? model = null
+        string? model = null,
+        string? allowedPushBranches = null
     )
     => JobConfig.Create(new JobInputs
     (
@@ -29,7 +30,8 @@ internal static class TestConfig
         WorkDir: workDir ?? Path.GetTempPath(),
         OutputDir: outputDir ?? Path.GetTempPath(),
         Agent: agent,
-        Model: model
+        Model: model,
+        AllowedPushBranches: allowedPushBranches
     )) switch
     {
         JobConfigValid v => v.Config,

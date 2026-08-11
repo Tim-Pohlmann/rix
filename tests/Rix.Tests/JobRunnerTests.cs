@@ -2,7 +2,7 @@ using Rix.Agents;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
-using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -189,11 +189,9 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_SkipsDuplicateQueuedBranch()
+    public async Task RunAsync_RejectsSecondPrForAlreadyQueuedBranch()
     {
-        // LocalApiServer forwards log lines from threadpool threads while the main thread writes the
-        // dedup message, so the sink must tolerate concurrent writes.
-        var log = new ConcurrentQueue<string>();
+        var statusCodes = new List<HttpStatusCode>();
 
         RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
         {
@@ -206,21 +204,20 @@ public class JobRunnerTests
                     {
                         branch = "rix/dup", baseBranch = "main", title = "T", body = "b",
                     }, ct);
-                    response.EnsureSuccessStatusCode();
+                    statusCodes.Add(response.StatusCode);
                 }
             }
             return new ProcessSuccess();
         };
 
         var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed()), logLine: log.Enqueue),
+            Context(new StubRepositoryHost(), runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
+        CollectionAssert.AreEqual(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, statusCodes);
         var success = (JobSuccess)result;
         Assert.AreEqual(1, success.PendingPrRequests.Count);
         Assert.AreEqual(1, Directory.GetFiles(_outputDir, "*.bundle").Length);
-        Assert.IsTrue(log.Any(l => l.Contains("duplicate")));
     }
 
     [TestMethod]
@@ -354,25 +351,51 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_PassesApiUrlInSystemPromptArg()
+    public async Task RunAsync_ForwardsExtractedTranscriptLines_ToTranscriptSink()
     {
-        string? systemPrompt = null;
+        const string assistantLine = """{"type":"assistant","message":{"content":[{"type":"text","text":"hello transcript"}]}}""";
+        var transcript = new List<string>();
 
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
         {
-            if (f == "claude")
-            {
-                var argList = a.ToList();
-                var idx = argList.IndexOf("--append-system-prompt");
-                if (idx >= 0 && idx + 1 < argList.Count)
-                    systemPrompt = argList[idx + 1];
-            }
+            if (f == "claude") onLine?.Invoke(assistantLine);
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
         await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubRepositoryHost(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed()),
+                transcriptLine: transcript.Add),
             CancellationToken.None);
+
+        CollectionAssert.Contains(transcript, "hello transcript");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DoesNotForwardNonTranscriptLines_ToTranscriptSink()
+    {
+        const string noiseLine = """{"type":"result","subtype":"success","total_cost_usd":0.5}""";
+        var transcript = new List<string>();
+
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") onLine?.Invoke(noiseLine);
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed()),
+                transcriptLine: transcript.Add),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, transcript.Count);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PassesApiUrlInSystemPromptArg()
+    {
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig());
 
         Assert.IsNotNull(systemPrompt);
         StringAssert.Contains(systemPrompt, "A local API is available at http://");
@@ -470,7 +493,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: "rix/my-fix"), CancellationToken.None,
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
@@ -497,7 +520,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/my-fix"),
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -505,9 +528,9 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_SkipsDuplicateQueuedPush()
+    public async Task RunAsync_RejectsSecondPushForAlreadyQueuedBranch()
     {
-        var log = new ConcurrentQueue<string>();
+        var statusCodes = new List<HttpStatusCode>();
         var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
         RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
         {
@@ -520,42 +543,74 @@ public class JobRunnerTests
                     {
                         branch = "rix/dup", baseBranch = "main",
                     }, ct);
-                    response.EnsureSuccessStatusCode();
+                    statusCodes.Add(response.StatusCode);
                 }
             }
             return new ProcessSuccess();
         };
 
-        var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed()), logLine: log.Enqueue),
+        var result = await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/dup"),
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
+        CollectionAssert.AreEqual(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, statusCodes);
         var success = (JobSuccess)result;
         Assert.AreEqual(1, success.PendingPushRequests.Count);
         Assert.AreEqual(1, Directory.GetFiles(_outputDir, "*.bundle").Length);
-        Assert.IsTrue(log.Any(l => l.Contains("duplicate")));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_SystemPrompt_ListsAllowedPushBranches_WhenRestricted()
+    {
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig(allowedPushBranches: "rix/continue-a,rix/continue-b"));
+
+        Assert.IsNotNull(systemPrompt);
+        StringAssert.Contains(systemPrompt, "rix/continue-a");
+        StringAssert.Contains(systemPrompt, "rix/continue-b");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_SystemPrompt_ExplainsPushIsDisabled_ByDefault()
+    {
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig());
+
+        Assert.IsNotNull(systemPrompt);
+        Assert.IsFalse(systemPrompt.Contains("may only push onto the branches"), "a default job has no allow-list to name");
+        StringAssert.Contains(systemPrompt, "not allowed any push branches");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_RejectsPush_ToDisallowedBranch()
+    {
+        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var apiUrl = ExtractApiUrlFromSystemPrompt(a);
+                using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/push"), new
+                {
+                    branch = "rix/not-allowed", baseBranch = "main",
+                }, ct);
+                if (response.StatusCode != HttpStatusCode.Forbidden)
+                    throw new InvalidOperationException($"expected 403 for disallowed push, got {response.StatusCode}");
+            }
+            return new ProcessSuccess();
+        };
+
+        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: "rix/allowed"),
+            CancellationToken.None,
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(0, doc.RootElement.GetProperty("pendingPushRequests").GetArrayLength());
     }
 
     [TestMethod]
     public async Task RunAsync_SystemPrompt_MentionsPushEndpoint()
     {
-        string? systemPrompt = null;
-
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude")
-            {
-                var argList = a.ToList();
-                var idx = argList.IndexOf("--append-system-prompt");
-                if (idx >= 0 && idx + 1 < argList.Count)
-                    systemPrompt = argList[idx + 1];
-            }
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
-            CancellationToken.None);
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig());
 
         Assert.IsNotNull(systemPrompt);
         StringAssert.Contains(systemPrompt, "/push");
@@ -599,6 +654,55 @@ public class JobRunnerTests
         Assert.IsInstanceOfType<JobSuccess>(result);
         Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")),
             "JobRunner core must not perform the result.json write — that is the shell's job");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsJobSuccess_WithoutWritingTranscriptMd()
+    {
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsInstanceOfType<JobSuccess>(result);
+        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "transcript.md")),
+            "JobRunner core must not perform the transcript.md write — that is the shell's job");
+    }
+
+    [TestMethod]
+    public async Task ExecuteJobAsync_WritesTranscriptMd_FromClaudeAssistantLines()
+    {
+        const string assistantLine = """{"type":"assistant","message":{"content":[{"type":"text","text":"I will fix the bug"},{"type":"tool_use","name":"Bash","input":{}}]}}""";
+
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") onLine?.Invoke(assistantLine);
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+            Context(new StubRepositoryHost(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed())));
+
+        var transcript = await File.ReadAllTextAsync(Path.Combine(_outputDir, "transcript.md"));
+        StringAssert.Contains(transcript, "I will fix the bug");
+        StringAssert.Contains(transcript, "→ Bash(...)");
+    }
+
+    [TestMethod]
+    public async Task ExecuteJobAsync_OmitsTranscriptMd_WhenNothingExtracted()
+    {
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") onLine?.Invoke("""{"type":"result","subtype":"success","total_cost_usd":0.5}""");
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+            Context(new StubRepositoryHost(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed())));
+
+        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "transcript.md")),
+            "transcript.md must not be written when nothing was extracted");
     }
 
     [TestMethod]
@@ -654,8 +758,9 @@ public class JobRunnerTests
         IRepositoryReadHost host,
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
-        LogLine? logLine = null)
-    => new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }));
+        LogLine? logLine = null,
+        LogLine? transcriptLine = null)
+    => new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }));
 
     private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null)
     => Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
@@ -663,8 +768,10 @@ public class JobRunnerTests
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
             _ => Task.FromResult<InstallResult>(new Installed())));
 
-    private JobConfig MakeConfig()
-    => TestConfig.Valid(prompt: "Do something", workDir: _workDir, outputDir: _outputDir);
+    private JobConfig MakeConfig(string? allowedPushBranches = null)
+    => TestConfig.Valid(
+        prompt: "Do something", workDir: _workDir, outputDir: _outputDir,
+        allowedPushBranches: allowedPushBranches);
 
     private static RunProcessAsync FakeRunner(
         int claudeExitCode = 0,
@@ -675,6 +782,30 @@ public class JobRunnerTests
         "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, args, ct),
         _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
     };
+
+    /// <summary>Runs a job with a no-op agent and returns the system prompt claude was invoked with,
+    /// for tests that assert on prompt content rather than agent behavior.</summary>
+    private static async Task<string?> CaptureSystemPromptAsync(JobConfig config)
+    {
+        string? systemPrompt = null;
+        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude")
+            {
+                var argList = a.ToList();
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 0 && idx + 1 < argList.Count)
+                    systemPrompt = argList[idx + 1];
+            }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(config,
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        return systemPrompt;
+    }
 
     private static string ExtractApiUrlFromSystemPrompt(IEnumerable<string> args)
     {
