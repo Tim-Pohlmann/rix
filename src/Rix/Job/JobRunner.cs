@@ -231,35 +231,42 @@ internal static class JobRunner
     private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs, IReadOnlyList<PendingPush> PendingPushes) : DeliveryOutcome;
     private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
+    private const string PrEndpoint = "/pr";
+    private const string PushEndpoint = "/push";
+
     private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<RixBranchName> allowedPushBranches)
-    => $$"""
+    {
+        var prUri = new Uri(apiBaseUrl, PrEndpoint);
+        var pushUri = new Uri(apiBaseUrl, PushEndpoint);
+        return $$"""
         You are `rix job`, an autonomous coding agent and part of the `rix` autonomous software factory.
 
         A local API is available at {{apiBaseUrl}}.
 
         Endpoints:
-        - POST   {{new Uri(apiBaseUrl, "/pr")}}     — create a pull request when satisfied with your changes
-        - GET    {{new Uri(apiBaseUrl, "/pr")}}     — list your queued pull requests
-        - DELETE {{new Uri(apiBaseUrl, "/pr")}}     — cancel a queued pull request (body: {"branch":"rix/<branch>"})
-        - POST   {{new Uri(apiBaseUrl, "/push")}}   — push new commits onto a branch that already exists on the remote
-        - GET    {{new Uri(apiBaseUrl, "/push")}}   — list your queued pushes
-        - DELETE {{new Uri(apiBaseUrl, "/push")}}   — cancel a queued push (body: {"branch":"rix/<branch>"})
+        - POST   {{prUri}}     — create a pull request when satisfied with your changes
+        - GET    {{prUri}}     — list your queued pull requests
+        - DELETE {{prUri}}     — cancel a queued pull request (body: {"branch":"rix/<branch>"})
+        - POST   {{pushUri}}   — push new commits onto a branch that already exists on the remote
+        - GET    {{pushUri}}   — list your queued pushes
+        - DELETE {{pushUri}}   — cancel a queued push (body: {"branch":"rix/<branch>"})
 
         Split your work in multiple PRs if applicable. For each:
         1. Create a branch named rix/<short-description> for your work
-        2. When done, call POST {{new Uri(apiBaseUrl, "/pr")}} with JSON body:
+        2. When done, call POST {{prUri}} with JSON body:
            {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
 
         You can list what you have already queued with GET, and cancel a queued request with DELETE
         on the same path before the job ends (handy when you change your mind about a branch).
 
         To add commits to a branch that already exists on the remote (e.g. resuming a previous run),
-        commit them locally on that branch, then call POST {{new Uri(apiBaseUrl, "/push")}} with JSON
+        commit them locally on that branch, then call POST {{pushUri}} with JSON
         body:
            {"branch":"rix/<existing-branch>","baseBranch":"<base branch>"}
 
         {{AllowedPushBranchesPrompt(allowedPushBranches)}}
         """;
+    }
 
     /// <summary>Renders the push restriction as instructions the agent must follow, so it learns
     /// what /push will accept from the prompt instead of only from rejected requests. /push denies
