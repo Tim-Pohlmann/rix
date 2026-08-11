@@ -77,7 +77,7 @@ internal static class JobRunner
             _ => 0m,
         };
 
-        var delivery = await BundlePendingAsync(config, context, apiServer.QueuedPrRequests, apiServer.QueuedPushRequests, cloneDir.Path, ct);
+        var delivery = await BundlePendingAsync(config, context, apiServer.GetQueuedPrRequests(), apiServer.GetQueuedPushRequests(), cloneDir.Path, ct);
 
         stopwatch.Stop();
 

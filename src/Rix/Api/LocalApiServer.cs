@@ -15,8 +15,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private readonly ConcurrentDictionary<string, QueuedPush> _pendingPushRequests;
 
     internal Uri BaseUrl { get; }
-    internal IReadOnlyList<QueuedPr> QueuedPrRequests => _pendingPrRequests.Values.ToArray();
-    internal IReadOnlyList<QueuedPush> QueuedPushRequests => _pendingPushRequests.Values.ToArray();
+    internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => _pendingPrRequests.Values.ToArray();
+    internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => _pendingPushRequests.Values.ToArray();
 
     private LocalApiServer
     (
