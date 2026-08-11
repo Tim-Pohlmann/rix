@@ -182,6 +182,40 @@ public class SubmitRunnerTests
         Assert.AreEqual(0, host.CreatedPrs.Count);
     }
 
+    [TestMethod]
+    public async Task RunAsync_OpensStackedPrs_InDependencyOrder_RegardlessOfQueueOrder()
+    {
+        // rix/stack-2 is queued first but its base branch is rix/stack-1 (also queued) — GitHub
+        // requires the base branch to already exist on the remote before a PR can be opened onto
+        // it, so SubmitRunner must open rix/stack-1 first even though it was queued second.
+        WriteResultJson(TwoStackedPrsJson());
+        File.WriteAllText(Path.Combine(_inputDir, "stack-1.bundle"), "fake-bundle");
+        File.WriteAllText(Path.Combine(_inputDir, "stack-2.bundle"), "fake-bundle");
+        var host = new StubSubmitHost();
+
+        var result = await Run(host);
+
+        AssertSuccess(result);
+        CollectionAssert.AreEqual
+        (
+            new[] { "rix/stack-1", "rix/stack-2" },
+            host.CreatedPrs.Select(pr => pr.Branch.Value).ToArray()
+        );
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Fails_WhenQueuedPrsHaveCyclicBaseBranches()
+    {
+        WriteResultJson(CyclicPrsJson());
+        var host = new StubSubmitHost();
+
+        var result = await Run(host);
+
+        AssertFailure(result, "cyclic base-branch dependency");
+        Assert.AreEqual(0, host.CreatedPrs.Count);
+        Assert.IsFalse(host.CloneCalled, "must not clone when the queue can't be ordered");
+    }
+
     // ---- helpers ----
 
     private Task<ISubmitResult> Run(StubSubmitHost host, RunProcessAsync? runner = null)
@@ -243,5 +277,21 @@ public class SubmitRunnerTests
     private static string OnePrAndOnePushJson() =>
         $$"""
         {"status":"success","pendingPrRequests":[{"branch":"rix/my-fix","baseBranch":"main","title":"My fix","body":"body","bundleFile":"rix_2Fmy-fix.bundle"}],"pendingPushRequests":[{"branch":"rix/my-fix","baseBranch":"main","bundleFile":"rix_2Fmy-fix.bundle"}],"costUsd":0,"durationSeconds":1}
+        """;
+
+    private static string TwoStackedPrsJson() =>
+        $$"""
+        {"status":"success","pendingPrRequests":[
+          {"branch":"rix/stack-2","baseBranch":"rix/stack-1","title":"t","body":"b","bundleFile":"stack-2.bundle"},
+          {"branch":"rix/stack-1","baseBranch":"main","title":"t","body":"b","bundleFile":"stack-1.bundle"}
+        ],"costUsd":0,"durationSeconds":1}
+        """;
+
+    private static string CyclicPrsJson() =>
+        $$"""
+        {"status":"success","pendingPrRequests":[
+          {"branch":"rix/a","baseBranch":"rix/b","title":"t","body":"b","bundleFile":"a.bundle"},
+          {"branch":"rix/b","baseBranch":"rix/a","title":"t","body":"b","bundleFile":"b.bundle"}
+        ],"costUsd":0,"durationSeconds":1}
         """;
 }
