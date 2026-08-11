@@ -14,6 +14,9 @@ inputs:
   submit-log:
     description: Path to the stderr of `rix submit` (submit-error.log), used to explain a submit failure
     required: false
+  transcript-file:
+    description: Path to the coding agent's session transcript (transcript.md), if one was written; appended to the summary as a collapsible, truncated section
+    required: false
 
 runs:
   using: composite
@@ -24,4 +27,5 @@ runs:
         "${{ github.action_path }}/post-job-summary.sh" \
           "${{ inputs.result-file }}" \
           "${{ inputs.submit-file }}" \
-          "${{ inputs.submit-log }}"
+          "${{ inputs.submit-log }}" \
+          "${{ inputs.transcript-file }}"

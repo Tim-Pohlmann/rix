@@ -142,3 +142,4 @@ runs:
       uses: ./.github/actions/post-job-summary
       with:
         result-file: ${{ github.workspace }}/out/result.json
+        transcript-file: ${{ github.workspace }}/out/transcript.md

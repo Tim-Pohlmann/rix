@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 # Unit tests for .github/actions/post-job-summary/post-job-summary.sh. They source the script
 # (which guards its main entry point), point GITHUB_STEP_SUMMARY at a temp file, and assert on the
-# rendered markdown for the success, failure, submit-failure, and missing-input cases - no network.
+# rendered markdown for the success, failure, submit-failure, transcript, and missing-input
+# cases - no network.
 
 setup() {
   source "${BATS_TEST_DIRNAME}/../../.github/actions/post-job-summary/post-job-summary.sh"
@@ -9,6 +10,11 @@ setup() {
   RESULT="$BATS_TEST_TMPDIR/result.json"
   SUBMIT="$BATS_TEST_TMPDIR/submit-result.json"
   ERROR_LOG="$BATS_TEST_TMPDIR/submit-error.log"
+  TRANSCRIPT="$BATS_TEST_TMPDIR/transcript.md"
+}
+
+write_transcript() {
+  printf '%s' "$1" > "$TRANSCRIPT"
 }
 
 summary() {
@@ -121,6 +127,78 @@ write_submit() {
   [[ "$(summary)" == *"### Submit"* ]]
   [[ "$(summary)" == *"**Status:** failure"* ]]
   [[ "$(summary)" == *"panic: rix submit crashed"* ]]
+}
+
+@test "transcript renders as a collapsible details section" {
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_transcript '# Session transcript
+
+assistant: explored the codebase and applied the fix
+'
+
+  run rix_post_job_summary "$RESULT" "" "" "$TRANSCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" == *"<details>"* ]]
+  [[ "$(summary)" == *"<summary>Agent transcript</summary>"* ]]
+  [[ "$(summary)" == *"assistant: explored the codebase and applied the fix"* ]]
+  [[ "$(summary)" == *"</details>"* ]]
+}
+
+@test "transcript with HTML-sensitive characters is escaped so it can't break the details block" {
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_transcript 'a </details> <script>alert(1)</script> & b'
+
+  run rix_post_job_summary "$RESULT" "" "" "$TRANSCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" == *"&lt;/details&gt; &lt;script&gt;alert(1)&lt;/script&gt; &amp; b"* ]]
+  [[ "$(summary)" != *"a </details> <script>"* ]]
+}
+
+@test "transcript is omitted when the arg is empty, missing, or the file is empty" {
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+
+  run rix_post_job_summary "$RESULT" "" "" ""
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" != *"Agent transcript"* ]]
+
+  run rix_post_job_summary "$RESULT" "" "" "$BATS_TEST_TMPDIR/nope.md"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" != *"Agent transcript"* ]]
+
+  : > "$TRANSCRIPT"
+  run rix_post_job_summary "$RESULT" "" "" "$TRANSCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" != *"Agent transcript"* ]]
+}
+
+@test "transcript larger than 900000 bytes is truncated and points at the rix-output artifact" {
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  # First 900000 bytes are 'a's, the overflowing tail is 'b's, so the summary's truncated content
+  # and the cut-off tail are distinguishable from each other.
+  head -c 900000 /dev/zero | tr '\0' 'a' > "$TRANSCRIPT"
+  head -c 100 /dev/zero | tr '\0' 'b' >> "$TRANSCRIPT"
+
+  run rix_post_job_summary "$RESULT" "" "" "$TRANSCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" == *"rix-output artifact"* ]]
+  [[ "$(summary)" == *"aaaaaaaaaa"* ]]
+  [[ "$(summary)" != *"bbbbbbbbbb"* ]]
+}
+
+@test "transcript of at most 900000 bytes renders in full with no artifact pointer" {
+  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  head -c 900000 /dev/zero | tr '\0' 'a' > "$TRANSCRIPT"
+
+  run rix_post_job_summary "$RESULT" "" "" "$TRANSCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$(summary)" != *"rix-output artifact"* ]]
 }
 
 @test "running as a real process with no submit args does not hit set -u" {
