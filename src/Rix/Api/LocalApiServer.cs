@@ -85,10 +85,10 @@ internal sealed class LocalApiServer : IAsyncDisposable
     {
         app.MapGet("/health", () => Results.Ok());
         app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
-        app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Snapshot()));
+        app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Values.ToArray()));
         app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests, "PR"));
         app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct));
-        app.MapGet("/push", () => Results.Ok(pendingPushRequests.Snapshot()));
+        app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()));
         app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPushRequests, "push"));
     }
 
@@ -188,7 +188,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static IResult HandleDelete<T>
     (
         DeleteRequest req,
-        BranchQueue<T> pendingRequests,
+        ConcurrentDictionary<string, T> pendingRequests,
         string kind
     )
     {
@@ -198,7 +198,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         if (validation is not ValidDelete(var branch))
             throw new NotSupportedException($"Unexpected delete validation {validation.GetType()}");
 
-        if (pendingRequests.TryRemove(branch.Value))
+        if (pendingRequests.TryRemove(branch.Value, out _))
             return Results.Ok(new QueuedResponse("deleted"));
         return Results.NotFound(new ErrorResponse($"No queued {kind} for branch {branch.Value}."));
     }
