@@ -2,7 +2,6 @@ using Rix.Agents;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -190,11 +189,9 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_SkipsDuplicateQueuedBranch()
+    public async Task RunAsync_RejectsSecondPrForAlreadyQueuedBranch()
     {
-        // LocalApiServer forwards log lines from threadpool threads while the main thread writes the
-        // dedup message, so the sink must tolerate concurrent writes.
-        var log = new ConcurrentQueue<string>();
+        var statusCodes = new List<HttpStatusCode>();
 
         RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
         {
@@ -207,21 +204,20 @@ public class JobRunnerTests
                     {
                         branch = "rix/dup", baseBranch = "main", title = "T", body = "b",
                     }, ct);
-                    response.EnsureSuccessStatusCode();
+                    statusCodes.Add(response.StatusCode);
                 }
             }
             return new ProcessSuccess();
         };
 
         var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed()), logLine: log.Enqueue),
+            Context(new StubRepositoryHost(), runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
+        CollectionAssert.AreEqual(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, statusCodes);
         var success = (JobSuccess)result;
         Assert.AreEqual(1, success.PendingPrRequests.Count);
         Assert.AreEqual(1, Directory.GetFiles(_outputDir, "*.bundle").Length);
-        Assert.IsTrue(log.Any(l => l.Contains("duplicate")));
     }
 
     [TestMethod]
@@ -532,9 +528,9 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_SkipsDuplicateQueuedPush()
+    public async Task RunAsync_RejectsSecondPushForAlreadyQueuedBranch()
     {
-        var log = new ConcurrentQueue<string>();
+        var statusCodes = new List<HttpStatusCode>();
         var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
         RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
         {
@@ -547,20 +543,20 @@ public class JobRunnerTests
                     {
                         branch = "rix/dup", baseBranch = "main",
                     }, ct);
-                    response.EnsureSuccessStatusCode();
+                    statusCodes.Add(response.StatusCode);
                 }
             }
             return new ProcessSuccess();
         };
 
         var result = await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/dup"),
-            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed()), logLine: log.Enqueue),
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
+        CollectionAssert.AreEqual(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, statusCodes);
         var success = (JobSuccess)result;
         Assert.AreEqual(1, success.PendingPushRequests.Count);
         Assert.AreEqual(1, Directory.GetFiles(_outputDir, "*.bundle").Length);
-        Assert.IsTrue(log.Any(l => l.Contains("duplicate")));
     }
 
     [TestMethod]

@@ -124,6 +124,24 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
+    public async Task PostPr_Returns409_WhenBranchAlreadyQueued()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var body = new { branch = "rix/feat", title = "Title", body = "body", baseBranch = "main" };
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), body);
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), body);
+
+        Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/feat");
+        StringAssert.Contains(result["error"], "already queued");
+        Assert.AreEqual(1, server.QueuedPrRequests.Count);
+    }
+
+    [TestMethod]
     public async Task PostPr_Returns400_WhenBranchNotFoundLocally()
     {
         var host = new StubRepositoryHost(branchExistsLocally: _ => Task.FromResult(false));
@@ -241,6 +259,26 @@ public class LocalApiServerTests
         var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
         StringAssert.Contains(result["error"], "rix/ghost");
         StringAssert.Contains(result["error"], "/pr");
+    }
+
+    [TestMethod]
+    public async Task PostPush_Returns409_WhenBranchAlreadyQueued()
+    {
+        await using var server = await LocalApiServer.StartAsync(
+            FakeHost(true), Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new RixBranchName("rix/feat")]);
+        using var client = new HttpClient();
+
+        var body = new { branch = "rix/feat", baseBranch = "main" };
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), body);
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), body);
+
+        Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/feat");
+        StringAssert.Contains(result["error"], "already queued");
+        Assert.AreEqual(1, server.QueuedPushRequests.Count);
     }
 
     [TestMethod]
