@@ -171,7 +171,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return Enqueue(pendingPushRequests, queuedPush.Branch.Value, queuedPush);
     }
 
-    private static IReadOnlyList<T> SnapshotQueue<T>(ConcurrentDictionary<string, T> pendingRequests)
+    private static T[] SnapshotQueue<T>(ConcurrentDictionary<string, T> pendingRequests)
         => pendingRequests.Values.ToArray();
 
     // A branch already queued keeps its slot: without this, a second POST for the same branch would
