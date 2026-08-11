@@ -26,6 +26,14 @@ internal interface ICodingAgent
     /// when the line carries no cost (pure).
     /// </summary>
     decimal? ParseCost(string outputLine);
+
+    /// <summary>
+    /// Extracts the human-readable content of a single agent output line — assistant text and
+    /// tool-call markers — or <c>null</c> when the line carries nothing worth transcribing
+    /// (e.g. system noise, user/tool-result feedback, or the cost-bearing result line, which
+    /// <see cref="ParseCost"/> already consumes). Pure.
+    /// </summary>
+    string? ParseTranscriptLine(string outputLine);
 }
 
 /// <summary>A pure description of how to launch a coding agent as a subprocess.</summary>

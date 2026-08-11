@@ -355,6 +355,48 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_ForwardsExtractedTranscriptLines_ToTranscriptSink()
+    {
+        const string assistantLine = """{"type":"assistant","message":{"content":[{"type":"text","text":"hello transcript"}]}}""";
+        var transcript = new List<string>();
+
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") onLine?.Invoke(assistantLine);
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed()),
+                transcriptLine: transcript.Add),
+            CancellationToken.None);
+
+        CollectionAssert.Contains(transcript, "hello transcript");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DoesNotForwardNonTranscriptLines_ToTranscriptSink()
+    {
+        const string noiseLine = """{"type":"result","subtype":"success","total_cost_usd":0.5}""";
+        var transcript = new List<string>();
+
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") onLine?.Invoke(noiseLine);
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed()),
+                transcriptLine: transcript.Add),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, transcript.Count);
+    }
+
+    [TestMethod]
     public async Task RunAsync_PassesApiUrlInSystemPromptArg()
     {
         var systemPrompt = await CaptureSystemPromptAsync(MakeConfig());
@@ -591,6 +633,55 @@ public class JobRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_ReturnsJobSuccess_WithoutWritingTranscriptMd()
+    {
+        var result = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsInstanceOfType<JobSuccess>(result);
+        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "transcript.md")),
+            "JobRunner core must not perform the transcript.md write — that is the shell's job");
+    }
+
+    [TestMethod]
+    public async Task ExecuteJobAsync_WritesTranscriptMd_FromClaudeAssistantLines()
+    {
+        const string assistantLine = """{"type":"assistant","message":{"content":[{"type":"text","text":"I will fix the bug"},{"type":"tool_use","name":"Bash","input":{}}]}}""";
+
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") onLine?.Invoke(assistantLine);
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+            Context(new StubRepositoryHost(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed())));
+
+        var transcript = await File.ReadAllTextAsync(Path.Combine(_outputDir, "transcript.md"));
+        StringAssert.Contains(transcript, "I will fix the bug");
+        StringAssert.Contains(transcript, "→ Bash(...)");
+    }
+
+    [TestMethod]
+    public async Task ExecuteJobAsync_OmitsTranscriptMd_WhenNothingExtracted()
+    {
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") onLine?.Invoke("""{"type":"result","subtype":"success","total_cost_usd":0.5}""");
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+            Context(new StubRepositoryHost(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed())));
+
+        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "transcript.md")),
+            "transcript.md must not be written when nothing was extracted");
+    }
+
+    [TestMethod]
     public async Task RunAsync_JobFailureError_IncludesAgentDiagnostic_WhenPresent()
     {
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
@@ -643,8 +734,9 @@ public class JobRunnerTests
         IRepositoryReadHost host,
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
-        LogLine? logLine = null)
-    => new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }));
+        LogLine? logLine = null,
+        LogLine? transcriptLine = null)
+    => new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }));
 
     private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null)
     => Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
