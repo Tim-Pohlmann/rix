@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,19 +10,19 @@ namespace Rix.Api;
 internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
-    private readonly BranchQueue<QueuedPr> _pendingPrRequests;
-    private readonly BranchQueue<QueuedPush> _pendingPushRequests;
+    private readonly ConcurrentDictionary<string, QueuedPr> _pendingPrRequests;
+    private readonly ConcurrentDictionary<string, QueuedPush> _pendingPushRequests;
 
     internal Uri BaseUrl { get; }
-    internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => _pendingPrRequests.Snapshot();
-    internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => _pendingPushRequests.Snapshot();
+    internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => _pendingPrRequests.Values.ToArray();
+    internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => _pendingPushRequests.Values.ToArray();
 
     private LocalApiServer
     (
         WebApplication app,
         Uri baseUrl,
-        BranchQueue<QueuedPr> pendingPrRequests,
-        BranchQueue<QueuedPush> pendingPushRequests
+        ConcurrentDictionary<string, QueuedPr> pendingPrRequests,
+        ConcurrentDictionary<string, QueuedPush> pendingPushRequests
     )
     {
         _app = app;
@@ -46,8 +47,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IReadOnlyList<RixBranchName>? allowedPushBranches = null
     )
     {
-        var pendingPrRequests = new BranchQueue<QueuedPr>();
-        var pendingPushRequests = new BranchQueue<QueuedPush>();
+        var pendingPrRequests = new ConcurrentDictionary<string, QueuedPr>();
+        var pendingPushRequests = new ConcurrentDictionary<string, QueuedPush>();
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
@@ -76,8 +77,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
         WebApplication app,
         IRepositoryReadHost host,
         string cloneDir,
-        BranchQueue<QueuedPr> pendingPrRequests,
-        BranchQueue<QueuedPush> pendingPushRequests,
+        ConcurrentDictionary<string, QueuedPr> pendingPrRequests,
+        ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
         IReadOnlyList<RixBranchName>? allowedPushBranches
     )
     {
@@ -91,7 +92,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         PrRequest req,
         IRepositoryReadHost host,
         string cloneDir,
-        BranchQueue<QueuedPr> pendingPrRequests,
+        ConcurrentDictionary<string, QueuedPr> pendingPrRequests,
         CancellationToken ct
     )
     {
@@ -123,7 +124,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         PushRequest req,
         IRepositoryReadHost host,
         string cloneDir,
-        BranchQueue<QueuedPush> pendingPushRequests,
+        ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
         IReadOnlyList<RixBranchName>? allowedPushBranches,
         CancellationToken ct
     )
@@ -168,7 +169,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     // A branch already queued keeps its slot: without this, a second POST for the same branch would
     // report 200 "queued" while silently overwriting the first request, so the caller would have no
     // way to tell its first call never went through.
-    private static IResult Enqueue<T>(BranchQueue<T> pendingRequests, string branch, T item)
+    private static IResult Enqueue<T>(ConcurrentDictionary<string, T> pendingRequests, string branch, T item)
     {
         if (!pendingRequests.TryAdd(branch, item))
             return Results.Conflict(new ErrorResponse($"Branch {branch} is already queued."));

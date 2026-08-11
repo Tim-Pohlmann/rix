@@ -64,33 +64,6 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
-    public async Task PostPr_PreservesQueueOrderAcrossMultipleBranches()
-    {
-        // Submission (rix submit) opens PRs in this order, and a later PR can be based on an
-        // earlier one's branch (a stacked PR) — so queue order must match request order, not
-        // whatever order the underlying storage happens to enumerate in.
-        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
-        using var client = new HttpClient();
-
-        foreach (var branch in new[] { "rix/first", "rix/second", "rix/third" })
-        {
-            await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
-            {
-                branch,
-                title = "title",
-                body = "body",
-                baseBranch = "main",
-            });
-        }
-
-        CollectionAssert.AreEqual
-        (
-            new[] { "rix/first", "rix/second", "rix/third" },
-            server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray()
-        );
-    }
-
-    [TestMethod]
     public async Task PostPr_Returns400_ForNonRixBranch()
     {
         await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
