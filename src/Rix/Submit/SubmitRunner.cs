@@ -93,7 +93,7 @@ internal static class SubmitRunner
     /// opens PRs in order and <c>CreatePullRequestAsync</c> requires the base branch to already
     /// exist on the remote. Repeated selection is O(n²), which is fine for the handful of PRs a
     /// single job run queues. Returns <c>null</c> if the base-branch relationships form a cycle.</summary>
-    private static IReadOnlyList<PendingPr>? OrderByDependency(IReadOnlyList<PendingPr> prs)
+    private static List<PendingPr>? OrderByDependency(IReadOnlyList<PendingPr> prs)
     {
         var remaining = prs.ToList();
         var ordered = new List<PendingPr>(remaining.Count);
