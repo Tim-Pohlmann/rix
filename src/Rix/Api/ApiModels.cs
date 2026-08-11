@@ -26,15 +26,12 @@ internal record QueuedResponse([property: JsonPropertyName("status")] string Sta
 /// removed, including same-run duplicates.</summary>
 internal record DeleteRequest([property: JsonPropertyName("branch")] string Branch);
 
-internal record DeleteResponse([property: JsonPropertyName("status")] string Status);
-
 internal record ErrorResponse([property: JsonPropertyName("error")] string Error);
 
 [JsonSerializable(typeof(PrRequest))]
 [JsonSerializable(typeof(PushRequest))]
 [JsonSerializable(typeof(DeleteRequest))]
 [JsonSerializable(typeof(QueuedResponse))]
-[JsonSerializable(typeof(DeleteResponse))]
 [JsonSerializable(typeof(ErrorResponse))]
 [JsonSerializable(typeof(IReadOnlyList<QueuedPr>))]
 [JsonSerializable(typeof(IReadOnlyList<QueuedPush>))]

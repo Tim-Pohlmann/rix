@@ -193,7 +193,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     {
         if (pendingRequests.RemoveAll(queued => queued.Branch.Value == branch) == 0)
             return Results.NotFound(new ErrorResponse($"No queued {kind} for branch {branch}."));
-        return Results.Ok(new DeleteResponse("deleted"));
+        return Results.Ok(new QueuedResponse("deleted"));
     }
 
     public async ValueTask DisposeAsync()
