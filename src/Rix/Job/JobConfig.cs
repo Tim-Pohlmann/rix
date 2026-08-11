@@ -11,6 +11,10 @@ internal record JobConfig
     internal DirectoryPath OutputDir { get; }
     internal AgentConfig Agent { get; }
 
+    /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
+    /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.</summary>
+    internal IReadOnlyList<RixBranchName> AllowedPushBranches { get; }
+
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
     internal const AgentKind DefaultAgent = AgentKind.OpenCode;
@@ -24,7 +28,8 @@ internal record JobConfig
         TimeoutMinutes timeoutMinutes,
         DirectoryPath workDir,
         DirectoryPath outputDir,
-        AgentConfig agent
+        AgentConfig agent,
+        IReadOnlyList<RixBranchName> allowedPushBranches
     )
     {
         Repo = repo;
@@ -33,6 +38,7 @@ internal record JobConfig
         WorkDir = workDir;
         OutputDir = outputDir;
         Agent = agent;
+        AllowedPushBranches = allowedPushBranches;
     }
 
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
@@ -84,6 +90,8 @@ internal record JobConfig
 
         var resolvedModel = string.IsNullOrWhiteSpace(inputs.Model) ? null : inputs.Model;
 
+        var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches, errors);
+
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
 
@@ -95,9 +103,30 @@ internal record JobConfig
             timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
             workDir: parsedWorkDir!,
             outputDir: parsedOutputDir!,
-            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel)
+            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel),
+            allowedPushBranches: allowedPushBranches
         );
         return new JobConfigValid(config);
+    }
+
+    /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
+    /// <c>rix/*</c> branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
+    /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
+    /// must opt in to letting the agent push at all. Each non-blank entry must be a well-formed
+    /// <c>rix/*</c> branch name, and any malformed entry is collected as an error via
+    /// <see cref="ParseResultExtensions.Collect{T}"/> so the caller's typo is reported instead of
+    /// silently dropping the restriction. Duplicates are dropped.</summary>
+    private static List<RixBranchName> ParseAllowedPushBranches(string? raw, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return [];
+
+        return raw
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(entry => RixBranchName.Parse(entry).Collect(errors, "--allowed-push-branches"))
+            .OfType<RixBranchName>()
+            .Distinct()
+            .ToList();
     }
 
     /// <summary>Parses a raw <c>--max-tokens</c>/<c>--timeout</c>-style value: blank resolves to
@@ -145,7 +174,8 @@ internal record JobInputs
     string? WorkDir = null,
     string? OutputDir = null,
     string? Agent = null,
-    string? Model = null
+    string? Model = null,
+    string? AllowedPushBranches = null
 );
 
 /// <summary>The result of <see cref="JobConfig.Create"/>: a validated config or the list of

@@ -16,7 +16,8 @@ public class JobConfigTests
         string? workDir = null,
         string? outputDir = null,
         string? agent = null,
-        string? model = null)
+        string? model = null,
+        string? allowedPushBranches = null)
     => JobConfig.Create(new JobInputs
     (
         Repo: repo,
@@ -27,7 +28,8 @@ public class JobConfigTests
         WorkDir: workDir,
         OutputDir: outputDir ?? ExistingDir,
         Agent: agent,
-        Model: model
+        Model: model,
+        AllowedPushBranches: allowedPushBranches
     ));
 
     private static JobConfig Valid(JobConfigResult result) => result switch
@@ -229,5 +231,49 @@ public class JobConfigTests
         Assert.AreEqual("openai/gpt-4o", Valid(Create(agent: "opencode", model: "openai/gpt-4o")).Agent.Model);
         Assert.AreEqual("claude-opus-4", Valid(Create(agent: "claude", model: "claude-opus-4")).Agent.Model);
         Assert.AreEqual("openai/gpt-4o", Valid(Create(agent: "pi", model: "openai/gpt-4o")).Agent.Model);
+    }
+
+    [TestMethod]
+    public void Create_DefaultsAllowedPushBranches_ToEmptyList()
+    {
+        Assert.AreEqual(0, Valid(Create()).AllowedPushBranches.Count);
+    }
+
+    [TestMethod]
+    public void Create_ParsesAllowedPushBranches_FromCommaSeparatedList()
+    {
+        var config = Valid(Create(allowedPushBranches: "rix/continue-a, rix/continue-b"));
+
+        Assert.AreEqual(2, config.AllowedPushBranches.Count);
+        Assert.AreEqual("rix/continue-a", config.AllowedPushBranches[0].Value);
+        Assert.AreEqual("rix/continue-b", config.AllowedPushBranches[1].Value);
+    }
+
+    [TestMethod]
+    public void Create_DropsBlankAndDuplicateAllowedPushBranches()
+    {
+        var config = Valid(Create(allowedPushBranches: "rix/a,,rix/a, rix/b"));
+
+        Assert.AreEqual(2, config.AllowedPushBranches.Count);
+        CollectionAssert.AreEqual(
+            new[] { "rix/a", "rix/b" },
+            config.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
+
+    [TestMethod]
+    public void Create_RejectsMalformedAllowedPushBranches()
+    {
+        var errors = Errors(Create(allowedPushBranches: "rix/good,main,prod"));
+
+        Assert.IsTrue(errors.Any(e => e.Contains("--allowed-push-branches")), $"expected an allowed-push-branches error, got: {string.Join("; ", errors)}");
+        Assert.IsTrue(errors.Any(e => e.Contains("rix/*")), $"expected a branch-format error, got: {string.Join("; ", errors)}");
+    }
+
+    [TestMethod]
+    public void Create_RejectsAllowedPushBranches_ThatAreNotRixBranches()
+    {
+        var errors = Errors(Create(allowedPushBranches: "main"));
+
+        Assert.IsTrue(errors.Any(e => e.Contains("--allowed-push-branches")), $"expected an allowed-push-branches error, got: {string.Join("; ", errors)}");
     }
 }

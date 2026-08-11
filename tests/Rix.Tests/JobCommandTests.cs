@@ -34,6 +34,7 @@ public class JobCommandTests
         env.Set("RIX_TIMEOUT", "15");
         env.Set("RIX_WORK_DIR", Path.GetTempPath());
         env.Set("RIX_OUTPUT_DIR", Path.GetTempPath());
+        env.Set("RIX_ALLOWED_PUSH_BRANCHES", "rix/env-a,rix/env-b");
         await parser.InvokeAsync("job");
 
         Assert.IsNotNull(captured);
@@ -44,6 +45,9 @@ public class JobCommandTests
         Assert.AreEqual(15, captured.TimeoutMinutes.Value);
         Assert.AreEqual(Path.GetTempPath(), captured.WorkDir.Value);
         Assert.AreEqual(Path.GetTempPath(), captured.OutputDir.Value);
+        CollectionAssert.AreEqual(
+            new[] { "rix/env-a", "rix/env-b" },
+            captured.AllowedPushBranches.Select(b => b.Value).ToArray());
     }
 
     [TestMethod]
@@ -135,5 +139,85 @@ public class JobCommandTests
 
         Assert.IsNotNull(captured);
         Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, captured.Agent.Kind);
+    }
+
+    [TestMethod]
+    public async Task Command_PassesThroughAllowedPushBranches_FromFlag()
+    {
+        JobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r",
+             "--output-dir", Path.GetTempPath(), "--allowed-push-branches", "rix/flag-a,rix/flag-b"]);
+
+        Assert.IsNotNull(captured);
+        CollectionAssert.AreEqual(
+            new[] { "rix/flag-a", "rix/flag-b" },
+            captured.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
+
+    [TestMethod]
+    public async Task Command_PassesThroughAllowedPushBranches_FromEnvVar_WhenFlagAbsent()
+    {
+        JobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        using var env = new EnvScope();
+        env.Set("RIX_ALLOWED_PUSH_BRANCHES", "rix/env-a,rix/env-b");
+        await parser.InvokeAsync(
+            ["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r", "--output-dir", Path.GetTempPath()]);
+
+        Assert.IsNotNull(captured);
+        CollectionAssert.AreEqual(
+            new[] { "rix/env-a", "rix/env-b" },
+            captured.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
+
+    [TestMethod]
+    public async Task Command_FlagTakesPrecedenceOverEnvVar_ForAllowedPushBranches()
+    {
+        JobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        using var env = new EnvScope();
+        env.Set("RIX_ALLOWED_PUSH_BRANCHES", "rix/env-a");
+        await parser.InvokeAsync(
+            ["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r",
+             "--output-dir", Path.GetTempPath(), "--allowed-push-branches", "rix/flag-a"]);
+
+        Assert.IsNotNull(captured);
+        CollectionAssert.AreEqual(
+            new[] { "rix/flag-a" },
+            captured.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
+
+    [TestMethod]
+    public async Task Command_DefaultsAllowedPushBranchesToEmpty_WhenUnset()
+    {
+        JobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r", "--output-dir", Path.GetTempPath()]);
+
+        Assert.IsNotNull(captured);
+        Assert.AreEqual(0, captured.AllowedPushBranches.Count);
     }
 }

@@ -48,9 +48,13 @@ internal static class JobRunner
             return new SetupFailure(ex.Message);
         }
 
-        await using var apiServer = await LocalApiServer.StartAsync(context.Host, cloneDir.Path, ct, context.LogLine.Invoke);
+        await using var apiServer = await LocalApiServer.StartAsync
+        (
+            context.Host, cloneDir.Path, ct, context.LogLine.Invoke,
+            allowedPushBranches: config.AllowedPushBranches
+        );
 
-        var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl);
+        var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl, config.AllowedPushBranches);
         var agentResult = await RunAgentAsync(config, context, systemPrompt, cloneDir.Path, ct);
 
         if (agentResult is ProcessFailure agentFailure)
@@ -220,7 +224,8 @@ internal static class JobRunner
     private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs, IReadOnlyList<PendingPush> PendingPushes) : DeliveryOutcome;
     private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
-    private static string BuildSystemPrompt(Uri apiBaseUrl) => $$"""
+    private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<RixBranchName> allowedPushBranches)
+    => $$"""
         You are `rix job`, an autonomous coding agent and part of the `rix` autonomous software factory.
 
         A local API is available at {{apiBaseUrl}}.
@@ -238,5 +243,18 @@ internal static class JobRunner
         commit them locally on that branch, then call POST {{new Uri(apiBaseUrl, "/push")}} with JSON
         body:
            {"branch":"rix/<existing-branch>","baseBranch":"<base branch>"}
+
+        {{AllowedPushBranchesPrompt(allowedPushBranches)}}
         """;
+
+    /// <summary>Renders the push restriction as instructions the agent must follow, so it learns
+    /// what /push will accept from the prompt instead of only from rejected requests. /push denies
+    /// every branch unless the operator explicitly allowed some, so the empty case still needs a
+    /// sentence — silence there would read as "unrestricted" to the agent.</summary>
+    private static string AllowedPushBranchesPrompt(IReadOnlyList<RixBranchName> allowedPushBranches)
+    => allowedPushBranches.Count switch
+    {
+        0 => "This job has not allowed any push branches, so /push will reject every request; use /pr for all changes.",
+        _ => $"This job's push endpoint is restricted: you may only push onto the branches: {string.Join(", ", allowedPushBranches.Select(b => b.Value))}.",
+    };
 }

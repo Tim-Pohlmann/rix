@@ -39,6 +39,11 @@ inputs:
   timeout:
     description: Wall-clock timeout in minutes
     required: false
+  allowed-push-branches:
+    description: >-
+      Comma-separated list of rix/* branches the /push endpoint may deliver to; omit to
+      disable /push entirely
+    required: false
   rix-version:
     description: "Rix release tag to download, or 'latest'"
     required: false
@@ -77,6 +82,7 @@ runs:
         RIX_PROMPT: ${{ inputs.prompt }}
         RIX_MAX_TOKENS: ${{ inputs.max-tokens }}
         RIX_TIMEOUT: ${{ inputs.timeout }}
+        RIX_ALLOWED_PUSH_BRANCHES: ${{ inputs.allowed-push-branches }}
       shell: bash
       run: |
         # Export the secret under whatever env var name the selected provider/model expects.
