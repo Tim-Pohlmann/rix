@@ -1,28 +1,29 @@
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Rix.Repository;
-using System.Collections.Concurrent;
 
 namespace Rix.Api;
 
 internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
-    private readonly ConcurrentQueue<QueuedPr> _pendingPrRequests;
-    private readonly ConcurrentQueue<QueuedPush> _pendingPushRequests;
+    private readonly ConcurrentDictionary<string, QueuedPr> _pendingPrRequests;
+    private readonly ConcurrentDictionary<string, QueuedPush> _pendingPushRequests;
 
     internal Uri BaseUrl { get; }
-    internal IReadOnlyList<QueuedPr> QueuedPrRequests => _pendingPrRequests.ToArray();
-    internal IReadOnlyList<QueuedPush> QueuedPushRequests => _pendingPushRequests.ToArray();
+    internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => _pendingPrRequests.Values.ToArray();
+    internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => _pendingPushRequests.Values.ToArray();
 
     private LocalApiServer
     (
         WebApplication app,
         Uri baseUrl,
-        ConcurrentQueue<QueuedPr> pendingPrRequests,
-        ConcurrentQueue<QueuedPush> pendingPushRequests
+        ConcurrentDictionary<string, QueuedPr> pendingPrRequests,
+        ConcurrentDictionary<string, QueuedPush> pendingPushRequests
     )
     {
         _app = app;
@@ -47,8 +48,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IReadOnlyList<RixBranchName>? allowedPushBranches = null
     )
     {
-        var pendingPrRequests = new ConcurrentQueue<QueuedPr>();
-        var pendingPushRequests = new ConcurrentQueue<QueuedPush>();
+        var pendingPrRequests = new ConcurrentDictionary<string, QueuedPr>();
+        var pendingPushRequests = new ConcurrentDictionary<string, QueuedPush>();
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
@@ -77,14 +78,18 @@ internal sealed class LocalApiServer : IAsyncDisposable
         WebApplication app,
         IRepositoryReadHost host,
         string cloneDir,
-        ConcurrentQueue<QueuedPr> pendingPrRequests,
-        ConcurrentQueue<QueuedPush> pendingPushRequests,
+        ConcurrentDictionary<string, QueuedPr> pendingPrRequests,
+        ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
         IReadOnlyList<RixBranchName>? allowedPushBranches
     )
     {
         app.MapGet("/health", () => Results.Ok());
         app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
+        app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Values.ToArray()));
+        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests, "PR"));
         app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct));
+        app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()));
+        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPushRequests, "push"));
     }
 
     private static async Task<IResult> HandlePrAsync
@@ -92,7 +97,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         PrRequest req,
         IRepositoryReadHost host,
         string cloneDir,
-        ConcurrentQueue<QueuedPr> pendingPrRequests,
+        ConcurrentDictionary<string, QueuedPr> pendingPrRequests,
         CancellationToken ct
     )
     {
@@ -116,7 +121,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             return Results.BadRequest(new ErrorResponse(message));
         }
 
-        return Enqueue(pendingPrRequests, queuedPr);
+        return Enqueue(pendingPrRequests, queuedPr.Branch.Value, queuedPr);
     }
 
     private static async Task<IResult> HandlePushAsync
@@ -124,7 +129,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         PushRequest req,
         IRepositoryReadHost host,
         string cloneDir,
-        ConcurrentQueue<QueuedPush> pendingPushRequests,
+        ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
         IReadOnlyList<RixBranchName>? allowedPushBranches,
         CancellationToken ct
     )
@@ -163,13 +168,39 @@ internal sealed class LocalApiServer : IAsyncDisposable
         if (!await host.BranchExistsLocallyAsync(cloneDir, queuedPush.Branch, ct))
             return Results.BadRequest(new ErrorResponse($"Branch {queuedPush.Branch.Value} was not found in your working directory. Make sure you committed it there before calling /push."));
 
-        return Enqueue(pendingPushRequests, queuedPush);
+        return Enqueue(pendingPushRequests, queuedPush.Branch.Value, queuedPush);
     }
 
-    private static IResult Enqueue<T>(ConcurrentQueue<T> pendingRequests, T item)
+    // A branch already queued keeps its slot: without this, a second POST for the same branch would
+    // report 200 "queued" while silently overwriting the first request, so the caller would have no
+    // way to tell its first call never went through.
+    private static IResult Enqueue<T>(ConcurrentDictionary<string, T> pendingRequests, string branch, T item)
     {
-        pendingRequests.Enqueue(item);
+        if (!pendingRequests.TryAdd(branch, item))
+            return Results.Conflict(new ErrorResponse($"Branch {branch} is already queued."));
         return Results.Ok(new QueuedResponse("queued"));
+    }
+
+    /// <summary>Cancels the queued request for <paramref name="req"/>'s branch — the dictionary key,
+    /// so at most one request per branch can ever be queued at a time. A well-formed branch with
+    /// nothing queued is a 404 so the agent learns its cancel was a no-op rather than assuming it
+    /// took.</summary>
+    private static IResult HandleDelete<T>
+    (
+        DeleteRequest req,
+        ConcurrentDictionary<string, T> pendingRequests,
+        string kind
+    )
+    {
+        var validation = req.Validate();
+        if (validation is InvalidDelete(var reason))
+            return Results.BadRequest(new ErrorResponse(reason));
+        if (validation is not ValidDelete(var branch))
+            throw new NotSupportedException($"Unexpected delete validation {validation.GetType()}");
+
+        if (pendingRequests.TryRemove(branch.Value, out _))
+            return Results.Ok(new QueuedResponse("deleted"));
+        return Results.NotFound(new ErrorResponse($"No queued {kind} for branch {branch.Value}."));
     }
 
     public async ValueTask DisposeAsync()
