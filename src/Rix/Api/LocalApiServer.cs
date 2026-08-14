@@ -86,10 +86,10 @@ internal sealed class LocalApiServer : IAsyncDisposable
         app.MapGet("/health", () => Results.Ok());
         app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
         app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Snapshot()));
-        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandlePrDelete(req, pendingPrRequests));
+        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests.TryRemove));
         app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct));
         app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()));
-        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPushRequests, "push"));
+        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, branch => RemoveFromDictionary(pendingPushRequests, "push", branch)));
     }
 
     private static async Task<IResult> HandlePrAsync
@@ -122,20 +122,6 @@ internal sealed class LocalApiServer : IAsyncDisposable
         }
 
         return pendingPrRequests.TryEnqueue(queuedPr);
-    }
-
-    /// <summary>Cancels the queued PR request for <paramref name="req"/>'s branch. A well-formed
-    /// branch with nothing queued is a 404 so the agent learns its cancel was a no-op rather than
-    /// assuming it took.</summary>
-    private static IResult HandlePrDelete(DeleteRequest req, PrQueue pendingPrRequests)
-    {
-        var validation = req.Validate();
-        if (validation is InvalidDelete(var reason))
-            return Results.BadRequest(new ErrorResponse(reason));
-        if (validation is not ValidDelete(var branch))
-            throw new NotSupportedException($"Unexpected delete validation {validation.GetType()}");
-
-        return pendingPrRequests.TryRemove(branch);
     }
 
     private static async Task<IResult> HandlePushAsync
@@ -195,16 +181,10 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return Results.Ok(new QueuedResponse("queued"));
     }
 
-    /// <summary>Cancels the queued push request for <paramref name="req"/>'s branch — the dictionary
-    /// key, so at most one push per branch can ever be queued at a time. A well-formed branch with
-    /// nothing queued is a 404 so the agent learns its cancel was a no-op rather than assuming it
-    /// took.</summary>
-    private static IResult HandleDelete<T>
-    (
-        DeleteRequest req,
-        ConcurrentDictionary<string, T> pendingRequests,
-        string kind
-    )
+    /// <summary>Cancels the queued request for <paramref name="req"/>'s branch by dispatching to
+    /// <paramref name="remove"/> once the branch is known well-formed — shared by /pr and /push,
+    /// which differ only in where the branch is actually removed from.</summary>
+    private static IResult HandleDelete(DeleteRequest req, Func<RixBranchName, IResult> remove)
     {
         var validation = req.Validate();
         if (validation is InvalidDelete(var reason))
@@ -212,6 +192,13 @@ internal sealed class LocalApiServer : IAsyncDisposable
         if (validation is not ValidDelete(var branch))
             throw new NotSupportedException($"Unexpected delete validation {validation.GetType()}");
 
+        return remove(branch);
+    }
+
+    // A well-formed branch with nothing queued is a 404 so the agent learns its cancel was a no-op
+    // rather than assuming it took.
+    private static IResult RemoveFromDictionary<T>(ConcurrentDictionary<string, T> pendingRequests, string kind, RixBranchName branch)
+    {
         if (pendingRequests.TryRemove(branch.Value, out _))
             return Results.Ok(new QueuedResponse("deleted"));
         return Results.NotFound(new ErrorResponse($"No queued {kind} for branch {branch.Value}."));

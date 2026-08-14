@@ -244,5 +244,4 @@ public class SubmitRunnerTests
         $$"""
         {"status":"success","pendingPrRequests":[{"branch":"rix/my-fix","baseBranch":"main","title":"My fix","body":"body","bundleFile":"rix_2Fmy-fix.bundle"}],"pendingPushRequests":[{"branch":"rix/my-fix","baseBranch":"main","bundleFile":"rix_2Fmy-fix.bundle"}],"costUsd":0,"durationSeconds":1}
         """;
-
 }
