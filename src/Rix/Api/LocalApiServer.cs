@@ -239,8 +239,24 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 if (_items.Any(item => item.Branch.Value == pr.Branch.Value))
                     return Results.Conflict(new ErrorResponse($"Branch {pr.Branch.Value} is already queued."));
 
-                var ordered = PrDependencyOrder.TryOrder([.. _items, pr], item => item.Branch.Value, item => item.BaseBranch.Value);
-                if (ordered is null)
+                // _items is always kept in a valid dependency order, so pr only needs to slot in
+                // relative to its direct base (if queued) and its direct dependents (if any are
+                // already queued) - no need to re-derive the whole order from scratch. Branch names
+                // are unique (checked above), so at most one item can be pr's base; inserting right
+                // before the earliest dependent keeps every dependent after pr, since they're
+                // already ordered among themselves.
+                var afterBase = _items.FindIndex(item => item.Branch.Value == pr.BaseBranch.Value);
+                var beforeDependent = _items.FindIndex(item => item.BaseBranch.Value == pr.Branch.Value);
+
+                var lowerBound = 0;
+                if (afterBase >= 0)
+                    lowerBound = afterBase + 1;
+
+                var upperBound = _items.Count;
+                if (beforeDependent >= 0)
+                    upperBound = beforeDependent;
+
+                if (lowerBound > upperBound)
                 {
                     return Results.BadRequest
                     (
@@ -248,8 +264,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                     );
                 }
 
-                _items.Clear();
-                _items.AddRange(ordered);
+                _items.Insert(upperBound, pr);
                 return Results.Ok(new QueuedResponse("queued"));
             }
         }
