@@ -172,8 +172,10 @@ jobs:
         with:
           # pi's bundled undici (exact-pinned, currently 8.9.0) declares "engines": { "node":
           # ">=22.19.0" } and crashes on startup under Node 20 with "webidl.util.markAsUncloneable
-          # is not a function" - keep in step with run-rix-job/action.yml's same requirement.
-          node-version: '22'
+          # is not a function". A floating '22' doesn't guarantee that minimum patch if the
+          # runner's toolcache lags - pin the patch explicitly. Keep in step with
+          # run-rix-job/action.yml's same requirement.
+          node-version: '22.19.0'
 
       - name: Download rix binary
         uses: actions/download-artifact@v4
