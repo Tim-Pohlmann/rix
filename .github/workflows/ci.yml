@@ -170,7 +170,10 @@ jobs:
       - name: Setup Node (rix installs the coding agent CLI via npm)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # pi's bundled undici (exact-pinned, currently 8.9.0) declares "engines": { "node":
+          # ">=22.19.0" } and crashes on startup under Node 20 with "webidl.util.markAsUncloneable
+          # is not a function" - keep in step with run-rix-job/action.yml's same requirement.
+          node-version: '22'
 
       - name: Download rix binary
         uses: actions/download-artifact@v4
