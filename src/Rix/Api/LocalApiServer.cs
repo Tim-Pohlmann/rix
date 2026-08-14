@@ -232,18 +232,18 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 // are unique (checked above), so at most one item can be pr's base; inserting right
                 // before the earliest dependent keeps every dependent after pr, since they're
                 // already ordered among themselves.
+                //
+                // These two lookups can't be merged into a single scan: base and dependent are
+                // unrelated to each other, so they can appear in either order within _items, and a
+                // running bound updated mid-scan could go stale before it's checked.
                 var afterBase = _items.FindIndex(item => item.Branch.Value == pr.BaseBranch.Value);
                 var beforeDependent = _items.FindIndex(item => item.BaseBranch.Value == pr.Branch.Value);
 
-                var lowerBound = 0;
-                if (afterBase >= 0)
-                    lowerBound = afterBase + 1;
-
-                var upperBound = _items.Count;
+                var insertAt = _items.Count;
                 if (beforeDependent >= 0)
-                    upperBound = beforeDependent;
+                    insertAt = beforeDependent;
 
-                if (lowerBound > upperBound)
+                if (insertAt < afterBase + 1)
                 {
                     return Results.BadRequest
                     (
@@ -251,7 +251,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                     );
                 }
 
-                _items.Insert(upperBound, pr);
+                _items.Insert(insertAt, pr);
                 return Results.Ok(new QueuedResponse("queued"));
             }
         }
