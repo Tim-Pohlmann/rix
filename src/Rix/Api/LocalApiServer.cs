@@ -11,18 +11,18 @@ namespace Rix.Api;
 internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
-    private readonly ConcurrentDictionary<string, QueuedPr> _pendingPrRequests;
+    private readonly PrQueue _pendingPrRequests;
     private readonly ConcurrentDictionary<string, QueuedPush> _pendingPushRequests;
 
     internal Uri BaseUrl { get; }
-    internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => _pendingPrRequests.Values.ToArray();
+    internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => _pendingPrRequests.Snapshot();
     internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => _pendingPushRequests.Values.ToArray();
 
     private LocalApiServer
     (
         WebApplication app,
         Uri baseUrl,
-        ConcurrentDictionary<string, QueuedPr> pendingPrRequests,
+        PrQueue pendingPrRequests,
         ConcurrentDictionary<string, QueuedPush> pendingPushRequests
     )
     {
@@ -48,7 +48,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IReadOnlyList<RixBranchName>? allowedPushBranches = null
     )
     {
-        var pendingPrRequests = new ConcurrentDictionary<string, QueuedPr>();
+        var pendingPrRequests = new PrQueue();
         var pendingPushRequests = new ConcurrentDictionary<string, QueuedPush>();
 
         var builder = WebApplication.CreateBuilder();
@@ -78,15 +78,15 @@ internal sealed class LocalApiServer : IAsyncDisposable
         WebApplication app,
         IRepositoryReadHost host,
         string cloneDir,
-        ConcurrentDictionary<string, QueuedPr> pendingPrRequests,
+        PrQueue pendingPrRequests,
         ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
         IReadOnlyList<RixBranchName>? allowedPushBranches
     )
     {
         app.MapGet("/health", () => Results.Ok());
         app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
-        app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Values.ToArray()));
-        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests, "PR"));
+        app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Snapshot()));
+        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandlePrDelete(req, pendingPrRequests));
         app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct));
         app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()));
         app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPushRequests, "push"));
@@ -97,7 +97,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         PrRequest req,
         IRepositoryReadHost host,
         string cloneDir,
-        ConcurrentDictionary<string, QueuedPr> pendingPrRequests,
+        PrQueue pendingPrRequests,
         CancellationToken ct
     )
     {
@@ -121,21 +121,21 @@ internal sealed class LocalApiServer : IAsyncDisposable
             return Results.BadRequest(new ErrorResponse(message));
         }
 
-        // Catches a cyclic base-branch chain among queued PRs (e.g. rix/a based on rix/b, rix/b
-        // based on rix/a) as early as possible — at submit time this would otherwise surface only
-        // after cloning, well after the agent's session (and its chance to fix the queue) has ended.
-        // Checked against the hypothetical queue (current values plus this request) before adding
-        // anything, so a rejected request never touches pendingPrRequests.
-        var candidates = pendingPrRequests.Values.Append(queuedPr).ToList();
-        if (PrDependencyOrder.TryOrder(candidates, pr => pr.Branch.Value, pr => pr.BaseBranch.Value) is null)
-        {
-            return Results.BadRequest
-            (
-                new ErrorResponse($"Branch {queuedPr.Branch.Value} would create a cyclic base-branch dependency among queued PRs.")
-            );
-        }
+        return pendingPrRequests.TryEnqueue(queuedPr);
+    }
 
-        return Enqueue(pendingPrRequests, queuedPr.Branch.Value, queuedPr);
+    /// <summary>Cancels the queued PR request for <paramref name="req"/>'s branch. A well-formed
+    /// branch with nothing queued is a 404 so the agent learns its cancel was a no-op rather than
+    /// assuming it took.</summary>
+    private static IResult HandlePrDelete(DeleteRequest req, PrQueue pendingPrRequests)
+    {
+        var validation = req.Validate();
+        if (validation is InvalidDelete(var reason))
+            return Results.BadRequest(new ErrorResponse(reason));
+        if (validation is not ValidDelete(var branch))
+            throw new NotSupportedException($"Unexpected delete validation {validation.GetType()}");
+
+        return pendingPrRequests.TryRemove(branch);
     }
 
     private static async Task<IResult> HandlePushAsync
@@ -195,8 +195,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return Results.Ok(new QueuedResponse("queued"));
     }
 
-    /// <summary>Cancels the queued request for <paramref name="req"/>'s branch — the dictionary key,
-    /// so at most one request per branch can ever be queued at a time. A well-formed branch with
+    /// <summary>Cancels the queued push request for <paramref name="req"/>'s branch — the dictionary
+    /// key, so at most one push per branch can ever be queued at a time. A well-formed branch with
     /// nothing queued is a 404 so the agent learns its cancel was a no-op rather than assuming it
     /// took.</summary>
     private static IResult HandleDelete<T>
@@ -221,6 +221,58 @@ internal sealed class LocalApiServer : IAsyncDisposable
     {
         await _app.StopAsync();
         await _app.DisposeAsync();
+    }
+
+    /// <summary>Keeps queued PRs in a valid base-branch dependency order at all times, rather than
+    /// requiring callers to sort a snapshot before use — <see cref="TryEnqueue"/> only accepts a PR
+    /// if the resulting queue stays acyclic and orderable, so <see cref="Snapshot"/> is always ready
+    /// to submit as-is.</summary>
+    private sealed class PrQueue
+    {
+        private readonly Lock _lock = new();
+        private readonly List<QueuedPr> _items = [];
+
+        internal IResult TryEnqueue(QueuedPr pr)
+        {
+            lock (_lock)
+            {
+                if (_items.Any(item => item.Branch.Value == pr.Branch.Value))
+                    return Results.Conflict(new ErrorResponse($"Branch {pr.Branch.Value} is already queued."));
+
+                var ordered = PrDependencyOrder.TryOrder([.. _items, pr], item => item.Branch.Value, item => item.BaseBranch.Value);
+                if (ordered is null)
+                {
+                    return Results.BadRequest
+                    (
+                        new ErrorResponse($"Branch {pr.Branch.Value} would create a cyclic base-branch dependency among queued PRs.")
+                    );
+                }
+
+                _items.Clear();
+                _items.AddRange(ordered);
+                return Results.Ok(new QueuedResponse("queued"));
+            }
+        }
+
+        internal IResult TryRemove(RixBranchName branch)
+        {
+            lock (_lock)
+            {
+                var index = _items.FindIndex(item => item.Branch.Value == branch.Value);
+                if (index < 0)
+                    return Results.NotFound(new ErrorResponse($"No queued PR for branch {branch.Value}."));
+
+                // Removing one item from an already-valid topological order leaves the remaining
+                // items in a still-valid order, so no re-sort is needed here.
+                _items.RemoveAt(index);
+                return Results.Ok(new QueuedResponse("deleted"));
+            }
+        }
+
+        internal IReadOnlyList<QueuedPr> Snapshot()
+        {
+            lock (_lock) { return _items.ToArray(); }
+        }
     }
 
     private sealed class LogForwarder(Action<string> sink) : ILoggerProvider

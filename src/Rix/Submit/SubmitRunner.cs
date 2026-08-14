@@ -48,17 +48,16 @@ internal static class SubmitRunner
         if (success.PendingPrRequests.Count == 0 && pendingPushes.Count == 0)
             return new SubmitSuccess([], []);
 
-        var orderedPrs = PrDependencyOrder.TryOrder(success.PendingPrRequests, pr => pr.Branch.Value, pr => pr.BaseBranch.Value);
-        if (orderedPrs is null)
-            return new SubmitFailure("queued PRs have a cyclic base-branch dependency");
-
         using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-submit");
 
         await context.Host.CloneAsync(cloneDir.Path, cancellationToken);
 
         var created = new List<CreatedPr>();
         var pushed = new List<string>();
-        foreach (var pr in orderedPrs)
+        // result.json's PendingPrRequests is written from LocalApiServer's PrQueue, which only ever
+        // accepts a PR if it keeps the whole queue in a valid base-branch dependency order — so
+        // this is already base-first, no reordering needed here.
+        foreach (var pr in success.PendingPrRequests)
         {
             switch (await SubmitPrAsync(config, context, cloneDir.Path, pr, cancellationToken))
             {

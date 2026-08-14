@@ -184,28 +184,33 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
-    public async Task PostPr_Accepts_NonCyclicStackedPr()
+    public async Task PostPr_Accepts_NonCyclicStackedPr_AndReturnsQueueInDependencyOrder()
     {
+        // rix/stacked is queued before its own base branch rix/base — submission needs the queue
+        // in base-first order regardless of the order PRs were queued in, so GetQueuedPrRequests()
+        // must reflect the corrected order, not insertion order.
         await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
-        {
-            branch = "rix/base",
-            title = "Title",
-            body = "body",
-            baseBranch = "main",
-        });
-        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
         {
             branch = "rix/stacked",
             title = "Title",
             body = "body",
             baseBranch = "rix/base",
         });
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/base",
+            title = "Title",
+            body = "body",
+            baseBranch = "main",
+        });
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-        Assert.AreEqual(2, server.GetQueuedPrRequests().Count);
+        CollectionAssert.AreEqual(
+            new[] { "rix/base", "rix/stacked" },
+            server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray());
     }
 
     [TestMethod]
