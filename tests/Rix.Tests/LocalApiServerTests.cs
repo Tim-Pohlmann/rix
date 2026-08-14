@@ -151,6 +151,64 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
+    public async Task PostPr_Returns400_WhenQueuingWouldCreateCyclicBaseBranchDependency()
+    {
+        // Submission opens PRs base-first, so a cycle among queued PRs' base branches (here:
+        // rix/a based on rix/b, and rix/b based on rix/a) can never be submitted — reject it at
+        // queue time rather than letting the agent's session end before the problem surfaces.
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/a",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/b",
+        });
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/b",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/a",
+        });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/b");
+        StringAssert.Contains(result["error"], "cyclic");
+        CollectionAssert.AreEqual(
+            new[] { "rix/a" }, server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray());
+    }
+
+    [TestMethod]
+    public async Task PostPr_Accepts_NonCyclicStackedPr()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/base",
+            title = "Title",
+            body = "body",
+            baseBranch = "main",
+        });
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/stacked",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/base",
+        });
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(2, server.GetQueuedPrRequests().Count);
+    }
+
+    [TestMethod]
     public async Task PostPr_Returns400_WhenBranchNotFoundLocally()
     {
         var host = new StubRepositoryHost(branchExistsLocally: _ => Task.FromResult(false));

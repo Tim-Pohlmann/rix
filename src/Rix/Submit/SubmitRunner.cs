@@ -48,7 +48,7 @@ internal static class SubmitRunner
         if (success.PendingPrRequests.Count == 0 && pendingPushes.Count == 0)
             return new SubmitSuccess([], []);
 
-        var orderedPrs = OrderByDependency(success.PendingPrRequests);
+        var orderedPrs = PrDependencyOrder.TryOrder(success.PendingPrRequests, pr => pr.Branch.Value, pr => pr.BaseBranch.Value);
         if (orderedPrs is null)
             return new SubmitFailure("queued PRs have a cyclic base-branch dependency");
 
@@ -86,26 +86,6 @@ internal static class SubmitRunner
         }
 
         return new SubmitSuccess(created, pushed);
-    }
-
-    /// <summary>Reorders queued PRs so a PR based on another queued PR's branch (a stacked PR) comes
-    /// after it — queue insertion order doesn't guarantee this, but <see cref="SubmitPrAsync"/>
-    /// opens PRs in order and <c>CreatePullRequestAsync</c> requires the base branch to already
-    /// exist on the remote. Repeated selection is O(n²), which is fine for the handful of PRs a
-    /// single job run queues. Returns <c>null</c> if the base-branch relationships form a cycle.</summary>
-    private static List<PendingPr>? OrderByDependency(IReadOnlyList<PendingPr> prs)
-    {
-        var remaining = prs.ToList();
-        var ordered = new List<PendingPr>(remaining.Count);
-        while (remaining.Count > 0)
-        {
-            var index = remaining.FindIndex(pr => !remaining.Any(other => other.Branch.Value == pr.BaseBranch.Value));
-            if (index < 0)
-                return null;
-            ordered.Add(remaining[index]);
-            remaining.RemoveAt(index);
-        }
-        return ordered;
     }
 
     /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns the opened

@@ -121,7 +121,22 @@ internal sealed class LocalApiServer : IAsyncDisposable
             return Results.BadRequest(new ErrorResponse(message));
         }
 
-        return Enqueue(pendingPrRequests, queuedPr.Branch.Value, queuedPr);
+        if (!pendingPrRequests.TryAdd(queuedPr.Branch.Value, queuedPr))
+            return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} is already queued."));
+
+        // Catches a cyclic base-branch chain among queued PRs (e.g. rix/a based on rix/b, rix/b
+        // based on rix/a) as early as possible — at submit time this would otherwise surface only
+        // after cloning, well after the agent's session (and its chance to fix the queue) has ended.
+        if (PrDependencyOrder.TryOrder(pendingPrRequests.Values.ToList(), pr => pr.Branch.Value, pr => pr.BaseBranch.Value) is null)
+        {
+            pendingPrRequests.TryRemove(queuedPr.Branch.Value, out _);
+            return Results.BadRequest
+            (
+                new ErrorResponse($"Branch {queuedPr.Branch.Value} would create a cyclic base-branch dependency among queued PRs.")
+            );
+        }
+
+        return Results.Ok(new QueuedResponse("queued"));
     }
 
     private static async Task<IResult> HandlePushAsync
