@@ -231,10 +231,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 // which can require reordering those existing items relative to each other - not
                 // just placing pr among them. So the whole order has to be re-derived from all the
                 // constraints together, rather than only checking pr's own immediate bounds.
-                var ordered = PrDependencyOrder.TryOrder
-                (
-                    [.. _items, pr], item => item.Branch.Value, item => item.BaseBranch.Value
-                );
+                var ordered = TryOrder([.. _items, pr]);
 
                 if (ordered is null)
                 {
@@ -268,6 +265,25 @@ internal sealed class LocalApiServer : IAsyncDisposable
         internal IReadOnlyList<QueuedPr> Snapshot()
         {
             lock (_lock) { return _items.ToArray(); }
+        }
+
+        /// <summary>Orders items by branch/base-branch dependency so an item whose base branch is
+        /// another item's branch (a stacked PR) comes after it. Repeated selection is O(n²), which
+        /// is fine for the handful of PRs a single job run queues. Returns <c>null</c> if the
+        /// base-branch relationships form a cycle.</summary>
+        private static List<QueuedPr>? TryOrder(IReadOnlyList<QueuedPr> items)
+        {
+            var remaining = items.ToList();
+            var ordered = new List<QueuedPr>(remaining.Count);
+            while (remaining.Count > 0)
+            {
+                var index = remaining.FindIndex(item => !remaining.Any(other => other.Branch.Value == item.BaseBranch.Value));
+                if (index < 0)
+                    return null;
+                ordered.Add(remaining[index]);
+                remaining.RemoveAt(index);
+            }
+            return ordered;
         }
     }
 
