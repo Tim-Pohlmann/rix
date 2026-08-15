@@ -19,7 +19,7 @@ public class ClaudeAgentTranscriptTests
 
         Assert.IsNotNull(transcript);
         StringAssert.Contains(transcript, "I will fix the bug.");
-        StringAssert.Contains(transcript, "→ Bash(...)");
+        StringAssert.Contains(transcript, "→ Bash({\"command\":\"dotnet test\"})");
     }
 
     [TestMethod]
@@ -43,7 +43,7 @@ public class ClaudeAgentTranscriptTests
         var transcript = new ClaudeAgent().ParseTranscriptLine(line);
 
         Assert.IsNotNull(transcript);
-        StringAssert.Contains(transcript, "→ Read(...)");
+        StringAssert.Contains(transcript, "→ Read({\"file_path\":\"a.cs\"})");
         StringAssert.Contains(transcript, "done");
     }
 

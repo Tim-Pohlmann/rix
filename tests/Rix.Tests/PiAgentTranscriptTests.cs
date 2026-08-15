@@ -21,7 +21,7 @@ public class PiAgentTranscriptTests
 
         Assert.IsNotNull(transcript);
         StringAssert.Contains(transcript, "Let me check.");
-        StringAssert.Contains(transcript, "→ read(...)");
+        StringAssert.Contains(transcript, "→ read({\"file_path\":\"a.cs\"})");
         StringAssert.Contains(transcript, "Done.");
         // user and toolResult feedback must not leak into the transcript
         Assert.IsFalse(transcript.Contains("hi"));
