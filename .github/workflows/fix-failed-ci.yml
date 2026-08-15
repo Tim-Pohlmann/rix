@@ -1,0 +1,258 @@
+name: Rix Fix Failed CI
+
+# Reusable workflow: watch for a failed CI workflow run in the caller's repo and run `rix job`
+# against it, turning the failure into a fix-PR. The caller triggers it from a tiny workflow
+# listening on the `workflow_run` event with `types: [completed]` (see README "Fixing a failed CI
+# run"); because a reusable workflow inherits its caller's `github` context, this workflow reads
+# the failed run's details straight from `github.event.workflow_run` - no input plumbing needed.
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: Target GitHub repo (owner/name)
+        required: true
+        type: string
+      prompt:
+        description: >-
+          Extra task instructions appended to the auto-generated prompt that describes the
+          failed CI run. Omit for a default "fix the failing CI" task.
+        required: false
+        type: string
+      ci-workflows:
+        description: >-
+          Comma-separated list of workflow display names to react to; runs from any other
+          workflow are skipped. The caller's workflow_run.workflows filter usually suffices;
+          this is for callers watching several workflows with one workflow_run trigger.
+          Omit to react to whatever failed run triggered the caller.
+        required: false
+        type: string
+      ignore-branches:
+        description: >-
+          Comma-separated glob patterns of branch names whose runs are skipped (e.g.
+          'rix/*'). Defaults to 'rix/*' so the workflow doesn't re-trigger itself when CI
+          fails on the rix/* PR branches it opens; set to '' to react to every failed run.
+        required: false
+        type: string
+        default: rix/*
+      agent:
+        description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
+        required: false
+        type: string
+        default: opencode
+      model:
+        description: >-
+          Model identifier passed to the agent CLI via --model (e.g. 'openai/gpt-4o' for
+          opencode). Provider-specific; omit to use the agent's own default model (opencode
+          picks a free model on its own, needing no API key).
+        required: false
+        type: string
+      agent-api-key-env:
+        description: >-
+          Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
+          ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_ACCESS_KEY_ID) - whatever the selected
+          provider/model expects. Must end in a credential-shaped suffix (_API_KEY, _TOKEN,
+          _ACCESS_KEY_ID, ...). Omit to use a default based on agent: OPENCODE_API_KEY for
+          opencode, ANTHROPIC_API_KEY for claude. Required for pi whenever agent-api-key is set,
+          since pi has no single default provider to fall back on.
+        required: false
+        type: string
+      rix-version:
+        description: "Rix release tag to download (default: latest)"
+        required: false
+        type: string
+        default: latest
+      max-tokens:
+        description: Coding agent token budget cap
+        required: false
+        type: number
+      timeout:
+        description: Wall-clock timeout in minutes
+        required: false
+        type: number
+      allowed-push-branches:
+        description: >-
+          Comma-separated list of rix/* branches the /push endpoint may deliver to
+          (e.g. 'rix/resume-a,rix/resume-b'). /push rejects every branch until this is set;
+          omit it to disable /push entirely.
+        required: false
+        type: string
+      runner:
+        description: runs-on label for all jobs (e.g. a self-hosted runner label)
+        required: false
+        type: string
+        default: ubuntu-latest
+    secrets:
+      read-token:
+        description: GitHub PAT with read access to the target repo (used to clone)
+        required: true
+      write-token:
+        description: "GitHub PAT with contents:write + pull-requests:write on the target repo"
+        required: true
+      agent-api-key:
+        description: >-
+          API key for the selected coding agent's model provider, exported as the env var named
+          by agent-api-key-env. Optional: leaving model unset lets opencode pick its own free
+          default model, needing no key; set this when picking a specific provider/model.
+        required: false
+
+# The caller must grant at least contents: read (to check out this repo's script) and
+# actions: read (to query the failed run's jobs with gh). Everything else - the agent run and the
+# PR creation - is delegated to job.yml, which passes these same tokens down to its own jobs.
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare fix prompt
+    runs-on: ${{ inputs.runner }}
+    # A reusable workflow inherits its caller's github context, so this sees the workflow_run
+    # event that triggered the caller. Skipped (null-safe) for any other trigger - and, under
+    # workflow_run, for every completed run whose conclusion isn't failure.
+    if: github.event.workflow_run.conclusion == 'failure'
+    outputs:
+      proceed: ${{ steps.decide.outputs.proceed }}
+      prompt: ${{ steps.prompt.outputs.prompt }}
+      repo: ${{ steps.prompt.outputs.repo }}
+    steps:
+      - name: Decide whether to run rix
+        id: decide
+        env:
+          RUN_NAME: ${{ github.event.workflow_run.name }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          CI_WORKFLOWS: ${{ inputs.ci-workflows }}
+          IGNORE_BRANCHES: ${{ inputs.ignore-branches }}
+        shell: bash
+        run: |
+          proceed=true
+
+          # ci-workflows: only react to the workflows the caller listed (when set).
+          if [[ -n "$CI_WORKFLOWS" ]]; then
+            IFS=',' read -r -a listed <<< "$CI_WORKFLOWS"
+            matched=false
+            for wf in "${listed[@]}"; do
+              wf="${wf#"${wf%%[![:space:]]*}"}"
+              wf="${wf%"${wf##*[![:space:]]}"}"
+              if [[ -n "$wf" && "$wf" == "$RUN_NAME" ]]; then
+                matched=true
+                break
+              fi
+            done
+            if [[ "$matched" != "true" ]]; then
+              echo "::notice::Workflow run '$RUN_NAME' is not in ci-workflows ($CI_WORKFLOWS); skipping."
+              proceed=false
+            fi
+          fi
+
+          # ignore-branches: skip runs whose head branch matches a caller-supplied glob, so the
+          # workflow doesn't loop on the rix/* fix-PR branches it opens. The case pattern is
+          # deliberately unquoted: it must expand as a glob, not a literal string.
+          if [[ "$proceed" == "true" && -n "$IGNORE_BRANCHES" ]]; then
+            IFS=',' read -r -a patterns <<< "$IGNORE_BRANCHES"
+            ignored=false
+            for pat in "${patterns[@]}"; do
+              pat="${pat#"${pat%%[![:space:]]*}"}"
+              pat="${pat%"${pat##*[![:space:]]}"}"
+              # An empty entry (e.g. from a trailing comma) would make `case` a syntax error,
+              # so skip it; a literal '*' would match everything, which callers can use to opt
+              # back into reacting to every branch.
+              [[ -z "$pat" ]] && continue
+              # shellcheck disable=SC2254 # $pat is a caller-supplied glob (e.g. 'rix/*'); it must match as a pattern, not a literal
+              case "$RUN_BRANCH" in
+                $pat) ignored=true ;;
+              esac
+            done
+            if [[ "$ignored" == "true" ]]; then
+              echo "::notice::Run on branch '$RUN_BRANCH' matches ignore-branches ($IGNORE_BRANCHES); skipping."
+              proceed=false
+            fi
+          fi
+
+          echo "proceed=$proceed" >> "$GITHUB_OUTPUT"
+
+      # A local `uses: ./...` reference resolves against whatever is checked out at
+      # github.workspace, not against "the reusable workflow's own repo", so this checkout of
+      # the rix repo - pinned to job.workflow_sha, the exact commit of this workflow that's
+      # running - is required before the script step can call build-fix-prompt.sh.
+      - name: Get rix repo (for build-fix-prompt.sh)
+        if: steps.decide.outputs.proceed == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          path: rix-src
+
+      - name: Gather failed jobs and default branch
+        id: jobs
+        if: steps.decide.outputs.proceed == 'true'
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # The failing run is always in the caller's repo (workflow_run only fires for the
+          # caller's own workflows), so query it with the caller's GITHUB_TOKEN. Best-effort:
+          # a failure here (e.g. the run failed before any job was recorded) just leaves the
+          # prompt without a job list rather than aborting the fix.
+          failed="$(gh run view "$RUN_ID" --repo "${{ github.repository }}" --json jobs \
+            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | .name] | join(", ")' \
+            2>/dev/null || true)"
+          # The rix job clone sits on the target repo's default branch; naming it makes the
+          # prompt concrete. Falls back to 'main' when the target repo isn't readable with the
+          # caller's token (e.g. a target repo other than the caller's own).
+          default_branch="$(gh repo view "${{ github.repository }}" --json defaultBranchRef \
+            --jq '.defaultBranchRef.name' 2>/dev/null || echo main)"
+          echo "failed_jobs=$failed" >> "$GITHUB_OUTPUT"
+          echo "default_branch=$default_branch" >> "$GITHUB_OUTPUT"
+          echo "Failed job(s): ${failed:-none recorded}"
+          echo "Default branch: $default_branch"
+
+      - name: Build fix prompt
+        id: prompt
+        if: steps.decide.outputs.proceed == 'true'
+        env:
+          RIX_REPO: ${{ inputs.repo }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_NAME: ${{ github.event.workflow_run.name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEFAULT_BRANCH: ${{ steps.jobs.outputs.default_branch }}
+          FAILED_JOBS: ${{ steps.jobs.outputs.failed_jobs }}
+          CALLER_PROMPT: ${{ inputs.prompt }}
+        shell: bash
+        run: |
+          prompt="$(bash rix-src/.github/scripts/build-fix-prompt.sh)"
+          # GITHUB_OUTPUT's heredoc form keeps multi-line values intact; the delimiter must be
+          # a line on its own, so it and the repo value are written with the value in between.
+          {
+            echo "prompt<<RIX_EOF"
+            printf '%s\n' "$prompt"
+            echo "RIX_EOF"
+            echo "repo=$RIX_REPO"
+          } >> "$GITHUB_OUTPUT"
+
+  # Delegates the actual agent run and PR creation to job.yml, the same production workflow
+  # callers already use, so the failed-CI path reuses the tested run/submit plumbing unchanged.
+  # Skipped (via needs + the proceed output) whenever prepare is skipped or filtered out.
+  job:
+    name: Run rix job
+    needs: prepare
+    if: needs.prepare.outputs.proceed == 'true'
+    uses: ./.github/workflows/job.yml
+    with:
+      repo: ${{ needs.prepare.outputs.repo }}
+      prompt: ${{ needs.prepare.outputs.prompt }}
+      agent: ${{ inputs.agent }}
+      model: ${{ inputs.model }}
+      agent-api-key-env: ${{ inputs.agent-api-key-env }}
+      max-tokens: ${{ inputs.max-tokens }}
+      timeout: ${{ inputs.timeout }}
+      allowed-push-branches: ${{ inputs.allowed-push-branches }}
+      rix-version: ${{ inputs.rix-version }}
+      runner: ${{ inputs.runner }}
+    secrets:
+      read-token: ${{ secrets.read-token }}
+      write-token: ${{ secrets.write-token }}
+      agent-api-key: ${{ secrets.agent-api-key }}

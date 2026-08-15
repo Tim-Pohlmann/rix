@@ -12,8 +12,10 @@ of guessed metadata.
 
 ## Run via GitHub Actions
 
-`rix` ships a reusable workflow (`.github/workflows/job.yml`) that runs the job and opens
-the resulting PRs. Add a small caller workflow to any repo:
+`rix` ships two reusable workflows: `.github/workflows/job.yml` runs a job against any repo
+and opens the resulting PRs, and `.github/workflows/fix-failed-ci.yml` runs a job automatically
+whenever one of your CI workflows fails, turning the failure into a fix-PR. Add a small caller
+workflow to any repo:
 
 ```yaml
 name: rix
@@ -43,6 +45,47 @@ The workflow posts a job summary to the run page after `rix submit`: the job's s
 duration, plus the pull requests that were actually opened (with links). The `run` job posts an
 early summary too, so a failed job still reports its outcome even when the PR-creation job is
 skipped.
+
+### Fixing a failed CI run
+
+Watch one of your CI workflows and run `rix job` on it whenever it fails, with a small
+`workflow_run`-triggered caller workflow:
+
+```yaml
+name: Fix failed CI
+on:
+  workflow_run:
+    workflows: ["CI"]        # the workflow(s) whose failures should be fixed
+    types: [completed]
+permissions:
+  contents: read             # needed to check out rix's own scripts
+  actions: read              # needed to query the failed run's jobs
+jobs:
+  fix:
+    uses: Tim-Pohlmann/rix/.github/workflows/fix-failed-ci.yml@main
+    with:
+      repo: ${{ github.repository }}
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
+```
+
+When a watched workflow fails, the workflow gathers the failed run's details (workflow name,
+branch, commit, and the failing jobs) and bakes them into the prompt it hands the agent, so the
+agent knows exactly which CI run to reproduce and fix. The agent works against a clone of the
+default branch and opens a PR with the fix; nothing runs when the watched workflow succeeds.
+
+Optional inputs beyond `repo`:
+
+- `prompt` — extra task instructions appended to the auto-generated prompt (default: none).
+- `ci-workflows` — comma-separated workflow display names to react to; runs from other workflows
+  are skipped. Usually the caller's `workflow_run.workflows` filter suffices; use this when one
+  caller watches several workflows.
+- `ignore-branches` — comma-separated glob patterns of branch names whose runs are skipped
+  (default: `rix/*`). Prevents the workflow from re-triggering itself when CI fails on the
+  `rix/*` PR branches it opens; set to `''` to react to every failed run.
+- plus the same `agent`, `model`, `agent-api-key-env`, `max-tokens`, `timeout`,
+  `allowed-push-branches`, `rix-version` and `runner` inputs as `job.yml`.
 
 ### Allowing the agent to push (resuming a run)
 
