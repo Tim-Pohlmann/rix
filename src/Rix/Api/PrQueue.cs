@@ -64,13 +64,15 @@ internal sealed class PrQueue
     private static List<QueuedPr>? TryOrder(IReadOnlyList<QueuedPr> items)
     {
         var remaining = items.ToList();
+        var remainingBranches = remaining.Select(item => item.Branch.Value).ToHashSet();
         var ordered = new List<QueuedPr>(remaining.Count);
         while (remaining.Count > 0)
         {
-            var index = remaining.FindIndex(item => !remaining.Any(other => other.Branch.Value == item.BaseBranch.Value));
+            var index = remaining.FindIndex(item => !remainingBranches.Contains(item.BaseBranch.Value));
             if (index < 0)
                 return null;
             ordered.Add(remaining[index]);
+            remainingBranches.Remove(remaining[index].Branch.Value);
             remaining.RemoveAt(index);
         }
         return ordered;
