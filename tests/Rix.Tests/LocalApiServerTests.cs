@@ -214,6 +214,45 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
+    public async Task PostPr_Accepts_PrThatReordersTwoUnrelatedExistingPrs()
+    {
+        // rix/a (based on rix/b) and rix/c (based on rix/d) are unrelated when first queued, so
+        // either order between them is valid. Queuing rix/b based on rix/c then chains them
+        // transitively (c -> b -> a), which requires rix/c to move before rix/a even though
+        // neither of them individually conflicts with rix/b's own bounds - a true topological
+        // reorder, not just an insertion.
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/a",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/b",
+        });
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/c",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/d",
+        });
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/b",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/c",
+        });
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        CollectionAssert.AreEqual(
+            new[] { "rix/c", "rix/b", "rix/a" },
+            server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray());
+    }
+
+    [TestMethod]
     public async Task PostPr_Returns400_WhenBranchNotFoundLocally()
     {
         var host = new StubRepositoryHost(branchExistsLocally: _ => Task.FromResult(false));

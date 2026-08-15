@@ -226,24 +226,17 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 if (_items.Any(item => item.Branch.Value == pr.Branch.Value))
                     return Results.Conflict(new ErrorResponse($"Branch {pr.Branch.Value} is already queued."));
 
-                // _items is always kept in a valid dependency order, so pr only needs to slot in
-                // relative to its direct base (if queued) and its direct dependents (if any are
-                // already queued) - no need to re-derive the whole order from scratch. Branch names
-                // are unique (checked above), so at most one item can be pr's base; inserting right
-                // before the earliest dependent keeps every dependent after pr, since they're
-                // already ordered among themselves.
-                //
-                // These two lookups can't be merged into a single scan: base and dependent are
-                // unrelated to each other, so they can appear in either order within _items, and a
-                // running bound updated mid-scan could go stale before it's checked.
-                var afterBase = _items.FindIndex(item => item.Branch.Value == pr.BaseBranch.Value);
-                var beforeDependent = _items.FindIndex(item => item.BaseBranch.Value == pr.Branch.Value);
+                // pr can create a transitive dependency between two already-queued items that were
+                // previously unrelated (e.g. pr's base is one item and another item depends on pr),
+                // which can require reordering those existing items relative to each other - not
+                // just placing pr among them. So the whole order has to be re-derived from all the
+                // constraints together, rather than only checking pr's own immediate bounds.
+                var ordered = PrDependencyOrder.TryOrder
+                (
+                    [.. _items, pr], item => item.Branch.Value, item => item.BaseBranch.Value
+                );
 
-                var insertAt = _items.Count;
-                if (beforeDependent >= 0)
-                    insertAt = beforeDependent;
-
-                if (insertAt < afterBase + 1)
+                if (ordered is null)
                 {
                     return Results.BadRequest
                     (
@@ -251,7 +244,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
                     );
                 }
 
-                _items.Insert(insertAt, pr);
+                _items.Clear();
+                _items.AddRange(ordered);
                 return Results.Ok(new QueuedResponse("queued"));
             }
         }
