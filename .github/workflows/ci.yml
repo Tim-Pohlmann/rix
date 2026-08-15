@@ -170,17 +170,19 @@ jobs:
       - name: Setup Node (rix installs the coding agent CLI via npm)
         uses: actions/setup-node@v4
         with:
-          # rix installs pi-coding-agent via a bare, unversioned `npm install -g`. Every release
-          # since 0.75.0 declares "engines": { "node": ">=22.19.0" } (0.74.2 is the last one that
-          # doesn't); under Node 20, npm normally resolves that install to the newest
-          # engine-compatible version, but that resolution isn't guaranteed - a stale/partial
-          # registry response can slip past the engines filter and pick a >=22.19.0-only release,
-          # which then crashes on startup with "webidl.util.markAsUncloneable is not a function"
-          # (undici touching a worker_threads API Node 20 doesn't have). Running Node >=22.19.0
-          # here removes the split: every published pi version satisfies that Node version, so
-          # which one npm resolves to no longer matters. A floating '22' doesn't guarantee that
-          # minimum patch if the runner's toolcache lags - pin the patch explicitly. Keep in step
-          # with run-rix-job/action.yml's same requirement.
+          # rix installs @earendil-works/pi-coding-agent via a bare, unversioned `npm install -g`,
+          # which always installs whatever the `latest` dist-tag points to - npm does not filter
+          # by `engines` for a global install. Every release since 0.75.0 declares
+          # "engines": { "node": ">=22.19.0" } (0.74.2 is the last one that doesn't), so under
+          # Node 20 this deterministically installs an incompatible `latest` and crashes on
+          # startup with "webidl.util.markAsUncloneable is not a function" (undici touching a
+          # worker_threads API Node 20 doesn't have) - not an occasional flake. (The maintainers
+          # do publish a separate `legacy-node20` dist-tag pinned to 0.74.2, but rix's bare
+          # install doesn't request it.) Running Node >=22.19.0 here removes the problem entirely:
+          # every published pi version satisfies that Node version, so whatever `latest` resolves
+          # to no longer matters. A floating '22' doesn't guarantee that minimum patch if the
+          # runner's toolcache lags - pin the patch explicitly. Keep in step with
+          # run-rix-job/action.yml's same requirement.
           node-version: '22.19.0'
 
       - name: Download rix binary
