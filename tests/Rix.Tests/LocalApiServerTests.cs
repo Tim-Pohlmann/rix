@@ -10,6 +10,10 @@ public class LocalApiServerTests
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
+    private static readonly string[] JustRixA = ["rix/a"];
+    private static readonly string[] BaseThenStacked = ["rix/base", "rix/stacked"];
+    private static readonly string[] ReorderedCbA = ["rix/c", "rix/b", "rix/a"];
+
     private static StubRepositoryHost FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
 
     private static Task<HttpResponseMessage> DeleteAsJsonAsync(HttpClient client, Uri uri, object body)
@@ -180,7 +184,7 @@ public class LocalApiServerTests
         StringAssert.Contains(result["error"], "rix/b");
         StringAssert.Contains(result["error"], "cyclic");
         CollectionAssert.AreEqual(
-            new[] { "rix/a" }, server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray());
+            JustRixA, server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray());
     }
 
     [TestMethod]
@@ -209,7 +213,7 @@ public class LocalApiServerTests
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         CollectionAssert.AreEqual(
-            new[] { "rix/base", "rix/stacked" },
+            BaseThenStacked,
             server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray());
     }
 
@@ -248,7 +252,7 @@ public class LocalApiServerTests
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         CollectionAssert.AreEqual(
-            new[] { "rix/c", "rix/b", "rix/a" },
+            ReorderedCbA,
             server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray());
     }
 
