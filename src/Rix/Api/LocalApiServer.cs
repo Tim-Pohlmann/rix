@@ -89,7 +89,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests.TryRemove));
         app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct));
         app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()));
-        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, branch => RemoveFromDictionary(pendingPushRequests, "push", branch)));
+        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, branch => RemoveFromDictionary(pendingPushRequests, branch)));
     }
 
     private static async Task<IResult> HandlePrAsync
@@ -197,11 +197,11 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
     // A well-formed branch with nothing queued is a 404 so the agent learns its cancel was a no-op
     // rather than assuming it took.
-    private static IResult RemoveFromDictionary<T>(ConcurrentDictionary<string, T> pendingRequests, string kind, RixBranchName branch)
+    private static IResult RemoveFromDictionary(ConcurrentDictionary<string, QueuedPush> pendingRequests, RixBranchName branch)
     {
         if (pendingRequests.TryRemove(branch.Value, out _))
             return Results.Ok(new QueuedResponse("deleted"));
-        return Results.NotFound(new ErrorResponse($"No queued {kind} for branch {branch.Value}."));
+        return Results.NotFound(new ErrorResponse($"No queued push for branch {branch.Value}."));
     }
 
     public async ValueTask DisposeAsync()
