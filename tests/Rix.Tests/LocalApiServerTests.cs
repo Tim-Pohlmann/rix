@@ -10,6 +10,10 @@ public class LocalApiServerTests
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
+    private static readonly string[] JustRixA = ["rix/a"];
+    private static readonly string[] BaseThenStacked = ["rix/base", "rix/stacked"];
+    private static readonly string[] ReorderedCbA = ["rix/c", "rix/b", "rix/a"];
+
     private static StubRepositoryHost FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
 
     private static Task<HttpResponseMessage> DeleteAsJsonAsync(HttpClient client, Uri uri, object body)
@@ -148,6 +152,108 @@ public class LocalApiServerTests
         StringAssert.Contains(result["error"], "rix/feat");
         StringAssert.Contains(result["error"], "already queued");
         Assert.AreEqual(1, server.GetQueuedPrRequests().Count);
+    }
+
+    [TestMethod]
+    public async Task PostPr_Returns400_WhenQueuingWouldCreateCyclicBaseBranchDependency()
+    {
+        // Submission opens PRs base-first, so a cycle among queued PRs' base branches (here:
+        // rix/a based on rix/b, and rix/b based on rix/a) can never be submitted — reject it at
+        // queue time rather than letting the agent's session end before the problem surfaces.
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/a",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/b",
+        });
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/b",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/a",
+        });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "rix/b");
+        StringAssert.Contains(result["error"], "cyclic");
+        CollectionAssert.AreEqual(
+            JustRixA, server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray());
+    }
+
+    [TestMethod]
+    public async Task PostPr_Accepts_NonCyclicStackedPr_AndReturnsQueueInDependencyOrder()
+    {
+        // rix/stacked is queued before its own base branch rix/base — submission needs the queue
+        // in base-first order regardless of the order PRs were queued in, so GetQueuedPrRequests()
+        // must reflect the corrected order, not insertion order.
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/stacked",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/base",
+        });
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/base",
+            title = "Title",
+            body = "body",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        CollectionAssert.AreEqual(
+            BaseThenStacked,
+            server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray());
+    }
+
+    [TestMethod]
+    public async Task PostPr_Accepts_PrThatReordersTwoUnrelatedExistingPrs()
+    {
+        // rix/a (based on rix/b) and rix/c (based on rix/d) are unrelated when first queued, so
+        // either order between them is valid. Queuing rix/b based on rix/c then chains them
+        // transitively (c -> b -> a), which requires rix/c to move before rix/a even though
+        // neither of them individually conflicts with rix/b's own bounds - a true topological
+        // reorder, not just an insertion.
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/a",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/b",
+        });
+        await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/c",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/d",
+        });
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/b",
+            title = "Title",
+            body = "body",
+            baseBranch = "rix/c",
+        });
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        CollectionAssert.AreEqual(
+            ReorderedCbA,
+            server.GetQueuedPrRequests().Select(pr => pr.Branch.Value).ToArray());
     }
 
     [TestMethod]

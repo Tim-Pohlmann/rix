@@ -54,6 +54,9 @@ internal static class SubmitRunner
 
         var created = new List<CreatedPr>();
         var pushed = new List<string>();
+        // result.json's PendingPrRequests is written from LocalApiServer's PrQueue, which only ever
+        // accepts a PR if it keeps the whole queue in a valid base-branch dependency order — so
+        // this is already base-first, no reordering needed here.
         foreach (var pr in success.PendingPrRequests)
         {
             switch (await SubmitPrAsync(config, context, cloneDir.Path, pr, cancellationToken))
