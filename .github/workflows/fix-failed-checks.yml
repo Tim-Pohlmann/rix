@@ -1,0 +1,195 @@
+name: Fix Failed PR Checks
+
+# Reusable workflow: runs a `rix job` that fixes the failing checks on an open pull request by
+# pushing the fixes onto the PR's own branch via rix's /push endpoint. Pair it with a tiny caller
+# workflow that triggers on failed checks (e.g. a workflow_run/check_suite completing with
+# conclusion 'failure') and passes the PR's head branch - which must be a well-formed rix/* branch,
+# since rix's /push endpoint only ever accepts rix/* branches (see src/Rix/BranchName.cs). Without
+# this allow-list the fix could never land on the existing PR at all, so only rix-owned PRs can be
+# fixed this way; the prepare job fails with a clear error on any other branch.
+#
+# This wraps job.yml rather than duplicating it: the prepare job validates the head branch and
+# builds a prompt telling the agent to diagnose the failed checks and deliver the fixes via /push,
+# then everything else (repo, agent, model, tokens, ...) is forwarded straight through to job.yml
+# with allowed-push-branches set to the PR's own head branch.
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: Target GitHub repo (owner/name)
+        required: true
+        type: string
+      pr-number:
+        description: Number of the pull request whose checks failed
+        required: true
+        type: string
+      base-branch:
+        description: Base branch the PR targets; used as the agent's /push baseBranch
+        required: true
+        type: string
+      head-branch:
+        description: >-
+          Head branch of the PR to push the fixes onto. Must be a well-formed rix/* branch - rix's
+          /push endpoint rejects every other name, so only rix-owned PRs can be fixed this way.
+        required: true
+        type: string
+      prompt:
+        description: >-
+          Task prompt for the coding agent. Defaults to a prompt describing the failed PR and
+          instructing the agent to diagnose the failures and push the fixes onto the PR's head
+          branch via /push.
+        required: false
+        type: string
+      check-name:
+        description: Name of the failed check to call out in the default prompt (ignored when prompt is set)
+        required: false
+        type: string
+      agent:
+        description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
+        required: false
+        type: string
+        default: opencode
+      model:
+        description: >-
+          Model identifier passed to the agent CLI via --model (e.g. 'openai/gpt-4o' for
+          opencode). Provider-specific; omit to use the agent's own default model (opencode
+          picks a free model on its own, needing no API key).
+        required: false
+        type: string
+      agent-api-key-env:
+        description: >-
+          Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
+          ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_ACCESS_KEY_ID) - whatever the selected
+          provider/model expects. Omit to use a default based on agent: OPENCODE_API_KEY for
+          opencode, ANTHROPIC_API_KEY for claude. Required for pi whenever agent-api-key is set.
+        required: false
+        type: string
+      rix-version:
+        description: "Rix release tag to download (default: latest)"
+        required: false
+        type: string
+        default: latest
+      max-tokens:
+        description: Coding agent token budget cap
+        required: false
+        type: number
+      timeout:
+        description: Wall-clock timeout in minutes
+        required: false
+        type: number
+      runner:
+        description: runs-on label for all jobs (e.g. a self-hosted runner label)
+        required: false
+        type: string
+        default: ubuntu-latest
+    secrets:
+      read-token:
+        description: GitHub PAT with read access to the target repo (used to clone)
+        required: true
+      write-token:
+        description: "GitHub PAT with contents:write + pull-requests:write on the target repo"
+        required: true
+      agent-api-key:
+        description: >-
+          API key for the selected coding agent's model provider, exported as the env var named
+          by agent-api-key-env. Optional: leaving model unset lets opencode pick its own free
+          default model, needing no key.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare fix job
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      prompt: ${{ steps.build.outputs.prompt }}
+      push-branches: ${{ steps.build.outputs.push-branches }}
+    steps:
+      # Pure validation/prompt-building - no checkout, no network, so it needs no token and is
+      # cheap enough to run even when the fix itself turns out to be unnecessary. The push
+      # allow-list and the prompt are both emitted here so the fix job consumes a single source
+      # of truth rather than re-deriving the branch from inputs in two places.
+      - name: Build prompt and validate push branch
+        id: build
+        shell: bash
+        env:
+          INPUT_REPO: ${{ inputs.repo }}
+          INPUT_PR: ${{ inputs.pr-number }}
+          INPUT_BASE: ${{ inputs.base-branch }}
+          INPUT_HEAD: ${{ inputs.head-branch }}
+          INPUT_PROMPT: ${{ inputs.prompt }}
+          INPUT_CHECK: ${{ inputs.check-name }}
+        run: |
+          set -euo pipefail
+
+          # A caller might hand over the branch with a refs/heads/ prefix (e.g. from a ref
+          # context rather than an event's head.ref); normalize it to the bare name rix's
+          # allow-list and the prompt both expect.
+          INPUT_HEAD="${INPUT_HEAD#refs/heads/}"
+
+          # RixBranchName only accepts rix/* branches; anything else would be rejected by /push
+          # with a 403 and the agent would have no way to deliver its fixes. Fail early with a
+          # message that names the constraint instead of letting the job fail downstream.
+          if [[ ! "$INPUT_HEAD" =~ ^rix/.+$ ]]; then
+            echo "::error::head-branch must be a well-formed rix/* branch (got: '$INPUT_HEAD') - rix's /push endpoint only accepts rix/* branches, so the failing PR must be a rix-owned one for its checks to be fixed by pushing to it." >&2
+            exit 1
+          fi
+
+          if [[ -n "$INPUT_PROMPT" ]]; then
+            prompt="$INPUT_PROMPT"
+          else
+            prompt="$(cat <<EOF
+          Fix the failing checks on pull request #${INPUT_PR} in ${INPUT_REPO}.
+
+          The pull request's head branch is '${INPUT_HEAD}' and it targets base branch '${INPUT_BASE}'.
+          Inspect the failed checks on the pull request, diagnose each failure, and fix the root cause in
+          the code.
+
+          The fixes must land on the existing pull request, not on a new one: check out branch
+          '${INPUT_HEAD}' (git checkout ${INPUT_HEAD}), commit your fixes there, and deliver them by
+          pushing that branch via the /push endpoint (POST /push with JSON body
+          {"branch":"${INPUT_HEAD}","baseBranch":"${INPUT_BASE}"}).
+
+          Do not open a new pull request via /pr.
+
+          If the pull request's checks are already passing or a failure cannot be reproduced, make no
+          changes and report that instead.
+          EOF
+          )"
+            if [[ -n "$INPUT_CHECK" ]]; then
+              prompt="$(printf '%s\n\n%s' "$prompt" "The failing check is: $INPUT_CHECK")"
+            fi
+          fi
+
+          # Write the prompt via a heredoc delimiter so a multi-line prompt (or one containing
+          # quote/newline characters, e.g. from a caller-supplied custom prompt) survives
+          # GITHUB_OUTPUT intact.
+          delim="rix_prompt_$(date +%s%N)"
+          echo "prompt<<${delim}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$prompt" >> "$GITHUB_OUTPUT"
+          echo "$delim" >> "$GITHUB_OUTPUT"
+          echo "push-branches=${INPUT_HEAD}" >> "$GITHUB_OUTPUT"
+
+  fix:
+    name: Fix PR #${{ inputs.pr-number }}
+    needs: prepare
+    uses: ./.github/workflows/job.yml
+    with:
+      repo: ${{ inputs.repo }}
+      prompt: ${{ needs.prepare.outputs.prompt }}
+      # The only branch the agent may push onto is the PR's own head branch - emitted (and
+      # validated) by the prepare job, so the allow-list can never drift from the prompt.
+      allowed-push-branches: ${{ needs.prepare.outputs.push-branches }}
+      agent: ${{ inputs.agent }}
+      model: ${{ inputs.model }}
+      agent-api-key-env: ${{ inputs.agent-api-key-env }}
+      rix-version: ${{ inputs.rix-version }}
+      max-tokens: ${{ inputs.max-tokens }}
+      timeout: ${{ inputs.timeout }}
+      runner: ${{ inputs.runner }}
+    secrets:
+      read-token: ${{ secrets.read-token }}
+      write-token: ${{ secrets.write-token }}
+      agent-api-key: ${{ secrets.agent-api-key }}

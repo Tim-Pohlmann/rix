@@ -64,6 +64,52 @@ with a 403, and the agent is told the allow-list in its system prompt. The input
 as `--allowed-push-branches` (env `RIX_ALLOWED_PUSH_BRANCHES`); each entry must be a well-formed
 `rix/*` branch name.
 
+### Fixing failed checks on an open PR
+
+`rix` also ships a reusable workflow (`.github/workflows/fix-failed-checks.yml`) that runs a
+`rix job` to fix the failing checks on an open PR by pushing the fixes onto the PR's own branch.
+Pair it with a workflow that triggers on failed checks — e.g. a `workflow_run` on your CI
+completing with `conclusion: failure` — and pass the PR's head branch:
+
+```yaml
+name: fix-failed-checks
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+jobs:
+  fix:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    uses: Tim-Pohlmann/rix/.github/workflows/fix-failed-checks.yml@main
+    with:
+      repo: ${{ github.repository }}
+      pr-number: ${{ github.event.workflow_run.pull_requests[0].number }}
+      base-branch: ${{ github.event.workflow_run.pull_requests[0].base.ref }}
+      head-branch: ${{ github.event.workflow_run.pull_requests[0].head.ref }}
+      # check-name: lint   # optional; named in the default prompt
+      # prompt: ...        # optional; replace the default task prompt entirely
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
+```
+
+The workflow validates that `head-branch` is a well-formed `rix/*` branch (rix's `/push` endpoint
+only accepts `rix/*` branches, so only rix-owned PRs can be fixed by pushing onto them), builds a
+prompt telling the agent to diagnose the failed checks and push the fixes onto the PR's branch, and
+then runs `job.yml` with `allowed-push-branches` set to that branch. Pass `check-name` to call out
+a specific failed check in the default prompt, or a full `prompt` to replace the task entirely; all
+other `job.yml` inputs (`agent`, `model`, `agent-api-key-env`, `rix-version`, `max-tokens`,
+`timeout`, `runner`) pass through unchanged.
+
+Two things to keep in mind in the caller:
+
+- The `workflow_run` event's `pull_requests` array is only populated when the triggering run was
+  itself started by `pull_request` activity, so trigger your CI workflow on `pull_request` events.
+- Two overlapping fix runs on the same PR would both try to push to the same branch. Give the
+  caller workflow a `concurrency` group keyed on the PR number so a second fix job doesn't start
+  while the first is still running.
+
 ### Using a different provider or model
 
 opencode supports many model providers beyond the free default. Pick a model with the
