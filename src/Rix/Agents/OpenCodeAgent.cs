@@ -106,9 +106,25 @@ internal sealed class OpenCodeAgent : ICodingAgent
             case "text" when part.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String:
                 return text.GetString();
             case "tool_use" when part.TryGetProperty("tool", out var tool) && tool.ValueKind == JsonValueKind.String:
-                return TranscriptLine.FormatToolCall(tool.GetString()!);
+                return TranscriptLine.FormatToolCall(tool.GetString()!, ReadToolInput(part));
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// Reads the arguments a tool_use event invoked its tool with. OpenCode nests them as
+    /// <c>part.state.input</c> (the <c>state</c> also carries the tool's status/output, which the
+    /// transcript deliberately drops); yields <c>null</c> for malformed or input-less events.
+    /// </summary>
+    private static JsonElement? ReadToolInput(JsonElement part)
+    {
+        if
+        (
+            part.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.Object &&
+            state.TryGetProperty("input", out var input)
+        )
+            return input;
+        return null;
     }
 }

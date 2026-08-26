@@ -76,7 +76,7 @@ internal sealed class ClaudeAgent : ICodingAgent
             root.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.Object &&
             message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
         )
-            return TranscriptLine.JoinContentBlocks(content, "tool_use");
+            return TranscriptLine.JoinContentBlocks(content, "tool_use", "input");
 
         return null;
     }

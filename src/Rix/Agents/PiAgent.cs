@@ -102,7 +102,7 @@ internal sealed class PiAgent : ICodingAgent
             message.TryGetProperty("role", out var role) && role.ValueKind == JsonValueKind.String && role.GetString() == "assistant" &&
             message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
         )
-            return TranscriptLine.JoinContentBlocks(content, "toolCall");
+            return TranscriptLine.JoinContentBlocks(content, "toolCall", "arguments");
         return null;
     }
 }
