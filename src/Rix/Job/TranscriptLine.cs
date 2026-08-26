@@ -27,7 +27,7 @@ internal static class TranscriptLine
         {
             var args = JsonSerializer.Serialize(element);
             if (args.Length > MaxToolInputLength)
-                args = args[..MaxToolInputLength] + "…";
+                args = args[..(MaxToolInputLength - 1)] + "…";
             return $"→ {name}({args})";
         }
         return $"→ {name}(...)";
