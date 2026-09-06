@@ -17,6 +17,8 @@ public class JobConfigTests
         string? outputDir = null,
         string? agent = null,
         string? model = null,
+        string? agentApiKey = null,
+        string? agentApiKeyEnv = null,
         string? allowedPushBranches = null)
     => JobConfig.Create(new JobInputs
     (
@@ -29,6 +31,8 @@ public class JobConfigTests
         OutputDir: outputDir ?? ExistingDir,
         Agent: agent,
         Model: model,
+        AgentApiKey: agentApiKey,
+        AgentApiKeyEnv: agentApiKeyEnv,
         AllowedPushBranches: allowedPushBranches
     ));
 
@@ -275,5 +279,57 @@ public class JobConfigTests
         var errors = Errors(Create(allowedPushBranches: "main"));
 
         Assert.IsTrue(errors.Any(e => e.Contains("--allowed-push-branches")), $"expected an allowed-push-branches error, got: {string.Join("; ", errors)}");
+    }
+
+    [TestMethod]
+    public void Create_LeavesApiKeyAndEnvNull_WhenNoKeySupplied()
+    {
+        var config = Valid(Create(agentApiKeyEnv: "ANTHROPIC_API_KEY"));
+
+        Assert.IsNull(config.Agent.ApiKey);
+        Assert.IsNull(config.Agent.ApiKeyEnv);
+    }
+
+    [TestMethod]
+    public void Create_DefaultsApiKeyEnv_PerAgent_WhenKeySuppliedWithoutOverride()
+    {
+        Assert.AreEqual("OPENCODE_API_KEY", Valid(Create(agent: "opencode", agentApiKey: "secret")).Agent.ApiKeyEnv);
+        Assert.AreEqual("ANTHROPIC_API_KEY", Valid(Create(agent: "claude", agentApiKey: "secret")).Agent.ApiKeyEnv);
+    }
+
+    [TestMethod]
+    public void Create_UsesExplicitApiKeyEnv_WhenValid()
+    {
+        var config = Valid(Create(agent: "opencode", agentApiKey: "secret", agentApiKeyEnv: "OPENAI_API_KEY"));
+
+        Assert.AreEqual("secret", config.Agent.ApiKey);
+        Assert.AreEqual("OPENAI_API_KEY", config.Agent.ApiKeyEnv);
+    }
+
+    [TestMethod]
+    public void Create_RejectsPiAgent_WithApiKey_AndNoEnvOverride()
+    {
+        var errors = Errors(Create(agent: "pi", agentApiKey: "secret"));
+
+        Assert.IsTrue(errors.Any(e => e.Contains("--agent-api-key-env") && e.Contains("pi")), $"expected a pi-requires-env error, got: {string.Join("; ", errors)}");
+    }
+
+    [TestMethod]
+    public void Create_RejectsApiKeyEnv_ThatIsNotCredentialShaped()
+    {
+        var errors = Errors(Create(agentApiKey: "secret", agentApiKeyEnv: "NOT_A_CREDENTIAL"));
+
+        Assert.IsTrue(errors.Any(e => e.Contains("--agent-api-key-env")), $"expected an agent-api-key-env error, got: {string.Join("; ", errors)}");
+    }
+
+    [TestMethod]
+    [DataRow("RIX_AGENT")]
+    [DataRow("AGENT_API_KEY_EXTRA")]
+    [DataRow("GITHUB_TOKEN")]
+    public void Create_RejectsApiKeyEnv_ThatNamesARixOrGitHubRuntimeVariable(string envName)
+    {
+        var errors = Errors(Create(agentApiKey: "secret", agentApiKeyEnv: envName));
+
+        Assert.IsTrue(errors.Any(e => e.Contains("--agent-api-key-env")), $"expected an agent-api-key-env error, got: {string.Join("; ", errors)}");
     }
 }
