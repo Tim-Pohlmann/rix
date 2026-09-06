@@ -1,0 +1,76 @@
+name: Resolve agent credential env var
+description: >-
+  Decides and validates which environment variable name agent-api-key should be exported as,
+  shared by run-rix-job and run-ci-failure-job so this logic lives in one place instead of two
+  copies. Outputs only the variable NAME, never the secret value itself — a composite action's
+  outputs land in the run log, which is not an appropriate place for a secret (unlike inputs,
+  which stay out of it).
+
+inputs:
+  agent:
+    description: "Coding agent being run: 'opencode', 'claude', or 'pi'"
+    required: false
+  agent-api-key:
+    description: >-
+      The agent-api-key value itself, used only to test whether a key was supplied at all (e.g.
+      pi requires agent-api-key-env whenever a key is set) — never written to $GITHUB_OUTPUT or
+      logged.
+    required: false
+  agent-api-key-env:
+    description: Caller-supplied override env var name; if set, only validated and passed through
+    required: false
+
+outputs:
+  key-env:
+    description: >-
+      The environment variable name to export agent-api-key as, or empty when agent-api-key
+      wasn't supplied at all (nothing to export).
+    value: ${{ steps.resolve.outputs.key-env }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve
+      id: resolve
+      env:
+        AGENT_API_KEY: ${{ inputs.agent-api-key }}
+        AGENT_API_KEY_ENV: ${{ inputs.agent-api-key-env }}
+        RIX_AGENT: ${{ inputs.agent }}
+      shell: bash
+      run: |
+        # No key supplied at all - nothing to resolve (e.g. opencode's free default model).
+        if [ -z "$AGENT_API_KEY" ]; then
+          exit 0
+        fi
+
+        key_env="$AGENT_API_KEY_ENV"
+        if [ -z "$key_env" ]; then
+          # Caller didn't say which env var to use - default based on agent, since opencode
+          # and claude expect different credentials. Normalize case/whitespace the same way
+          # rix's own AgentKindParser does, so e.g. "Claude" still matches.
+          agent_normalized=$(printf '%s' "$RIX_AGENT" | tr '[:upper:]' '[:lower:]' | xargs)
+          case "$agent_normalized" in
+            claude) key_env=ANTHROPIC_API_KEY ;;
+            pi)
+              # pi is multi-provider with no single default credential, unlike opencode's own
+              # free-model provider — the caller must say which env var to use.
+              echo "::error::agent-api-key-env is required when agent=pi and agent-api-key is set" >&2
+              exit 1
+              ;;
+            *) key_env=OPENCODE_API_KEY ;;
+          esac
+        fi
+
+        # Restrict to credential-shaped suffixes covering opencode's supported providers
+        # (ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, GOOGLE_APPLICATION_CREDENTIALS,
+        # SNOWFLAKE_CORTEX_TOKEN, ...), rather than deny-listing every internal/runtime variable
+        # a caller could otherwise clobber. A couple of the allowed suffixes (e.g. _TOKEN) would
+        # otherwise overlap with vars the calling step relies on, so also block
+        # RIX_*/AGENT_API_KEY* (rix's own runtime vars) and GITHUB_* (GITHUB_TOKEN etc) by name.
+        if [[ "$key_env" =~ ^(RIX_|AGENT_API_KEY|GITHUB_) ]] \
+          || ! [[ "$key_env" =~ ^[A-Z][A-Z0-9_]*_(API_KEY|TOKEN|KEY_ID|ACCESS_KEY|CREDENTIALS|PROFILE|ACCOUNT|PROJECT|PAT|ARN|RESOURCE_NAME)$ ]]; then
+          echo "::error::agent-api-key-env '$key_env' must be a credential-shaped environment variable name (e.g. *_API_KEY, *_TOKEN, *_ACCESS_KEY_ID) and not one of rix's own runtime variables" >&2
+          exit 1
+        fi
+
+        echo "key-env=$key_env" >> "$GITHUB_OUTPUT"

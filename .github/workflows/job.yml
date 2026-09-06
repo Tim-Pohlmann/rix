@@ -17,7 +17,6 @@ on:
         description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
         required: false
         type: string
-        default: opencode
       model:
         description: >-
           Model identifier passed to the agent CLI via --model (e.g. 'openai/gpt-4o' for
@@ -36,10 +35,9 @@ on:
         required: false
         type: string
       rix-version:
-        description: "Rix release tag to download (default: latest)"
+        description: "Rix release tag to download, or 'latest'"
         required: false
         type: string
-        default: latest
       max-tokens:
         description: Coding agent token budget cap
         required: false
@@ -73,12 +71,6 @@ on:
           by agent-api-key-env. Optional: leaving model unset lets opencode pick its own free
           default model, needing no key; set this when picking a specific provider/model.
         required: false
-
-# Default repo to download the rix release binary from - passed to the composite actions as
-# repo-slug, independent of job.workflow_repository (which locates *this* job.yml's own source,
-# not necessarily where releases are published).
-env:
-  RIX_REPO_SLUG: Tim-Pohlmann/rix
 
 # Both jobs only need read access via GITHUB_TOKEN (the sparse-checkout of the public rix repo).
 # All writes to the target repo go through the write-token PAT, never GITHUB_TOKEN — so deny it
@@ -124,7 +116,6 @@ jobs:
           timeout: ${{ inputs.timeout }}
           allowed-push-branches: ${{ inputs.allowed-push-branches }}
           rix-version: ${{ inputs.rix-version }}
-          repo-slug: ${{ env.RIX_REPO_SLUG }}
 
       - name: Upload job output
         uses: actions/upload-artifact@v4
@@ -159,4 +150,3 @@ jobs:
           write-token: ${{ secrets.write-token }}
           input-dir: out
           rix-version: ${{ inputs.rix-version }}
-          repo-slug: ${{ env.RIX_REPO_SLUG }}
