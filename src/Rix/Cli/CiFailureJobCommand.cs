@@ -1,38 +1,21 @@
-using Rix.Job;
+using Rix.CiFailure;
 using System.CommandLine;
 
 namespace Rix.Cli;
 
-internal static class JobCommand
+internal static class CiFailureJobCommand
 {
-    private static readonly Option<string> RepoOption = new
-    (
-        name: "--repo",
-        description: "Full GitHub repo identifier (owner/repo)"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> PromptOption = new
-    (
-        name: "--prompt",
-        description: "Task prompt passed to the coding agent"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> ReadTokenOption = new
-    (
-        name: "--read-token",
-        description: "GitHub PAT with read-only repo access"
-    )
-    { IsRequired = false };
-
-    internal static Command Build(Func<JobConfig, Task<int>> handler)
+    internal static Command Build(Func<CiFailureJobConfig, Task<int>> handler)
     {
-        var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
+        var command = new Command
+        (
+            "ci-failure-job",
+            "Check whether a workflow run failed and, if so, run a coding agent against the failure"
+        );
 
-        command.AddOption(RepoOption);
-        command.AddOption(PromptOption);
-        command.AddOption(ReadTokenOption);
+        command.AddOption(CiFailureOptions.RepoOption);
+        command.AddOption(CiFailureOptions.RunIdOption);
+        command.AddOption(CiFailureOptions.ReadTokenOption);
         command.AddOption(JobOptions.MaxTokensOption);
         command.AddOption(JobOptions.TimeoutOption);
         command.AddOption(JobOptions.WorkDirOption);
@@ -41,18 +24,17 @@ internal static class JobCommand
         command.AddOption(JobOptions.ModelOption);
         command.AddOption(JobOptions.AgentApiKeyOption);
         command.AddOption(JobOptions.AgentApiKeyEnvOption);
-        command.AddOption(JobOptions.AllowedPushBranchesOption);
 
         command.SetHandler
         (
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var inputs = new JobInputs
+                var inputs = new CiFailureJobInputs
                 (
-                    Repo:           parsed.Str(RepoOption,      "RIX_REPO"),
-                    Prompt:         parsed.Str(PromptOption,    "RIX_PROMPT"),
-                    ReadToken:      parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"),
+                    Repo:           parsed.Str(CiFailureOptions.RepoOption,      "RIX_REPO"),
+                    ReadToken:      parsed.Str(CiFailureOptions.ReadTokenOption, "RIX_READ_TOKEN"),
+                    RunId:          parsed.Str(CiFailureOptions.RunIdOption,     "RIX_RUN_ID"),
                     MaxTokens:      parsed.Str(JobOptions.MaxTokensOption, "RIX_MAX_TOKENS"),
                     TimeoutMinutes: parsed.Str(JobOptions.TimeoutOption,   "RIX_TIMEOUT"),
                     WorkDir:        parsed.Str(JobOptions.WorkDirOption,   "RIX_WORK_DIR"),
@@ -60,17 +42,16 @@ internal static class JobCommand
                     Agent:          parsed.Str(JobOptions.AgentOption,     "RIX_AGENT"),
                     Model:          parsed.Str(JobOptions.ModelOption,     "RIX_MODEL"),
                     AgentApiKey:    parsed.Str(JobOptions.AgentApiKeyOption,    "AGENT_API_KEY"),
-                    AgentApiKeyEnv: parsed.Str(JobOptions.AgentApiKeyEnvOption, "AGENT_API_KEY_ENV"),
-                    AllowedPushBranches: parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES")
+                    AgentApiKeyEnv: parsed.Str(JobOptions.AgentApiKeyEnvOption, "AGENT_API_KEY_ENV")
                 );
-                var result = JobConfig.Create(inputs);
+                var result = CiFailureJobConfig.Create(inputs);
 
                 switch (result)
                 {
-                    case JobConfigValid valid:
+                    case CiFailureJobConfigValid valid:
                         ctx.ExitCode = await handler(valid.Config);
                         break;
-                    case JobConfigInvalid invalid:
+                    case CiFailureJobConfigInvalid invalid:
                         foreach (var error in invalid.Errors)
                             Console.Error.WriteLine($"error: {error}");
                         ctx.ExitCode = ExitCodes.SetupFailed;

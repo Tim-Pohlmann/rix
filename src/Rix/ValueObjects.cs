@@ -35,6 +35,11 @@ internal sealed record RepoIdentifier
         return new ParseSuccess<RepoIdentifier>(new RepoIdentifier(value));
     }
 
+    /// <summary>The <c>owner</c> segment, needed to scope a pull-request lookup to same-repo
+    /// branches: GitHub's <c>/pulls?head=</c> filter matches <c>owner:branch</c>, not branch name
+    /// alone.</summary>
+    internal string Owner => Value[..Value.IndexOf('/')];
+
     public override string ToString() => Value;
 }
 

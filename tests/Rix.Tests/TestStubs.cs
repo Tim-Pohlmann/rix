@@ -1,9 +1,25 @@
 using Rix.Agents;
+using Rix.CiFailure;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
 
 namespace Rix.Tests;
+
+internal sealed class StubCiFailureHost(
+    Func<long, Task<WorkflowRun>>? getRun = null,
+    Func<long, Task<string>>? getLogs = null,
+    Func<BranchName, Task<int?>>? findPr = null) : ICiFailureHost
+{
+    public Task<WorkflowRun> GetRunAsync(long runId, CancellationToken cancellationToken)
+    => getRun switch { { } check => check(runId), _ => throw new InvalidOperationException("getRun not stubbed") };
+
+    public Task<string> GetFailedJobLogsAsync(long runId, CancellationToken cancellationToken)
+    => getLogs switch { { } check => check(runId), _ => Task.FromResult("") };
+
+    public Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken)
+    => findPr switch { { } check => check(branch), _ => Task.FromResult<int?>(null) };
+}
 
 internal sealed class StubRepositoryHost(
     Func<BranchName, Task<bool>>? branchExists = null,

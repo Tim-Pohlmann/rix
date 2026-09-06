@@ -1,6 +1,5 @@
 using Rix.Process;
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Rix.Repository;
@@ -67,20 +66,10 @@ internal sealed class GitHubHost : IRepositoryHost
         using var content = JsonContent.Create(request, GitHubApiJsonContext.Default.CreatePullRequestRequest);
         using var response = await _read.Http.PostAsync(url, content, cancellationToken);
         response.EnsureSuccessStatusCode();
-        try
-        {
-            var created = await response.Content.ReadFromJsonAsync
-            (
-                GitHubApiJsonContext.Default.CreatePullRequestResponse, cancellationToken
-            );
-            if (created is null || created.HtmlUrl is null)
-                throw new HttpRequestException("create PR response did not include html_url");
-            return created.HtmlUrl;
-        }
-        catch (JsonException ex)
-        {
-            throw new HttpRequestException("could not parse create PR response", ex);
-        }
+        var created = await GitHubReadHost.ReadJsonAsync(response, GitHubApiJsonContext.Default.CreatePullRequestResponse, cancellationToken);
+        if (created.HtmlUrl is null)
+            throw new HttpRequestException("create PR response did not include html_url");
+        return created.HtmlUrl;
     }
 }
 
