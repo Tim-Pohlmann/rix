@@ -19,10 +19,6 @@ inputs:
     description: "Rix release tag to download, or 'latest'"
     required: false
     default: latest
-  repo-slug:
-    description: "Rix repo to download from (owner/name)"
-    required: false
-    default: Tim-Pohlmann/rix
   rix-bin:
     description: "Path to an already-built rix binary to use instead of downloading a release"
     required: false
@@ -34,7 +30,6 @@ runs:
       uses: ./.github/actions/download-rix
       with:
         rix-version: ${{ inputs.rix-version }}
-        repo-slug: ${{ inputs.repo-slug }}
         rix-bin: ${{ inputs.rix-bin }}
 
     - name: Push branches and open PRs

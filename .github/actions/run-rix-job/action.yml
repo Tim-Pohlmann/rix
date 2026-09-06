@@ -1,8 +1,6 @@
 name: Run rix job
 description: >-
-  Installs the coding agent CLI and runs `rix job` against a target repo, writing result.json
-  and any git bundles to ./out. Assumes the calling job has already checked out Tim-Pohlmann/rix
-  (see .github/actions/download-rix).
+  Runs `rix job` against a target repo, writing result.json and any git bundles to ./out.
 
 inputs:
   repo:
@@ -17,7 +15,6 @@ inputs:
   agent:
     description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
     required: false
-    default: opencode
   model:
     description: Model identifier passed to the agent CLI via --model; omit for the agent's own default
     required: false
@@ -47,11 +44,6 @@ inputs:
   rix-version:
     description: "Rix release tag to download, or 'latest'"
     required: false
-    default: latest
-  repo-slug:
-    description: "Rix repo to download from (owner/name)"
-    required: false
-    default: Tim-Pohlmann/rix
   rix-bin:
     description: "Path to an already-built rix binary to use instead of downloading a release"
     required: false
@@ -59,16 +51,12 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Setup Node (rix installs the coding agent CLI via npm)
-      uses: actions/setup-node@v4
+    - name: Prepare rix environment
+      uses: ./.github/actions/prepare-rix-env
       with:
-        node-version: '20'
-
-    - name: Download rix
-      uses: ./.github/actions/download-rix
-      with:
+        max-tokens: ${{ inputs.max-tokens }}
+        timeout: ${{ inputs.timeout }}
         rix-version: ${{ inputs.rix-version }}
-        repo-slug: ${{ inputs.repo-slug }}
         rix-bin: ${{ inputs.rix-bin }}
 
     - name: Run rix job
@@ -80,8 +68,6 @@ runs:
         RIX_READ_TOKEN: ${{ inputs.read-token }}
         RIX_REPO: ${{ inputs.repo }}
         RIX_PROMPT: ${{ inputs.prompt }}
-        RIX_MAX_TOKENS: ${{ inputs.max-tokens }}
-        RIX_TIMEOUT: ${{ inputs.timeout }}
         RIX_ALLOWED_PUSH_BRANCHES: ${{ inputs.allowed-push-branches }}
       shell: bash
       run: |
@@ -90,21 +76,8 @@ runs:
         # adds it directly to the agent CLI subprocess's own environment (see
         # Rix.Agents.AgentCredential and Rix.Job.JobRunner). The key never needs to exist under
         # that name in this shell or in $GITHUB_ENV.
-        #
-        # A caller who omits max-tokens/timeout (the common case) has job.yml's workflow_call
-        # inputs - type: number, no default - resolve to 0 rather than empty/null, which is
-        # indistinguishable here from a caller explicitly passing 0. Treat only that one
-        # ambiguous value as "unset" so rix's own default (50k tokens, 30 min) applies; forward
-        # anything else unchanged, including other invalid values (negative, non-numeric), so
-        # rix's own validation reports a clear error instead of this glue code silently masking
-        # a caller's mistake behind its default.
-        for var in RIX_MAX_TOKENS RIX_TIMEOUT; do
-          if [ -z "${!var:-}" ] || [ "${!var}" = "0" ]; then
-            unset "$var"
-          fi
-        done
         mkdir -p out work
-        "$RIX_BIN" job --agent "${RIX_AGENT:-opencode}" --output-dir out --work-dir work
+        "$RIX_BIN" job --agent "$RIX_AGENT" --output-dir out --work-dir work
 
     - name: Post job summary
       # result.json is always written by rix job - on failure too (see Startup.ExecuteJobAsync) -
