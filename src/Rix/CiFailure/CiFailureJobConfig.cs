@@ -56,7 +56,9 @@ internal sealed record CiFailureJobConfig
             WorkDir: inputs.WorkDir,
             OutputDir: inputs.OutputDir,
             Agent: inputs.Agent,
-            Model: inputs.Model
+            Model: inputs.Model,
+            AgentApiKey: inputs.AgentApiKey,
+            AgentApiKeyEnv: inputs.AgentApiKeyEnv
         );
         switch (JobConfig.Create(jobInputs))
         {
@@ -86,7 +88,9 @@ internal sealed record CiFailureJobInputs
     string? WorkDir = null,
     string? OutputDir = null,
     string? Agent = null,
-    string? Model = null
+    string? Model = null,
+    string? AgentApiKey = null,
+    string? AgentApiKeyEnv = null
 );
 
 /// <summary>The result of <see cref="CiFailureJobConfig.Create"/>: a validated config or the list

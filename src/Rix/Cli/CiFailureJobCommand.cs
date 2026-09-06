@@ -22,6 +22,8 @@ internal static class CiFailureJobCommand
         command.AddOption(JobOptions.OutputDirOption);
         command.AddOption(JobOptions.AgentOption);
         command.AddOption(JobOptions.ModelOption);
+        command.AddOption(JobOptions.AgentApiKeyOption);
+        command.AddOption(JobOptions.AgentApiKeyEnvOption);
 
         command.SetHandler
         (
@@ -38,7 +40,9 @@ internal static class CiFailureJobCommand
                     WorkDir:        parsed.Str(JobOptions.WorkDirOption,   "RIX_WORK_DIR"),
                     OutputDir:      parsed.Str(JobOptions.OutputDirOption, "RIX_OUTPUT_DIR"),
                     Agent:          parsed.Str(JobOptions.AgentOption,     "RIX_AGENT"),
-                    Model:          parsed.Str(JobOptions.ModelOption,     "RIX_MODEL")
+                    Model:          parsed.Str(JobOptions.ModelOption,     "RIX_MODEL"),
+                    AgentApiKey:    parsed.Str(JobOptions.AgentApiKeyOption,    "AGENT_API_KEY"),
+                    AgentApiKeyEnv: parsed.Str(JobOptions.AgentApiKeyEnvOption, "AGENT_API_KEY_ENV")
                 );
                 var result = CiFailureJobConfig.Create(inputs);
 
