@@ -85,40 +85,12 @@ runs:
         RIX_ALLOWED_PUSH_BRANCHES: ${{ inputs.allowed-push-branches }}
       shell: bash
       run: |
-        # Export the secret under whatever env var name the selected provider/model expects.
-        # No key is required when model is left unset - opencode then picks its own free model.
-        if [ -n "$AGENT_API_KEY" ]; then
-          key_env="$AGENT_API_KEY_ENV"
-          if [ -z "$key_env" ]; then
-            # Caller didn't say which env var to use - default based on agent, since opencode
-            # and claude expect different credentials. Normalize case/whitespace the same way
-            # rix's own AgentKindParser does, so e.g. "Claude" still matches.
-            agent_normalized=$(printf '%s' "$RIX_AGENT" | tr '[:upper:]' '[:lower:]' | xargs)
-            case "$agent_normalized" in
-              claude) key_env=ANTHROPIC_API_KEY ;;
-              pi)
-                # pi is multi-provider with no single default credential, unlike opencode's
-                # own free-model provider — the caller must say which env var to use.
-                echo "::error::agent-api-key-env is required when agent=pi and agent-api-key is set" >&2
-                exit 1
-                ;;
-              *) key_env=OPENCODE_API_KEY ;;
-            esac
-          fi
-          # Restrict to credential-shaped suffixes covering opencode's supported providers
-          # (ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, GOOGLE_APPLICATION_CREDENTIALS,
-          # SNOWFLAKE_CORTEX_TOKEN, ...), rather than deny-listing every internal/runtime
-          # variable a caller could otherwise clobber. A couple of the allowed suffixes (e.g.
-          # _TOKEN) would otherwise overlap with vars this workflow relies on, so also block
-          # RIX_*/AGENT_API_KEY* (this script's own vars) and GITHUB_* (GITHUB_TOKEN etc) by
-          # name.
-          if [[ "$key_env" =~ ^(RIX_|AGENT_API_KEY|GITHUB_) ]] \
-            || ! [[ "$key_env" =~ ^[A-Z][A-Z0-9_]*_(API_KEY|TOKEN|KEY_ID|ACCESS_KEY|CREDENTIALS|PROFILE|ACCOUNT|PROJECT|PAT|ARN|RESOURCE_NAME)$ ]]; then
-            echo "::error::agent-api-key-env '$key_env' must be a credential-shaped environment variable name (e.g. *_API_KEY, *_TOKEN, *_ACCESS_KEY_ID) and not one of rix's own runtime variables" >&2
-            exit 1
-          fi
-          export "$key_env"="$AGENT_API_KEY"
-        fi
+        # AGENT_API_KEY/AGENT_API_KEY_ENV are forwarded to rix as-is - it resolves which single env
+        # var to export the key under (defaulting per agent, validating a caller-supplied name) and
+        # adds it directly to the agent CLI subprocess's own environment (see
+        # Rix.Agents.AgentCredential and Rix.Job.JobRunner). The key never needs to exist under
+        # that name in this shell or in $GITHUB_ENV.
+        #
         # A caller who omits max-tokens/timeout (the common case) has job.yml's workflow_call
         # inputs - type: number, no default - resolve to 0 rather than empty/null, which is
         # indistinguishable here from a caller explicitly passing 0. Treat only that one
