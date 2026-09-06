@@ -1,4 +1,5 @@
 using Rix.Agents;
+using Rix.CiFailure;
 using Rix.Cli;
 using Rix.Job;
 using Rix.Process;
@@ -20,9 +21,15 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
+    => DefaultContext(config, new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
+
+    /// <summary>Overload for callers (e.g. <see cref="ExecuteCiFailureJobAsync"/>) that already
+    /// have a host instance to reuse — e.g. one also serving as the <see cref="ICiFailureHost"/>
+    /// for the same run, rather than opening a second, redundant connection.</summary>
+    internal static JobContext DefaultContext(JobConfig config, IRepositoryReadHost host)
     => new
     (
-        Host: new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
+        Host: host,
         RunProcess: ProcessWrapper.RunAsync,
         Agent: SelectAgent(config.Agent.Kind),
         LogLine: Console.Error.WriteLine,
@@ -71,6 +78,8 @@ internal static class Startup
             var rootCommand = new RootCommand("RIX - AI-powered code automation");
             rootCommand.AddCommand(JobCommand.Build(config => ExecuteJobAsync(config, cts.Token)));
             rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, cts.Token)));
+            rootCommand.AddCommand(CiFailureCommand.Build(config => ExecuteCiFailureAsync(config, cts.Token)));
+            rootCommand.AddCommand(CiFailureJobCommand.Build(config => ExecuteCiFailureJobAsync(config, cts.Token)));
             return await new CommandLineBuilder(rootCommand).UseDefaults().Build().InvokeAsync(args);
         }
         finally
@@ -108,6 +117,19 @@ internal static class Startup
         var transcriptSink = context.TranscriptLine;
         context = context with { TranscriptLine = line => { transcriptSink(line); transcriptLines.Add(line); } };
         var result = await JobRunner.RunAsync(config, context, cancellationToken);
+        return await WriteJobResultAsync(config, result, transcriptLines);
+    }
+
+    /// <summary>
+    /// Writes a job's outcome the same way regardless of what led to it: the result JSON to
+    /// stdout, <c>result.json</c> to <paramref name="config"/>'s output dir (even on failure, so
+    /// downstream tooling has one reliable place to read the outcome from), and
+    /// <c>transcript.md</c> if the agent said anything worth keeping. Shared by
+    /// <see cref="ExecuteJobAsync"/> and <see cref="ExecuteCiFailureJobAsync"/>, which only differ
+    /// in how they arrive at <paramref name="result"/>.
+    /// </summary>
+    private static async Task<int> WriteJobResultAsync(JobConfig config, IJobResult result, List<string> transcriptLines)
+    {
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
         // Best-effort: once the job outcome above is decided, a broken/closed stdout pipe must not
         // stop the correct exit code from being returned any more than a result.json write failure
@@ -185,6 +207,65 @@ internal static class Startup
             SubmitSuccess => ExitCodes.Success,
             SubmitFailure => ExitCodes.JobFailed,
             _ => throw new NotSupportedException($"Unexpected submit result type: {result.GetType()}"),
+        };
+    }
+
+    /// <summary>
+    /// Imperative shell around <see cref="CiFailureRunner.RunAsync"/>: runs the check, writes the
+    /// result JSON to stdout, and maps the result to an exit code. <see cref="CiFailureSkipped"/>
+    /// exits successfully (there was simply nothing to do); only <see cref="CiFailureError"/> — a
+    /// problem talking to the API, not the run itself failing — is treated as a job failure.
+    /// </summary>
+    internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, ICiFailureHost? host = null)
+    {
+        host ??= new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync);
+        var result = await CiFailureRunner.RunAsync(config, host, cancellationToken);
+        return WriteCiFailureResult(result);
+    }
+
+    /// <summary>Writes a ci-failure check's outcome the same way regardless of whether the agent
+    /// then ran: the result JSON to stdout, mapped to an exit code. Shared by
+    /// <see cref="ExecuteCiFailureAsync"/> and <see cref="ExecuteCiFailureJobAsync"/>, the latter
+    /// only ever passing a <see cref="CiFailureSkipped"/> or <see cref="CiFailureError"/> here —
+    /// <see cref="CiFailureDetected"/> always leads to <see cref="WriteJobResultAsync"/> instead.</summary>
+    private static int WriteCiFailureResult(ICiFailureResult result)
+    {
+        var json = JsonSerializer.Serialize(result, CiFailureJsonContext.Default.ICiFailureResult);
+        Console.WriteLine(json);
+        return result switch
+        {
+            CiFailureDetected or CiFailureSkipped => ExitCodes.Success,
+            CiFailureError => ExitCodes.JobFailed,
+            _ => throw new NotSupportedException($"Unexpected ci-failure result type: {result.GetType()}"),
+        };
+    }
+
+    /// <summary>
+    /// Imperative shell around <see cref="CiFailureJobRunner.RunAsync"/>: checks whether the run
+    /// failed and, only if it did, runs the agent — reusing <see cref="WriteCiFailureResult"/> and
+    /// <see cref="WriteJobResultAsync"/> so each outcome is reported identically to its standalone
+    /// <c>rix ci-failure</c>/<c>rix job</c> counterpart. One <see cref="GitHubReadHost"/> backs
+    /// both the ci-failure check and the job's clone, since it implements both roles.
+    /// </summary>
+    internal static async Task<int> ExecuteCiFailureJobAsync(CiFailureJobConfig config, CancellationToken cancellationToken, ICiFailureHost? ciFailureHost = null, JobContext? jobContext = null)
+    {
+        if (ciFailureHost is null || jobContext is null)
+        {
+            var host = new GitHubReadHost(config.Job.Repo, config.Job.ReadToken, ProcessWrapper.RunAsync);
+            ciFailureHost ??= host;
+            jobContext ??= DefaultContext(config.Job, host);
+        }
+
+        var transcriptLines = new List<string>();
+        var transcriptSink = jobContext.TranscriptLine;
+        jobContext = jobContext with { TranscriptLine = line => { transcriptSink(line); transcriptLines.Add(line); } };
+
+        var outcome = await CiFailureJobRunner.RunAsync(config, ciFailureHost, jobContext, cancellationToken);
+        return outcome switch
+        {
+            CiFailureJobNotRun(var reason) => WriteCiFailureResult(reason),
+            CiFailureJobRan(var result) => await WriteJobResultAsync(config.Job, result, transcriptLines),
+            _ => throw new NotSupportedException($"Unexpected ci-failure-job outcome: {outcome.GetType()}"),
         };
     }
 }

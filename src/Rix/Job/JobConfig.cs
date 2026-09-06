@@ -109,6 +109,29 @@ internal record JobConfig
         return new JobConfigValid(config);
     }
 
+    /// <summary>Returns a copy of this config with <paramref name="prompt"/> substituted for the
+    /// agent's task prompt. Used by <c>rix ci-failure-job</c>, where the real prompt is only known
+    /// once the CI-failure check actually finds a failure — everything else is validated up front
+    /// by <see cref="Create"/> against a placeholder prompt. <paramref name="prompt"/> itself is
+    /// never blank in practice (it's always built by <see cref="CiFailure.CiFailureRunner"/> from
+    /// a fixed template, not raw external input), but the check below still guards the invariant
+    /// <see cref="Create"/> would otherwise enforce for any other caller-supplied prompt.</summary>
+    internal JobConfig WithPrompt(string prompt)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
+        return new(Repo, ReadToken, TimeoutMinutes, WorkDir, OutputDir, Agent with { Prompt = prompt }, AllowedPushBranches);
+    }
+
+    /// <summary>Returns a copy of this config with <paramref name="allowedPushBranches"/>
+    /// substituted for the <c>/push</c> allow-list. Used by <c>rix ci-failure-job</c>, which
+    /// derives the allow-list itself from the branch whose CI actually failed once that's known,
+    /// rather than accepting it as a caller-supplied input — the whole point of resuming a CI
+    /// failure is pushing a fix back onto that exact branch, so letting a caller widen the
+    /// allow-list to unrelated branches would undermine the restriction rather than configure
+    /// it.</summary>
+    internal JobConfig WithAllowedPushBranches(IReadOnlyList<RixBranchName> allowedPushBranches)
+    => new(Repo, ReadToken, TimeoutMinutes, WorkDir, OutputDir, Agent, allowedPushBranches);
+
     /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
     /// <c>rix/*</c> branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
     /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
