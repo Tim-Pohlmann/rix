@@ -28,13 +28,10 @@ internal static partial class AgentCredential
     /// </summary>
     internal static ParseResult<string> ResolveEnvName(AgentKind agent, string? apiKeyEnv)
     {
-        var envNameResult = string.IsNullOrWhiteSpace(apiKeyEnv) switch
-        {
-            false => new ParseSuccess<string>(apiKeyEnv!.Trim()),
-            true => DefaultEnvName(agent),
-        };
+        if (string.IsNullOrWhiteSpace(apiKeyEnv))
+            return DefaultEnvName(agent).Match(onSuccess: Validate, onError: error => new ParseError<string>(error));
 
-        return envNameResult.Match(onSuccess: Validate, onError: error => new ParseError<string>(error));
+        return Validate(apiKeyEnv.Trim());
     }
 
     /// <summary>claude and opencode expect different credentials by default; pi is multi-provider
