@@ -103,7 +103,7 @@ internal static class JobRunner
             invocation.FileName,
             invocation.Arguments,
             cloneDir,
-            invocation.EnvironmentOverrides,
+            WithApiKey(invocation.EnvironmentOverrides, config.Agent),
             ForwardLine,
             ct
         );
@@ -114,6 +114,22 @@ internal static class JobRunner
             if (context.Agent.ParseTranscriptLine(line) is { } transcriptLine)
                 context.TranscriptLine(transcriptLine);
         }
+    }
+
+    /// <summary>Adds the resolved agent credential (see <see cref="AgentCredential.ResolveEnvName"/>)
+    /// to the agent's own environment overrides, under whichever single env var name it was resolved
+    /// to. This is the only place the credential is added to any process's environment — it lands
+    /// directly in the spawned agent CLI's environment table, never in rix's own.</summary>
+    private static IReadOnlyDictionary<string, string> WithApiKey
+    (
+        IReadOnlyDictionary<string, string> environmentOverrides, AgentConfig agent
+    )
+    {
+        if (agent.ApiKey is not { } apiKey)
+            return environmentOverrides;
+
+        var withApiKey = new Dictionary<string, string>(environmentOverrides) { [agent.ApiKeyEnv!] = apiKey };
+        return withApiKey;
     }
 
     /// <summary>

@@ -27,10 +27,11 @@ namespace Rix.Agents;
 /// </list>
 /// Unlike Claude (Anthropic-only), OpenCode supports many model providers via
 /// <see cref="AgentConfig.Model"/> (a <c>provider/model</c> string forwarded verbatim as
-/// <c>--model</c>); the caller is responsible for exporting whatever credential env var that
-/// provider expects, since rix inherits its process environment into the spawned CLI unchanged.
-/// Local/self-hosted backends (Ollama, LM Studio) aren't covered by this — they need a generated
-/// <c>opencode.json</c> config rather than a model string + API key, which is a future extension.
+/// <c>--model</c>); <see cref="Job.JobRunner"/> adds whatever credential env var that provider
+/// expects to this invocation's environment — see <see cref="AgentCredential"/> — so this method
+/// itself carries no override for it. Local/self-hosted backends (Ollama, LM Studio) aren't
+/// covered by this — they need a generated <c>opencode.json</c> config rather than a model string
+/// + API key, which is a future extension.
 /// </remarks>
 internal sealed class OpenCodeAgent : ICodingAgent
 {

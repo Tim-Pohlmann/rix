@@ -39,6 +39,8 @@ internal static class JobCommand
         command.AddOption(JobOptions.OutputDirOption);
         command.AddOption(JobOptions.AgentOption);
         command.AddOption(JobOptions.ModelOption);
+        command.AddOption(JobOptions.AgentApiKeyOption);
+        command.AddOption(JobOptions.AgentApiKeyEnvOption);
         command.AddOption(JobOptions.AllowedPushBranchesOption);
 
         command.SetHandler
@@ -57,6 +59,8 @@ internal static class JobCommand
                     OutputDir:      parsed.Str(JobOptions.OutputDirOption, "RIX_OUTPUT_DIR"),
                     Agent:          parsed.Str(JobOptions.AgentOption,     "RIX_AGENT"),
                     Model:          parsed.Str(JobOptions.ModelOption,     "RIX_MODEL"),
+                    AgentApiKey:    parsed.Str(JobOptions.AgentApiKeyOption,    "AGENT_API_KEY"),
+                    AgentApiKeyEnv: parsed.Str(JobOptions.AgentApiKeyEnvOption, "AGENT_API_KEY_ENV"),
                     AllowedPushBranches: parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES")
                 );
                 var result = JobConfig.Create(inputs);

@@ -10,7 +10,9 @@ public class CiFailureJobConfigTests
         string repo = "owner/repo",
         string readToken = "read-tok",
         string runId = "123",
-        string? agent = null
+        string? agent = null,
+        string? agentApiKey = null,
+        string? agentApiKeyEnv = null
     )
     => CiFailureJobConfig.Create(new CiFailureJobInputs
     (
@@ -19,7 +21,9 @@ public class CiFailureJobConfigTests
         RunId: runId,
         WorkDir: Path.GetTempPath(),
         OutputDir: Path.GetTempPath(),
-        Agent: agent
+        Agent: agent,
+        AgentApiKey: agentApiKey,
+        AgentApiKeyEnv: agentApiKeyEnv
     ));
 
     private static CiFailureJobConfig Valid(CiFailureJobConfigResult result) => result switch
@@ -79,5 +83,19 @@ public class CiFailureJobConfigTests
         var errors = Errors(Create(runId: "", agent: "not-a-real-agent"));
         Assert.IsTrue(errors.Any(e => e.Contains("--run-id is required")));
         Assert.IsTrue(errors.Any(e => e.Contains("--agent")));
+    }
+
+    [TestMethod]
+    public void Create_ThreadsAgentApiKeyAndEnv_ThroughToJobConfig()
+    {
+        var config = Valid(Create(agentApiKey: "secret", agentApiKeyEnv: "ANTHROPIC_API_KEY"));
+        Assert.AreEqual("secret", config.Job.Agent.ApiKey);
+        Assert.AreEqual("ANTHROPIC_API_KEY", config.Job.Agent.ApiKeyEnv);
+    }
+
+    [TestMethod]
+    public void Create_RejectsApiKeyEnv_ThatIsNotCredentialShaped()
+    {
+        Assert.IsTrue(Errors(Create(agentApiKey: "secret", agentApiKeyEnv: "NOT_CREDENTIAL_SHAPED")).Any(e => e.Contains("--agent-api-key-env")));
     }
 }

@@ -101,4 +101,23 @@ public class CiFailureJobCommandTests
         Assert.IsNotNull(captured);
         Assert.AreEqual("openai/gpt-4o", captured.Job.Agent.Model);
     }
+
+    [TestMethod]
+    public async Task Command_PassesThroughAgentApiKeyAndEnv_FromFlags()
+    {
+        CiFailureJobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["ci-failure-job", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
+             "--output-dir", Path.GetTempPath(), "--agent-api-key", "secret", "--agent-api-key-env", "ANTHROPIC_API_KEY"]);
+
+        Assert.IsNotNull(captured);
+        Assert.AreEqual("secret", captured.Job.Agent.ApiKey);
+        Assert.AreEqual("ANTHROPIC_API_KEY", captured.Job.Agent.ApiKeyEnv);
+    }
 }
