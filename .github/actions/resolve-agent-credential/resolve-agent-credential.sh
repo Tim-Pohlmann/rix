@@ -15,7 +15,7 @@
 rix_resolve_agent_key_env() {
   local key_env="$AGENT_API_KEY_ENV" agent_normalized
 
-  if [ -z "$key_env" ]; then
+  if [[ -z "$key_env" ]]; then
     # Caller didn't say which env var to use - default based on agent, since opencode and claude
     # expect different credentials. Normalize case/whitespace the same way rix's own
     # AgentKindParser does, so e.g. "Claude" still matches.
@@ -47,7 +47,7 @@ rix_resolve_agent_key_env() {
   echo "$key_env"
 }
 
-if [ -n "$AGENT_API_KEY" ]; then
+if [[ -n "$AGENT_API_KEY" ]]; then
   rix_key_env=$(rix_resolve_agent_key_env) || exit 1
   export "$rix_key_env"="$AGENT_API_KEY"
   unset rix_key_env
