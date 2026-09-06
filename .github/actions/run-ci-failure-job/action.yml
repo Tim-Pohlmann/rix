@@ -99,6 +99,9 @@ runs:
         set -e
 
         status=$(jq -r .status <<<"$result")
+        # Default to false so every branch below (including an unrecognized status) leaves
+        # has-result in a defined state; only the success branch needs to override it.
+        echo "has-result=false" >> "$GITHUB_OUTPUT"
         case "$status" in
           success)
             # The only case create-pr has anything to submit: the run had failed, the agent ran,
@@ -106,16 +109,13 @@ runs:
             echo "has-result=true" >> "$GITHUB_OUTPUT"
             ;;
           skipped)
-            echo "has-result=false" >> "$GITHUB_OUTPUT"
             echo "Run $RIX_RUN_ID concluded '$(jq -r .conclusion <<<"$result")', not 'failure' — skipping."
             ;;
           failure | setupFailure)
             # The agent ran but the job itself failed - exit_code is already non-zero here, which
-            # fails this step (and, via needs:, skips create-pr) without has-result's help.
-            echo "has-result=false" >> "$GITHUB_OUTPUT"
+            # fails this step (and, via needs:, skips create-pr) regardless of has-result.
             ;;
           error)
-            echo "has-result=false" >> "$GITHUB_OUTPUT"
             echo "::error::$(jq -r .error <<<"$result")"
             ;;
           *)
