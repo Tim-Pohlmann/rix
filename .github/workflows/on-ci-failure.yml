@@ -1,0 +1,165 @@
+name: Rix On CI Failure
+
+# Reusable workflow: given a specific workflow run, verifies it actually failed, and if so runs
+# the coding agent against a prompt built from the failure (PR, run URL, failing step logs),
+# turning its output into PRs.
+#
+# Shared by both integration patterns in the README:
+#   - a project repo calling it directly from its own workflow_run trigger
+#   - a central "factory" repo calling it from a repository_dispatch fired by many project repos
+# The factory case can't trust github.event.workflow_run (that context doesn't cross the
+# repository_dispatch boundary), so conclusion is always re-checked here via the API rather
+# than taken from the caller.
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: >-
+          Target GitHub repo (owner/name) that produced the run. Defaults to the calling repo —
+          only the factory pattern (where the dispatching repo differs from the failing one)
+          needs to set this explicitly.
+        required: false
+        type: string
+      run-id:
+        description: ID of the (possibly failed) workflow run to inspect
+        required: true
+        type: string
+      agent:
+        description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
+        required: false
+        type: string
+      agent-api-key-env:
+        description: >-
+          Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
+          ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_ACCESS_KEY_ID) — whatever the selected
+          provider/model expects. Must end in a credential-shaped suffix (_API_KEY, _TOKEN,
+          _ACCESS_KEY_ID, ...). Omit to use a default based on agent: OPENCODE_API_KEY for
+          opencode, ANTHROPIC_API_KEY for claude. Required for pi whenever agent-api-key is set,
+          since pi has no single default provider to fall back on.
+        required: false
+        type: string
+      rix-version:
+        description: "Rix release tag to download, or 'latest'"
+        required: false
+        type: string
+      rix-bin:
+        description: "Path to an already-built rix binary to use instead of downloading a release"
+        required: false
+        type: string
+      max-tokens:
+        description: Coding agent token budget cap
+        required: false
+        type: number
+      timeout:
+        description: Wall-clock timeout in minutes
+        required: false
+        type: number
+      runner:
+        description: runs-on label for both jobs (e.g. a self-hosted runner label)
+        required: false
+        type: string
+        default: ubuntu-latest
+    secrets:
+      read-token:
+        description: >-
+          GitHub PAT with read access to the target repo. Needs Actions:read in addition to
+          contents:read — it's used both to fetch the failing run's metadata and logs and, once a
+          failure is confirmed, to clone the repo for the agent.
+        required: true
+      write-token:
+        description: "GitHub PAT with contents:write + pull-requests:write on the target repo"
+        required: true
+      agent-api-key:
+        description: >-
+          API key for the selected coding agent's model provider. Optional: leaving model unset
+          lets opencode pick its own free default model, needing no key.
+        required: false
+
+# Both jobs only need read access via GITHUB_TOKEN (the sparse-checkout of the public rix repo).
+# All writes to the target repo go through the write-token PAT, never GITHUB_TOKEN — so deny it
+# write access explicitly, keeping the untrusted agent run unable to push using the caller token.
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: Check run and run rix job
+    # inputs.runner (not a fixed cheap runner): unlike the old detect+rix split, this single job
+    # both checks the run and - if it failed - runs the agent, so it needs whatever runner the
+    # agent itself requires from the start.
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      has-result: ${{ steps.run.outputs.has-result }}
+    steps:
+      # A local `uses: ./...` action reference resolves against whatever is already checked out
+      # at github.workspace, so this checkout is required before the composite action below (and
+      # its own nested `uses: ./.github/actions/download-rix`) can resolve. `uses:` can't take an
+      # expression, so a remote `uses: owner/repo/.github/actions/...@<ref>` reference would need
+      # a static ref hardcoded at authoring time - this checkout instead tracks whatever commit is
+      # actually running via job.workflow_repository/job.workflow_sha, real (if not yet
+      # actionlint-recognized - see https://github.com/rhysd/actionlint/issues/260 for the same lag
+      # on job.workflow_ref) context properties that resolve to the repo/commit of *this* reusable
+      # workflow file even when called from another repo, unlike github.repository/github.sha
+      # (which stay pinned to the calling repo).
+      - name: Get rix repo (for local composite actions)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Run rix ci-failure-job
+        id: run
+        uses: ./.github/actions/run-ci-failure-job
+        with:
+          repo: ${{ inputs.repo || github.repository }}
+          run-id: ${{ inputs.run-id }}
+          read-token: ${{ secrets.read-token }}
+          agent: ${{ inputs.agent }}
+          agent-api-key: ${{ secrets.agent-api-key }}
+          agent-api-key-env: ${{ inputs.agent-api-key-env }}
+          max-tokens: ${{ inputs.max-tokens }}
+          timeout: ${{ inputs.timeout }}
+          rix-version: ${{ inputs.rix-version }}
+          rix-bin: ${{ inputs.rix-bin }}
+
+      - name: Upload job output
+        if: steps.run.outputs.has-result == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-output
+          path: out/
+
+  create-pr:
+    name: Create PRs
+    needs: run
+    if: needs.run.outputs.has-result == 'true'
+    # Fixed, cheap runner: unlike `run`, this job only calls submit-rix-job (a GitHub API/git-push
+    # operation) and needs none of whatever specialized environment inputs.runner provides for
+    # running the agent.
+    runs-on: ubuntu-latest
+    steps:
+      # See the comment on the equivalent step in the `run` job above - same reasoning applies
+      # here for submit-rix-job.
+      - name: Get rix repo (for local composite actions)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Download job output
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-output
+          path: out
+
+      - name: Submit rix job
+        uses: ./.github/actions/submit-rix-job
+        with:
+          repo: ${{ inputs.repo || github.repository }}
+          write-token: ${{ secrets.write-token }}
+          input-dir: out
+          rix-version: ${{ inputs.rix-version }}

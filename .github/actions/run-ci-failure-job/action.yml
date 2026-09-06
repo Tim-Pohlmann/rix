@@ -1,0 +1,136 @@
+name: Run rix ci-failure-job
+description: >-
+  Checks whether a specific workflow run actually failed and, only if it did, runs the coding
+  agent against the failure, writing result.json and any git bundles to ./out.
+
+inputs:
+  repo:
+    description: Target GitHub repo (owner/name) that produced the run
+    required: true
+  run-id:
+    description: ID of the (possibly failed) workflow run to inspect
+    required: true
+  read-token:
+    description: GitHub PAT with read access to the target repo, including Actions:read
+    required: true
+  agent:
+    description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
+    required: false
+  model:
+    description: Model identifier passed to the agent CLI via --model; omit for the agent's own default
+    required: false
+  agent-api-key:
+    description: API key for the selected agent's model provider; optional (opencode's free default model needs none)
+    required: false
+  agent-api-key-env:
+    description: >-
+      Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
+      ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_ACCESS_KEY_ID) — whatever the selected
+      provider/model expects. Must end in a credential-shaped suffix (_API_KEY, _TOKEN,
+      _ACCESS_KEY_ID, ...). Omit to use a default based on agent: OPENCODE_API_KEY for
+      opencode, ANTHROPIC_API_KEY for claude. Required for pi whenever agent-api-key is set,
+      since pi has no single default provider to fall back on.
+    required: false
+  max-tokens:
+    description: Coding agent token budget cap
+    required: false
+  timeout:
+    description: Wall-clock timeout in minutes
+    required: false
+  rix-version:
+    description: "Rix release tag to download, or 'latest'"
+    required: false
+  rix-bin:
+    description: "Path to an already-built rix binary to use instead of downloading a release"
+    required: false
+
+outputs:
+  has-result:
+    description: >-
+      'true' if the run had actually failed and the agent ran (result.json was written and is
+      ready for submit-rix-job), 'false' otherwise (nothing to do, or the check/run itself
+      failed).
+    value: ${{ steps.run.outputs.has-result }}
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare rix environment
+      uses: ./.github/actions/prepare-rix-env
+      with:
+        max-tokens: ${{ inputs.max-tokens }}
+        timeout: ${{ inputs.timeout }}
+        rix-version: ${{ inputs.rix-version }}
+        rix-bin: ${{ inputs.rix-bin }}
+
+    - name: Resolve agent credential env var
+      id: resolve-agent-credential
+      uses: ./.github/actions/resolve-agent-credential
+      with:
+        agent: ${{ inputs.agent }}
+        agent-api-key: ${{ inputs.agent-api-key }}
+        agent-api-key-env: ${{ inputs.agent-api-key-env }}
+
+    - name: Run rix ci-failure-job
+      id: run
+      env:
+        AGENT_API_KEY: ${{ inputs.agent-api-key }}
+        KEY_ENV: ${{ steps.resolve-agent-credential.outputs.key-env }}
+        RIX_AGENT: ${{ inputs.agent }}
+        RIX_MODEL: ${{ inputs.model }}
+        RIX_READ_TOKEN: ${{ inputs.read-token }}
+        RIX_REPO: ${{ inputs.repo }}
+        RIX_RUN_ID: ${{ inputs.run-id }}
+      shell: bash
+      run: |
+        # Export the secret under the env var name resolve-agent-credential decided on. No key
+        # is required when model is left unset - opencode then picks its own free model.
+        if [ -n "$AGENT_API_KEY" ]; then
+          export "$KEY_ENV"="$AGENT_API_KEY"
+        fi
+        mkdir -p out work
+
+        # rix ci-failure-job always prints its JSON result to stdout, on every exit code (see
+        # Startup.ExecuteCiFailureJobAsync) - capture it before deciding, rather than letting a
+        # non-zero exit short-circuit under errexit before it can be read.
+        set +e
+        result=$("$RIX_BIN" ci-failure-job --agent "$RIX_AGENT" --output-dir out --work-dir work)
+        exit_code=$?
+        set -e
+
+        status=$(jq -r .status <<<"$result")
+        case "$status" in
+          success)
+            # The only case create-pr has anything to submit: the run had failed, the agent ran,
+            # and result.json now exists in out/.
+            echo "has-result=true" >> "$GITHUB_OUTPUT"
+            ;;
+          skipped)
+            echo "has-result=false" >> "$GITHUB_OUTPUT"
+            echo "Run $RIX_RUN_ID concluded '$(jq -r .conclusion <<<"$result")', not 'failure' — skipping."
+            ;;
+          failure | setupFailure)
+            # The agent ran but the job itself failed - exit_code is already non-zero here, which
+            # fails this step (and, via needs:, skips create-pr) without has-result's help.
+            echo "has-result=false" >> "$GITHUB_OUTPUT"
+            ;;
+          error)
+            echo "has-result=false" >> "$GITHUB_OUTPUT"
+            echo "::error::$(jq -r .error <<<"$result")"
+            ;;
+          *)
+            echo "::error::rix ci-failure-job did not produce a usable result: $result"
+            ;;
+        esac
+
+        exit "$exit_code"
+
+    - name: Post job summary
+      # result.json only exists once the agent actually ran (see Startup.ExecuteCiFailureJobAsync)
+      # - post-job-summary.sh handles a missing file gracefully, so this is safe to call
+      # unconditionally, including when the run above never got past the ci-failure check.
+      if: always()
+      uses: ./.github/actions/post-job-summary
+      with:
+        result-file: ${{ github.workspace }}/out/result.json
+        transcript-file: ${{ github.workspace }}/out/transcript.md

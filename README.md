@@ -125,3 +125,112 @@ and Windows on x64.
       prompt: ${{ inputs.prompt }}
       runner: self-hosted
 ```
+
+## React to CI failures
+
+`rix` also ships `.github/workflows/on-ci-failure.yml`, a reusable workflow that takes a
+specific run, checks whether it actually failed, builds a prompt from the failure (PR number,
+run URL, failing step logs), and calls `job.yml`. It's the building block for both patterns
+below — write the "turn a failure into a prompt" logic once, reuse it either way.
+
+### Simple: directly in a project repo
+
+Add a caller triggered by `workflow_run` instead of `workflow_dispatch`:
+
+```yaml
+name: rix (on CI failure)
+on:
+  workflow_run:
+    workflows: ["CI"] # must match the `name:` of the workflow to watch
+    types: [completed]
+jobs:
+  rix:
+    # Cheap short-circuit; on-ci-failure.yml re-checks the conclusion via the API regardless.
+    if: github.event.workflow_run.conclusion == 'failure'
+    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main
+    with:
+      # repo defaults to the calling repo — no need to set it here.
+      run-id: ${{ github.event.workflow_run.id }}
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
+```
+
+`read-token` needs `Actions:read` in addition to read access to contents, since
+`on-ci-failure.yml` uses it to fetch the failing run's logs, not just to clone.
+
+**Fork PRs:** `workflow_run` always executes with the base repo's secrets, even when the CI run
+it's reacting to came from a fork PR. Since `on-ci-failure.yml` feeds that run's log output
+straight into the agent's prompt, an untrusted fork PR could smuggle prompt-injection text into
+a failing test's output and have it interpreted as instructions by an agent holding
+`write-token`. If CI runs on fork PRs, add an explicit trust gate before calling the reusable
+workflow, e.g.:
+
+```yaml
+if: >-
+  github.event.workflow_run.conclusion == 'failure' &&
+  github.event.workflow_run.head_repository.full_name == github.repository
+```
+
+### Advanced: a central factory repo
+
+Useful when several project repos should share one set of `read-token`/`write-token`/
+`agent-api-key` secrets instead of each holding its own. `workflow_run` can't cross repos, so
+each project repo still needs a small local trigger — but it only *notifies* the factory repo
+instead of running rix itself, using a PAT scoped just to dispatch to that one repo:
+
+```yaml
+# In each project repo: .github/workflows/notify-rix-factory.yml
+name: notify rix factory
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+jobs:
+  notify:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch to factory repo
+        env:
+          GH_TOKEN: ${{ secrets.RIX_FACTORY_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/${{ vars.RIX_FACTORY_REPO }}/dispatches \
+            -f event_type=rix-ci-failure \
+            -f "client_payload[repo]=${{ github.repository }}" \
+            -f "client_payload[run_id]=${{ github.event.workflow_run.id }}"
+```
+
+`RIX_FACTORY_DISPATCH_TOKEN` needs `contents:write` on the factory repo (required by the
+`dispatches` API) and nothing else — it never touches RIX's own credentials.
+
+```yaml
+# In the factory repo: .github/workflows/rix-on-failure.yml
+name: rix (dispatched CI failure)
+on:
+  repository_dispatch:
+    types: [rix-ci-failure]
+jobs:
+  rix:
+    # Validate before trusting client_payload — see caveat below.
+    if: contains(fromJSON(vars.RIX_FACTORY_ALLOWED_REPOS), github.event.client_payload.repo)
+    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main
+    with:
+      repo: ${{ github.event.client_payload.repo }}
+      run-id: ${{ github.event.client_payload.run_id }}
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
+```
+
+The factory repo's `read-token`/`write-token` need access across every project repo it serves
+(e.g. a GitHub App installation token), which is the trade-off of centralizing: one PAT with a
+much bigger blast radius than the per-repo tokens in the simple pattern.
+
+**Validate the dispatch payload:** `RIX_FACTORY_DISPATCH_TOKEN` can only dispatch to the
+factory repo, but the `repo`/`run-id` values inside `client_payload` are unauthenticated free
+text — any repo holding that token can ask the factory to act against *any* `repo`/`run-id`,
+not just its own. Since the factory's `read-token`/`write-token` span every project repo it
+serves, an unvalidated payload lets one onboarded repo trigger rix runs (and PR writes) against
+another. Gate the factory job on an explicit allowlist of onboarded repos (as shown above with
+`RIX_FACTORY_ALLOWED_REPOS`) rather than trusting `client_payload.repo` directly.
