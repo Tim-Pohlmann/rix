@@ -75,9 +75,11 @@ runs:
         RIX_RUN_ID: ${{ inputs.run-id }}
       shell: bash
       run: |
-        # Sourced (not `uses:`) so the export lands in this step's own shell only, never
-        # $GITHUB_ENV - see resolve-agent-credential.sh for why that scoping matters.
-        source ./.github/actions/resolve-agent-credential/resolve-agent-credential.sh
+        # AGENT_API_KEY/AGENT_API_KEY_ENV are forwarded to rix as-is - it resolves which single env
+        # var to export the key under (defaulting per agent, validating a caller-supplied name) and
+        # adds it directly to the agent CLI subprocess's own environment (see
+        # Rix.Agents.AgentCredential and Rix.Job.JobRunner). The key never needs to exist under
+        # that name in this shell or in $GITHUB_ENV.
         mkdir -p out work
 
         # rix ci-failure-job always prints its JSON result to stdout, on every exit code (see
