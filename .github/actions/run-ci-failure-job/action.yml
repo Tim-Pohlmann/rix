@@ -63,19 +63,11 @@ runs:
         rix-version: ${{ inputs.rix-version }}
         rix-bin: ${{ inputs.rix-bin }}
 
-    - name: Resolve agent credential env var
-      id: resolve-agent-credential
-      uses: ./.github/actions/resolve-agent-credential
-      with:
-        agent: ${{ inputs.agent }}
-        agent-api-key: ${{ inputs.agent-api-key }}
-        agent-api-key-env: ${{ inputs.agent-api-key-env }}
-
     - name: Run rix ci-failure-job
       id: run
       env:
         AGENT_API_KEY: ${{ inputs.agent-api-key }}
-        KEY_ENV: ${{ steps.resolve-agent-credential.outputs.key-env }}
+        AGENT_API_KEY_ENV: ${{ inputs.agent-api-key-env }}
         RIX_AGENT: ${{ inputs.agent }}
         RIX_MODEL: ${{ inputs.model }}
         RIX_READ_TOKEN: ${{ inputs.read-token }}
@@ -83,11 +75,9 @@ runs:
         RIX_RUN_ID: ${{ inputs.run-id }}
       shell: bash
       run: |
-        # Export the secret under the env var name resolve-agent-credential decided on. No key
-        # is required when model is left unset - opencode then picks its own free model.
-        if [ -n "$AGENT_API_KEY" ]; then
-          export "$KEY_ENV"="$AGENT_API_KEY"
-        fi
+        # Sourced (not `uses:`) so the export lands in this step's own shell only, never
+        # $GITHUB_ENV - see resolve-agent-credential.sh for why that scoping matters.
+        source ./.github/actions/resolve-agent-credential/resolve-agent-credential.sh
         mkdir -p out work
 
         # rix ci-failure-job always prints its JSON result to stdout, on every exit code (see
