@@ -18,41 +18,57 @@ internal static class CiFailureRunner
         WorkflowRun run;
         try
         {
-            run = await host.GetRunAsync(config.RunId, cancellationToken);
+            run = await FetchAsync(ct => host.GetRunAsync(config.RunId, ct), $"could not fetch run {config.RunId}", cancellationToken);
         }
-        catch (HttpRequestException ex)
+        catch (CiFailureFetchException ex)
         {
-            return new CiFailureError($"could not fetch run {config.RunId}: {ex.Message}");
+            return new CiFailureError(ex.Message);
         }
 
         if (run.Conclusion != "failure")
             return new CiFailureSkipped(run.Conclusion);
 
-        string logs;
+        // Independent of each other - only the already-fetched run is needed by both - so they run
+        // concurrently rather than paying two sequential network round-trips.
+        var logsTask = FetchAsync(ct => host.GetFailedJobLogsAsync(config.RunId, ct), $"could not fetch failing job logs for run {config.RunId}", cancellationToken);
+        var prTask = FetchAsync(ct => host.FindOpenPullRequestNumberAsync(new BranchName(run.HeadBranch), ct), $"could not look up open PR for branch {run.HeadBranch}", cancellationToken);
+
         try
         {
-            logs = await host.GetFailedJobLogsAsync(config.RunId, cancellationToken);
+            await Task.WhenAll(logsTask, prTask);
         }
-        catch (HttpRequestException ex)
+        catch (CiFailureFetchException ex)
         {
-            return new CiFailureError($"could not fetch failing job logs for run {config.RunId}: {ex.Message}");
+            return new CiFailureError(ex.Message);
         }
+        var logs = logsTask.Result;
+        var prNumber = prTask.Result;
+
         if (logs.Length > LogTailChars)
             logs = logs[^LogTailChars..];
-
-        int? prNumber;
-        try
-        {
-            prNumber = await host.FindOpenPullRequestNumberAsync(new BranchName(run.HeadBranch), cancellationToken);
-        }
-        catch (HttpRequestException ex)
-        {
-            return new CiFailureError($"could not look up open PR for branch {run.HeadBranch}: {ex.Message}");
-        }
 
         var prompt = BuildPrompt(config.Repo, run, prNumber, logs);
         return new CiFailureDetected(prompt, run.HtmlUrl, run.HeadBranch, prNumber);
     }
+
+    /// <summary>Runs <paramref name="call"/> with <paramref name="cancellationToken"/> forwarded,
+    /// wrapping any <see cref="HttpRequestException"/> as a <see cref="CiFailureFetchException"/>
+    /// carrying a message prefixed with <paramref name="what"/> — collapses what would otherwise be
+    /// a separate try/catch per API call into one shared helper, while keeping each call's own
+    /// failure message.</summary>
+    private static async Task<T> FetchAsync<T>(Func<CancellationToken, Task<T>> call, string what, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await call(cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new CiFailureFetchException($"{what}: {ex.Message}");
+        }
+    }
+
+    private sealed class CiFailureFetchException(string message) : Exception(message);
 
     private static string BuildPrompt(RepoIdentifier repo, WorkflowRun run, int? prNumber, string logs)
     {

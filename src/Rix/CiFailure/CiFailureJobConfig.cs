@@ -36,7 +36,7 @@ internal sealed record CiFailureJobConfig
         var errors = new List<string>();
 
         CiFailureConfig? ciFailure = null;
-        switch (CiFailureConfig.Create(inputs.Repo, inputs.ReadToken, inputs.RunId))
+        switch (CiFailureConfig.Create(inputs.Job.Repo, inputs.Job.ReadToken, inputs.RunId))
         {
             case CiFailureConfigValid v: ciFailure = v.Config; break;
             case CiFailureConfigInvalid i: errors.AddRange(i.Errors); break;
@@ -45,22 +45,10 @@ internal sealed record CiFailureJobConfig
         JobConfig? job = null;
         // AllowedPushBranches is never taken from inputs: it's derived by CiFailureJobRunner from
         // the failing run's own branch once a failure is actually detected, not accepted as a
-        // caller-supplied parameter (see JobConfig.WithAllowedPushBranches).
-        var jobInputs = new JobInputs
-        (
-            Repo: inputs.Repo,
-            Prompt: PlaceholderPrompt,
-            ReadToken: inputs.ReadToken,
-            MaxTokens: inputs.MaxTokens,
-            TimeoutMinutes: inputs.TimeoutMinutes,
-            WorkDir: inputs.WorkDir,
-            OutputDir: inputs.OutputDir,
-            Agent: inputs.Agent,
-            Model: inputs.Model,
-            AgentApiKey: inputs.AgentApiKey,
-            AgentApiKeyEnv: inputs.AgentApiKeyEnv
-        );
-        switch (JobConfig.Create(jobInputs))
+        // caller-supplied parameter (see JobConfig.WithAllowedPushBranches). Prompt is likewise
+        // always overwritten here, regardless of what inputs.Job carried - the real prompt is only
+        // known once CiFailureRunner detects a failure.
+        switch (JobConfig.Create(inputs.Job with { Prompt = PlaceholderPrompt }))
         {
             case JobConfigValid v: job = v.Config; break;
             case JobConfigInvalid i: errors.AddRange(i.Errors); break;
@@ -75,23 +63,13 @@ internal sealed record CiFailureJobConfig
 }
 
 /// <summary>The raw, unvalidated CLI/environment inputs to <see cref="CiFailureJobConfig.Create"/>:
-/// the union of <see cref="CiFailureConfig"/>'s and <see cref="JobConfig"/>'s inputs, minus the
-/// prompt (derived from the detected failure, never supplied directly) and the duplicate
-/// repo/read-token pair (shared by both halves).</summary>
-internal sealed record CiFailureJobInputs
-(
-    string Repo,
-    string ReadToken,
-    string RunId,
-    string? MaxTokens = null,
-    string? TimeoutMinutes = null,
-    string? WorkDir = null,
-    string? OutputDir = null,
-    string? Agent = null,
-    string? Model = null,
-    string? AgentApiKey = null,
-    string? AgentApiKeyEnv = null
-);
+/// <see cref="RunId"/> plus a <see cref="JobInputs"/> carrying everything <see cref="JobConfig.Create"/>
+/// needs (including the shared <c>Repo</c>/<c>ReadToken</c>). Wrapping <see cref="JobInputs"/>
+/// directly, rather than re-listing its fields, means a new <c>job</c> option needs no matching
+/// field here to stay in sync. <see cref="JobInputs.Prompt"/> is ignored — <see cref="Create"/>
+/// always overwrites it with <see cref="PlaceholderPrompt"/>, since the real prompt is only known
+/// once a failure is actually detected.</summary>
+internal sealed record CiFailureJobInputs(string RunId, JobInputs Job);
 
 /// <summary>The result of <see cref="CiFailureJobConfig.Create"/>: a validated config or the list
 /// of reasons it was rejected. Pattern-matched by callers; never cast.</summary>

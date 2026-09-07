@@ -90,8 +90,9 @@ public class CiFailureJobRunnerTests
     {
         var ciFailureHost = new StubCiFailureHost(getRun: _ => Task.FromResult(SampleRun("success")));
 
-        var exitCode = await Startup.ExecuteCiFailureJobAsync(
-            MakeConfig(), CancellationToken.None, ciFailureHost, JobContext(new StubRepositoryHost()));
+        // No jobContext: the run didn't fail, so CiFailureJobRunner never reaches the job path
+        // that would need one - Startup defaults it, unused.
+        var exitCode = await Startup.ExecuteCiFailureJobAsync(MakeConfig(), CancellationToken.None, ciFailureHost);
 
         Assert.AreEqual(0, exitCode);
         Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")));
@@ -102,8 +103,8 @@ public class CiFailureJobRunnerTests
     {
         var ciFailureHost = new StubCiFailureHost(getRun: _ => throw new HttpRequestException("boom"));
 
-        var exitCode = await Startup.ExecuteCiFailureJobAsync(
-            MakeConfig(), CancellationToken.None, ciFailureHost, JobContext(new StubRepositoryHost()));
+        // No jobContext: the check errors before the job path that would need one ever runs.
+        var exitCode = await Startup.ExecuteCiFailureJobAsync(MakeConfig(), CancellationToken.None, ciFailureHost);
 
         Assert.AreEqual(1, exitCode);
     }

@@ -1,4 +1,5 @@
 using Rix.CiFailure;
+using Rix.Job;
 
 namespace Rix.Tests;
 
@@ -16,14 +17,18 @@ public class CiFailureJobConfigTests
     )
     => CiFailureJobConfig.Create(new CiFailureJobInputs
     (
-        Repo: repo,
-        ReadToken: readToken,
         RunId: runId,
-        WorkDir: Path.GetTempPath(),
-        OutputDir: Path.GetTempPath(),
-        Agent: agent,
-        AgentApiKey: agentApiKey,
-        AgentApiKeyEnv: agentApiKeyEnv
+        Job: new JobInputs
+        (
+            Repo: repo,
+            Prompt: "",
+            ReadToken: readToken,
+            WorkDir: Path.GetTempPath(),
+            OutputDir: Path.GetTempPath(),
+            Agent: agent,
+            AgentApiKey: agentApiKey,
+            AgentApiKeyEnv: agentApiKeyEnv
+        )
     ));
 
     private static CiFailureJobConfig Valid(CiFailureJobConfigResult result) => result switch

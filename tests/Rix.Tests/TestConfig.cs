@@ -81,11 +81,15 @@ internal static class TestConfig
     )
     => CiFailureJobConfig.Create(new CiFailureJobInputs
     (
-        Repo: repo,
-        ReadToken: readToken,
         RunId: runId,
-        WorkDir: workDir ?? Path.GetTempPath(),
-        OutputDir: outputDir ?? Path.GetTempPath()
+        Job: new JobInputs
+        (
+            Repo: repo,
+            Prompt: "",
+            ReadToken: readToken,
+            WorkDir: workDir ?? Path.GetTempPath(),
+            OutputDir: outputDir ?? Path.GetTempPath()
+        )
     )) switch
     {
         CiFailureJobConfigValid v => v.Config,

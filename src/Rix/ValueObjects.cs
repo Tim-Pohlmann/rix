@@ -1,7 +1,36 @@
+using System.Numerics;
+
 namespace Rix;
 
 /// <summary>Writes a single diagnostic line (e.g. a forwarded agent stdout line) to the log sink.</summary>
 internal delegate void LogLine(string line);
+
+/// <summary>Shared numeric-flag parsing used by every <c>Config.Create</c>: blank input either
+/// resolves to <paramref name="defaultValue"/> (an optional flag, e.g. <c>--max-tokens</c>) or is
+/// itself an error when <paramref name="defaultValue"/> is <c>null</c> (a required flag, e.g.
+/// <c>--run-id</c>) — either way, anything non-blank must parse as a positive number or
+/// <paramref name="errors"/> gets a message naming exactly what was wrong, rather than silently
+/// falling back to a default and hiding a caller's typo.</summary>
+internal static class NumericFlag
+{
+    internal static T ParsePositiveInt<T>(string? raw, T? defaultValue, string flag, List<string> errors)
+        where T : struct, INumber<T>
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            if (defaultValue is { } value)
+                return value;
+            errors.Add($"{flag} is required");
+            return default;
+        }
+        if (!T.TryParse(raw, null, out var parsed) || parsed <= T.Zero)
+        {
+            errors.Add($"{flag} must be a positive integer, got '{raw}'");
+            return defaultValue ?? default;
+        }
+        return parsed;
+    }
+}
 
 /// <summary>A read-scoped GitHub access token: enough to clone and inspect a repo, never to write.
 /// <see cref="GitToken"/> derives from it because a write-capable token can do everything a read
