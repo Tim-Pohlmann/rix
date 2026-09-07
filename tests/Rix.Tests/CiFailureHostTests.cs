@@ -43,6 +43,17 @@ public class CiFailureHostTests
     }
 
     [TestMethod]
+    public async Task GetRunAsync_ReturnsNullConclusion_ForInProgressRun()
+    {
+        var host = BuildHost(_ => Json(
+            """{"conclusion":null,"display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix"}"""));
+
+        var run = await host.GetRunAsync(1, CancellationToken.None);
+
+        Assert.IsNull(run.Conclusion);
+    }
+
+    [TestMethod]
     public async Task GetRunAsync_Throws_OnErrorStatus()
     {
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
@@ -77,6 +88,14 @@ public class CiFailureHostTests
         var logs = await host.GetFailedJobLogsAsync(1, CancellationToken.None);
 
         Assert.AreEqual("", logs);
+    }
+
+    [TestMethod]
+    public async Task GetFailedJobLogsAsync_Throws_WhenJobsFieldMissing()
+    {
+        var host = BuildHost(_ => Json("{}"));
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetFailedJobLogsAsync(1, CancellationToken.None));
     }
 
     [TestMethod]

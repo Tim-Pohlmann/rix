@@ -125,14 +125,16 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     }
 
     /// <summary>Fetches a run's conclusion, title, URL and head branch — the facts needed to decide
-    /// whether it failed and to describe the failure.</summary>
+    /// whether it failed and to describe the failure. <c>conclusion</c> is the one field GitHub
+    /// itself sends as <c>null</c> (while the run is still queued/in-progress), so it's the one
+    /// field this doesn't require.</summary>
     public async Task<WorkflowRun> GetRunAsync(long runId, CancellationToken cancellationToken)
     {
         var url = $"https://api.github.com/repos/{Repo.Value}/actions/runs/{runId}";
         using var response = await Http.GetAsync(url, cancellationToken);
         response.EnsureSuccessStatusCode();
         var run = await ReadJsonAsync(response, GitHubReadApiJsonContext.Default.WorkflowRunApiResponse, cancellationToken);
-        if (run.Conclusion is null || run.DisplayTitle is null || run.HtmlUrl is null || run.HeadBranch is null)
+        if (run.DisplayTitle is null || run.HtmlUrl is null || run.HeadBranch is null)
             throw new HttpRequestException($"get workflow run {runId} response was missing a required field");
         return new WorkflowRun(run.Conclusion, run.DisplayTitle, run.HtmlUrl, run.HeadBranch);
     }
@@ -148,6 +150,8 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
         using var jobsResponse = await Http.GetAsync(jobsUrl, cancellationToken);
         jobsResponse.EnsureSuccessStatusCode();
         var jobs = await ReadJsonAsync(jobsResponse, GitHubReadApiJsonContext.Default.WorkflowJobsApiResponse, cancellationToken);
+        if (jobs.Jobs is null)
+            throw new HttpRequestException($"list jobs for run {runId} response was missing the jobs field");
 
         var logs = await Task.WhenAll(jobs.Jobs.Where(j => j.Conclusion == "failure").Select(job => GetJobLogAsync(job.Id, cancellationToken)));
         return string.Join("\n", logs);
@@ -225,7 +229,7 @@ internal sealed record WorkflowRunApiResponse
 /// <summary>The JSON body of a GitHub "list jobs for a workflow run" REST response.</summary>
 internal sealed record WorkflowJobsApiResponse
 (
-    [property: JsonPropertyName("jobs")] IReadOnlyList<WorkflowJobApiResponse> Jobs
+    [property: JsonPropertyName("jobs")] IReadOnlyList<WorkflowJobApiResponse>? Jobs
 );
 
 internal sealed record WorkflowJobApiResponse

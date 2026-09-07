@@ -251,7 +251,11 @@ internal static class Startup
     {
         if (ciFailureHost is null || jobContext is null)
         {
-            var host = new GitHubReadHost(config.Job.Repo, config.Job.ReadToken, ProcessWrapper.RunAsync);
+            // If the caller already supplied one of the two backed by a GitHubReadHost, reuse that
+            // same instance for the other rather than opening a second, redundant connection.
+            var host = jobContext?.Host as GitHubReadHost
+                ?? ciFailureHost as GitHubReadHost
+                ?? new GitHubReadHost(config.Job.Repo, config.Job.ReadToken, ProcessWrapper.RunAsync);
             ciFailureHost ??= host;
             jobContext ??= DefaultContext(config.Job, host);
         }

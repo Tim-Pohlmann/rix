@@ -20,6 +20,17 @@ public class CiFailureRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_ReturnsSkipped_WhenRunStillInProgress()
+    {
+        var host = new StubCiFailureHost(getRun: _ => Task.FromResult(SampleRun(conclusion: null)));
+
+        var result = await CiFailureRunner.RunAsync(Config, host, CancellationToken.None);
+
+        var skipped = AssertSkipped(result);
+        Assert.IsNull(skipped.Conclusion);
+    }
+
+    [TestMethod]
     public async Task RunAsync_ReturnsError_WhenGetRunFails()
     {
         var host = new StubCiFailureHost(
@@ -104,7 +115,7 @@ public class CiFailureRunnerTests
         AssertError(result);
     }
 
-    private static WorkflowRun SampleRun(string conclusion)
+    private static WorkflowRun SampleRun(string? conclusion)
     => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", "rix/fix");
 
     private static CiFailureDetected AssertDetected(ICiFailureResult result) => result switch

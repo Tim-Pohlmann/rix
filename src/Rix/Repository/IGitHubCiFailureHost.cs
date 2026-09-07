@@ -13,5 +13,6 @@ internal interface IGitHubCiFailureHost
     Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken);
 }
 
-/// <summary>The facts about one workflow run needed to describe why it failed.</summary>
-internal sealed record WorkflowRun(string Conclusion, string DisplayTitle, string HtmlUrl, string HeadBranch);
+/// <summary>The facts about one workflow run needed to describe why it failed. <paramref
+/// name="Conclusion"/> is <c>null</c> while the run is still queued/in-progress.</summary>
+internal sealed record WorkflowRun(string? Conclusion, string DisplayTitle, string HtmlUrl, string HeadBranch);
