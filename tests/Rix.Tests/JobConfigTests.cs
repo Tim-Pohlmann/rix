@@ -323,12 +323,11 @@ public class JobConfigTests
     }
 
     [TestMethod]
-    [DataRow("RIX_AGENT")]
-    [DataRow("AGENT_API_KEY_EXTRA")]
-    [DataRow("GITHUB_TOKEN")]
-    public void Create_RejectsApiKeyEnv_ThatNamesARixOrGitHubRuntimeVariable(string envName)
+    public void Create_RejectsApiKeyEnv_ThatNamesARixOrGitHubRuntimeVariable()
     {
-        var errors = Errors(Create(agentApiKey: "secret", agentApiKeyEnv: envName));
+        // Full rejection matrix (RIX_*, AGENT_API_KEY*, GITHUB_*) is covered by
+        // AgentCredentialTests; this just proves JobConfig.Create wires the error through.
+        var errors = Errors(Create(agentApiKey: "secret", agentApiKeyEnv: "RIX_AGENT"));
 
         Assert.IsTrue(errors.Any(e => e.Contains("--agent-api-key-env")), $"expected an agent-api-key-env error, got: {string.Join("; ", errors)}");
     }
