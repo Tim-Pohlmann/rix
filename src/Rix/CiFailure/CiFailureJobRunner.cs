@@ -25,16 +25,10 @@ internal static class CiFailureJobRunner
 
         // Resuming a CI failure means pushing a fix back onto the exact branch that failed - the
         // only sensible /push target here, so it's derived from the detected run rather than
-        // accepted as a caller-supplied input (see JobConfig.WithAllowedPushBranches). A failing
-        // branch that isn't itself a rix/* branch (e.g. CI failed on a human's PR, not a previous
-        // rix run) simply gets no allow-list entry - /push stays disabled, same as an operator
-        // never opting in.
-        var allowedPushBranches = RixBranchName.Parse(detected.Branch).Match
-        (
-            onSuccess: branch => (IReadOnlyList<RixBranchName>)[branch],
-            onError: _ => []
-        );
-        var job = config.Job.WithPrompt(detected.Prompt).WithAllowedPushBranches(allowedPushBranches);
+        // accepted as a caller-supplied input (see JobConfig.WithAllowedPushBranches). That branch
+        // already exists on the remote regardless of whether it happens to be rix/*-named (e.g. CI
+        // failed on a human's own branch, not a previous rix run), so it's always allowed.
+        var job = config.Job.WithPrompt(detected.Prompt).WithAllowedPushBranches([new BranchName(detected.Branch)]);
         var jobResult = await JobRunner.RunAsync(job, jobContext, cancellationToken);
         return new CiFailureJobRan(jobResult);
     }

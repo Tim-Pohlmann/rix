@@ -141,7 +141,7 @@ public class CiFailureJobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_AllowsNoPush_WhenFailingBranchIsNotARixBranch()
+    public async Task RunAsync_AllowsPush_ToTheFailingRunsOwnBranch_EvenWhenNotARixBranch()
     {
         var ciFailureHost = new StubCiFailureHost(
             getRun: _ => Task.FromResult(SampleRun("failure", branch: "feature/human-work")),
@@ -151,7 +151,8 @@ public class CiFailureJobRunnerTests
         var systemPrompt = await CaptureSystemPromptAsync(ciFailureHost);
 
         Assert.IsNotNull(systemPrompt);
-        StringAssert.Contains(systemPrompt, "not allowed any push branches");
+        Assert.IsFalse(systemPrompt.Contains("not allowed any push branches"));
+        StringAssert.Contains(systemPrompt, "feature/human-work");
     }
 
     private async Task<string?> CaptureSystemPromptAsync(IGitHubCiFailureHost ciFailureHost)
