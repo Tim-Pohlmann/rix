@@ -15,9 +15,12 @@ internal static partial class AgentCredential
     /// Restricts env var names to credential-shaped suffixes covering opencode's supported
     /// providers (ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, GOOGLE_APPLICATION_CREDENTIALS,
     /// SNOWFLAKE_CORTEX_TOKEN, ...), rather than deny-listing every internal/runtime variable a
-    /// caller could otherwise clobber.
+    /// caller could otherwise clobber. A couple of the allowed suffixes (e.g. _TOKEN) would
+    /// otherwise overlap with vars rix's own plumbing relies on, so the leading negative lookahead
+    /// also blocks RIX_*/AGENT_API_KEY* (rix's own runtime vars) and GITHUB_* (GITHUB_TOKEN etc)
+    /// by name.
     /// </summary>
-    [GeneratedRegex(@"^[A-Z][A-Z0-9_]*_(API_KEY|TOKEN|KEY_ID|ACCESS_KEY|CREDENTIALS|PROFILE|ACCOUNT|PROJECT|PAT|ARN|RESOURCE_NAME)$")]
+    [GeneratedRegex(@"^(?!RIX_|AGENT_API_KEY|GITHUB_)[A-Z][A-Z0-9_]*_(API_KEY|TOKEN|KEY_ID|ACCESS_KEY|CREDENTIALS|PROFILE|ACCOUNT|PROJECT|PAT|ARN|RESOURCE_NAME)$")]
     private static partial Regex CredentialShapedName();
 
     /// <summary>
@@ -44,23 +47,9 @@ internal static partial class AgentCredential
         _ => new ParseSuccess<string>("OPENCODE_API_KEY"),
     };
 
-    /// <summary>
-    /// A couple of the allowed suffixes (e.g. _TOKEN) would otherwise overlap with vars rix's own
-    /// plumbing relies on, so also block RIX_*/AGENT_API_KEY* (rix's own runtime vars) and GITHUB_*
-    /// (GITHUB_TOKEN etc) by name.
-    /// </summary>
-    private static ParseResult<string> Validate(string envName)
+    private static ParseResult<string> Validate(string envName) => CredentialShapedName().IsMatch(envName) switch
     {
-        var blocked =
-            envName.StartsWith("RIX_", StringComparison.Ordinal) ||
-            envName.StartsWith("AGENT_API_KEY", StringComparison.Ordinal) ||
-            envName.StartsWith("GITHUB_", StringComparison.Ordinal) ||
-            !CredentialShapedName().IsMatch(envName);
-
-        return blocked switch
-        {
-            true => new ParseError<string>($"'{envName}' must be a credential-shaped environment variable name, e.g. *_API_KEY or *_TOKEN, and not one of rix's own runtime variables"),
-            false => new ParseSuccess<string>(envName),
-        };
-    }
+        true => new ParseSuccess<string>(envName),
+        false => new ParseError<string>($"'{envName}' must be a credential-shaped environment variable name, e.g. *_API_KEY or *_TOKEN, and not one of rix's own runtime variables"),
+    };
 }

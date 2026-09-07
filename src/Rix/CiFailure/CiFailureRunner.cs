@@ -1,5 +1,4 @@
 using Rix.Repository;
-using System.Text;
 
 namespace Rix.CiFailure;
 
@@ -14,7 +13,7 @@ internal static class CiFailureRunner
     /// <summary>Caps the log excerpt so a flooding failure can't blow the model's context budget.</summary>
     private const int LogTailChars = 20_000;
 
-    internal static async Task<ICiFailureResult> RunAsync(CiFailureConfig config, ICiFailureHost host, CancellationToken cancellationToken)
+    internal static async Task<ICiFailureResult> RunAsync(CiFailureConfig config, IGitHubCiFailureHost host, CancellationToken cancellationToken)
     {
         WorkflowRun run;
         try
@@ -57,16 +56,20 @@ internal static class CiFailureRunner
 
     private static string BuildPrompt(RepoIdentifier repo, WorkflowRun run, int? prNumber, string logs)
     {
-        var text = new StringBuilder();
-        text.AppendLine($"CI failed on branch '{run.HeadBranch}' (run: {run.HtmlUrl}).");
-        if (prNumber is { } number)
-            text.AppendLine($"This is PR #{number} in {repo.Value}.");
-        text.AppendLine($"Failing run title: {run.DisplayTitle}");
-        text.AppendLine();
-        text.AppendLine("Investigate the failure and fix it. Failing step log (tail):");
-        text.AppendLine("```");
-        text.AppendLine(logs);
-        text.Append("```");
-        return text.ToString();
+        var prLine = prNumber switch
+        {
+            { } number => $"This is PR #{number} in {repo.Value}.\n",
+            null => "",
+        };
+
+        return $"""
+        CI failed on branch '{run.HeadBranch}' (run: {run.HtmlUrl}).
+        {prLine}Failing run title: {run.DisplayTitle}
+
+        Investigate the failure and fix it. Failing step log (tail):
+        ```
+        {logs}
+        ```
+        """;
     }
 }

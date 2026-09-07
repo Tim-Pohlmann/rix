@@ -14,7 +14,7 @@ internal static class CiFailureJobRunner
     internal static async Task<CiFailureJobOutcome> RunAsync
     (
         CiFailureJobConfig config,
-        ICiFailureHost ciFailureHost,
+        IGitHubCiFailureHost ciFailureHost,
         JobContext jobContext,
         CancellationToken cancellationToken
     )

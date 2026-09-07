@@ -4,7 +4,7 @@ namespace Rix.Repository;
 /// outcome, its failing jobs' logs, and any open PR for its branch. Kept separate from
 /// <see cref="IRepositoryReadHost"/> so <c>rix job</c>'s stub host isn't forced to implement
 /// operations it never uses.</summary>
-internal interface ICiFailureHost
+internal interface IGitHubCiFailureHost
 {
     Task<WorkflowRun> GetRunAsync(long runId, CancellationToken cancellationToken);
 
