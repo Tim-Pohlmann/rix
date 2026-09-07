@@ -16,17 +16,11 @@ internal static class PushRequestExtensions
             if (string.IsNullOrWhiteSpace(req.Branch)) return new InvalidPush("branch is required");
             if (string.IsNullOrWhiteSpace(req.BaseBranch)) return new InvalidPush("baseBranch is required");
 
-            // Parse every field once, then match: the first failure becomes an InvalidPush naming
-            // the field, and the all-success arm hands the parsed strong types straight to QueuedPush.
-            return (RixBranchName.Parse(req.Branch),
-                    BranchName.Parse(req.BaseBranch)) switch
-            {
-                (ParseError<RixBranchName> e, _) => new InvalidPush($"branch: {e.Error}"),
-                (_, ParseError<BranchName> e) => new InvalidPush($"baseBranch: {e.Error}"),
-                (ParseSuccess<RixBranchName> branch, ParseSuccess<BranchName> baseBranch)
-                    => new ValidPush(new QueuedPush(branch.Value, baseBranch.Value)),
-                var other => throw new InvalidOperationException($"Unexpected parse results: {other}"),
-            };
+            // Unlike /pr, the branch here already exists on the remote (see HandlePushAsync), so it
+            // isn't a name the agent is inventing - any branch name is acceptable, not just rix/*.
+            // BranchName.Parse never fails (it doesn't validate format), so there's nothing to
+            // match on here - just construct both directly.
+            return new ValidPush(new QueuedPush(new BranchName(req.Branch), new BranchName(req.BaseBranch)));
         }
     }
 }

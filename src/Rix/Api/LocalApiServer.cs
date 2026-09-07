@@ -38,14 +38,16 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// branch is accepted from, since it's also the directory <c>rix</c> later bundles from.</param>
     /// <param name="allowedPushBranches">The only branches <c>/push</c> may deliver to; when
     /// <c>null</c> or empty, <c>/push</c> rejects every branch — an operator opts in by naming the
-    /// branches this run may touch.</param>
+    /// branches this run may touch. Any branch name is acceptable here (unlike <c>/pr</c>'s
+    /// <c>rix/*</c> requirement), since these already exist on the remote rather than being named
+    /// by the agent.</param>
     internal static async Task<LocalApiServer> StartAsync
     (
         IRepositoryReadHost host,
         string cloneDir,
         CancellationToken cancellationToken,
         Action<string>? logLine = null,
-        IReadOnlyList<RixBranchName>? allowedPushBranches = null
+        IReadOnlyList<BranchName>? allowedPushBranches = null
     )
     {
         var pendingPrRequests = new PrQueue();
@@ -80,7 +82,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         string cloneDir,
         PrQueue pendingPrRequests,
         ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
-        IReadOnlyList<RixBranchName>? allowedPushBranches
+        IReadOnlyList<BranchName>? allowedPushBranches
     )
     {
         app.MapGet("/health", () => Results.Ok());
@@ -130,7 +132,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IRepositoryReadHost host,
         string cloneDir,
         ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
-        IReadOnlyList<RixBranchName>? allowedPushBranches,
+        IReadOnlyList<BranchName>? allowedPushBranches,
         CancellationToken ct
     )
     {
@@ -184,7 +186,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// <summary>Cancels the queued request for <paramref name="req"/>'s branch by dispatching to
     /// <paramref name="remove"/> once the branch is known well-formed — shared by /pr and /push,
     /// which differ only in where the branch is actually removed from.</summary>
-    private static IResult HandleDelete(DeleteRequest req, Func<RixBranchName, IResult> remove)
+    private static IResult HandleDelete(DeleteRequest req, Func<BranchName, IResult> remove)
     {
         var validation = req.Validate();
         if (validation is InvalidDelete(var reason))
@@ -197,7 +199,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
     // A well-formed branch with nothing queued is a 404 so the agent learns its cancel was a no-op
     // rather than assuming it took.
-    private static IResult RemoveFromDictionary(ConcurrentDictionary<string, QueuedPush> pendingRequests, RixBranchName branch)
+    private static IResult RemoveFromDictionary(ConcurrentDictionary<string, QueuedPush> pendingRequests, BranchName branch)
     {
         if (pendingRequests.TryRemove(branch.Value, out _))
             return Results.Ok(new QueuedResponse("deleted"));

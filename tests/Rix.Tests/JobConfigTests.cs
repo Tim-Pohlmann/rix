@@ -265,20 +265,15 @@ public class JobConfigTests
     }
 
     [TestMethod]
-    public void Create_RejectsMalformedAllowedPushBranches()
+    public void Create_AcceptsAllowedPushBranches_ThatAreNotRixBranches()
     {
-        var errors = Errors(Create(allowedPushBranches: "rix/good,main,prod"));
+        // The rix/* naming pattern is only a requirement for branches the agent creates via /pr;
+        // /push always delivers to a branch that already exists on the remote, so any name is fine.
+        var config = Valid(Create(allowedPushBranches: "rix/good,main,prod"));
 
-        Assert.IsTrue(errors.Any(e => e.Contains("--allowed-push-branches")), $"expected an allowed-push-branches error, got: {string.Join("; ", errors)}");
-        Assert.IsTrue(errors.Any(e => e.Contains("rix/*")), $"expected a branch-format error, got: {string.Join("; ", errors)}");
-    }
-
-    [TestMethod]
-    public void Create_RejectsAllowedPushBranches_ThatAreNotRixBranches()
-    {
-        var errors = Errors(Create(allowedPushBranches: "main"));
-
-        Assert.IsTrue(errors.Any(e => e.Contains("--allowed-push-branches")), $"expected an allowed-push-branches error, got: {string.Join("; ", errors)}");
+        CollectionAssert.AreEqual(
+            new[] { "rix/good", "main", "prod" },
+            config.AllowedPushBranches.Select(b => b.Value).ToArray());
     }
 
     [TestMethod]
