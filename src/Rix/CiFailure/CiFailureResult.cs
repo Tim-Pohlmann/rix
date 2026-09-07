@@ -18,11 +18,11 @@ internal sealed record CiFailureDetected
     [property: JsonPropertyName("prNumber")] int? PrNumber
 ) : ICiFailureResult;
 
-/// <summary>The run did not fail (e.g. it succeeded, was cancelled, or is still in progress) —
-/// nothing to do.</summary>
+/// <summary>The run did not fail (e.g. it succeeded, was cancelled, or is still in progress, in
+/// which case <paramref name="Conclusion"/> is <c>null</c>) — nothing to do.</summary>
 internal sealed record CiFailureSkipped
 (
-    [property: JsonPropertyName("conclusion")] string Conclusion
+    [property: JsonPropertyName("conclusion")] string? Conclusion
 ) : ICiFailureResult;
 
 /// <summary>Something went wrong fetching or interpreting the run's data, as opposed to the run
