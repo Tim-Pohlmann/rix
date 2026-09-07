@@ -49,17 +49,19 @@ internal record PendingPr
 );
 
 /// <summary>A request to push the agent's new commits onto a branch that already exists on the
-/// remote (e.g. continuing work from a previous run). Unlike a <see cref="QueuedPr"/>, no PR is
-/// opened — the commits are delivered straight to the existing branch.</summary>
+/// remote (e.g. continuing work from a previous run, including a human's own branch). Unlike a
+/// <see cref="QueuedPr"/>, no PR is opened — the commits are delivered straight to the existing
+/// branch, so its name is never one the agent is inventing and the <c>rix/*</c> pattern doesn't
+/// apply here.</summary>
 internal record QueuedPush
 (
-    [property: JsonPropertyName("branch")] RixBranchName Branch,
+    [property: JsonPropertyName("branch")] BranchName Branch,
     [property: JsonPropertyName("baseBranch")] BranchName BaseBranch
 );
 
 internal record PendingPush
 (
-    [property: JsonPropertyName("branch")] RixBranchName Branch,
+    [property: JsonPropertyName("branch")] BranchName Branch,
     [property: JsonPropertyName("baseBranch")] BranchName BaseBranch,
     [property: JsonPropertyName("bundleFile")] string BundleFile
 );

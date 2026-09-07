@@ -190,7 +190,7 @@ internal static class JobRunner
     /// <summary>A queued branch to bundle, stripped down to what <see cref="BundleBranchAsync"/>
     /// needs: identity (<paramref name="Branch"/>/<paramref name="BaseBranch"/>) plus
     /// <paramref name="Kind"/> ("PR" or "push") for the skip log line.</summary>
-    private readonly record struct BundleRequest(RixBranchName Branch, BranchName BaseBranch, string Kind);
+    private readonly record struct BundleRequest(BranchName Branch, BranchName BaseBranch, string Kind);
 
     /// <summary>Dedups <paramref name="request"/>'s branch against <paramref name="seenBranches"/>
     /// (shared across the PR and push queues, so the same branch is never bundled twice in one run)
@@ -248,7 +248,7 @@ internal static class JobRunner
     private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs, IReadOnlyList<PendingPush> PendingPushes) : DeliveryOutcome;
     private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
-    private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<RixBranchName> allowedPushBranches)
+    private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<BranchName> allowedPushBranches)
     {
         var prUri = new Uri(apiBaseUrl, "/pr");
         var pushUri = new Uri(apiBaseUrl, "/push");
@@ -286,7 +286,7 @@ internal static class JobRunner
     /// what /push will accept from the prompt instead of only from rejected requests. /push denies
     /// every branch unless the operator explicitly allowed some, so the empty case still needs a
     /// sentence — silence there would read as "unrestricted" to the agent.</summary>
-    private static string AllowedPushBranchesPrompt(IReadOnlyList<RixBranchName> allowedPushBranches)
+    private static string AllowedPushBranchesPrompt(IReadOnlyList<BranchName> allowedPushBranches)
     => allowedPushBranches.Count switch
     {
         0 => "This job has not allowed any push branches, so /push will reject every request; use /pr for all changes.",

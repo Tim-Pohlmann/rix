@@ -12,8 +12,10 @@ internal record JobConfig
     internal AgentConfig Agent { get; }
 
     /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
-    /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.</summary>
-    internal IReadOnlyList<RixBranchName> AllowedPushBranches { get; }
+    /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.
+    /// Any branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates
+    /// via <c>/pr</c>), since these already exist on the remote before the job ever runs.</summary>
+    internal IReadOnlyList<BranchName> AllowedPushBranches { get; }
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
@@ -29,7 +31,7 @@ internal record JobConfig
         DirectoryPath workDir,
         DirectoryPath outputDir,
         AgentConfig agent,
-        IReadOnlyList<RixBranchName> allowedPushBranches
+        IReadOnlyList<BranchName> allowedPushBranches
     )
     {
         Repo = repo;
@@ -97,7 +99,7 @@ internal record JobConfig
             ? null
             : AgentCredential.ResolveEnvName(resolvedAgent, inputs.AgentApiKeyEnv).Collect(errors, "--agent-api-key-env");
 
-        var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches, errors);
+        var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches);
 
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
@@ -117,21 +119,19 @@ internal record JobConfig
     }
 
     /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
-    /// <c>rix/*</c> branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
+    /// branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
     /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
-    /// must opt in to letting the agent push at all. Each non-blank entry must be a well-formed
-    /// <c>rix/*</c> branch name, and any malformed entry is collected as an error via
-    /// <see cref="ParseResultExtensions.Collect{T}"/> so the caller's typo is reported instead of
-    /// silently dropping the restriction. Duplicates are dropped.</summary>
-    private static List<RixBranchName> ParseAllowedPushBranches(string? raw, List<string> errors)
+    /// must opt in to letting the agent push at all. Unlike the <c>rix/*</c>-restricted branches the
+    /// agent creates via <c>/pr</c>, any branch name is acceptable here, since these already exist on
+    /// the remote before the job ever runs. Duplicates are dropped.</summary>
+    private static List<BranchName> ParseAllowedPushBranches(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
             return [];
 
         return raw
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(entry => RixBranchName.Parse(entry).Collect(errors, "--allowed-push-branches"))
-            .OfType<RixBranchName>()
+            .Select(entry => new BranchName(entry))
             .Distinct()
             .ToList();
     }
