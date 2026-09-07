@@ -99,7 +99,9 @@ runs:
         exit_code=$?
         set -e
 
-        status=$(jq -r .status <<<"$result")
+        # One jq call over the already-in-memory $result, rather than a separate subprocess per
+        # field - status/conclusion/error are all read from it below.
+        IFS=$'\t' read -r status conclusion error < <(jq -r '[.status, (.conclusion // ""), (.error // "")] | @tsv' <<<"$result")
         # Default to false so every branch below (including an unrecognized status) leaves
         # has-result in a defined state; only the success branch needs to override it.
         echo "has-result=false" >> "$GITHUB_OUTPUT"
@@ -110,14 +112,14 @@ runs:
             echo "has-result=true" >> "$GITHUB_OUTPUT"
             ;;
           skipped)
-            echo "Run $RIX_RUN_ID concluded '$(jq -r .conclusion <<<"$result")', not 'failure' — skipping."
+            echo "Run $RIX_RUN_ID concluded '$conclusion', not 'failure' — skipping."
             ;;
           failure | setupFailure)
             # The agent ran but the job itself failed - exit_code is already non-zero here, which
             # fails this step (and, via needs:, skips create-pr) regardless of has-result.
             ;;
           error)
-            echo "::error::$(escape_workflow_command "$(jq -r .error <<<"$result")")"
+            echo "::error::$(escape_workflow_command "$error")"
             ;;
           *)
             echo "::error::$(escape_workflow_command "rix ci-failure-job did not produce a usable result: $result")"
