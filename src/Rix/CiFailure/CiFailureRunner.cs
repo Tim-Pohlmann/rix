@@ -68,7 +68,7 @@ internal static class CiFailureRunner
         }
     }
 
-    private sealed class CiFailureFetchException(string message) : Exception(message);
+    public sealed class CiFailureFetchException(string message) : Exception(message);
 
     private static string BuildPrompt(RepoIdentifier repo, WorkflowRun run, int? prNumber, string logs)
     {
