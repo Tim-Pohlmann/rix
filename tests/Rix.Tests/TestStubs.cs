@@ -9,7 +9,7 @@ namespace Rix.Tests;
 internal sealed class StubCiFailureHost(
     Func<long, Task<WorkflowRun>>? getRun = null,
     Func<long, Task<string>>? getLogs = null,
-    Func<BranchName, Task<int?>>? findPr = null) : ICiFailureHost
+    Func<BranchName, Task<int?>>? findPr = null) : IGitHubCiFailureHost
 {
     public Task<WorkflowRun> GetRunAsync(long runId, CancellationToken cancellationToken)
     => getRun switch { { } check => check(runId), _ => throw new InvalidOperationException("getRun not stubbed") };

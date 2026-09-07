@@ -24,7 +24,7 @@ internal static class Startup
     => DefaultContext(config, new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
 
     /// <summary>Overload for callers (e.g. <see cref="ExecuteCiFailureJobAsync"/>) that already
-    /// have a host instance to reuse — e.g. one also serving as the <see cref="ICiFailureHost"/>
+    /// have a host instance to reuse — e.g. one also serving as the <see cref="IGitHubCiFailureHost"/>
     /// for the same run, rather than opening a second, redundant connection.</summary>
     internal static JobContext DefaultContext(JobConfig config, IRepositoryReadHost host)
     => new
@@ -216,7 +216,7 @@ internal static class Startup
     /// exits successfully (there was simply nothing to do); only <see cref="CiFailureError"/> — a
     /// problem talking to the API, not the run itself failing — is treated as a job failure.
     /// </summary>
-    internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, ICiFailureHost? host = null)
+    internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, IGitHubCiFailureHost? host = null)
     {
         host ??= new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync);
         var result = await CiFailureRunner.RunAsync(config, host, cancellationToken);
@@ -247,7 +247,7 @@ internal static class Startup
     /// <c>rix ci-failure</c>/<c>rix job</c> counterpart. One <see cref="GitHubReadHost"/> backs
     /// both the ci-failure check and the job's clone, since it implements both roles.
     /// </summary>
-    internal static async Task<int> ExecuteCiFailureJobAsync(CiFailureJobConfig config, CancellationToken cancellationToken, ICiFailureHost? ciFailureHost = null, JobContext? jobContext = null)
+    internal static async Task<int> ExecuteCiFailureJobAsync(CiFailureJobConfig config, CancellationToken cancellationToken, IGitHubCiFailureHost? ciFailureHost = null, JobContext? jobContext = null)
     {
         if (ciFailureHost is null || jobContext is null)
         {

@@ -11,7 +11,7 @@ namespace Rix.Repository;
 /// <summary>Read-only GitHub host for one repo. Owns the shared transport — an authenticated
 /// <see cref="HttpClient"/> for the REST API and the git auth environment for HTTPS git commands —
 /// which <see cref="GitHubHost"/> composes and reuses for its write operations.</summary>
-internal sealed class GitHubReadHost : IRepositoryReadHost, ICiFailureHost
+internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
 {
     private readonly RunProcessAsync _runProcess;
     private readonly IReadOnlyDictionary<string, string> _gitAuthEnv;

@@ -153,7 +153,7 @@ public class CiFailureJobRunnerTests
         StringAssert.Contains(systemPrompt, "not allowed any push branches");
     }
 
-    private async Task<string?> CaptureSystemPromptAsync(ICiFailureHost ciFailureHost)
+    private async Task<string?> CaptureSystemPromptAsync(IGitHubCiFailureHost ciFailureHost)
     {
         string? systemPrompt = null;
         RunProcessAsync capture = (fileName, args, workDir, envOverrides, onLine, ct) =>

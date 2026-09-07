@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Rix.Tests;
 
-/// <summary>Covers the <see cref="ICiFailureHost"/> methods <see cref="GitHubReadHost"/>
+/// <summary>Covers the <see cref="IGitHubCiFailureHost"/> methods <see cref="GitHubReadHost"/>
 /// implements: fetching a run's facts, concatenating its failed jobs' logs, and looking up an
 /// open PR for its branch.</summary>
 [TestClass]
