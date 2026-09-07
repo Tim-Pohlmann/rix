@@ -128,8 +128,7 @@ internal static class JobRunner
         if (agent.ApiKey is not { } apiKey)
             return environmentOverrides;
 
-        var withApiKey = new Dictionary<string, string>(environmentOverrides) { [agent.ApiKeyEnv!] = apiKey };
-        return withApiKey;
+        return new Dictionary<string, string>(environmentOverrides) { [agent.ApiKeyEnv!] = apiKey };
     }
 
     /// <summary>

@@ -29,7 +29,7 @@ internal static partial class AgentCredential
     internal static ParseResult<string> ResolveEnvName(AgentKind agent, string? apiKeyEnv)
     {
         if (string.IsNullOrWhiteSpace(apiKeyEnv))
-            return DefaultEnvName(agent).Match(onSuccess: Validate, onError: error => new ParseError<string>(error));
+            return DefaultEnvName(agent);
 
         return Validate(apiKeyEnv.Trim());
     }
