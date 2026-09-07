@@ -151,7 +151,7 @@ internal static class SubmitRunner
     /// Returns a <see cref="SubmitFailure"/> on the first problem, or <c>null</c> on success.</summary>
     private static async Task<SubmitFailure?> DeliverBranchAsync
     (
-        SubmitContext context, string cloneDir, string bundlePath, RixBranchName branch, CancellationToken cancellationToken
+        SubmitContext context, string cloneDir, string bundlePath, BranchName branch, CancellationToken cancellationToken
     )
     {
         var fetch = await Git

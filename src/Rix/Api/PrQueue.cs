@@ -37,7 +37,7 @@ internal sealed class PrQueue
         }
     }
 
-    internal IResult TryRemove(RixBranchName branch)
+    internal IResult TryRemove(BranchName branch)
     {
         lock (_lock)
         {
