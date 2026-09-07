@@ -28,6 +28,13 @@ on:
         description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
         required: false
         type: string
+      model:
+        description: >-
+          Model identifier passed to the agent CLI via --model (e.g. 'openai/gpt-4o' for
+          opencode). Provider-specific; omit to use the agent's own default model (opencode
+          picks a free model on its own, needing no API key).
+        required: false
+        type: string
       agent-api-key-env:
         description: >-
           Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
@@ -117,6 +124,7 @@ jobs:
           run-id: ${{ inputs.run-id }}
           read-token: ${{ secrets.read-token }}
           agent: ${{ inputs.agent }}
+          model: ${{ inputs.model }}
           agent-api-key: ${{ secrets.agent-api-key }}
           agent-api-key-env: ${{ inputs.agent-api-key-env }}
           max-tokens: ${{ inputs.max-tokens }}

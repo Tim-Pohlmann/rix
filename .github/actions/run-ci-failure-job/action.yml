@@ -82,6 +82,15 @@ runs:
         # that name in this shell or in $GITHUB_ENV.
         mkdir -p out work
 
+        # Workflow commands (::error::...) read %/CR/LF as control syntax, so any of those in a
+        # message straight from rix's JSON output (attacker-influenced, since it can echo failing
+        # test/log content) could break the command or inject another one. Percent-encode them.
+        escape_workflow_command() {
+          local s=${1//'%'/'%25'}
+          s=${s//$'\r'/'%0D'}
+          echo "${s//$'\n'/'%0A'}"
+        }
+
         # rix ci-failure-job always prints its JSON result to stdout, on every exit code (see
         # Startup.ExecuteCiFailureJobAsync) - capture it before deciding, rather than letting a
         # non-zero exit short-circuit under errexit before it can be read.
@@ -108,10 +117,10 @@ runs:
             # fails this step (and, via needs:, skips create-pr) regardless of has-result.
             ;;
           error)
-            echo "::error::$(jq -r .error <<<"$result")"
+            echo "::error::$(escape_workflow_command "$(jq -r .error <<<"$result")")"
             ;;
           *)
-            echo "::error::rix ci-failure-job did not produce a usable result: $result"
+            echo "::error::$(escape_workflow_command "rix ci-failure-job did not produce a usable result: $result")"
             ;;
         esac
 

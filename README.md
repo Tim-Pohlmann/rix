@@ -130,8 +130,9 @@ and Windows on x64.
 
 `rix` also ships `.github/workflows/on-ci-failure.yml`, a reusable workflow that takes a
 specific run, checks whether it actually failed, builds a prompt from the failure (PR number,
-run URL, failing step logs), and calls `job.yml`. It's the building block for both patterns
-below — write the "turn a failure into a prompt" logic once, reuse it either way.
+run URL, failing step logs), and runs the agent against it via the `run-ci-failure-job` and
+`submit-rix-job` composite actions. It's the building block for both patterns below — write the
+"turn a failure into a prompt" logic once, reuse it either way.
 
 ### Simple: directly in a project repo
 
