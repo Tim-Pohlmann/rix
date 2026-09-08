@@ -33,7 +33,7 @@ internal sealed record CiFailureConfig
         if (string.IsNullOrWhiteSpace(readToken))
             errors.Add("--read-token is required");
 
-        var parsedRunId = ParseRunId(runId, errors);
+        var parsedRunId = NumericFlag.ParsePositiveInt<long>(runId, null, "--run-id", errors);
 
         if (errors.Count > 0)
             return new CiFailureConfigInvalid([.. errors]);
@@ -41,21 +41,6 @@ internal sealed record CiFailureConfig
         // Non-null here: any blank or unparseable input would have added an error above.
         var config = new CiFailureConfig(parsedRepo!, new GitReadToken(readToken), parsedRunId);
         return new CiFailureConfigValid(config);
-    }
-
-    private static long ParseRunId(string? raw, List<string> errors)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            errors.Add("--run-id is required");
-            return 0;
-        }
-        if (!long.TryParse(raw, out var value) || value <= 0)
-        {
-            errors.Add($"--run-id must be a positive integer, got '{raw}'");
-            return 0;
-        }
-        return value;
     }
 }
 

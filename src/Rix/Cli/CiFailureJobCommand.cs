@@ -1,4 +1,5 @@
 using Rix.CiFailure;
+using Rix.Job;
 using System.CommandLine;
 
 namespace Rix.Cli;
@@ -32,17 +33,22 @@ internal static class CiFailureJobCommand
                 var parsed = ctx.ParseResult;
                 var inputs = new CiFailureJobInputs
                 (
-                    Repo:           parsed.Str(CiFailureOptions.RepoOption,      "RIX_REPO"),
-                    ReadToken:      parsed.Str(CiFailureOptions.ReadTokenOption, "RIX_READ_TOKEN"),
-                    RunId:          parsed.Str(CiFailureOptions.RunIdOption,     "RIX_RUN_ID"),
-                    MaxTokens:      parsed.Str(JobOptions.MaxTokensOption, "RIX_MAX_TOKENS"),
-                    TimeoutMinutes: parsed.Str(JobOptions.TimeoutOption,   "RIX_TIMEOUT"),
-                    WorkDir:        parsed.Str(JobOptions.WorkDirOption,   "RIX_WORK_DIR"),
-                    OutputDir:      parsed.Str(JobOptions.OutputDirOption, "RIX_OUTPUT_DIR"),
-                    Agent:          parsed.Str(JobOptions.AgentOption,     "RIX_AGENT"),
-                    Model:          parsed.Str(JobOptions.ModelOption,     "RIX_MODEL"),
-                    AgentApiKey:    parsed.Str(JobOptions.AgentApiKeyOption,    "AGENT_API_KEY"),
-                    AgentApiKeyEnv: parsed.Str(JobOptions.AgentApiKeyEnvOption, "AGENT_API_KEY_ENV")
+                    RunId: parsed.Str(CiFailureOptions.RunIdOption, "RIX_RUN_ID"),
+                    Job: new JobInputs
+                    (
+                        Repo:           parsed.Str(CiFailureOptions.RepoOption,      "RIX_REPO"),
+                        // Overwritten by CiFailureJobConfig.Create once a failure is detected.
+                        Prompt:         "",
+                        ReadToken:      parsed.Str(CiFailureOptions.ReadTokenOption, "RIX_READ_TOKEN"),
+                        MaxTokens:      parsed.Str(JobOptions.MaxTokensOption, "RIX_MAX_TOKENS"),
+                        TimeoutMinutes: parsed.Str(JobOptions.TimeoutOption,   "RIX_TIMEOUT"),
+                        WorkDir:        parsed.Str(JobOptions.WorkDirOption,   "RIX_WORK_DIR"),
+                        OutputDir:      parsed.Str(JobOptions.OutputDirOption, "RIX_OUTPUT_DIR"),
+                        Agent:          parsed.Str(JobOptions.AgentOption,     "RIX_AGENT"),
+                        Model:          parsed.Str(JobOptions.ModelOption,     "RIX_MODEL"),
+                        AgentApiKey:    parsed.Str(JobOptions.AgentApiKeyOption,    "AGENT_API_KEY"),
+                        AgentApiKeyEnv: parsed.Str(JobOptions.AgentApiKeyEnvOption, "AGENT_API_KEY_ENV")
+                    )
                 );
                 var result = CiFailureJobConfig.Create(inputs);
 

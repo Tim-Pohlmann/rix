@@ -71,7 +71,7 @@ internal static class JobOptions
     internal static readonly Option<string> AllowedPushBranchesOption = new
     (
         name: "--allowed-push-branches",
-        description: "Comma-separated list of rix/* branches the /push API endpoint may deliver to " +
+        description: "Comma-separated list of branches the /push API endpoint may deliver to " +
             "(default: none — /push is disabled until this is set)"
     )
     { IsRequired = false };

@@ -4,16 +4,18 @@ namespace Rix.Job;
 
 internal record JobConfig
 {
-    internal RepoIdentifier Repo { get; }
-    internal GitReadToken ReadToken { get; }
-    internal TimeoutMinutes TimeoutMinutes { get; }
-    internal DirectoryPath WorkDir { get; }
-    internal DirectoryPath OutputDir { get; }
-    internal AgentConfig Agent { get; }
+    internal RepoIdentifier Repo { get; init; }
+    internal GitReadToken ReadToken { get; init; }
+    internal TimeoutMinutes TimeoutMinutes { get; init; }
+    internal DirectoryPath WorkDir { get; init; }
+    internal DirectoryPath OutputDir { get; init; }
+    internal AgentConfig Agent { get; init; }
 
     /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
-    /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.</summary>
-    internal IReadOnlyList<RixBranchName> AllowedPushBranches { get; }
+    /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.
+    /// Any branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates
+    /// via <c>/pr</c>), since these already exist on the remote before the job ever runs.</summary>
+    internal IReadOnlyList<BranchName> AllowedPushBranches { get; init; }
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
@@ -29,7 +31,7 @@ internal record JobConfig
         DirectoryPath workDir,
         DirectoryPath outputDir,
         AgentConfig agent,
-        IReadOnlyList<RixBranchName> allowedPushBranches
+        IReadOnlyList<BranchName> allowedPushBranches
     )
     {
         Repo = repo;
@@ -62,8 +64,8 @@ internal record JobConfig
         if (string.IsNullOrWhiteSpace(readToken))
             errors.Add("--read-token is required");
 
-        var resolvedMaxTokens = ParsePositiveInt(inputs.MaxTokens, DefaultMaxTokens, "--max-tokens", errors);
-        var resolvedTimeout = ParsePositiveInt(inputs.TimeoutMinutes, DefaultTimeoutMinutes, "--timeout", errors);
+        var resolvedMaxTokens = NumericFlag.ParsePositiveInt<int>(inputs.MaxTokens, DefaultMaxTokens, "--max-tokens", errors);
+        var resolvedTimeout = NumericFlag.ParsePositiveInt<int>(inputs.TimeoutMinutes, DefaultTimeoutMinutes, "--timeout", errors);
 
         var resolvedWorkDir = string.IsNullOrWhiteSpace(inputs.WorkDir) switch
         {
@@ -97,7 +99,7 @@ internal record JobConfig
             ? null
             : AgentCredential.ResolveEnvName(resolvedAgent, inputs.AgentApiKeyEnv).Collect(errors, "--agent-api-key-env");
 
-        var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches, errors);
+        var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches);
 
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
@@ -126,7 +128,7 @@ internal record JobConfig
     internal JobConfig WithPrompt(string prompt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
-        return new(Repo, ReadToken, TimeoutMinutes, WorkDir, OutputDir, Agent with { Prompt = prompt }, AllowedPushBranches);
+        return this with { Agent = Agent with { Prompt = prompt } };
     }
 
     /// <summary>Returns a copy of this config with <paramref name="allowedPushBranches"/>
@@ -136,49 +138,25 @@ internal record JobConfig
     /// failure is pushing a fix back onto that exact branch, so letting a caller widen the
     /// allow-list to unrelated branches would undermine the restriction rather than configure
     /// it.</summary>
-    internal JobConfig WithAllowedPushBranches(IReadOnlyList<RixBranchName> allowedPushBranches)
-    => new(Repo, ReadToken, TimeoutMinutes, WorkDir, OutputDir, Agent, allowedPushBranches);
+    internal JobConfig WithAllowedPushBranches(IReadOnlyList<BranchName> allowedPushBranches)
+    => this with { AllowedPushBranches = allowedPushBranches };
 
     /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
-    /// <c>rix/*</c> branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
+    /// branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
     /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
-    /// must opt in to letting the agent push at all. Each non-blank entry must be a well-formed
-    /// <c>rix/*</c> branch name, and any malformed entry is collected as an error via
-    /// <see cref="ParseResultExtensions.Collect{T}"/> so the caller's typo is reported instead of
-    /// silently dropping the restriction. Duplicates are dropped.</summary>
-    private static List<RixBranchName> ParseAllowedPushBranches(string? raw, List<string> errors)
+    /// must opt in to letting the agent push at all. Unlike the <c>rix/*</c>-restricted branches the
+    /// agent creates via <c>/pr</c>, any branch name is acceptable here, since these already exist on
+    /// the remote before the job ever runs. Duplicates are dropped.</summary>
+    private static List<BranchName> ParseAllowedPushBranches(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
             return [];
 
         return raw
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(entry => RixBranchName.Parse(entry).Collect(errors, "--allowed-push-branches"))
-            .OfType<RixBranchName>()
+            .Select(entry => new BranchName(entry))
             .Distinct()
             .ToList();
-    }
-
-    /// <summary>Parses a raw <c>--max-tokens</c>/<c>--timeout</c>-style value: blank resolves to
-    /// <paramref name="defaultValue"/> (the flag was never set), and anything else must parse as a
-    /// positive integer or <paramref name="errors"/> gets a message naming exactly what was wrong -
-    /// unparseable text or a non-positive number - rather than silently falling back to the default,
-    /// which would hide a caller's typo instead of reporting it.</summary>
-    private static int ParsePositiveInt(string? raw, int defaultValue, string flag, List<string> errors)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return defaultValue;
-        if (!int.TryParse(raw, out var value))
-        {
-            errors.Add($"{flag} must be an integer, got '{raw}'");
-            return defaultValue;
-        }
-        if (value <= 0)
-        {
-            errors.Add($"{flag} must be a positive integer");
-            return defaultValue;
-        }
-        return value;
     }
 }
 

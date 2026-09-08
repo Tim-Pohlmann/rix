@@ -147,11 +147,12 @@ internal static class SubmitRunner
         return new SubmitOnePushed(push.Branch.Value);
     }
 
-    /// <summary>Unbundles the PR's branch from its local bundle and pushes it to the remote.
+    /// <summary>Unbundles <paramref name="branch"/> from its local bundle and pushes it to the
+    /// remote - shared by both PR and push delivery (see the two callers above).
     /// Returns a <see cref="SubmitFailure"/> on the first problem, or <c>null</c> on success.</summary>
     private static async Task<SubmitFailure?> DeliverBranchAsync
     (
-        SubmitContext context, string cloneDir, string bundlePath, RixBranchName branch, CancellationToken cancellationToken
+        SubmitContext context, string cloneDir, string bundlePath, BranchName branch, CancellationToken cancellationToken
     )
     {
         var fetch = await Git

@@ -251,8 +251,10 @@ internal static class Startup
     {
         if (ciFailureHost is null || jobContext is null)
         {
-            // If the caller already supplied one of the two backed by a GitHubReadHost, reuse that
-            // same instance for the other rather than opening a second, redundant connection.
+            // Lets a test stub only the host its scenario actually exercises - e.g. a run that
+            // never fails needs no jobContext stub, since CiFailureJobRunner then never touches
+            // it - instead of forcing every test to fabricate both. Reuses either supplied host
+            // when it's already a GitHubReadHost rather than minting a second one.
             var host = jobContext?.Host as GitHubReadHost
                 ?? ciFailureHost as GitHubReadHost
                 ?? new GitHubReadHost(config.Job.Repo, config.Job.ReadToken, ProcessWrapper.RunAsync);
