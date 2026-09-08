@@ -263,7 +263,7 @@ internal static class JobRunner
         - DELETE {{prUri}}     — cancel a queued pull request (body: {"branch":"rix/<branch>"})
         - POST   {{pushUri}}   — push new commits onto a branch that already exists on the remote
         - GET    {{pushUri}}   — list your queued pushes
-        - DELETE {{pushUri}}   — cancel a queued push (body: {"branch":"rix/<branch>"})
+        - DELETE {{pushUri}}   — cancel a queued push (body: {"branch":"<branch>"})
 
         Split your work in multiple PRs if applicable. For each:
         1. Create a branch named rix/<short-description> for your work
@@ -276,7 +276,7 @@ internal static class JobRunner
         To add commits to a branch that already exists on the remote (e.g. resuming a previous run),
         commit them locally on that branch, then call POST {{pushUri}} with JSON
         body:
-           {"branch":"rix/<existing-branch>","baseBranch":"<base branch>"}
+           {"branch":"<existing-branch>","baseBranch":"<base branch>"}
 
         {{AllowedPushBranchesPrompt(allowedPushBranches)}}
         """;
