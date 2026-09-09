@@ -48,6 +48,20 @@ internal static class JobRunner
             return new SetupFailure(ex.Message);
         }
 
+        // Lay the operator-supplied home context over the runner's user home before the agent
+        // starts, so its config/context files are in place when the agent first reads them.
+        if (config.FactoryContext is { } factoryContext)
+        {
+            try
+            {
+                await context.FactoryContextLoader.LoadAsync(factoryContext.Repo, factoryContext.ContextPath, ct);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return new SetupFailure($"factory context load failed: {ex.Message}");
+            }
+        }
+
         await using var apiServer = await LocalApiServer.StartAsync
         (
             context.Host, cloneDir.Path, ct, context.LogLine.Invoke,

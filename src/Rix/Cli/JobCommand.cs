@@ -77,6 +77,22 @@ internal static class JobCommand
     )
     { IsRequired = false };
 
+    private static readonly Option<string> FactoryRepoOption = new
+    (
+        name: "--factory-repo",
+        description: "Optional repo (owner/name) to fetch agent home-context files from before the run. " +
+            "Read with --read-token, which must also grant read access to this repo."
+    )
+    { IsRequired = false };
+
+    private static readonly Option<string> FactoryContextPathOption = new
+    (
+        name: "--factory-context-path",
+        description: "Directory inside --factory-repo whose contents are copied into the runner's user " +
+            $"home, skipping files that already exist (default: {JobConfig.DefaultFactoryContextPath})"
+    )
+    { IsRequired = false };
+
     internal static Command Build(Func<JobConfig, Task<int>> handler)
     {
         var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
@@ -91,6 +107,8 @@ internal static class JobCommand
         command.AddOption(AgentOption);
         command.AddOption(ModelOption);
         command.AddOption(AllowedPushBranchesOption);
+        command.AddOption(FactoryRepoOption);
+        command.AddOption(FactoryContextPathOption);
 
         command.SetHandler
         (
@@ -108,7 +126,9 @@ internal static class JobCommand
                     OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
                     Agent:          parsed.Str(AgentOption,     "RIX_AGENT"),
                     Model:          parsed.Str(ModelOption,     "RIX_MODEL"),
-                    AllowedPushBranches: parsed.Str(AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES")
+                    AllowedPushBranches: parsed.Str(AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"),
+                    FactoryRepo:        parsed.Str(FactoryRepoOption,        "RIX_FACTORY_REPO"),
+                    FactoryContextPath: parsed.Str(FactoryContextPathOption, "RIX_FACTORY_CONTEXT_PATH")
                 );
                 var result = JobConfig.Create(inputs);
 

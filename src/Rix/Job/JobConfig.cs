@@ -15,9 +15,18 @@ internal record JobConfig
     /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.</summary>
     internal IReadOnlyList<RixBranchName> AllowedPushBranches { get; }
 
+    /// <summary>Optional factory-repo home context: when set, a directory from another repo is
+    /// copied into the runner's user home before the agent starts. <c>null</c> (the default) means
+    /// no <c>--factory-repo</c> was given and the runner home is left untouched.</summary>
+    internal FactoryContextConfig? FactoryContext { get; }
+
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
     internal const AgentKind DefaultAgent = AgentKind.OpenCode;
+
+    /// <summary>Directory inside the factory repo whose contents are copied into the runner home
+    /// when <c>--factory-context-path</c> is omitted but <c>--factory-repo</c> is set.</summary>
+    internal const string DefaultFactoryContextPath = ".rix/agent-home";
 
     /// <summary>Private so a <see cref="JobConfig"/> can only be produced by <see cref="Create"/>,
     /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
@@ -29,7 +38,8 @@ internal record JobConfig
         DirectoryPath workDir,
         DirectoryPath outputDir,
         AgentConfig agent,
-        IReadOnlyList<RixBranchName> allowedPushBranches
+        IReadOnlyList<RixBranchName> allowedPushBranches,
+        FactoryContextConfig? factoryContext
     )
     {
         Repo = repo;
@@ -39,6 +49,7 @@ internal record JobConfig
         OutputDir = outputDir;
         Agent = agent;
         AllowedPushBranches = allowedPushBranches;
+        FactoryContext = factoryContext;
     }
 
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
@@ -92,6 +103,8 @@ internal record JobConfig
 
         var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches, errors);
 
+        var factoryContext = ParseFactoryContext(inputs.FactoryRepo, inputs.FactoryContextPath, errors);
+
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
 
@@ -104,9 +117,38 @@ internal record JobConfig
             workDir: parsedWorkDir!,
             outputDir: parsedOutputDir!,
             agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel),
-            allowedPushBranches: allowedPushBranches
+            allowedPushBranches: allowedPushBranches,
+            factoryContext: factoryContext
         );
         return new JobConfigValid(config);
+    }
+
+    /// <summary>Turns the raw <c>--factory-repo</c>/<c>--factory-context-path</c> pair into an
+    /// optional <see cref="FactoryContextConfig"/>. Blank repo means the feature is off, so the
+    /// result is <c>null</c> — but a context path given without a repo is a caller mistake and is
+    /// reported rather than silently ignored. When a repo is given, a blank path resolves to
+    /// <see cref="DefaultFactoryContextPath"/>; a malformed repo or path is collected via
+    /// <see cref="ParseResultExtensions.Collect{T}"/> so the caller's typo surfaces.</summary>
+    private static FactoryContextConfig? ParseFactoryContext(string? rawRepo, string? rawPath, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(rawRepo))
+        {
+            if (!string.IsNullOrWhiteSpace(rawPath))
+                errors.Add("--factory-context-path requires --factory-repo");
+            return null;
+        }
+
+        var repo = RepoIdentifier.Parse(rawRepo).Collect(errors, "--factory-repo");
+        var rawContextPath = string.IsNullOrWhiteSpace(rawPath) switch
+        {
+            true => DefaultFactoryContextPath,
+            false => rawPath,
+        };
+        var contextPath = RepoRelativePath.Parse(rawContextPath).Collect(errors, "--factory-context-path");
+
+        if (repo is null || contextPath is null)
+            return null;
+        return new FactoryContextConfig(repo, contextPath);
     }
 
     /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
@@ -160,6 +202,12 @@ internal record JobConfig
 /// and <c>--model</c> flags configure.</summary>
 internal sealed record AgentConfig(AgentKind Kind, string Prompt, MaxTokens MaxTokens, string? Model = null);
 
+/// <summary>Where the run's user-home context comes from: a <paramref name="Repo"/> to fetch and the
+/// repo-relative <paramref name="ContextPath"/> directory inside it whose contents are copied into
+/// the runner's home before the agent starts. Groups the inputs the <c>--factory-repo</c> and
+/// <c>--factory-context-path</c> flags configure.</summary>
+internal sealed record FactoryContextConfig(RepoIdentifier Repo, RepoRelativePath ContextPath);
+
 /// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
 /// values first, then the optional ones (which default to <c>null</c> so callers set only what they
 /// care about). <see cref="JobConfig.Create"/> is the boundary that turns these primitives into the
@@ -175,7 +223,9 @@ internal record JobInputs
     string? OutputDir = null,
     string? Agent = null,
     string? Model = null,
-    string? AllowedPushBranches = null
+    string? AllowedPushBranches = null,
+    string? FactoryRepo = null,
+    string? FactoryContextPath = null
 );
 
 /// <summary>The result of <see cref="JobConfig.Create"/>: a validated config or the list of

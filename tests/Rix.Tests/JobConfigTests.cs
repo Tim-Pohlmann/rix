@@ -17,7 +17,9 @@ public class JobConfigTests
         string? outputDir = null,
         string? agent = null,
         string? model = null,
-        string? allowedPushBranches = null)
+        string? allowedPushBranches = null,
+        string? factoryRepo = null,
+        string? factoryContextPath = null)
     => JobConfig.Create(new JobInputs
     (
         Repo: repo,
@@ -29,7 +31,9 @@ public class JobConfigTests
         OutputDir: outputDir ?? ExistingDir,
         Agent: agent,
         Model: model,
-        AllowedPushBranches: allowedPushBranches
+        AllowedPushBranches: allowedPushBranches,
+        FactoryRepo: factoryRepo,
+        FactoryContextPath: factoryContextPath
     ));
 
     private static JobConfig Valid(JobConfigResult result) => result switch
@@ -275,5 +279,98 @@ public class JobConfigTests
         var errors = Errors(Create(allowedPushBranches: "main"));
 
         Assert.IsTrue(errors.Any(e => e.Contains("--allowed-push-branches")), $"expected an allowed-push-branches error, got: {string.Join("; ", errors)}");
+    }
+
+    [TestMethod]
+    public void Create_DefaultsFactoryContext_ToNull_WhenNoFactoryRepo()
+    {
+        Assert.IsNull(Valid(Create()).FactoryContext);
+    }
+
+    [TestMethod]
+    public void Create_ParsesFactoryContext_AndDefaultsPath()
+    {
+        var factory = Valid(Create(factoryRepo: "acme/factory")).FactoryContext;
+
+        Assert.IsNotNull(factory);
+        Assert.AreEqual("acme/factory", factory.Repo.Value);
+        Assert.AreEqual(JobConfig.DefaultFactoryContextPath, factory.ContextPath.Value);
+    }
+
+    [TestMethod]
+    public void Create_ParsesExplicitFactoryContextPath()
+    {
+        var factory = Valid(Create(factoryRepo: "acme/factory", factoryContextPath: "./config/home/")).FactoryContext;
+
+        Assert.IsNotNull(factory);
+        Assert.AreEqual("config/home", factory.ContextPath.Value);
+    }
+
+    [TestMethod]
+    public void Create_FactoryContextPath_BlankOrWhitespace_FallsBackToDefault()
+    {
+        Assert.AreEqual(
+            JobConfig.DefaultFactoryContextPath,
+            Valid(Create(factoryRepo: "acme/factory", factoryContextPath: "   ")).FactoryContext!.ContextPath.Value);
+    }
+
+    [TestMethod]
+    public void Create_RejectsFactoryContextPath_WithoutFactoryRepo()
+    {
+        var errors = Errors(Create(factoryContextPath: ".rix/agent-home"));
+
+        Assert.IsTrue(
+            errors.Any(e => e.Contains("--factory-context-path requires --factory-repo")),
+            $"expected a missing-factory-repo error, got: {string.Join("; ", errors)}");
+    }
+
+    [TestMethod]
+    public void Create_RejectsMalformedFactoryRepo()
+    {
+        var errors = Errors(Create(factoryRepo: "not-a-repo"));
+
+        Assert.IsTrue(
+            errors.Any(e => e.Contains("--factory-repo")),
+            $"expected a factory-repo error, got: {string.Join("; ", errors)}");
+    }
+
+    [TestMethod]
+    [DataRow("../escape")]
+    [DataRow("/abs/path")]
+    [DataRow("a/../../b")]
+    public void Create_RejectsMalformedFactoryContextPath(string path)
+    {
+        var errors = Errors(Create(factoryRepo: "acme/factory", factoryContextPath: path));
+
+        Assert.IsTrue(
+            errors.Any(e => e.Contains("--factory-context-path")),
+            $"expected a factory-context-path error, got: {string.Join("; ", errors)}");
+    }
+
+    [TestMethod]
+    [DataRow("a\\b\\c", "a/b/c")]
+    [DataRow("./x/y", "x/y")]
+    [DataRow("x//y///z", "x/y/z")]
+    [DataRow(" .rix/agent-home ", ".rix/agent-home")]
+    public void RepoRelativePath_Parse_Normalises(string raw, string expected)
+    {
+        var parsed = RepoRelativePath.Parse(raw) switch
+        {
+            ParseSuccess<RepoRelativePath> s => s.Value,
+            var other => throw new AssertFailedException($"expected a valid path, got: {other}"),
+        };
+
+        Assert.AreEqual(expected, parsed.Value);
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("   ")]
+    [DataRow("..")]
+    [DataRow("foo/../bar")]
+    [DataRow("/rooted")]
+    public void RepoRelativePath_Parse_RejectsInvalid(string raw)
+    {
+        Assert.IsInstanceOfType<ParseError<RepoRelativePath>>(RepoRelativePath.Parse(raw));
     }
 }

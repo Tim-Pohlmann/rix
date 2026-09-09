@@ -15,5 +15,6 @@ internal sealed record JobContext
     RunProcessAsync RunProcess,
     ICodingAgent Agent,
     LogLine LogLine,
-    LogLine TranscriptLine
+    LogLine TranscriptLine,
+    IFactoryContextLoader FactoryContextLoader
 );

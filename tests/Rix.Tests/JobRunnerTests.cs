@@ -752,6 +752,65 @@ public class JobRunnerTests
         Assert.IsInstanceOfType<SetupFailure>(result);
     }
 
+    [TestMethod]
+    public async Task RunAsync_LoadsFactoryContext_BeforeAgentRuns_WhenConfigured()
+    {
+        var events = new List<string>();
+        var loader = new StubFactoryContextLoader((_, _) => { events.Add("factory"); return Task.CompletedTask; });
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") events.Add("agent");
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(
+            MakeConfig(factoryRepo: "acme/factory", factoryContextPath: "config/home"),
+            Context(new StubRepositoryHost(), runner, _ => Task.FromResult<InstallResult>(new Installed()),
+                factoryContextLoader: loader),
+            CancellationToken.None);
+
+        Assert.AreEqual(1, loader.LoadCount);
+        Assert.AreEqual("acme/factory", loader.LoadedRepo?.Value);
+        Assert.AreEqual("config/home", loader.LoadedContextPath?.Value);
+        CollectionAssert.AreEqual(new[] { "factory", "agent" }, events);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DoesNotLoadFactoryContext_WhenNotConfigured()
+    {
+        var loader = new StubFactoryContextLoader();
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()),
+                factoryContextLoader: loader),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, loader.LoadCount);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsSetupFailure_AndSkipsAgent_WhenFactoryContextLoadFails()
+    {
+        var agentRan = false;
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") agentRan = true;
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+        var loader = new StubFactoryContextLoader(
+            (_, _) => throw new InvalidOperationException("git clone failed: exited with code 128"));
+
+        var result = await JobRunner.RunAsync(
+            MakeConfig(factoryRepo: "acme/factory"),
+            Context(new StubRepositoryHost(), runner, _ => Task.FromResult<InstallResult>(new Installed()),
+                factoryContextLoader: loader),
+            CancellationToken.None);
+
+        var failure = (SetupFailure)result;
+        StringAssert.Contains(failure.Error, "factory context load failed");
+        Assert.IsFalse(agentRan, "the agent must not run when the factory context could not be loaded");
+    }
+
     // ---- helpers ----
 
     private static JobContext Context(
@@ -759,8 +818,10 @@ public class JobRunnerTests
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
         LogLine? logLine = null,
-        LogLine? transcriptLine = null)
-    => new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }));
+        LogLine? transcriptLine = null,
+        IFactoryContextLoader? factoryContextLoader = null)
+    => new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }),
+        factoryContextLoader ?? new StubFactoryContextLoader());
 
     private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null)
     => Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
@@ -768,10 +829,14 @@ public class JobRunnerTests
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
             _ => Task.FromResult<InstallResult>(new Installed())));
 
-    private JobConfig MakeConfig(string? allowedPushBranches = null)
+    private JobConfig MakeConfig(
+        string? allowedPushBranches = null,
+        string? factoryRepo = null,
+        string? factoryContextPath = null)
     => TestConfig.Valid(
         prompt: "Do something", workDir: _workDir, outputDir: _outputDir,
-        allowedPushBranches: allowedPushBranches);
+        allowedPushBranches: allowedPushBranches,
+        factoryRepo: factoryRepo, factoryContextPath: factoryContextPath);
 
     private static RunProcessAsync FakeRunner(
         int claudeExitCode = 0,
