@@ -10,12 +10,13 @@ namespace Rix.Agents;
 /// </summary>
 /// <remarks>
 /// Like <see cref="OpenCodeAgent"/>, Pi is multi-provider — <see cref="AgentConfig.Model"/> is
-/// forwarded verbatim as <c>--model</c> (e.g. <c>openai/gpt-4o</c>), and the caller is responsible
-/// for exporting whatever credential env var that provider expects. Pi has no per-run
-/// output-token cap equivalent to <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so
-/// <see cref="AgentConfig.MaxTokens"/> is not forwarded and the invocation carries no environment
-/// overrides. Unlike OpenCode, Pi does support <c>--append-system-prompt</c>, so rix's system
-/// prompt is passed the same way as for <see cref="ClaudeAgent"/>.
+/// forwarded verbatim as <c>--model</c> (e.g. <c>openai/gpt-4o</c>), and <see cref="Job.JobRunner"/>
+/// adds whatever credential env var that provider expects to this invocation's environment (see
+/// <see cref="AgentCredential"/>), so this method itself carries no override for it. Pi has no
+/// per-run output-token cap equivalent to <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so
+/// <see cref="AgentConfig.MaxTokens"/> is not forwarded either. Unlike OpenCode, Pi does support
+/// <c>--append-system-prompt</c>, so rix's system prompt is passed the same way as for
+/// <see cref="ClaudeAgent"/>.
 /// </remarks>
 internal sealed class PiAgent : ICodingAgent
 {

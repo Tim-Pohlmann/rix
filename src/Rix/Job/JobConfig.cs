@@ -90,6 +90,13 @@ internal record JobConfig
 
         var resolvedModel = string.IsNullOrWhiteSpace(inputs.Model) ? null : inputs.Model;
 
+        // No key is required when model is left unset - opencode then picks its own free model.
+        // The env var name is only resolved (and validated) once a key actually needs exporting.
+        string? resolvedApiKey = string.IsNullOrWhiteSpace(inputs.AgentApiKey) ? null : inputs.AgentApiKey;
+        string? resolvedApiKeyEnv = resolvedApiKey is null
+            ? null
+            : AgentCredential.ResolveEnvName(resolvedAgent, inputs.AgentApiKeyEnv).Collect(errors, "--agent-api-key-env");
+
         var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches, errors);
 
         if (errors.Count > 0)
@@ -103,7 +110,7 @@ internal record JobConfig
             timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
             workDir: parsedWorkDir!,
             outputDir: parsedOutputDir!,
-            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel),
+            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel, resolvedApiKey, resolvedApiKeyEnv),
             allowedPushBranches: allowedPushBranches
         );
         return new JobConfigValid(config);
@@ -157,8 +164,20 @@ internal record JobConfig
 /// identifier forwarded verbatim to the agent CLI (e.g. <c>openai/gpt-4o</c> for opencode) — rix
 /// does not interpret or validate it, since which providers/models an agent CLI accepts is entirely
 /// that CLI's concern. Groups the inputs the <c>--agent</c>, <c>--prompt</c>, <c>--max-tokens</c>,
-/// and <c>--model</c> flags configure.</summary>
-internal sealed record AgentConfig(AgentKind Kind, string Prompt, MaxTokens MaxTokens, string? Model = null);
+/// and <c>--model</c> flags configure.
+/// <paramref name="ApiKey"/> and <paramref name="ApiKeyEnv"/> (already resolved and validated by
+/// <see cref="AgentCredential.ResolveEnvName"/>) are <see cref="JobRunner"/>'s instructions for
+/// which single env var to add to the agent invocation's <see cref="AgentInvocation.EnvironmentOverrides"/>
+/// — never null together, and never both null unless no key was supplied at all.</summary>
+internal sealed record AgentConfig
+(
+    AgentKind Kind,
+    string Prompt,
+    MaxTokens MaxTokens,
+    string? Model = null,
+    string? ApiKey = null,
+    string? ApiKeyEnv = null
+);
 
 /// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
 /// values first, then the optional ones (which default to <c>null</c> so callers set only what they
@@ -175,6 +194,8 @@ internal record JobInputs
     string? OutputDir = null,
     string? Agent = null,
     string? Model = null,
+    string? AgentApiKey = null,
+    string? AgentApiKeyEnv = null,
     string? AllowedPushBranches = null
 );
 

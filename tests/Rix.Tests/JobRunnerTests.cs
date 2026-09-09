@@ -752,6 +752,42 @@ public class JobRunnerTests
         Assert.IsInstanceOfType<SetupFailure>(result);
     }
 
+    [TestMethod]
+    public async Task RunAsync_AddsResolvedApiKey_ToAgentProcessEnvironment()
+    {
+        IReadOnlyDictionary<string, string>? capturedEnv = null;
+        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") capturedEnv = e;
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(agentApiKey: "secret", agentApiKeyEnv: "ANTHROPIC_API_KEY"),
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsNotNull(capturedEnv);
+        Assert.AreEqual("secret", capturedEnv["ANTHROPIC_API_KEY"]);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DoesNotAddApiKey_ToAgentProcessEnvironment_WhenNoneSupplied()
+    {
+        IReadOnlyDictionary<string, string>? capturedEnv = null;
+        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") capturedEnv = e;
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsNotNull(capturedEnv);
+        Assert.IsFalse(capturedEnv.ContainsKey("ANTHROPIC_API_KEY"));
+    }
+
     // ---- helpers ----
 
     private static JobContext Context(
@@ -768,10 +804,11 @@ public class JobRunnerTests
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
             _ => Task.FromResult<InstallResult>(new Installed())));
 
-    private JobConfig MakeConfig(string? allowedPushBranches = null)
+    private JobConfig MakeConfig(string? allowedPushBranches = null, string? agentApiKey = null, string? agentApiKeyEnv = null)
     => TestConfig.Valid(
         prompt: "Do something", workDir: _workDir, outputDir: _outputDir,
-        allowedPushBranches: allowedPushBranches);
+        allowedPushBranches: allowedPushBranches,
+        agentApiKey: agentApiKey, agentApiKeyEnv: agentApiKeyEnv);
 
     private static RunProcessAsync FakeRunner(
         int claudeExitCode = 0,
