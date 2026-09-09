@@ -55,6 +55,20 @@ on:
           omit it to disable /push entirely.
         required: false
         type: string
+      factory-repo:
+        description: >-
+          Optional repo (owner/name) to pull agent home-context files from before the run.
+          The read-token secret must also grant read access to this repo. Omit to leave the
+          runner home untouched.
+        required: false
+        type: string
+      factory-context-path:
+        description: >-
+          Directory inside factory-repo whose contents are copied into the runner's home
+          before the agent starts (existing files are kept). Ignored unless factory-repo is
+          set; defaults to .rix/agent-home.
+        required: false
+        type: string
       runner:
         description: runs-on label for both jobs (e.g. a self-hosted runner label)
         required: false
@@ -123,6 +137,8 @@ jobs:
           max-tokens: ${{ inputs.max-tokens }}
           timeout: ${{ inputs.timeout }}
           allowed-push-branches: ${{ inputs.allowed-push-branches }}
+          factory-repo: ${{ inputs.factory-repo }}
+          factory-context-path: ${{ inputs.factory-context-path }}
           rix-version: ${{ inputs.rix-version }}
           repo-slug: ${{ env.RIX_REPO_SLUG }}
 

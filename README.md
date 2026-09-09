@@ -64,6 +64,34 @@ with a 403, and the agent is told the allow-list in its system prompt. The input
 as `--allowed-push-branches` (env `RIX_ALLOWED_PUSH_BRANCHES`); each entry must be a well-formed
 `rix/*` branch name.
 
+### Supplying home-context files from a factory repo
+
+The coding agent CLIs read configuration and context from the runner's user home (`~/.config/...`,
+`~/.claude/...`, house style guides, MCP configs, and so on). Point `rix job` at a second repo — a
+"factory repo" — to seed that home directory before the agent starts:
+
+```yaml
+    with:
+      repo: ${{ github.repository }}
+      prompt: ${{ inputs.prompt }}
+      factory-repo: my-org/rix-factory
+      # factory-context-path: .rix/agent-home   # optional; this is the default
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
+```
+
+When `factory-repo` is set, rix fetches one directory from it (a depth-1 blobless sparse checkout)
+and copies that directory's **contents** into the runner's home. `factory-context-path` names the
+directory inside the factory repo and defaults to `.rix/agent-home`. Collisions are resolved by
+**keeping the existing file** — only paths not already present in home are written, and directories
+are merged — so the factory bundle never clobbers what the runner image ships.
+
+The existing `read-token` is reused to clone the factory repo, so that PAT must also grant **read
+access to `factory-repo`**. If the clone fails or `factory-context-path` is absent from the repo,
+the job stops with a setup failure and the agent never runs. The inputs forward as
+`--factory-repo` / `--factory-context-path` (env `RIX_FACTORY_REPO` / `RIX_FACTORY_CONTEXT_PATH`).
+
 ### Using a different provider or model
 
 opencode supports many model providers beyond the free default. Pick a model with the
