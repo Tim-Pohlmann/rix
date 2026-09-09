@@ -13,7 +13,7 @@ public class GitHubHostTests
     private static readonly string[] ExpectedBundleArgs =
         ["bundle", "create", "/tmp/out/fix.bundle", "main..rix/fix"];
 
-    private static readonly string[] ExpectedPushArgs = ["push", "origin", "rix/fix"];
+    private static readonly string[] ExpectedPushArgs = ["push", "origin", "--", "rix/fix"];
 
     private static readonly string[] ExpectedBranchExistsLocallyArgs =
         ["rev-parse", "--verify", "--quiet", "refs/heads/rix/fix"];

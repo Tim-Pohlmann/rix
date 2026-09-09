@@ -46,7 +46,9 @@ internal sealed class GitHubHost : IRepositoryHost
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
     => _read.RunGitAsync
     (
-        ["push", "origin", branch.Value],
+        // "--" stops git from reading a branch name starting with "-" as an option — BranchName
+        // (unlike RixBranchName) never validates its format, so /push accepts any remote branch name.
+        ["push", "origin", "--", branch.Value],
         workingDirectory: repoDirectory,
         authenticated: true,
         cancellationToken

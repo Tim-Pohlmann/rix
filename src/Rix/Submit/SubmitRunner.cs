@@ -155,9 +155,11 @@ internal static class SubmitRunner
         SubmitContext context, string cloneDir, string bundlePath, BranchName branch, CancellationToken cancellationToken
     )
     {
+        // "--" stops git from reading a branch name starting with "-" as an option — BranchName
+        // never validates its format.
         var fetch = await Git
         (
-            context, cloneDir, ["fetch", bundlePath, $"{branch.Value}:{branch.Value}"], cancellationToken
+            context, cloneDir, ["fetch", bundlePath, "--", $"{branch.Value}:{branch.Value}"], cancellationToken
         );
         if (fetch is ProcessFailure fetchFailure)
             return new SubmitFailure($"git fetch failed for {branch.Value}: {fetchFailure.Reason}");
