@@ -94,6 +94,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IReadOnlyList<RixBranchName>? allowedPushBranches
     )
     {
+        const string deliveryTag = "delivery";
+
         var prDescription =
             "Call this once a rix/<short-description> branch is committed locally in your working " +
             "directory and you are satisfied with it. The branch must not already exist on the remote. " +
@@ -106,32 +108,32 @@ internal sealed class LocalApiServer : IAsyncDisposable
             .WithDescription("Returns 200 once the API is ready to accept requests.");
 
         app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct))
-            .WithTags("delivery")
+            .WithTags(deliveryTag)
             .WithSummary("Queue a branch to be opened as a pull request")
             .WithDescription(prDescription);
 
         app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Snapshot()))
-            .WithTags("delivery")
+            .WithTags(deliveryTag)
             .WithSummary("List queued pull requests")
             .WithDescription("Returns the pull requests queued so far this run, in the order they will be opened.");
 
         app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests.TryRemove))
-            .WithTags("delivery")
+            .WithTags(deliveryTag)
             .WithSummary("Cancel a queued pull request")
             .WithDescription("Removes the queued pull request for the given branch. 404 if nothing is queued for it.");
 
         app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct))
-            .WithTags("delivery")
+            .WithTags(deliveryTag)
             .WithSummary("Queue new commits onto a branch that already exists on the remote")
             .WithDescription(BuildPushEndpointDescription(allowedPushBranches));
 
         app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()))
-            .WithTags("delivery")
+            .WithTags(deliveryTag)
             .WithSummary("List queued pushes")
             .WithDescription("Returns the pushes queued so far this run.");
 
         app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, branch => RemoveFromDictionary(pendingPushRequests, branch)))
-            .WithTags("delivery")
+            .WithTags(deliveryTag)
             .WithSummary("Cancel a queued push")
             .WithDescription("Removes the queued push for the given branch. 404 if nothing is queued for it.");
     }
