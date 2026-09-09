@@ -1,5 +1,6 @@
 using Rix.Job;
 using Rix.Process;
+using Rix.Repository;
 using System.Text.Json;
 
 namespace Rix.Submit;
@@ -48,43 +49,54 @@ internal static class SubmitRunner
         if (success.PendingPrRequests.Count == 0 && pendingPushes.Count == 0)
             return new SubmitSuccess([], []);
 
-        using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-submit");
-
-        await context.Host.CloneAsync(cloneDir.Path, cancellationToken);
-
-        var created = new List<CreatedPr>();
-        var pushed = new List<string>();
-        // result.json's PendingPrRequests is written from LocalApiServer's PrQueue, which only ever
-        // accepts a PR if it keeps the whole queue in a valid base-branch dependency order — so
-        // this is already base-first, no reordering needed here.
-        foreach (var pr in success.PendingPrRequests)
+        // Every host failure below (clone, remote branch check, push, open PR) is terminal for the
+        // whole run and maps to the same SubmitFailure, so it's caught once here rather than at each
+        // call — the message thrown already names the operation. Non-host failures (missing bundle
+        // file, git fetch of a local bundle) stay as returned SubmitFailures inside the helpers.
+        try
         {
-            switch (await SubmitPrAsync(config, context, cloneDir.Path, pr, cancellationToken))
-            {
-                case SubmitOneFailed(var failure):
-                    return failure;
-                case SubmitOneSucceeded(var url):
-                    created.Add(new CreatedPr(pr.Branch.Value, url));
-                    break;
-                default:
-                    throw new NotSupportedException($"Unexpected submit outcome for {pr.Branch.Value}");
-            }
-        }
-        foreach (var push in pendingPushes)
-        {
-            switch (await SubmitPushAsync(config, context, cloneDir.Path, push, cancellationToken))
-            {
-                case SubmitOneFailed(var failure):
-                    return failure;
-                case SubmitOnePushed(var branch):
-                    pushed.Add(branch);
-                    break;
-                default:
-                    throw new NotSupportedException($"Unexpected submit outcome for {push.Branch.Value}");
-            }
-        }
+            using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-submit");
 
-        return new SubmitSuccess(created, pushed);
+            await context.Host.CloneAsync(cloneDir.Path, cancellationToken);
+
+            var created = new List<CreatedPr>();
+            var pushed = new List<string>();
+            // result.json's PendingPrRequests is written from LocalApiServer's PrQueue, which only
+            // ever accepts a PR if it keeps the whole queue in a valid base-branch dependency order —
+            // so this is already base-first, no reordering needed here.
+            foreach (var pr in success.PendingPrRequests)
+            {
+                switch (await SubmitPrAsync(config, context, cloneDir.Path, pr, cancellationToken))
+                {
+                    case SubmitOneFailed(var failure):
+                        return failure;
+                    case SubmitOneSucceeded(var url):
+                        created.Add(new CreatedPr(pr.Branch.Value, url));
+                        break;
+                    default:
+                        throw new NotSupportedException($"Unexpected submit outcome for {pr.Branch.Value}");
+                }
+            }
+            foreach (var push in pendingPushes)
+            {
+                switch (await SubmitPushAsync(config, context, cloneDir.Path, push, cancellationToken))
+                {
+                    case SubmitOneFailed(var failure):
+                        return failure;
+                    case SubmitOnePushed(var branch):
+                        pushed.Add(branch);
+                        break;
+                    default:
+                        throw new NotSupportedException($"Unexpected submit outcome for {push.Branch.Value}");
+                }
+            }
+
+            return new SubmitSuccess(created, pushed);
+        }
+        catch (RepositoryHostException ex)
+        {
+            return new SubmitFailure(ex.Message);
+        }
     }
 
     /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns the opened
@@ -109,15 +121,7 @@ internal static class SubmitRunner
         if (await DeliverBranchAsync(context, cloneDir, bundlePath, pr.Branch, cancellationToken) is { } deliverFailure)
             return new SubmitOneFailed(deliverFailure);
 
-        string url;
-        try
-        {
-            url = await context.Host.CreatePullRequestAsync(pr, cancellationToken);
-        }
-        catch (HttpRequestException ex)
-        {
-            return new SubmitOneFailed(new SubmitFailure($"creating PR for {pr.Branch.Value} failed: {ex.Message}"));
-        }
+        var url = await context.Host.CreatePullRequestAsync(pr, cancellationToken);
 
         context.LogLine($"opened PR for {pr.Branch.Value}");
         return new SubmitOneSucceeded(url);
@@ -162,15 +166,7 @@ internal static class SubmitRunner
         if (fetch is ProcessFailure fetchFailure)
             return new SubmitFailure($"git fetch failed for {branch.Value}: {fetchFailure.Reason}");
 
-        try
-        {
-            await context.Host.PushBranchAsync(cloneDir, branch, cancellationToken);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return new SubmitFailure($"git push failed for {branch.Value}: {ex.Message}");
-        }
-
+        await context.Host.PushBranchAsync(cloneDir, branch, cancellationToken);
         return null;
     }
 

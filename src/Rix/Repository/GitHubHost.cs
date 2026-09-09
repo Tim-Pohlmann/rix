@@ -65,10 +65,10 @@ internal sealed class GitHubHost : IRepositoryHost
         );
         using var content = JsonContent.Create(request, GitHubApiJsonContext.Default.CreatePullRequestRequest);
         using var response = await _read.Http.PostAsync(url, content, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        GitHubReadHost.EnsureSuccess(response, $"create pull request for {pullRequest.Branch.Value}");
         var created = await GitHubReadHost.ReadJsonAsync(response, GitHubApiJsonContext.Default.CreatePullRequestResponse, cancellationToken);
         if (created.HtmlUrl is null)
-            throw new HttpRequestException("create PR response did not include html_url");
+            throw new RepositoryHostException("create PR response did not include html_url");
         return created.HtmlUrl;
     }
 }

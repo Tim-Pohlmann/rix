@@ -29,7 +29,7 @@ internal sealed class StubRepositoryHost(
     Func<Task>? configureGit = null) : IRepositoryReadHost
 {
     /// <summary>Succeeds by default; override via the <c>clone</c> constructor parameter to
-    /// simulate a git clone failure (e.g. throwing <see cref="InvalidOperationException"/>, as the
+    /// simulate a git clone failure (e.g. throwing <see cref="RepositoryHostException"/>, as the
     /// real <see cref="GitHubReadHost.CloneAsync"/> does).</summary>
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
     => clone switch { { } check => check(), _ => Task.CompletedTask };

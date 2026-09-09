@@ -44,7 +44,7 @@ public class CiFailureJobRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsNotRun_WhenCiFailureCheckErrors()
     {
-        var ciFailureHost = new StubCiFailureHost(getRun: _ => throw new HttpRequestException("boom"));
+        var ciFailureHost = new StubCiFailureHost(getRun: _ => throw new RepositoryHostException("boom"));
 
         var outcome = await CiFailureJobRunner.RunAsync(
             MakeConfig(), ciFailureHost, JobContext(new StubRepositoryHost()), CancellationToken.None);
@@ -101,7 +101,7 @@ public class CiFailureJobRunnerTests
     [TestMethod]
     public async Task ExecuteCiFailureJobAsync_Returns1_WhenCiFailureCheckErrors()
     {
-        var ciFailureHost = new StubCiFailureHost(getRun: _ => throw new HttpRequestException("boom"));
+        var ciFailureHost = new StubCiFailureHost(getRun: _ => throw new RepositoryHostException("boom"));
 
         // No jobContext: the check errors before the job path that would need one ever runs.
         var exitCode = await Startup.ExecuteCiFailureJobAsync(MakeConfig(), CancellationToken.None, ciFailureHost);

@@ -110,7 +110,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
             repoDirectory, environmentOverrides: null, onStdoutLine: null, cancellationToken
         );
         if (result is ProcessFailure { Reason: not "exited with code 1" } f)
-            throw new InvalidOperationException($"git rev-parse failed: {f.Reason}");
+            throw new RepositoryHostException($"git rev-parse failed: {f.Reason}");
         return result is ProcessSuccess;
     }
 
@@ -120,7 +120,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
         using var response = await Http.GetAsync(url, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return false;
-        response.EnsureSuccessStatusCode();
+        EnsureSuccess(response, $"check branch {branch.Value} on remote");
         return true;
     }
 
@@ -132,10 +132,10 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     {
         var url = $"https://api.github.com/repos/{Repo.Value}/actions/runs/{runId}";
         using var response = await Http.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        EnsureSuccess(response, $"get workflow run {runId}");
         var run = await ReadJsonAsync(response, GitHubReadApiJsonContext.Default.WorkflowRunApiResponse, cancellationToken);
         if (run.DisplayTitle is null || run.HtmlUrl is null || run.HeadBranch is null)
-            throw new HttpRequestException($"get workflow run {runId} response was missing a required field");
+            throw new RepositoryHostException($"get workflow run {runId} response was missing a required field");
         return new WorkflowRun(run.Conclusion, run.DisplayTitle, run.HtmlUrl, run.HeadBranch);
     }
 
@@ -148,10 +148,10 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     {
         var jobsUrl = $"https://api.github.com/repos/{Repo.Value}/actions/runs/{runId}/jobs";
         using var jobsResponse = await Http.GetAsync(jobsUrl, cancellationToken);
-        jobsResponse.EnsureSuccessStatusCode();
+        EnsureSuccess(jobsResponse, $"list jobs for run {runId}");
         var jobs = await ReadJsonAsync(jobsResponse, GitHubReadApiJsonContext.Default.WorkflowJobsApiResponse, cancellationToken);
         if (jobs.Jobs is null)
-            throw new HttpRequestException($"list jobs for run {runId} response was missing the jobs field");
+            throw new RepositoryHostException($"list jobs for run {runId} response was missing the jobs field");
 
         var logs = await Task.WhenAll(jobs.Jobs.Where(j => j.Conclusion == "failure").Select(job => GetJobLogAsync(job.Id, cancellationToken)));
         return string.Join("\n", logs);
@@ -161,7 +161,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     {
         var logUrl = $"https://api.github.com/repos/{Repo.Value}/actions/jobs/{jobId}/logs";
         using var logResponse = await Http.GetAsync(logUrl, cancellationToken);
-        logResponse.EnsureSuccessStatusCode();
+        EnsureSuccess(logResponse, $"get logs for job {jobId}");
         return await logResponse.Content.ReadAsStringAsync(cancellationToken);
     }
 
@@ -173,9 +173,25 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
         var head = Uri.EscapeDataString($"{Repo.Owner}:{branch.Value}");
         var url = $"https://api.github.com/repos/{Repo.Value}/pulls?state=open&head={head}";
         using var response = await Http.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        EnsureSuccess(response, $"look up open PR for branch {branch.Value}");
         var pulls = await ReadJsonAsync(response, GitHubReadApiJsonContext.Default.ListPullRequestApiResponse, cancellationToken);
         return pulls.FirstOrDefault()?.Number;
+    }
+
+    /// <summary>Turns any non-2xx response into a <see cref="RepositoryHostException"/> naming the
+    /// operation, so every REST call reports an error status the same way instead of leaking
+    /// <see cref="HttpRequestException"/> from a bare <c>EnsureSuccessStatusCode</c>. Shared with
+    /// <see cref="GitHubHost"/> for its write-side calls.</summary>
+    internal static void EnsureSuccess(HttpResponseMessage response, string operation)
+    {
+        try
+        {
+            response.EnsureSuccessStatusCode();
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new RepositoryHostException($"{operation} failed: {ex.Message}", ex);
+        }
     }
 
     /// <summary>Shared by <see cref="GitHubHost.CreatePullRequestAsync"/> for its write-side response
@@ -186,12 +202,12 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
         {
             var value = await response.Content.ReadFromJsonAsync(typeInfo, cancellationToken);
             if (value is null)
-                throw new HttpRequestException($"{typeof(T).Name} response body was empty");
+                throw new RepositoryHostException($"{typeof(T).Name} response body was empty");
             return value;
         }
         catch (JsonException ex)
         {
-            throw new HttpRequestException($"could not parse {typeof(T).Name} response", ex);
+            throw new RepositoryHostException($"could not parse {typeof(T).Name} response", ex);
         }
     }
 
@@ -213,7 +229,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
         };
         var result = await _runProcess("git", args, workingDirectory, env, null, cancellationToken);
         if (result is ProcessFailure f)
-            throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
+            throw new RepositoryHostException($"git {args[0]} failed: {f.Reason}");
     }
 }
 

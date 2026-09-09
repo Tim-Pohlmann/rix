@@ -67,6 +67,29 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         var app = builder.Build();
 
+        // Validating a queued branch calls the GitHub API / git (see the BranchExists* checks in the
+        // handlers below). When that transport fails the request simply can't be judged, so map the
+        // one exception those checks throw to a 502 here — one place — instead of letting each
+        // handler leak it out as an unhandled 500.
+        app.Use
+        (
+            async (ctx, next) =>
+            {
+                try
+                {
+                    await next();
+                }
+                catch (RepositoryHostException ex) when (!ctx.Response.HasStarted)
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status502BadGateway;
+                    await ctx.Response.WriteAsJsonAsync
+                    (
+                        new ErrorResponse($"repository host error: {ex.Message}"), ApiJsonContext.Default.ErrorResponse
+                    );
+                }
+            }
+        );
+
         MapEndpoints(app, host, cloneDir, pendingPrRequests, pendingPushRequests, allowedPushBranches);
 
         await app.StartAsync(cancellationToken);
