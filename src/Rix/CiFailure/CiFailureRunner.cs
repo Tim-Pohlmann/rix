@@ -74,13 +74,14 @@ internal static class CiFailureRunner
     {
         var prLine = prNumber switch
         {
-            { } number => $"This is PR #{number} in {repo.Value}.\n",
+            { } number => $"This is PR #{number} in {repo.Value}.",
             null => "",
         };
 
         return $"""
         CI failed on branch '{run.HeadBranch}' (run: {run.HtmlUrl}).
-        {prLine}Failing run title: {run.DisplayTitle}
+        {prLine}
+        Failing run title: {run.DisplayTitle}
 
         Investigate the failure and fix it. Failing step log (tail):
         ```
