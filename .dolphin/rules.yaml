@@ -140,9 +140,10 @@ rules:
   # Comments: the main pattern's `(?![ \t]*(?:///|//|\*|/\*))` lookahead skips lines that *start* with
   # a `//`/`///` line comment, a `*` block-comment continuation, or a `/*` block-comment opener. The
   # `pattern-not-regex` guard additionally drops a trailing `//` comment after real code
-  # (`Foo(); // note (see RFC`). Still not covered: a block-comment body line that neither starts
-  # with `*` nor sits on the `/*` line - keep block comments `*`-aligned (the repo's house style) so
-  # those are recognised.
+  # (`Foo(); // note (see RFC`); it anchors the `//` to a line start or a preceding space/tab so that
+  # a `//` inside a string (`"http://..."`, preceded by `:`) is not mistaken for a comment. Still not
+  # covered: a block-comment body line that neither starts with `*` nor sits on the `/*` line - keep
+  # block comments `*`-aligned (the repo's house style) so those are recognised.
   - id: open-paren-own-line
     languages: [csharp]
     severity: ERROR
@@ -153,7 +154,7 @@ rules:
     patterns:
       - pattern-regex: ^(?![ \t]*(?:///|//|\*|/\*))(?![ \t]*\([ \t]*$)[ \t]*(?:[^()\r\n]|\([^()\r\n]*\))*\([^()\r\n]*$
       # trailing `//` line comment before the dangling `(`
-      - pattern-not-regex: //[^"\r\n]*\([^()\r\n]*$
+      - pattern-not-regex: (?:^|[ \t])//[^\r\n]*\([^()\r\n]*$
 
   - id: close-paren-own-line
     languages: [csharp]
@@ -171,7 +172,7 @@ rules:
     patterns:
       - pattern-regex: ^(?![ \t]*(?:///|//|\*|/\*))[ \t]*(?:[^()\s\r\n]|\([^()\r\n]*\))(?:[^()\r\n]|\([^()\r\n]*\))*\)+[ \t]*[;,]?[ \t]*$
       # trailing `//` line comment before the dangling `)`
-      - pattern-not-regex: //[^"\r\n]*\)[^()\r\n]*$
+      - pattern-not-regex: (?:^|[ \t])//[^\r\n]*\)[^()\r\n]*$
 
   - id: if-else-bool-assign
     languages: [csharp]
