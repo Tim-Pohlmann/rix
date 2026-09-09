@@ -136,6 +136,13 @@ rules:
   # raw strings specifically - Dolphin's C# grammar (Opengrep) fails to parse that syntax at all, so
   # it can't be named as an exclusion pattern. Prefer wording the string so no parenthetical splits
   # across a line instead of fighting the rule.
+  #
+  # Comments: the main pattern's `(?![ \t]*(?:///|//|\*|/\*))` lookahead skips lines that *start* with
+  # a `//`/`///` line comment, a `*` block-comment continuation, or a `/*` block-comment opener. The
+  # `pattern-not-regex` guard additionally drops a trailing `//` comment after real code
+  # (`Foo(); // note (see RFC`). Still not covered: a block-comment body line that neither starts
+  # with `*` nor sits on the `/*` line - keep block comments `*`-aligned (the repo's house style) so
+  # those are recognised.
   - id: open-paren-own-line
     languages: [csharp]
     severity: ERROR
@@ -143,7 +150,10 @@ rules:
       When `(` and `)` end up on different lines, isolate `(` on its own line
       instead of trailing it after the declaration/call/first argument. (If
       `(` and `)` are on the same line, this doesn't apply.)
-    pattern-regex: ^(?![ \t]*(?:///|//|\*))(?![ \t]*\([ \t]*$)[ \t]*(?:[^()\r\n]|\([^()\r\n]*\))*\([^()\r\n]*$
+    patterns:
+      - pattern-regex: ^(?![ \t]*(?:///|//|\*|/\*))(?![ \t]*\([ \t]*$)[ \t]*(?:[^()\r\n]|\([^()\r\n]*\))*\([^()\r\n]*$
+      # trailing `//` line comment before the dangling `(`
+      - pattern-not-regex: //[^"\r\n]*\([^()\r\n]*$
 
   - id: close-paren-own-line
     languages: [csharp]
@@ -158,7 +168,10 @@ rules:
     # swallowed as ordinary content, leaving the line's own closing `)` misread as if it closed a
     # group opened on a previous line. Verified against Dolphin's own opengrep engine: catches
     # genuine multi-line trailing-close-paren violations while no longer flagging a same-line tuple.
-    pattern-regex: ^(?![ \t]*(?:///|//|\*))[ \t]*(?:[^()\s\r\n]|\([^()\r\n]*\))(?:[^()\r\n]|\([^()\r\n]*\))*\)+[ \t]*[;,]?[ \t]*$
+    patterns:
+      - pattern-regex: ^(?![ \t]*(?:///|//|\*|/\*))[ \t]*(?:[^()\s\r\n]|\([^()\r\n]*\))(?:[^()\r\n]|\([^()\r\n]*\))*\)+[ \t]*[;,]?[ \t]*$
+      # trailing `//` line comment before the dangling `)`
+      - pattern-not-regex: //[^"\r\n]*\)[^()\r\n]*$
 
   - id: if-else-bool-assign
     languages: [csharp]
