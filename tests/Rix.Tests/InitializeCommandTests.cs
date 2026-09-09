@@ -17,7 +17,9 @@ public class InitializeCommandTests
     }
 
     [TestMethod]
-    public async Task Command_PassesDirFlag_ToConfig()
+    [DataRow("initialize")]
+    [DataRow("init")]
+    public async Task Command_PassesDirFlag_ToConfig(string verb)
     {
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
         InitializeConfig? captured = null;
@@ -27,7 +29,7 @@ public class InitializeCommandTests
             return Task.FromResult(0);
         });
 
-        await parser.InvokeAsync(["initialize", "--dir", dir]);
+        await parser.InvokeAsync([verb, "--dir", dir]);
 
         Assert.IsNotNull(captured);
         Assert.AreEqual(Path.GetFullPath(dir), captured.TargetDir.Value);
@@ -47,23 +49,6 @@ public class InitializeCommandTests
 
         Assert.IsNotNull(captured);
         Assert.AreEqual(Path.GetFullPath(Directory.GetCurrentDirectory()), captured.TargetDir.Value);
-    }
-
-    [TestMethod]
-    public async Task Command_IsReachableViaInitAlias()
-    {
-        var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
-        InitializeConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
-
-        await parser.InvokeAsync(["init", "--dir", dir]);
-
-        Assert.IsNotNull(captured);
-        Assert.AreEqual(Path.GetFullPath(dir), captured.TargetDir.Value);
     }
 
     [TestMethod]

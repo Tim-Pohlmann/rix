@@ -277,16 +277,12 @@ internal static class Startup
         };
     }
 
-    /// <summary>The production <see cref="InitializeContext"/>: writes each template to disk,
-    /// creating any missing parent directory first, and logs to stderr.</summary>
+    /// <summary>The production <see cref="InitializeContext"/>: writes each template to disk via
+    /// <see cref="FileWriter"/> (creating any missing parent directory), and logs to stderr.</summary>
     private static InitializeContext DefaultInitializeContext()
     => new
     (
-        WriteFile: async (path, content, ct) =>
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            await File.WriteAllTextAsync(path, content, ct);
-        },
+        WriteFile: FileWriter.WriteAsync,
         LogLine: Console.Error.WriteLine
     );
 

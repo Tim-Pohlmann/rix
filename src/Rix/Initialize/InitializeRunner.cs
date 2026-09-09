@@ -15,7 +15,6 @@ internal static class InitializeRunner
         CancellationToken cancellationToken
     )
     {
-        var written = new List<string>();
         foreach (var (relativePath, content) in WorkflowTemplates.All)
         {
             var fullPath = Path.Combine(config.TargetDir.Value, relativePath);
@@ -28,8 +27,7 @@ internal static class InitializeRunner
                 return new InitializeFailure($"could not write {relativePath}: {ex.Message}");
             }
             context.LogLine($"wrote {relativePath}");
-            written.Add(relativePath);
         }
-        return new InitializeSuccess(written);
+        return new InitializeSuccess();
     }
 }

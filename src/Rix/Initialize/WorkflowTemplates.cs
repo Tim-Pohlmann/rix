@@ -7,13 +7,12 @@ namespace Rix.Initialize;
 /// carries them with no network fetch at init time.</summary>
 internal static class WorkflowTemplates
 {
+    private static readonly string[] FileNames = ["rix.yml", "rix-on-ci-failure.yml"];
+
     /// <summary>Each caller-workflow template paired with the repo-relative path it is written to,
     /// in the order <see cref="InitializeRunner"/> writes (and reports) them.</summary>
     internal static IReadOnlyList<(string RelativePath, string Content)> All { get; } =
-    [
-        (".github/workflows/rix.yml", Read("rix.yml")),
-        (".github/workflows/rix-on-ci-failure.yml", Read("rix-on-ci-failure.yml")),
-    ];
+        [.. FileNames.Select(name => ($".github/workflows/{name}", Read(name)))];
 
     private static string Read(string fileName)
     {

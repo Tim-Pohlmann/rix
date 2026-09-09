@@ -4,8 +4,8 @@ namespace Rix.Initialize;
 /// error stopped it. Pattern-matched by the shell; never cast.</summary>
 internal interface IInitializeResult;
 
-/// <summary>Every caller-workflow template was written. <see cref="WrittenPaths"/> lists them as
-/// repo-relative paths (e.g. <c>.github/workflows/rix.yml</c>), in write order.</summary>
-internal sealed record InitializeSuccess(IReadOnlyList<string> WrittenPaths) : IInitializeResult;
+/// <summary>Every caller-workflow template was written. The runner logs each path as it goes, so
+/// this carries no payload.</summary>
+internal sealed record InitializeSuccess : IInitializeResult;
 
 internal sealed record InitializeFailure(string Message) : IInitializeResult;

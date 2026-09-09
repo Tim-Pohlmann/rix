@@ -5,13 +5,6 @@ namespace Rix.Tests;
 [TestClass]
 public class InitializeConfigTests
 {
-    private static InitializeConfig Valid(InitializeConfigResult result) => result switch
-    {
-        InitializeConfigValid v => v.Config,
-        InitializeConfigInvalid i => throw new AssertFailedException($"expected valid config, got errors: {string.Join("; ", i.Errors)}"),
-        _ => throw new AssertFailedException($"unexpected result: {result}"),
-    };
-
     private static IReadOnlyList<string> Errors(InitializeConfigResult result) => result switch
     {
         InitializeConfigInvalid i => i.Errors,
@@ -21,7 +14,7 @@ public class InitializeConfigTests
     [TestMethod]
     public void Create_ReturnsValid_ForAnExistingDirectory()
     {
-        var config = Valid(InitializeConfig.Create(Path.GetTempPath()));
+        var config = TestConfig.ValidInitialize(Path.GetTempPath());
         Assert.AreEqual(Path.GetFullPath(Path.GetTempPath()), config.TargetDir.Value);
     }
 
