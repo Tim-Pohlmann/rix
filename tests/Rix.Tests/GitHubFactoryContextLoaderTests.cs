@@ -105,7 +105,8 @@ public class GitHubFactoryContextLoaderTests
         Assert.IsTrue(clone.Env?.ContainsKey("GIT_CONFIG_VALUE_0"), "clone must carry the auth extraheader env");
 
         var sparse = calls.Single(c => c.Args.Contains("sparse-checkout"));
-        CollectionAssert.IsSubsetOf(new[] { "sparse-checkout", "set", "nested/agent-home" }, sparse.Args);
+        string[] expectedSparseArgs = ["sparse-checkout", "set", "nested/agent-home"];
+        CollectionAssert.IsSubsetOf(expectedSparseArgs, sparse.Args);
         Assert.IsNull(sparse.Env, "local sparse-checkout must not be handed the credential env");
     }
 

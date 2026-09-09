@@ -772,7 +772,8 @@ public class JobRunnerTests
         Assert.AreEqual(1, loader.LoadCount);
         Assert.AreEqual("acme/factory", loader.LoadedRepo?.Value);
         Assert.AreEqual("config/home", loader.LoadedContextPath?.Value);
-        CollectionAssert.AreEqual(new[] { "factory", "agent" }, events);
+        string[] expectedOrder = ["factory", "agent"];
+        CollectionAssert.AreEqual(expectedOrder, events);
     }
 
     [TestMethod]
