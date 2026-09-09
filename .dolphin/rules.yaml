@@ -64,7 +64,12 @@ rules:
     severity: ERROR
     message: >-
       Directory.CreateDirectory is reserved for TempDirectory itself; use
-      TempDirectory.Create instead of calling it directly elsewhere.
+      TempDirectory.Create instead of calling it directly elsewhere. The
+      composition root (Startup.cs) may create a real output directory when
+      wiring a context's file-writing effect.
+    paths:
+      exclude:
+        - src/Rix/Startup.cs
     patterns:
       - pattern: Directory.CreateDirectory($P)
       - pattern-not-inside: |

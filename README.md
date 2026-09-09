@@ -13,7 +13,24 @@ of guessed metadata.
 ## Run via GitHub Actions
 
 `rix` ships a reusable workflow (`.github/workflows/job.yml`) that runs the job and opens
-the resulting PRs. Add a small caller workflow to any repo:
+the resulting PRs. Each repo drives it through a small caller workflow.
+
+### Quick start: `rix initialize`
+
+Run `rix initialize` inside a checkout of the target repo to write both caller workflows
+(`.github/workflows/rix.yml` and `.github/workflows/rix-on-ci-failure.yml`; existing files are
+overwritten). The templates are baked into the `rix` binary, so this needs no network access.
+Then:
+
+1. Add repo secrets `RIX_READ_TOKEN` and `RIX_WRITE_TOKEN` (see [Secrets](#secrets)).
+2. In `rix-on-ci-failure.yml`, change `workflows: ["CI"]` to the `name:` of the workflow rix
+   should react to.
+3. Commit and push the two files.
+
+Pass `--dir <path>` to target a repo other than the current directory. The sections below
+describe the files it writes and how to customize them further.
+
+### The `rix` caller workflow
 
 ```yaml
 name: rix
@@ -136,7 +153,9 @@ run URL, failing step logs), and runs the agent against it via the `run-ci-failu
 
 ### Simple: directly in a project repo
 
-Add a caller triggered by `workflow_run` instead of `workflow_dispatch`:
+A caller triggered by `workflow_run` instead of `workflow_dispatch` — this is the
+`rix-on-ci-failure.yml` that [`rix initialize`](#quick-start-rix-initialize) writes; edit the
+watched workflow name after generating it:
 
 ```yaml
 name: rix (on CI failure)
