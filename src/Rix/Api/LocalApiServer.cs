@@ -81,11 +81,13 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 }
                 catch (RepositoryHostException ex) when (!ctx.Response.HasStarted)
                 {
-                    ctx.Response.StatusCode = StatusCodes.Status502BadGateway;
-                    await ctx.Response.WriteAsJsonAsync
+                    await Results.Json
                     (
-                        new ErrorResponse($"repository host error: {ex.Message}"), ApiJsonContext.Default.ErrorResponse
-                    );
+                        new ErrorResponse($"repository host error: {ex.Message}"),
+                        ApiJsonContext.Default.ErrorResponse,
+                        statusCode: StatusCodes.Status502BadGateway
+                    )
+                    .ExecuteAsync(ctx);
                 }
             }
         );

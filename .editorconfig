@@ -9,3 +9,11 @@ root = true
 # is the intended style, not a smell. Suppress where that union lives.
 [src/Rix/ParseResult.cs]
 dotnet_diagnostic.S3060.severity = none
+
+# S3871 ("exception types should be public") exists so code in other assemblies
+# can catch the exception specifically. Rix ships as a single application
+# assembly, never a library, and RepositoryHostException is deliberately one
+# internal type caught only within it (see the type's own doc comment). Making
+# it public would advertise a contract no external caller can exist to use.
+[src/Rix/Repository/RepositoryHostException.cs]
+dotnet_diagnostic.S3871.severity = none
