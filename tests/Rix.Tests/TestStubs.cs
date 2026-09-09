@@ -93,6 +93,27 @@ internal sealed class StubSubmitHost(
     }
 }
 
+/// <summary>Records the <see cref="LoadAsync"/> call so tests can assert the factory context was
+/// requested with the configured repo and path; by default it is a no-op (the runner home is left
+/// alone). Pass <c>onLoad</c> to simulate a fetch failure by throwing
+/// <see cref="InvalidOperationException"/>, as the real
+/// <see cref="Rix.Repository.GitHubFactoryContextLoader"/> does.</summary>
+internal sealed class StubFactoryContextLoader(Func<RepoIdentifier, RepoRelativePath, Task>? onLoad = null)
+    : IFactoryContextLoader
+{
+    public int LoadCount { get; private set; }
+    public RepoIdentifier? LoadedRepo { get; private set; }
+    public RepoRelativePath? LoadedContextPath { get; private set; }
+
+    public Task LoadAsync(RepoIdentifier repo, RepoRelativePath contextPath, CancellationToken cancellationToken)
+    {
+        LoadCount++;
+        LoadedRepo = repo;
+        LoadedContextPath = contextPath;
+        return onLoad switch { { } run => run(repo, contextPath), _ => Task.CompletedTask };
+    }
+}
+
 /// <summary>
 /// A coding agent for tests: install behavior is supplied by the caller, while invocation
 /// and cost parsing delegate to the real <see cref="ClaudeAgent"/> so tests exercise the

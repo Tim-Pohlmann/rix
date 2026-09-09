@@ -26,8 +26,23 @@ internal static class Startup
         RunProcess: ProcessWrapper.RunAsync,
         Agent: SelectAgent(config.Agent.Kind),
         LogLine: Console.Error.WriteLine,
-        TranscriptLine: _ => { }
+        TranscriptLine: _ => { },
+        FactoryContextLoader: new GitHubFactoryContextLoader
+        (
+            config.ReadToken, ProcessWrapper.RunAsync, config.WorkDir.Value, RunnerHomeDirectory()
+        )
     );
+
+    /// <summary>The runner user's home directory, where the coding agent CLIs read their config and
+    /// where <see cref="GitHubFactoryContextLoader"/> lays the factory context. Falls back to
+    /// <c>$HOME</c> if <see cref="Environment.SpecialFolder.UserProfile"/> resolves empty.</summary>
+    private static string RunnerHomeDirectory()
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(profile))
+            return Environment.GetEnvironmentVariable("HOME") ?? profile;
+        return profile;
+    }
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch

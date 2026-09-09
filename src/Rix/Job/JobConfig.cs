@@ -4,42 +4,34 @@ namespace Rix.Job;
 
 internal record JobConfig
 {
-    internal RepoIdentifier Repo { get; }
-    internal GitReadToken ReadToken { get; }
-    internal TimeoutMinutes TimeoutMinutes { get; }
-    internal DirectoryPath WorkDir { get; }
-    internal DirectoryPath OutputDir { get; }
-    internal AgentConfig Agent { get; }
+    internal required RepoIdentifier Repo { get; init; }
+    internal required GitReadToken ReadToken { get; init; }
+    internal required TimeoutMinutes TimeoutMinutes { get; init; }
+    internal required DirectoryPath WorkDir { get; init; }
+    internal required DirectoryPath OutputDir { get; init; }
+    internal required AgentConfig Agent { get; init; }
 
     /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
     /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.</summary>
-    internal IReadOnlyList<RixBranchName> AllowedPushBranches { get; }
+    internal required IReadOnlyList<RixBranchName> AllowedPushBranches { get; init; }
+
+    /// <summary>Optional factory-repo home context: when set, a directory from another repo is
+    /// copied into the runner's user home before the agent starts. <c>null</c> (the default) means
+    /// no <c>--factory-repo</c> was given and the runner home is left untouched.</summary>
+    internal required FactoryContextConfig? FactoryContext { get; init; }
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
     internal const AgentKind DefaultAgent = AgentKind.OpenCode;
 
-    /// <summary>Private so a <see cref="JobConfig"/> can only be produced by <see cref="Create"/>,
-    /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
-    private JobConfig
-    (
-        RepoIdentifier repo,
-        GitReadToken readToken,
-        TimeoutMinutes timeoutMinutes,
-        DirectoryPath workDir,
-        DirectoryPath outputDir,
-        AgentConfig agent,
-        IReadOnlyList<RixBranchName> allowedPushBranches
-    )
-    {
-        Repo = repo;
-        ReadToken = readToken;
-        TimeoutMinutes = timeoutMinutes;
-        WorkDir = workDir;
-        OutputDir = outputDir;
-        Agent = agent;
-        AllowedPushBranches = allowedPushBranches;
-    }
+    /// <summary>Directory inside the factory repo whose contents are copied into the runner home
+    /// when <c>--factory-context-path</c> is omitted but <c>--factory-repo</c> is set.</summary>
+    internal const string DefaultFactoryContextPath = ".rix/agent-home";
+
+    /// <summary>Private and parameterless so a <see cref="JobConfig"/> can only be produced by
+    /// <see cref="Create"/>'s object initializer — every <c>required</c> field is validated there, so
+    /// the type can never exist in an invalid state.</summary>
+    private JobConfig() { }
 
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
     /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
@@ -92,21 +84,50 @@ internal record JobConfig
 
         var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches, errors);
 
+        var factoryContext = ParseFactoryContext(inputs.FactoryRepo, inputs.FactoryContextPath, errors);
+
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
 
         // Non-null here: any blank or unparseable input would have added an error above.
         var config = new JobConfig
-        (
-            repo: parsedRepo!,
-            readToken: new GitReadToken(readToken),
-            timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
-            workDir: parsedWorkDir!,
-            outputDir: parsedOutputDir!,
-            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel),
-            allowedPushBranches: allowedPushBranches
-        );
+        {
+            Repo = parsedRepo!,
+            ReadToken = new GitReadToken(readToken),
+            TimeoutMinutes = new TimeoutMinutes(resolvedTimeout),
+            WorkDir = parsedWorkDir!,
+            OutputDir = parsedOutputDir!,
+            Agent = new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel),
+            AllowedPushBranches = allowedPushBranches,
+            FactoryContext = factoryContext,
+        };
         return new JobConfigValid(config);
+    }
+
+    /// <summary>Turns the raw <c>--factory-repo</c>/<c>--factory-context-path</c> pair into an
+    /// optional <see cref="FactoryContextConfig"/>. Blank repo means the feature is off, so the
+    /// result is <c>null</c> — but a context path given without a repo is a caller mistake and is
+    /// reported rather than silently ignored. When a repo is given, a blank path resolves to
+    /// <see cref="DefaultFactoryContextPath"/>; a malformed repo or path is collected via
+    /// <see cref="ParseResultExtensions.Collect{T}"/> so the caller's typo surfaces.</summary>
+    private static FactoryContextConfig? ParseFactoryContext(string? rawRepo, string? rawPath, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(rawRepo))
+        {
+            if (!string.IsNullOrWhiteSpace(rawPath))
+                errors.Add("--factory-context-path requires --factory-repo");
+            return null;
+        }
+
+        var repo = RepoIdentifier.Parse(rawRepo).Collect(errors, "--factory-repo");
+        var rawContextPath = rawPath;
+        if (string.IsNullOrWhiteSpace(rawContextPath))
+            rawContextPath = DefaultFactoryContextPath;
+        var contextPath = RepoRelativePath.Parse(rawContextPath).Collect(errors, "--factory-context-path");
+
+        if (repo is null || contextPath is null)
+            return null;
+        return new FactoryContextConfig(repo, contextPath);
     }
 
     /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
@@ -160,6 +181,12 @@ internal record JobConfig
 /// and <c>--model</c> flags configure.</summary>
 internal sealed record AgentConfig(AgentKind Kind, string Prompt, MaxTokens MaxTokens, string? Model = null);
 
+/// <summary>Where the run's user-home context comes from: a <paramref name="Repo"/> to fetch and the
+/// repo-relative <paramref name="ContextPath"/> directory inside it whose contents are copied into
+/// the runner's home before the agent starts. Groups the inputs the <c>--factory-repo</c> and
+/// <c>--factory-context-path</c> flags configure.</summary>
+internal sealed record FactoryContextConfig(RepoIdentifier Repo, RepoRelativePath ContextPath);
+
 /// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
 /// values first, then the optional ones (which default to <c>null</c> so callers set only what they
 /// care about). <see cref="JobConfig.Create"/> is the boundary that turns these primitives into the
@@ -175,7 +202,9 @@ internal record JobInputs
     string? OutputDir = null,
     string? Agent = null,
     string? Model = null,
-    string? AllowedPushBranches = null
+    string? AllowedPushBranches = null,
+    string? FactoryRepo = null,
+    string? FactoryContextPath = null
 );
 
 /// <summary>The result of <see cref="JobConfig.Create"/>: a validated config or the list of

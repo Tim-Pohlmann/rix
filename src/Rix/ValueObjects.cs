@@ -38,6 +38,47 @@ internal sealed record RepoIdentifier
     public override string ToString() => Value;
 }
 
+/// <summary>A repo-relative directory path: forward-slash separated, never rooted, never containing a
+/// <c>..</c> segment. There is no public constructor — an instance can only be obtained through
+/// <see cref="Parse"/>, so any <c>RepoRelativePath</c> that exists is safe to <see cref="System.IO.Path.Combine(string, string)"/>
+/// onto a trusted base directory and to hand to <c>git sparse-checkout set</c>. Raw input is carried
+/// as a plain <c>string</c> until a command's <c>Create</c> parses it.</summary>
+internal sealed record RepoRelativePath
+{
+    internal string Value { get; }
+
+    private RepoRelativePath(string value) => Value = value;
+
+    /// <summary>The single source of truth for the format rule. Normalises separators to <c>/</c>,
+    /// strips a leading <c>./</c>, collapses repeated slashes and trims leading/trailing ones, then
+    /// rejects anything rooted or containing a <c>..</c> segment (path traversal) with a
+    /// <see cref="ParseError{T}"/> callers can aggregate instead of catching an exception.</summary>
+    internal static ParseResult<RepoRelativePath> Parse(string path)
+    {
+        var trimmed = (path ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+            return new ParseError<RepoRelativePath>("path must not be empty");
+
+        var normalised = trimmed.Replace('\\', '/');
+        if (Path.IsPathRooted(normalised) || normalised.StartsWith('/'))
+            return new ParseError<RepoRelativePath>($"path must be repo-relative, not rooted: {path}");
+
+        var segments = normalised
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(segment => segment != ".")
+            .ToArray();
+
+        if (segments.Length == 0)
+            return new ParseError<RepoRelativePath>($"'{path}' does not name a directory inside the repo");
+        if (Array.IndexOf(segments, "..") >= 0)
+            return new ParseError<RepoRelativePath>($"path must not contain a '..' segment: {path}");
+
+        return new ParseSuccess<RepoRelativePath>(new RepoRelativePath(string.Join('/', segments)));
+    }
+
+    public override string ToString() => Value;
+}
+
 /// <summary>A directory path that is guaranteed to exist as of <see cref="Parse"/>-time and is
 /// stored as an absolute path. There is no public constructor: an instance can only be obtained
 /// through <see cref="Parse"/>, so any <c>DirectoryPath</c> that exists references a directory that

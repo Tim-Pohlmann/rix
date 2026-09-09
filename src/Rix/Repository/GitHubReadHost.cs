@@ -1,6 +1,5 @@
 using Rix.Process;
 using System.Net.Http.Headers;
-using System.Text;
 
 namespace Rix.Repository;
 
@@ -25,7 +24,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
         Repo = repo;
         Http = BuildHttpClient(token, handler);
         _runProcess = runProcess;
-        _gitAuthEnv = BuildGitAuthEnv(token);
+        _gitAuthEnv = GitHubAuth.ExtraHeaderEnv(token);
     }
 
     private static HttpClient BuildHttpClient(GitReadToken token, HttpMessageHandler? handler)
@@ -40,22 +39,6 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
         return client;
-    }
-
-    /// <summary>
-    /// Builds environment overrides for git HTTPS auth without ever placing the token in argv (visible via <c>ps</c>)
-    /// or persisting it into the clone's <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables
-    /// as ad-hoc config, so the credential is supplied only via the git subprocess environment for each invocation.
-    /// </summary>
-    private static Dictionary<string, string> BuildGitAuthEnv(GitReadToken token)
-    {
-        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token.Value}"));
-        return new Dictionary<string, string>
-        {
-            ["GIT_CONFIG_COUNT"] = "1",
-            ["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader",
-            ["GIT_CONFIG_VALUE_0"] = $"Authorization: Basic {basic}",
-        };
     }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
