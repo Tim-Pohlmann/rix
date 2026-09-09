@@ -39,11 +39,9 @@ internal static class Startup
     private static string RunnerHomeDirectory()
     {
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return string.IsNullOrEmpty(profile) switch
-        {
-            true => Environment.GetEnvironmentVariable("HOME") ?? profile,
-            false => profile,
-        };
+        if (string.IsNullOrEmpty(profile))
+            return Environment.GetEnvironmentVariable("HOME") ?? profile;
+        return profile;
     }
 
     private static ICodingAgent SelectAgent(AgentKind agent)

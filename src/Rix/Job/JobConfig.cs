@@ -4,21 +4,21 @@ namespace Rix.Job;
 
 internal record JobConfig
 {
-    internal RepoIdentifier Repo { get; }
-    internal GitReadToken ReadToken { get; }
-    internal TimeoutMinutes TimeoutMinutes { get; }
-    internal DirectoryPath WorkDir { get; }
-    internal DirectoryPath OutputDir { get; }
-    internal AgentConfig Agent { get; }
+    internal required RepoIdentifier Repo { get; init; }
+    internal required GitReadToken ReadToken { get; init; }
+    internal required TimeoutMinutes TimeoutMinutes { get; init; }
+    internal required DirectoryPath WorkDir { get; init; }
+    internal required DirectoryPath OutputDir { get; init; }
+    internal required AgentConfig Agent { get; init; }
 
     /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
     /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.</summary>
-    internal IReadOnlyList<RixBranchName> AllowedPushBranches { get; }
+    internal required IReadOnlyList<RixBranchName> AllowedPushBranches { get; init; }
 
     /// <summary>Optional factory-repo home context: when set, a directory from another repo is
     /// copied into the runner's user home before the agent starts. <c>null</c> (the default) means
     /// no <c>--factory-repo</c> was given and the runner home is left untouched.</summary>
-    internal FactoryContextConfig? FactoryContext { get; }
+    internal required FactoryContextConfig? FactoryContext { get; init; }
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
@@ -28,29 +28,10 @@ internal record JobConfig
     /// when <c>--factory-context-path</c> is omitted but <c>--factory-repo</c> is set.</summary>
     internal const string DefaultFactoryContextPath = ".rix/agent-home";
 
-    /// <summary>Private so a <see cref="JobConfig"/> can only be produced by <see cref="Create"/>,
-    /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
-    private JobConfig
-    (
-        RepoIdentifier repo,
-        GitReadToken readToken,
-        TimeoutMinutes timeoutMinutes,
-        DirectoryPath workDir,
-        DirectoryPath outputDir,
-        AgentConfig agent,
-        IReadOnlyList<RixBranchName> allowedPushBranches,
-        FactoryContextConfig? factoryContext
-    )
-    {
-        Repo = repo;
-        ReadToken = readToken;
-        TimeoutMinutes = timeoutMinutes;
-        WorkDir = workDir;
-        OutputDir = outputDir;
-        Agent = agent;
-        AllowedPushBranches = allowedPushBranches;
-        FactoryContext = factoryContext;
-    }
+    /// <summary>Private and parameterless so a <see cref="JobConfig"/> can only be produced by
+    /// <see cref="Create"/>'s object initializer — every <c>required</c> field is validated there, so
+    /// the type can never exist in an invalid state.</summary>
+    private JobConfig() { }
 
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
     /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
@@ -110,16 +91,16 @@ internal record JobConfig
 
         // Non-null here: any blank or unparseable input would have added an error above.
         var config = new JobConfig
-        (
-            repo: parsedRepo!,
-            readToken: new GitReadToken(readToken),
-            timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
-            workDir: parsedWorkDir!,
-            outputDir: parsedOutputDir!,
-            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel),
-            allowedPushBranches: allowedPushBranches,
-            factoryContext: factoryContext
-        );
+        {
+            Repo = parsedRepo!,
+            ReadToken = new GitReadToken(readToken),
+            TimeoutMinutes = new TimeoutMinutes(resolvedTimeout),
+            WorkDir = parsedWorkDir!,
+            OutputDir = parsedOutputDir!,
+            Agent = new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel),
+            AllowedPushBranches = allowedPushBranches,
+            FactoryContext = factoryContext,
+        };
         return new JobConfigValid(config);
     }
 
@@ -139,11 +120,9 @@ internal record JobConfig
         }
 
         var repo = RepoIdentifier.Parse(rawRepo).Collect(errors, "--factory-repo");
-        var rawContextPath = string.IsNullOrWhiteSpace(rawPath) switch
-        {
-            true => DefaultFactoryContextPath,
-            false => rawPath,
-        };
+        var rawContextPath = rawPath;
+        if (string.IsNullOrWhiteSpace(rawContextPath))
+            rawContextPath = DefaultFactoryContextPath;
         var contextPath = RepoRelativePath.Parse(rawContextPath).Collect(errors, "--factory-context-path");
 
         if (repo is null || contextPath is null)
