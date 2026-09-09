@@ -5,15 +5,14 @@ namespace Rix.Tests;
 [TestClass]
 public class WorkflowTemplatesTests
 {
+    private static readonly string[] ExpectedRelativePaths =
+        [".github/workflows/rix.yml", ".github/workflows/rix-on-ci-failure.yml"];
+
     [TestMethod]
     public void All_ResolvesBothEmbeddedTemplates_Nonempty()
     {
         var paths = WorkflowTemplates.All.Select(t => t.RelativePath).ToArray();
-        CollectionAssert.AreEqual
-        (
-            new[] { ".github/workflows/rix.yml", ".github/workflows/rix-on-ci-failure.yml" },
-            paths
-        );
+        CollectionAssert.AreEqual(ExpectedRelativePaths, paths);
         Assert.IsTrue(WorkflowTemplates.All.All(t => t.Content.Contains("jobs:") && t.Content.Contains("uses:")));
     }
 

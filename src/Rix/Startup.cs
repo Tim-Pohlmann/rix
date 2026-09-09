@@ -302,10 +302,10 @@ internal static class Startup
         switch (result)
         {
             case InitializeSuccess:
-                Console.Error.WriteLine(NextStepsGuidance);
+                await Console.Error.WriteLineAsync(NextStepsGuidance);
                 return ExitCodes.Success;
             case InitializeFailure failure:
-                Console.Error.WriteLine($"error: {failure.Message}");
+                await Console.Error.WriteLineAsync($"error: {failure.Message}");
                 return ExitCodes.SetupFailed;
             default:
                 throw new NotSupportedException($"Unexpected initialize result type: {result.GetType()}");

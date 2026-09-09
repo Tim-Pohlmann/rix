@@ -5,6 +5,9 @@ namespace Rix.Tests;
 [TestClass]
 public class InitializeRunnerTests
 {
+    private static readonly string[] ExpectedRelativePaths =
+        [".github/workflows/rix.yml", ".github/workflows/rix-on-ci-failure.yml"];
+
     private readonly List<(string Path, string Content)> _writes = [];
     private readonly List<string> _logs = [];
 
@@ -34,18 +37,10 @@ public class InitializeRunnerTests
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
         var result = await Run(TestConfig.ValidInitialize(dir), Context());
 
+        CollectionAssert.AreEqual(ExpectedRelativePaths, WrittenPaths(result).ToArray());
         CollectionAssert.AreEqual
         (
-            new[] { ".github/workflows/rix.yml", ".github/workflows/rix-on-ci-failure.yml" },
-            WrittenPaths(result).ToArray()
-        );
-        CollectionAssert.AreEqual
-        (
-            new[]
-            {
-                Path.Combine(dir, ".github/workflows/rix.yml"),
-                Path.Combine(dir, ".github/workflows/rix-on-ci-failure.yml"),
-            },
+            ExpectedRelativePaths.Select(p => Path.Combine(dir, p)).ToArray(),
             _writes.Select(w => w.Path).ToArray()
         );
     }
