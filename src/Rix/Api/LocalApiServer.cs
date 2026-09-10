@@ -84,7 +84,6 @@ internal sealed class LocalApiServer : IAsyncDisposable
                     await Results.Json
                     (
                         new ErrorResponse($"repository host error: {ex.Message}"),
-                        ApiJsonContext.Default.ErrorResponse,
                         statusCode: StatusCodes.Status502BadGateway
                     )
                     .ExecuteAsync(ctx);

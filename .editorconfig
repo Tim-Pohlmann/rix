@@ -12,8 +12,7 @@ dotnet_diagnostic.S3060.severity = none
 
 # S3871 ("exception types should be public") exists so code in other assemblies
 # can catch the exception specifically. Rix ships as a single application
-# assembly, never a library, and RepositoryHostException is deliberately one
-# internal type caught only within it (see the type's own doc comment). Making
-# it public would advertise a contract no external caller can exist to use.
-[src/Rix/Repository/RepositoryHostException.cs]
+# assembly, never a library, so its exception types are internal by convention
+# and there is no external caller a public one could serve.
+[src/Rix/**.cs]
 dotnet_diagnostic.S3871.severity = none
