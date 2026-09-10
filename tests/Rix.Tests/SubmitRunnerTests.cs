@@ -1,4 +1,5 @@
 using Rix.Process;
+using Rix.Repository;
 using Rix.Submit;
 
 namespace Rix.Tests;
@@ -118,7 +119,7 @@ public class SubmitRunnerTests
     {
         WriteOnePendingPush();
         var host = new StubSubmitHost(
-            pushBranch: _ => throw new InvalidOperationException("exited with code 1"));
+            pushBranch: _ => throw new RepositoryHostException("git push failed: exited with code 1"));
 
         var result = await Run(host);
 
@@ -174,7 +175,7 @@ public class SubmitRunnerTests
     {
         WriteOnePendingPr();
         var host = new StubSubmitHost(
-            pushBranch: _ => throw new InvalidOperationException("exited with code 1"));
+            pushBranch: _ => throw new RepositoryHostException("git push failed: exited with code 1"));
 
         var result = await Run(host);
 

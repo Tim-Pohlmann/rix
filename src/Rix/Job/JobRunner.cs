@@ -1,6 +1,7 @@
 using Rix.Agents;
 using Rix.Api;
 using Rix.Process;
+using Rix.Repository;
 using System.Diagnostics;
 using System.Text.Json.Serialization;
 
@@ -43,7 +44,7 @@ internal static class JobRunner
             // author metadata.
             await context.Host.ConfigureGitAsync(cloneDir.Path, ct);
         }
-        catch (InvalidOperationException ex)
+        catch (RepositoryHostException ex)
         {
             return new SetupFailure(ex.Message);
         }
@@ -221,7 +222,7 @@ internal static class JobRunner
         {
             await context.Host.CreateBundleAsync(cloneDir, bundlePath, request.BaseBranch, request.Branch, ct);
         }
-        catch (InvalidOperationException)
+        catch (RepositoryHostException)
         {
             return new BundleFailed();
         }

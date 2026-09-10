@@ -39,7 +39,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("""{"conclusion":"failure"}"""));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetRunAsync(1, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetRunAsync(1, CancellationToken.None));
     }
 
     [TestMethod]
@@ -58,7 +58,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetRunAsync(1, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetRunAsync(1, CancellationToken.None));
     }
 
     [TestMethod]
@@ -95,7 +95,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("{}"));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetFailedJobLogsAsync(1, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetFailedJobLogsAsync(1, CancellationToken.None));
     }
 
     [TestMethod]
