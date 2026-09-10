@@ -46,8 +46,10 @@ skipped.
 
 ### Allowing the agent to push (resuming a run)
 
-`rix job` exposes a local API to the agent. Besides opening PRs (`/pr`), the agent can push new
-commits onto a branch that already exists on the remote (`/push`, e.g. resuming a previous run).
+`rix job` exposes a local API to the agent, described by an OpenAPI 3 document the agent fetches
+from `/openapi.json` (the system prompt only points at it). Besides opening PRs (`/pr`), the agent
+can push new commits onto a branch that already exists on the remote (`/push`, e.g. resuming a
+previous run).
 `/push` accepts nothing by default — an untrusted agent cannot touch any existing branch unless
 you opt in with the `allowed-push-branches` input, a comma-separated list of branches the `/push`
 endpoint accepts:

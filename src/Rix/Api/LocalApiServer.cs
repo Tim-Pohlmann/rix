@@ -2,8 +2,10 @@ using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi;
 using Rix.Repository;
 
 namespace Rix.Api;
@@ -63,9 +65,18 @@ internal sealed class LocalApiServer : IAsyncDisposable
             options => options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonContext.Default)
         );
 
+        // The agent learns how to call this API from the served OpenAPI document, not from a
+        // hand-maintained list in its system prompt — so the endpoint metadata below (summaries,
+        // descriptions, request shapes) is the single source of truth the agent actually reads.
+        builder.Services.AddOpenApi
+        (
+            options => options.AddDocumentTransformer(new ApiInfoTransformer(BuildApiDescription(allowedPushBranches)))
+        );
+
         var app = builder.Build();
 
         MapEndpoints(app, host, cloneDir, pendingPrRequests, pendingPushRequests, allowedPushBranches);
+        app.MapOpenApi("/openapi.json");
 
         await app.StartAsync(cancellationToken);
 
@@ -83,13 +94,101 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IReadOnlyList<RixBranchName>? allowedPushBranches
     )
     {
-        app.MapGet("/health", () => Results.Ok());
-        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
-        app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Snapshot()));
-        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests.TryRemove));
-        app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct));
-        app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()));
-        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, branch => RemoveFromDictionary(pendingPushRequests, branch)));
+        const string deliveryTag = "delivery";
+
+        var prDescription =
+            "Call this once a rix/<short-description> branch is committed locally in your working " +
+            "directory and you are satisfied with it. The branch must not already exist on the remote. " +
+            "baseBranch is the branch the PR targets; stacked PRs are allowed as long as the queued base " +
+            "branches form no cycle. The pull request is opened after the job ends, not immediately.";
+
+        app.MapGet("/health", () => Results.Ok())
+            .WithTags("meta")
+            .WithSummary("Liveness check")
+            .WithDescription("Returns 200 once the API is ready to accept requests.");
+
+        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct))
+            .WithTags(deliveryTag)
+            .WithSummary("Queue a branch to be opened as a pull request")
+            .WithDescription(prDescription);
+
+        app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Snapshot()))
+            .WithTags(deliveryTag)
+            .WithSummary("List queued pull requests")
+            .WithDescription("Returns the pull requests queued so far this run, in the order they will be opened.");
+
+        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests.TryRemove))
+            .WithTags(deliveryTag)
+            .WithSummary("Cancel a queued pull request")
+            .WithDescription("Removes the queued pull request for the given branch. 404 if nothing is queued for it.");
+
+        app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct))
+            .WithTags(deliveryTag)
+            .WithSummary("Queue new commits onto a branch that already exists on the remote")
+            .WithDescription(BuildPushEndpointDescription(allowedPushBranches));
+
+        app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()))
+            .WithTags(deliveryTag)
+            .WithSummary("List queued pushes")
+            .WithDescription("Returns the pushes queued so far this run.");
+
+        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, branch => RemoveFromDictionary(pendingPushRequests, branch)))
+            .WithTags(deliveryTag)
+            .WithSummary("Cancel a queued push")
+            .WithDescription("Removes the queued push for the given branch. 404 if nothing is queued for it.");
+    }
+
+    /// <summary>The human-readable overview served as the OpenAPI document's <c>info.description</c> —
+    /// the agent reads this instead of a hand-maintained endpoint list in its system prompt, so the
+    /// push allow-list for this specific run is folded in here too.</summary>
+    private static string BuildApiDescription(IReadOnlyList<RixBranchName>? allowedPushBranches)
+    {
+        const string overview =
+            "Local delivery API for a `rix job` coding-agent run. Hand finished work back to rix by " +
+            "queuing a branch: POST /pr opens it as a pull request, POST /push adds commits to a branch " +
+            "that already exists on the remote. Queued requests are listed with GET and cancelled with " +
+            "DELETE on the same path, and nothing is delivered until the job ends.\n\n" +
+            "Conventions: work on branches named rix/<short-description> and commit locally before " +
+            "queuing them; split unrelated changes into separate pull requests.";
+
+        return overview + "\n\n" + PushPolicySentence(allowedPushBranches);
+    }
+
+    /// <summary>The <c>/push</c> endpoint description, including this run's allow-list so the agent
+    /// sees what <c>/push</c> will accept without having to trigger a rejection first.</summary>
+    private static string BuildPushEndpointDescription(IReadOnlyList<RixBranchName>? allowedPushBranches)
+    {
+        const string overview =
+            "Deliver new commits to a branch that already exists on the remote, for instance when " +
+            "resuming a previous run. Commit them locally on that branch first. The branch must exist " +
+            "on the remote — use /pr to create a new one. ";
+
+        return overview + PushPolicySentence(allowedPushBranches);
+    }
+
+    private static string PushPolicySentence(IReadOnlyList<RixBranchName>? allowedPushBranches)
+    {
+        var allowed = allowedPushBranches ?? [];
+        return allowed.Count switch
+        {
+            0 => "This run has allowed no push branches, so /push rejects every request; use /pr for all changes.",
+            _ => $"This run's /push is restricted to these branches: {string.Join(", ", allowed.Select(b => b.Value))}.",
+        };
+    }
+
+    private sealed class ApiInfoTransformer(string description) : IOpenApiDocumentTransformer
+    {
+        public Task TransformAsync
+        (
+            OpenApiDocument document,
+            OpenApiDocumentTransformerContext context,
+            CancellationToken cancellationToken
+        )
+        {
+            document.Info.Title = "rix job delivery API";
+            document.Info.Description = description;
+            return Task.CompletedTask;
+        }
     }
 
     private static async Task<IResult> HandlePrAsync

@@ -36,6 +36,56 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
+    public async Task GetOpenApi_ServesSpecDescribingThePrAndPushEndpoints()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await client.GetAsync(new Uri(server.BaseUrl, "/openapi.json"));
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = doc.RootElement;
+
+        StringAssert.StartsWith(root.GetProperty("openapi").GetString(), "3.");
+        var paths = root.GetProperty("paths");
+        Assert.IsTrue(paths.TryGetProperty("/pr", out var pr), "spec must document /pr");
+        Assert.IsTrue(pr.TryGetProperty("post", out _), "spec must document POST /pr");
+        Assert.IsTrue(paths.TryGetProperty("/push", out _), "spec must document /push");
+
+        // The POST /pr request body schema is derived from PrRequest, so its fields must show up.
+        var rawText = root.GetRawText();
+        foreach (var field in new[] { "branch", "title", "body", "baseBranch" })
+            StringAssert.Contains(rawText, $"\"{field}\"");
+    }
+
+    [TestMethod]
+    public async Task GetOpenApi_FoldsThePushAllowListIntoTheSpec()
+    {
+        await using var server = await LocalApiServer.StartAsync(
+            FakeHost(true), Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new RixBranchName("rix/continue-x")]);
+        using var client = new HttpClient();
+
+        var response = await client.GetAsync(new Uri(server.BaseUrl, "/openapi.json"));
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var specText = await response.Content.ReadAsStringAsync();
+        StringAssert.Contains(specText, "rix/continue-x");
+    }
+
+    [TestMethod]
+    public async Task GetOpenApi_SaysPushIsDisabled_WhenNoAllowListConfigured()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var specText = await (await client.GetAsync(new Uri(server.BaseUrl, "/openapi.json"))).Content.ReadAsStringAsync();
+
+        StringAssert.Contains(specText, "rejects every request");
+    }
+
+    [TestMethod]
     public async Task PostPr_Returns200WithQueuedStatus()
     {
         await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);

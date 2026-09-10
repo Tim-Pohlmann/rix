@@ -617,31 +617,18 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_SystemPrompt_DescribesGetAndDeleteEndpoints()
+    public async Task RunAsync_SystemPrompt_PointsAtOpenApiSpec_AndMentionsGetAndDelete()
     {
-        string? systemPrompt = null;
-
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude")
-            {
-                var argList = a.ToList();
-                var idx = argList.IndexOf("--append-system-prompt");
-                if (idx >= 0 && idx + 1 < argList.Count)
-                    systemPrompt = argList[idx + 1];
-            }
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
-            CancellationToken.None);
+        // The per-endpoint contract (paths, request bodies, GET/DELETE semantics) now lives in the
+        // served OpenAPI document rather than being spelled out in the prompt — the prompt only has
+        // to point the agent at it and give the high-level workflow.
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig());
 
         Assert.IsNotNull(systemPrompt);
-        StringAssert.Contains(systemPrompt, "list your queued pull requests");
-        StringAssert.Contains(systemPrompt, "cancel a queued pull request");
-        StringAssert.Contains(systemPrompt, "list your queued pushes");
-        StringAssert.Contains(systemPrompt, "cancel a queued push");
+        StringAssert.Contains(systemPrompt, "/openapi.json");
+        StringAssert.Contains(systemPrompt, "OpenAPI");
+        StringAssert.Contains(systemPrompt, "GET");
+        StringAssert.Contains(systemPrompt, "DELETE");
     }
 
     [TestMethod]
