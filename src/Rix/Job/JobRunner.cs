@@ -190,7 +190,7 @@ internal static class JobRunner
     /// <summary>A queued branch to bundle, stripped down to what <see cref="BundleBranchAsync"/>
     /// needs: identity (<paramref name="Branch"/>/<paramref name="BaseBranch"/>) plus
     /// <paramref name="Kind"/> ("PR" or "push") for the skip log line.</summary>
-    private readonly record struct BundleRequest(RixBranchName Branch, BranchName BaseBranch, string Kind);
+    private readonly record struct BundleRequest(BranchName Branch, BranchName BaseBranch, string Kind);
 
     /// <summary>Dedups <paramref name="request"/>'s branch against <paramref name="seenBranches"/>
     /// (shared across the PR and push queues, so the same branch is never bundled twice in one run)
@@ -248,7 +248,7 @@ internal static class JobRunner
     private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs, IReadOnlyList<PendingPush> PendingPushes) : DeliveryOutcome;
     private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
-    private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<RixBranchName> allowedPushBranches)
+    private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<BranchName> allowedPushBranches)
     {
         var prUri = new Uri(apiBaseUrl, "/pr");
         var pushUri = new Uri(apiBaseUrl, "/push");
@@ -263,20 +263,16 @@ internal static class JobRunner
         - DELETE {{prUri}}     — cancel a queued pull request (body: {"branch":"rix/<branch>"})
         - POST   {{pushUri}}   — push new commits onto a branch that already exists on the remote
         - GET    {{pushUri}}   — list your queued pushes
-        - DELETE {{pushUri}}   — cancel a queued push (body: {"branch":"rix/<branch>"})
+        - DELETE {{pushUri}}   — cancel a queued push (body: {"branch":"<branch>"})
 
-        Split your work in multiple PRs if applicable. For each:
+        For new work, split it into multiple PRs if applicable. For each:
         1. Create a branch named rix/<short-description> for your work
         2. When done, call POST {{prUri}} with JSON body:
            {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
 
-        You can list what you have already queued with GET, and cancel a queued request with DELETE
-        on the same path before the job ends (handy when you change your mind about a branch).
-
-        To add commits to a branch that already exists on the remote (e.g. resuming a previous run),
-        commit them locally on that branch, then call POST {{pushUri}} with JSON
-        body:
-           {"branch":"rix/<existing-branch>","baseBranch":"<base branch>"}
+        To instead push commits onto a branch that already exists on the remote — e.g. updating an existing PR — commit them locally on that branch,
+        then call POST {{pushUri}} with JSON body:
+           {"branch":"<existing-branch>","baseBranch":"<base branch>"}
 
         {{AllowedPushBranchesPrompt(allowedPushBranches)}}
         """;
@@ -286,7 +282,7 @@ internal static class JobRunner
     /// what /push will accept from the prompt instead of only from rejected requests. /push denies
     /// every branch unless the operator explicitly allowed some, so the empty case still needs a
     /// sentence — silence there would read as "unrestricted" to the agent.</summary>
-    private static string AllowedPushBranchesPrompt(IReadOnlyList<RixBranchName> allowedPushBranches)
+    private static string AllowedPushBranchesPrompt(IReadOnlyList<BranchName> allowedPushBranches)
     => allowedPushBranches.Count switch
     {
         0 => "This job has not allowed any push branches, so /push will reject every request; use /pr for all changes.",

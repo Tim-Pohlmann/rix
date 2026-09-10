@@ -147,16 +147,19 @@ internal static class SubmitRunner
         return new SubmitOnePushed(push.Branch.Value);
     }
 
-    /// <summary>Unbundles the PR's branch from its local bundle and pushes it to the remote.
+    /// <summary>Unbundles <paramref name="branch"/> from its local bundle and pushes it to the
+    /// remote - shared by both PR and push delivery (see the two callers above).
     /// Returns a <see cref="SubmitFailure"/> on the first problem, or <c>null</c> on success.</summary>
     private static async Task<SubmitFailure?> DeliverBranchAsync
     (
-        SubmitContext context, string cloneDir, string bundlePath, RixBranchName branch, CancellationToken cancellationToken
+        SubmitContext context, string cloneDir, string bundlePath, BranchName branch, CancellationToken cancellationToken
     )
     {
+        // --end-of-options stops git from reading a branch name starting with "-" as an option —
+        // see GitHubReadHost.CreateBundleAsync for why it's this flag and not "--".
         var fetch = await Git
         (
-            context, cloneDir, ["fetch", bundlePath, $"{branch.Value}:{branch.Value}"], cancellationToken
+            context, cloneDir, ["fetch", bundlePath, "--end-of-options", $"{branch.Value}:{branch.Value}"], cancellationToken
         );
         if (fetch is ProcessFailure fetchFailure)
             return new SubmitFailure($"git fetch failed for {branch.Value}: {fetchFailure.Reason}");

@@ -283,7 +283,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/my-fix")]);
+            allowedPushBranches: [new BranchName("rix/my-fix")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -303,7 +303,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/feat")]);
+            allowedPushBranches: [new BranchName("rix/feat")]);
         using var client = new HttpClient();
 
         await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -313,27 +313,31 @@ public class LocalApiServerTests
         });
 
         Assert.AreEqual(1, server.GetQueuedPushRequests().Count);
-        Assert.AreEqual(new RixBranchName("rix/feat"), server.GetQueuedPushRequests()[0].Branch);
+        Assert.AreEqual(new BranchName("rix/feat"), server.GetQueuedPushRequests()[0].Branch);
         Assert.AreEqual(new BranchName("main"), server.GetQueuedPushRequests()[0].BaseBranch);
     }
 
     [TestMethod]
-    public async Task PostPush_Returns400_ForNonRixBranch()
+    public async Task PostPush_Accepts_NonRixBranch_WhenAllowed()
     {
-        await using var server = await LocalApiServer.StartAsync(FakeHost(true), Path.GetTempPath(), CancellationToken.None);
+        // Unlike /pr (which names a branch the agent invents), /push targets a branch that
+        // already exists on the remote - including a human's own, non-rix/* branch - so only
+        // the allow-list restricts it, never the rix/* naming pattern.
+        await using var server = await LocalApiServer.StartAsync(
+            FakeHost(true), Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new BranchName("feature/human-work")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
         {
-            branch = "main",
+            branch = "feature/human-work",
             baseBranch = "main",
         });
 
-        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
-        var json = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
-        StringAssert.Contains(result["error"], "rix/*");
-        StringAssert.StartsWith(result["error"], "branch:");
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(1, server.GetQueuedPushRequests().Count);
+        Assert.AreEqual(new BranchName("feature/human-work"), server.GetQueuedPushRequests()[0].Branch);
+        Assert.AreEqual(new BranchName("main"), server.GetQueuedPushRequests()[0].BaseBranch);
     }
 
     [DataTestMethod]
@@ -360,7 +364,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(false), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/ghost")]);
+            allowedPushBranches: [new BranchName("rix/ghost")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -381,7 +385,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/feat")]);
+            allowedPushBranches: [new BranchName("rix/feat")]);
         using var client = new HttpClient();
 
         var body = new { branch = "rix/feat", baseBranch = "main" };
@@ -404,7 +408,7 @@ public class LocalApiServerTests
             branchExistsLocally: _ => Task.FromResult(false));
         await using var server = await LocalApiServer.StartAsync(
             host, Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/ghost")]);
+            allowedPushBranches: [new BranchName("rix/ghost")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -465,7 +469,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/feat")]);
+            allowedPushBranches: [new BranchName("rix/feat")]);
         using var client = new HttpClient();
 
         await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -508,7 +512,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/other")]);
+            allowedPushBranches: [new BranchName("rix/other")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -530,7 +534,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/other")]);
+            allowedPushBranches: [new BranchName("rix/other")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -548,7 +552,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/my-fix")]);
+            allowedPushBranches: [new BranchName("rix/my-fix")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -566,7 +570,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/My-Fix")]);
+            allowedPushBranches: [new BranchName("rix/My-Fix")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -583,7 +587,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(false), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/other")]);
+            allowedPushBranches: [new BranchName("rix/other")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
@@ -639,19 +643,19 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
-    public async Task DeletePr_Returns400_ForNonRixBranch()
+    public async Task DeletePr_Returns404_ForNonRixBranch_SinceNoneWasEverQueued()
     {
+        // DeleteValidation no longer enforces rix/* itself (see DeleteRequestExtensions) - it's
+        // shared with /push, which must accept any branch name. /pr's own rix/* invariant still
+        // holds in practice, since PrValidation only ever lets a rix/*-named branch into the
+        // queue, so a non-rix branch simply can't be found rather than being rejected as malformed.
         await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/pr"),
             new { branch = "main" });
 
-        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
-        var json = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
-        StringAssert.Contains(result["error"], "rix/*");
-        StringAssert.StartsWith(result["error"], "branch:");
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [TestMethod]
@@ -702,7 +706,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/feat")]);
+            allowedPushBranches: [new BranchName("rix/feat")]);
         using var client = new HttpClient();
 
         await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -738,18 +742,14 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
-    public async Task DeletePush_Returns400_ForNonRixBranch()
+    public async Task DeletePush_Returns404_ForNonRixBranch_WhenNotQueued()
     {
         await using var server = await LocalApiServer.StartAsync(FakeHost(true), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/push"),
-            new { branch = "main" });
+            new { branch = "feature/human-work" });
 
-        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
-        var json = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
-        StringAssert.Contains(result["error"], "rix/*");
-        StringAssert.StartsWith(result["error"], "branch:");
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
     }
 }
