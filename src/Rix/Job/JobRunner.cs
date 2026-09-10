@@ -270,13 +270,9 @@ internal static class JobRunner
         2. When done, call POST {{prUri}} with JSON body:
            {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
 
-        To instead push commits onto a branch that already exists on the remote — e.g. resuming
-        a previous run or fixing a branch's failing CI — commit them locally on that branch,
+        To instead push commits onto a branch that already exists on the remote — e.g. updating an existing PR — commit them locally on that branch,
         then call POST {{pushUri}} with JSON body:
            {"branch":"<existing-branch>","baseBranch":"<base branch>"}
-
-        You can list what you have already queued with GET, and cancel a queued request with DELETE
-        on the same path before the job ends (handy when you change your mind about a branch).
 
         {{AllowedPushBranchesPrompt(allowedPushBranches)}}
         """;

@@ -81,7 +81,10 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     )
     => RunGitAsync
     (
-        ["bundle", "create", bundlePath, $"{baseBranch.Value}..{branch.Value}"],
+        // --end-of-options stops git from reading a branch name starting with "-" as an option —
+        // BranchName never validates its format. Unlike "--", it doesn't repurpose the range
+        // argument as a pathspec, so "bundle create" still treats it as a revision range.
+        ["bundle", "create", bundlePath, "--end-of-options", $"{baseBranch.Value}..{branch.Value}"],
         workingDirectory: repoDirectory,
         authenticated: false,
         cancellationToken

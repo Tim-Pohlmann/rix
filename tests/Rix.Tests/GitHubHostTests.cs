@@ -11,9 +11,9 @@ public class GitHubHostTests
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
 
     private static readonly string[] ExpectedBundleArgs =
-        ["bundle", "create", "/tmp/out/fix.bundle", "main..rix/fix"];
+        ["bundle", "create", "/tmp/out/fix.bundle", "--end-of-options", "main..rix/fix"];
 
-    private static readonly string[] ExpectedPushArgs = ["push", "origin", "rix/fix"];
+    private static readonly string[] ExpectedPushArgs = ["push", "origin", "--end-of-options", "rix/fix"];
 
     private static readonly string[] ExpectedBranchExistsLocallyArgs =
         ["rev-parse", "--verify", "--quiet", "refs/heads/rix/fix"];

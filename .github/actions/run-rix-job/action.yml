@@ -38,7 +38,7 @@ inputs:
     required: false
   allowed-push-branches:
     description: >-
-      Comma-separated list of rix/* branches the /push endpoint may deliver to; omit to
+      Comma-separated list of branches the /push endpoint may deliver to; omit to
       disable /push entirely
     required: false
   rix-version:
