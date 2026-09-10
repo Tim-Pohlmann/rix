@@ -19,6 +19,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Not in the Microsoft.AspNetCore.App shared framework, so it needs an explicit version.
+         Kept at >= 10.0.12: earlier 10.0.x pull a Microsoft.OpenApi with advisory GHSA-v5pm-xwqc-g5wc. -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
   </ItemGroup>

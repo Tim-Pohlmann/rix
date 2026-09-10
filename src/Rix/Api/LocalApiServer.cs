@@ -143,7 +143,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// push allow-list for this specific run is folded in here too.</summary>
     private static string BuildApiDescription(IReadOnlyList<RixBranchName>? allowedPushBranches)
     {
-        var overview =
+        const string overview =
             "Local delivery API for a `rix job` coding-agent run. Hand finished work back to rix by " +
             "queuing a branch: POST /pr opens it as a pull request, POST /push adds commits to a branch " +
             "that already exists on the remote. Queued requests are listed with GET and cancelled with " +
@@ -151,7 +151,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             "Conventions: work on branches named rix/<short-description> and commit locally before " +
             "queuing them; split unrelated changes into separate pull requests.";
 
-        return $"{overview}\n\n{PushPolicySentence(allowedPushBranches)}";
+        return overview + "\n\n" + PushPolicySentence(allowedPushBranches);
     }
 
     /// <summary>The <c>/push</c> endpoint description, including this run's allow-list so the agent

@@ -54,8 +54,9 @@ public class LocalApiServerTests
         Assert.IsTrue(paths.TryGetProperty("/push", out _), "spec must document /push");
 
         // The POST /pr request body schema is derived from PrRequest, so its fields must show up.
+        var rawText = root.GetRawText();
         foreach (var field in new[] { "branch", "title", "body", "baseBranch" })
-            StringAssert.Contains(root.GetRawText(), $"\"{field}\"");
+            StringAssert.Contains(rawText, $"\"{field}\"");
     }
 
     [TestMethod]
