@@ -48,9 +48,9 @@ on:
         type: number
       allowed-push-branches:
         description: >-
-          Comma-separated list of rix/* branches the /push endpoint may deliver to
-          (e.g. 'rix/resume-a,rix/resume-b'). /push rejects every branch until this is set;
-          omit it to disable /push entirely.
+          Comma-separated list of branches the /push endpoint may deliver to
+          (e.g. 'rix/resume-a,rix/resume-b' or a human's own branch). /push rejects every
+          branch until this is set; omit it to disable /push entirely.
         required: false
         type: string
       runner:

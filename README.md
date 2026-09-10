@@ -61,8 +61,9 @@ endpoint accepts:
 
 A push to any branch outside that list (or any push at all, if the input is omitted) is rejected
 with a 403, and the agent is told the allow-list in its system prompt. The input forwards verbatim
-as `--allowed-push-branches` (env `RIX_ALLOWED_PUSH_BRANCHES`); each entry must be a well-formed
-`rix/*` branch name.
+as `--allowed-push-branches` (env `RIX_ALLOWED_PUSH_BRANCHES`); an entry can be any branch name
+that already exists on the remote, not just `rix/*` — e.g. a human's own branch you want the agent
+to resume.
 
 ### Using a different provider or model
 
