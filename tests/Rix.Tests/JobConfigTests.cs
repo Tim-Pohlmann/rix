@@ -354,13 +354,7 @@ public class JobConfigTests
     [DataRow(" .rix/agent-home ", ".rix/agent-home")]
     public void RepoRelativePath_Parse_Normalises(string raw, string expected)
     {
-        var parsed = RepoRelativePath.Parse(raw) switch
-        {
-            ParseSuccess<RepoRelativePath> s => s.Value,
-            var other => throw new AssertFailedException($"expected a valid path, got: {other}"),
-        };
-
-        Assert.AreEqual(expected, parsed.Value);
+        Assert.AreEqual(expected, TestConfig.RelPath(raw).Value);
     }
 
     [TestMethod]

@@ -63,9 +63,9 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Directory.CreateDirectory is reserved for TempDirectory itself (and for
-      materializing a copied file tree in GitHubFactoryContextLoader); use
-      TempDirectory.Create instead of calling it directly elsewhere.
+      Directory.CreateDirectory is reserved for TempDirectory and DirectoryMerge
+      (file-tree materialization); elsewhere use TempDirectory.Create instead of
+      calling it directly.
     patterns:
       - pattern: Directory.CreateDirectory($P)
       - pattern-not-inside: |
@@ -73,11 +73,11 @@ rules:
           {
             ...
           }
-      # Copying the factory-repo home context into $HOME must recreate the source
-      # tree's directories at the destination - that is file-tree materialization,
-      # not temp-dir hand-rolling, so this one method is exempt.
+      # DirectoryMerge recreates a source tree's directories (empty ones included) at
+      # the destination - that is file-tree materialization, not temp-dir hand-rolling,
+      # so it is exempt alongside TempDirectory itself.
       - pattern-not-inside: |
-          void CopySkippingExisting(...)
+          class DirectoryMerge
           {
             ...
           }

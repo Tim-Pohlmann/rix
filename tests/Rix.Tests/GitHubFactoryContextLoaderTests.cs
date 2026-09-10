@@ -23,12 +23,6 @@ public class GitHubFactoryContextLoaderTests
         try { Directory.Delete(_homeDir, recursive: true); } catch (DirectoryNotFoundException) { }
     }
 
-    private static RepoRelativePath Path(string value) => RepoRelativePath.Parse(value) switch
-    {
-        ParseSuccess<RepoRelativePath> s => s.Value,
-        var other => throw new AssertFailedException($"invalid test path: {other}"),
-    };
-
     private GitHubFactoryContextLoader Loader(RunProcessAsync runProcess)
     => new(new GitReadToken("tok"), runProcess, _workDir, _homeDir);
 
@@ -68,7 +62,7 @@ public class GitHubFactoryContextLoaderTests
             ["nested/b.txt"] = "b",
         }, emptyDirs: ["placeholder"]);
 
-        await Loader(git).LoadAsync(TestConfig.Repo("acme/factory"), Path("agent-home"), CancellationToken.None);
+        await Loader(git).LoadAsync(TestConfig.Repo("acme/factory"), TestConfig.RelPath("agent-home"), CancellationToken.None);
 
         Assert.AreEqual("from-factory", await File.ReadAllTextAsync(System.IO.Path.Combine(_homeDir, "a.txt")));
         Assert.AreEqual("b", await File.ReadAllTextAsync(System.IO.Path.Combine(_homeDir, "nested", "b.txt")));
@@ -85,7 +79,7 @@ public class GitHubFactoryContextLoaderTests
             ["b.txt"] = "new",
         });
 
-        await Loader(git).LoadAsync(TestConfig.Repo("acme/factory"), Path("agent-home"), CancellationToken.None);
+        await Loader(git).LoadAsync(TestConfig.Repo("acme/factory"), TestConfig.RelPath("agent-home"), CancellationToken.None);
 
         Assert.AreEqual("original", await File.ReadAllTextAsync(System.IO.Path.Combine(_homeDir, "a.txt")));
         Assert.AreEqual("new", await File.ReadAllTextAsync(System.IO.Path.Combine(_homeDir, "b.txt")));
@@ -97,7 +91,7 @@ public class GitHubFactoryContextLoaderTests
         var calls = new List<(string[] Args, IReadOnlyDictionary<string, string>? Env)>();
         var git = FakeGit("nested/agent-home", new Dictionary<string, string> { ["a.txt"] = "x" }, calls: calls);
 
-        await Loader(git).LoadAsync(TestConfig.Repo("acme/factory"), Path("nested/agent-home"), CancellationToken.None);
+        await Loader(git).LoadAsync(TestConfig.Repo("acme/factory"), TestConfig.RelPath("nested/agent-home"), CancellationToken.None);
 
         var clone = calls.Single(c => c.Args[0] == "clone");
         CollectionAssert.Contains(clone.Args, "--sparse");
@@ -116,7 +110,7 @@ public class GitHubFactoryContextLoaderTests
         var git = FakeGit("some-other-dir", new Dictionary<string, string> { ["a.txt"] = "x" });
 
         var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => Loader(git).LoadAsync(TestConfig.Repo("acme/factory"), Path("agent-home"), CancellationToken.None));
+            () => Loader(git).LoadAsync(TestConfig.Repo("acme/factory"), TestConfig.RelPath("agent-home"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "factory context path not found");
     }
 
@@ -127,7 +121,7 @@ public class GitHubFactoryContextLoaderTests
             => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128"));
 
         var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => Loader(git).LoadAsync(TestConfig.Repo("acme/factory"), Path("agent-home"), CancellationToken.None));
+            () => Loader(git).LoadAsync(TestConfig.Repo("acme/factory"), TestConfig.RelPath("agent-home"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "git clone failed");
     }
 }

@@ -60,7 +60,7 @@ internal sealed record RepoRelativePath
             return new ParseError<RepoRelativePath>("path must not be empty");
 
         var normalised = trimmed.Replace('\\', '/');
-        if (Path.IsPathRooted(normalised) || normalised.StartsWith('/'))
+        if (Path.IsPathRooted(normalised))
             return new ParseError<RepoRelativePath>($"path must be repo-relative, not rooted: {path}");
 
         var segments = normalised

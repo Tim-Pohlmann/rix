@@ -4,12 +4,11 @@ using System.Net.Http.Headers;
 namespace Rix.Repository;
 
 /// <summary>Read-only GitHub host for one repo. Owns the shared transport — an authenticated
-/// <see cref="HttpClient"/> for the REST API and the git auth environment for HTTPS git commands —
+/// <see cref="HttpClient"/> for the REST API and a <see cref="GitCli"/> for HTTPS git commands —
 /// which <see cref="GitHubHost"/> composes and reuses for its write operations.</summary>
 internal sealed class GitHubReadHost : IRepositoryReadHost
 {
-    private readonly RunProcessAsync _runProcess;
-    private readonly IReadOnlyDictionary<string, string> _gitAuthEnv;
+    private readonly GitCli _git;
 
     /// <summary>The target repo, exposed so the composing <see cref="GitHubHost"/> can build REST
     /// URLs without keeping a second copy.</summary>
@@ -23,8 +22,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
     {
         Repo = repo;
         Http = BuildHttpClient(token, handler);
-        _runProcess = runProcess;
-        _gitAuthEnv = GitHubAuth.ExtraHeaderEnv(token);
+        _git = new GitCli(token, runProcess);
     }
 
     private static HttpClient BuildHttpClient(GitReadToken token, HttpMessageHandler? handler)
@@ -83,10 +81,10 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
         // on any non-zero exit). Any other failure (bad working directory, git missing, timeout, ...)
         // is a real operational problem and must still throw, or it would surface later as a
         // misleading "branch not found". Purely local, like bundle create, so no auth env is needed.
-        var result = await _runProcess
+        var result = await _git.RunRawAsync
         (
-            "git", ["rev-parse", "--verify", "--quiet", $"refs/heads/{branch.Value}"],
-            repoDirectory, environmentOverrides: null, onStdoutLine: null, cancellationToken
+            ["rev-parse", "--verify", "--quiet", $"refs/heads/{branch.Value}"],
+            repoDirectory, authenticated: false, cancellationToken
         );
         if (result is ProcessFailure { Reason: not "exited with code 1" } f)
             throw new InvalidOperationException($"git rev-parse failed: {f.Reason}");
@@ -103,24 +101,12 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
         return true;
     }
 
-    /// <summary>Runs <c>git</c>, injecting the credential only when <paramref name="authenticated"/>
-    /// is set. Local-only commands (e.g. <c>bundle create</c>) pass <c>false</c> so the token never
-    /// reaches a subprocess that has no need for it; remote commands (clone, push) pass <c>true</c>.
-    /// Shared with the composing <see cref="GitHubHost"/> so its push reuses this exact injection.</summary>
-    internal async Task RunGitAsync
+    /// <summary>Runs <c>git</c> via the shared <see cref="GitCli"/>, injecting the credential only
+    /// when <paramref name="authenticated"/> is set. Kept as an instance method rather than inlined
+    /// to <c>_git</c> so the composing <see cref="GitHubHost"/> can reach it for its push.</summary>
+    internal Task RunGitAsync
     (
         string[] args, string workingDirectory, bool authenticated, CancellationToken cancellationToken
     )
-    {
-        // Only the GIT_CONFIG_* auth variables are ever overridden; the subprocess still inherits the
-        // full parent environment (PATH, HOME, ...) on top of these, so we never force those here.
-        var env = authenticated switch
-        {
-            true => (IReadOnlyDictionary<string, string>?)_gitAuthEnv,
-            false => null,
-        };
-        var result = await _runProcess("git", args, workingDirectory, env, null, cancellationToken);
-        if (result is ProcessFailure f)
-            throw new InvalidOperationException($"git {args[0]} failed: {f.Reason}");
-    }
+    => _git.RunAsync(args, workingDirectory, authenticated, cancellationToken);
 }

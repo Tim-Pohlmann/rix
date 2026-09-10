@@ -63,4 +63,11 @@ internal static class TestConfig
         ParseError<RepoIdentifier> e => throw new AssertFailedException($"invalid repo in test: {e.Error}"),
         var other => throw new AssertFailedException($"unexpected result: {other}"),
     };
+
+    internal static RepoRelativePath RelPath(string value) => RepoRelativePath.Parse(value) switch
+    {
+        ParseSuccess<RepoRelativePath> p => p.Value,
+        ParseError<RepoRelativePath> e => throw new AssertFailedException($"invalid repo-relative path in test: {e.Error}"),
+        var other => throw new AssertFailedException($"unexpected result: {other}"),
+    };
 }
