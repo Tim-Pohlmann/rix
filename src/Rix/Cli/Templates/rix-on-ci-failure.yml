@@ -1,0 +1,16 @@
+name: rix (on CI failure)
+on:
+  workflow_run:
+    workflows: ["CI"] # change "CI" to the name: of the workflow rix should react to
+    types: [completed]
+jobs:
+  rix:
+    # Cheap short-circuit; on-ci-failure.yml re-checks the conclusion via the API regardless.
+    if: github.event.workflow_run.conclusion == 'failure'
+    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main
+    with:
+      # repo defaults to the calling repo.
+      run-id: ${{ github.event.workflow_run.id }}
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
