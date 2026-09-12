@@ -1,3 +1,4 @@
+using Rix.CiFailure;
 using Rix.Job;
 using Rix.Submit;
 
@@ -54,6 +55,45 @@ internal static class TestConfig
     {
         SubmitConfigValid v => v.Config,
         SubmitConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
+        var other => throw new AssertFailedException($"unexpected result: {other}"),
+    };
+
+    internal static CiFailureConfig ValidCiFailure
+    (
+        string repo = "owner/repo",
+        string readToken = "read-tok",
+        string runId = "1"
+    )
+    => CiFailureConfig.Create(repo, readToken, runId) switch
+    {
+        CiFailureConfigValid v => v.Config,
+        CiFailureConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
+        var other => throw new AssertFailedException($"unexpected result: {other}"),
+    };
+
+    internal static CiFailureJobConfig ValidCiFailureJob
+    (
+        string repo = "owner/repo",
+        string readToken = "read-tok",
+        string runId = "1",
+        string? workDir = null,
+        string? outputDir = null
+    )
+    => CiFailureJobConfig.Create(new CiFailureJobInputs
+    (
+        RunId: runId,
+        Job: new JobInputs
+        (
+            Repo: repo,
+            Prompt: "",
+            ReadToken: readToken,
+            WorkDir: workDir ?? Path.GetTempPath(),
+            OutputDir: outputDir ?? Path.GetTempPath()
+        )
+    )) switch
+    {
+        CiFailureJobConfigValid v => v.Config,
+        CiFailureJobConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
         var other => throw new AssertFailedException($"unexpected result: {other}"),
     };
 
