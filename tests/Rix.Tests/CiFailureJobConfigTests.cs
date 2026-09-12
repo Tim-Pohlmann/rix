@@ -48,10 +48,10 @@ public class CiFailureJobConfigTests
     public void Create_ReturnsValid_ForValidInputs()
     {
         var config = Valid(Create());
-        Assert.AreEqual("owner/repo", config.CiFailure.Repo.ToString());
-        Assert.AreEqual(123, config.CiFailure.RunId);
-        Assert.AreEqual("owner/repo", config.Job.Repo.ToString());
-        Assert.AreEqual("read-tok", config.Job.ReadToken.Value);
+        Assert.AreEqual("owner/repo", config.ToCiFailureConfig().Repo.ToString());
+        Assert.AreEqual(123, config.ToCiFailureConfig().RunId);
+        Assert.AreEqual("owner/repo", config.ToJobConfig().Repo.ToString());
+        Assert.AreEqual("read-tok", config.ToJobConfig().ReadToken.Value);
     }
 
     [TestMethod]
@@ -94,8 +94,8 @@ public class CiFailureJobConfigTests
     public void Create_ThreadsAgentApiKeyAndEnv_ThroughToJobConfig()
     {
         var config = Valid(Create(agentApiKey: "secret", agentApiKeyEnv: "ANTHROPIC_API_KEY"));
-        Assert.AreEqual("secret", config.Job.Agent.ApiKey);
-        Assert.AreEqual("ANTHROPIC_API_KEY", config.Job.Agent.ApiKeyEnv);
+        Assert.AreEqual("secret", config.ToJobConfig().Agent.ApiKey);
+        Assert.AreEqual("ANTHROPIC_API_KEY", config.ToJobConfig().Agent.ApiKeyEnv);
     }
 
     [TestMethod]

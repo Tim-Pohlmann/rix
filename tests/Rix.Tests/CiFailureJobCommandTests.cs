@@ -37,13 +37,13 @@ public class CiFailureJobCommandTests
         await parser.InvokeAsync("ci-failure-job");
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual("env/repo", captured.CiFailure.Repo.ToString());
-        Assert.AreEqual("env-read", captured.CiFailure.ReadToken.Value);
-        Assert.AreEqual(42, captured.CiFailure.RunId);
-        Assert.AreEqual(999, captured.Job.Agent.MaxTokens.Value);
-        Assert.AreEqual(15, captured.Job.TimeoutMinutes.Value);
-        Assert.AreEqual(Path.GetTempPath(), captured.Job.WorkDir.Value);
-        Assert.AreEqual(Path.GetTempPath(), captured.Job.OutputDir.Value);
+        Assert.AreEqual("env/repo", captured.ToCiFailureConfig().Repo.ToString());
+        Assert.AreEqual("env-read", captured.ToCiFailureConfig().ReadToken.Value);
+        Assert.AreEqual(42, captured.ToCiFailureConfig().RunId);
+        Assert.AreEqual(999, captured.ToJobConfig().Agent.MaxTokens.Value);
+        Assert.AreEqual(15, captured.ToJobConfig().TimeoutMinutes.Value);
+        Assert.AreEqual(Path.GetTempPath(), captured.ToJobConfig().WorkDir.Value);
+        Assert.AreEqual(Path.GetTempPath(), captured.ToJobConfig().OutputDir.Value);
     }
 
     [TestMethod]
@@ -63,7 +63,7 @@ public class CiFailureJobCommandTests
              "--output-dir", Path.GetTempPath()]);
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual("flag/repo", captured.CiFailure.Repo.ToString());
+        Assert.AreEqual("flag/repo", captured.ToCiFailureConfig().Repo.ToString());
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ public class CiFailureJobCommandTests
              "--output-dir", Path.GetTempPath(), "--agent", "opencode"]);
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, captured.Job.Agent.Kind);
+        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, captured.ToJobConfig().Agent.Kind);
     }
 
     [TestMethod]
@@ -99,7 +99,7 @@ public class CiFailureJobCommandTests
              "--output-dir", Path.GetTempPath(), "--model", "openai/gpt-4o"]);
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual("openai/gpt-4o", captured.Job.Agent.Model);
+        Assert.AreEqual("openai/gpt-4o", captured.ToJobConfig().Agent.Model);
     }
 
     [TestMethod]
@@ -117,7 +117,7 @@ public class CiFailureJobCommandTests
              "--output-dir", Path.GetTempPath(), "--agent-api-key", "secret", "--agent-api-key-env", "ANTHROPIC_API_KEY"]);
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual("secret", captured.Job.Agent.ApiKey);
-        Assert.AreEqual("ANTHROPIC_API_KEY", captured.Job.Agent.ApiKeyEnv);
+        Assert.AreEqual("secret", captured.ToJobConfig().Agent.ApiKey);
+        Assert.AreEqual("ANTHROPIC_API_KEY", captured.ToJobConfig().Agent.ApiKeyEnv);
     }
 }

@@ -19,16 +19,16 @@ internal static class CiFailureJobRunner
         CancellationToken cancellationToken
     )
     {
-        var ciFailureResult = await CiFailureRunner.RunAsync(config.CiFailure, ciFailureHost, cancellationToken);
+        var ciFailureResult = await CiFailureRunner.RunAsync(config.ToCiFailureConfig(), ciFailureHost, cancellationToken);
         if (ciFailureResult is not CiFailureDetected detected)
             return new CiFailureJobNotRun(ciFailureResult);
 
         // Resuming a CI failure means pushing a fix back onto the exact branch that failed - the
         // only sensible /push target here, so it's derived from the detected run rather than
-        // accepted as a caller-supplied input (see JobConfig.WithAllowedPushBranches). That branch
+        // accepted as a caller-supplied input (see CiFailureJobConfig.ToJobConfig). That branch
         // already exists on the remote regardless of whether it happens to be rix/*-named (e.g. CI
         // failed on a human's own branch, not a previous rix run), so it's always allowed.
-        var job = config.Job.WithPrompt(detected.Prompt).WithAllowedPushBranches([new BranchName(detected.Branch)]);
+        var job = config.ToJobConfig(detected.Prompt, detected.Branch);
         var jobResult = await JobRunner.RunAsync(job, jobContext, cancellationToken);
         return new CiFailureJobRan(jobResult);
     }

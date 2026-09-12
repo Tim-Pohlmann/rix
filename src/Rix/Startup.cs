@@ -249,6 +249,10 @@ internal static class Startup
     /// </summary>
     internal static async Task<int> ExecuteCiFailureJobAsync(CiFailureJobConfig config, CancellationToken cancellationToken, IGitHubCiFailureHost? ciFailureHost = null, JobContext? jobContext = null)
     {
+        // Placeholder-prompted: only its Repo/ReadToken/OutputDir are needed before a failure is
+        // detected, and those never change once CiFailureJobRunner substitutes the real prompt.
+        var placeholderJob = config.ToJobConfig();
+
         if (ciFailureHost is null || jobContext is null)
         {
             // Lets a test stub only the host its scenario actually exercises - e.g. a run that
@@ -257,9 +261,9 @@ internal static class Startup
             // when it's already a GitHubReadHost rather than minting a second one.
             var host = jobContext?.Host as GitHubReadHost
                 ?? ciFailureHost as GitHubReadHost
-                ?? new GitHubReadHost(config.Job.Repo, config.Job.ReadToken, ProcessWrapper.RunAsync);
+                ?? new GitHubReadHost(placeholderJob.Repo, placeholderJob.ReadToken, ProcessWrapper.RunAsync);
             ciFailureHost ??= host;
-            jobContext ??= DefaultContext(config.Job, host);
+            jobContext ??= DefaultContext(placeholderJob, host);
         }
 
         var transcriptLines = new List<string>();
@@ -270,7 +274,7 @@ internal static class Startup
         return outcome switch
         {
             CiFailureJobNotRun(var reason) => WriteCiFailureResult(reason),
-            CiFailureJobRan(var result) => await WriteJobResultAsync(config.Job, result, transcriptLines),
+            CiFailureJobRan(var result) => await WriteJobResultAsync(placeholderJob, result, transcriptLines),
             _ => throw new NotSupportedException($"Unexpected ci-failure-job outcome: {outcome.GetType()}"),
         };
     }
