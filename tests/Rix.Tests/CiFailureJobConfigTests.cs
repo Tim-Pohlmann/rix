@@ -48,10 +48,12 @@ public class CiFailureJobConfigTests
     public void Create_ReturnsValid_ForValidInputs()
     {
         var config = Valid(Create());
-        Assert.AreEqual("owner/repo", config.ToCiFailureConfig().Repo.ToString());
-        Assert.AreEqual(123, config.ToCiFailureConfig().RunId);
-        Assert.AreEqual("owner/repo", config.ToJobConfig().Repo.ToString());
-        Assert.AreEqual("read-tok", config.ToJobConfig().ReadToken.Value);
+        var ciFailure = config.ToCiFailureConfig();
+        var job = config.ToJobConfig();
+        Assert.AreEqual("owner/repo", ciFailure.Repo.ToString());
+        Assert.AreEqual(123, ciFailure.RunId);
+        Assert.AreEqual("owner/repo", job.Repo.ToString());
+        Assert.AreEqual("read-tok", job.ReadToken.Value);
     }
 
     [TestMethod]
@@ -93,9 +95,9 @@ public class CiFailureJobConfigTests
     [TestMethod]
     public void Create_ThreadsAgentApiKeyAndEnv_ThroughToJobConfig()
     {
-        var config = Valid(Create(agentApiKey: "secret", agentApiKeyEnv: "ANTHROPIC_API_KEY"));
-        Assert.AreEqual("secret", config.ToJobConfig().Agent.ApiKey);
-        Assert.AreEqual("ANTHROPIC_API_KEY", config.ToJobConfig().Agent.ApiKeyEnv);
+        var job = Valid(Create(agentApiKey: "secret", agentApiKeyEnv: "ANTHROPIC_API_KEY")).ToJobConfig();
+        Assert.AreEqual("secret", job.Agent.ApiKey);
+        Assert.AreEqual("ANTHROPIC_API_KEY", job.Agent.ApiKeyEnv);
     }
 
     [TestMethod]

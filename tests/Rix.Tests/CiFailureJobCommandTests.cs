@@ -37,13 +37,15 @@ public class CiFailureJobCommandTests
         await parser.InvokeAsync("ci-failure-job");
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual("env/repo", captured.ToCiFailureConfig().Repo.ToString());
-        Assert.AreEqual("env-read", captured.ToCiFailureConfig().ReadToken.Value);
-        Assert.AreEqual(42, captured.ToCiFailureConfig().RunId);
-        Assert.AreEqual(999, captured.ToJobConfig().Agent.MaxTokens.Value);
-        Assert.AreEqual(15, captured.ToJobConfig().TimeoutMinutes.Value);
-        Assert.AreEqual(Path.GetTempPath(), captured.ToJobConfig().WorkDir.Value);
-        Assert.AreEqual(Path.GetTempPath(), captured.ToJobConfig().OutputDir.Value);
+        var ciFailure = captured.ToCiFailureConfig();
+        var job = captured.ToJobConfig();
+        Assert.AreEqual("env/repo", ciFailure.Repo.ToString());
+        Assert.AreEqual("env-read", ciFailure.ReadToken.Value);
+        Assert.AreEqual(42, ciFailure.RunId);
+        Assert.AreEqual(999, job.Agent.MaxTokens.Value);
+        Assert.AreEqual(15, job.TimeoutMinutes.Value);
+        Assert.AreEqual(Path.GetTempPath(), job.WorkDir.Value);
+        Assert.AreEqual(Path.GetTempPath(), job.OutputDir.Value);
     }
 
     [TestMethod]

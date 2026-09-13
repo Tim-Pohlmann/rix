@@ -59,7 +59,7 @@ internal sealed record CiFailureJobConfig
     => CiFailureConfig.Create(Inputs.Job.Repo, Inputs.Job.ReadToken, Inputs.RunId) switch
     {
         CiFailureConfigValid v => v.Config,
-        var result => throw new InvalidOperationException($"CiFailureJobConfig.Create already validated these inputs: {result}"),
+        var result => throw AlreadyValidated(result),
     };
 
     /// <summary>Rebuilds the <see cref="Job.JobConfig"/> half of <see cref="Inputs"/>, substituting
@@ -70,8 +70,14 @@ internal sealed record CiFailureJobConfig
     => JobConfig.Create(Inputs.Job with { Prompt = prompt ?? PlaceholderPrompt, AllowedPushBranches = allowedPushBranch }) switch
     {
         JobConfigValid v => v.Config,
-        var result => throw new InvalidOperationException($"CiFailureJobConfig.Create already validated these inputs: {result}"),
+        var result => throw AlreadyValidated(result),
     };
+
+    /// <summary>Both <see cref="ToCiFailureConfig"/> and <see cref="ToJobConfig"/> re-run a
+    /// <c>Create</c> that <see cref="Create"/> already proved succeeds for these <see cref="Inputs"/>
+    /// — this branch is unreachable in practice, so it exists only to satisfy the switch.</summary>
+    private static InvalidOperationException AlreadyValidated(object result)
+    => new($"CiFailureJobConfig.Create already validated these inputs: {result}");
 }
 
 /// <summary>The raw, unvalidated CLI/environment inputs to <see cref="CiFailureJobConfig.Create"/>:
