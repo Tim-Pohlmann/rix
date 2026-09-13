@@ -34,6 +34,24 @@ public class StartupTests
     }
 
     [TestMethod]
+    public async Task RunInitializeAsync_WritesCallerWorkflows_AndReturnsZero()
+    {
+        var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
+        var exitCode = await Startup.RunAsync(["initialize", "--dir", dir]);
+
+        Assert.AreEqual(0, exitCode);
+        Assert.IsTrue(File.Exists(Path.Combine(dir, ".github/workflows/rix.yml")));
+        Assert.IsTrue(File.Exists(Path.Combine(dir, ".github/workflows/rix-on-ci-failure.yml")));
+    }
+
+    [TestMethod]
+    public async Task RunInitializeAsync_Returns2_WhenTargetDirDoesNotExist()
+    {
+        var exitCode = await Startup.RunAsync(["initialize", "--dir", "/nonexistent/path/xyz"]);
+        Assert.AreEqual(2, exitCode);
+    }
+
+    [TestMethod]
     public void HandleSigterm_CancelsTokenAndSuppressesDefaultTermination()
     {
         using var cts = new CancellationTokenSource();

@@ -1,6 +1,7 @@
 using Rix.Agents;
 using Rix.CiFailure;
 using Rix.Cli;
+using Rix.Initialize;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
@@ -80,6 +81,7 @@ internal static class Startup
             rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, cts.Token)));
             rootCommand.AddCommand(CiFailureCommand.Build(config => ExecuteCiFailureAsync(config, cts.Token)));
             rootCommand.AddCommand(CiFailureJobCommand.Build(config => ExecuteCiFailureJobAsync(config, cts.Token)));
+            rootCommand.AddCommand(InitializeCommand.Build(config => ExecuteInitializeAsync(config, cts.Token)));
             return await new CommandLineBuilder(rootCommand).UseDefaults().Build().InvokeAsync(args);
         }
         finally
@@ -278,4 +280,47 @@ internal static class Startup
             _ => throw new NotSupportedException($"Unexpected ci-failure-job outcome: {outcome.GetType()}"),
         };
     }
+
+    /// <summary>The production <see cref="InitializeContext"/>: writes each template to disk via
+    /// <see cref="FileWriter"/> (creating any missing parent directory), and logs to stderr.</summary>
+    private static InitializeContext DefaultInitializeContext()
+    => new
+    (
+        WriteFile: FileWriter.WriteAsync,
+        LogLine: Console.Error.WriteLine
+    );
+
+    /// <summary>
+    /// Imperative shell around <see cref="InitializeRunner.RunAsync"/>: writes the caller
+    /// workflows, then prints the manual follow-up steps (secrets, the CI workflow name, commit)
+    /// on success, or the error on failure, and maps the result to an exit code.
+    /// </summary>
+    internal static async Task<int> ExecuteInitializeAsync(InitializeConfig config, CancellationToken cancellationToken, InitializeContext? context = null)
+    {
+        context ??= DefaultInitializeContext();
+        var result = await InitializeRunner.RunAsync(config, context, cancellationToken);
+        switch (result)
+        {
+            case InitializeSuccess:
+                await Console.Error.WriteLineAsync(NextStepsGuidance);
+                return ExitCodes.Success;
+            case InitializeFailure failure:
+                await Console.Error.WriteLineAsync($"error: {failure.Message}");
+                return ExitCodes.SetupFailed;
+            default:
+                throw new NotSupportedException($"Unexpected initialize result type: {result.GetType()}");
+        }
+    }
+
+    /// <summary>The steps <c>rix initialize</c> can't do itself: it only writes files, so setting
+    /// secrets, naming the watched CI workflow, and committing are left to the user.</summary>
+    private const string NextStepsGuidance = """
+
+        Next steps:
+          1. Add repo secrets (Settings -> Secrets and variables -> Actions):
+               RIX_READ_TOKEN   PAT, contents:read  (+ actions:read for the CI-failure workflow)
+               RIX_WRITE_TOKEN  PAT, contents:write + pull-requests:write
+          2. In rix-on-ci-failure.yml, set workflows: ["CI"] to your CI workflow's name.
+          3. Commit and push the two workflow files.
+        """;
 }

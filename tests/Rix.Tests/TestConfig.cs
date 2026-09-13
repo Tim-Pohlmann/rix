@@ -1,4 +1,5 @@
 using Rix.CiFailure;
+using Rix.Initialize;
 using Rix.Job;
 using Rix.Submit;
 
@@ -94,6 +95,14 @@ internal static class TestConfig
     {
         CiFailureJobConfigValid v => v.Config,
         CiFailureJobConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
+        var other => throw new AssertFailedException($"unexpected result: {other}"),
+    };
+
+    internal static InitializeConfig ValidInitialize(string? dir = null)
+    => InitializeConfig.Create(dir ?? Path.GetTempPath()) switch
+    {
+        InitializeConfigValid v => v.Config,
+        InitializeConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
         var other => throw new AssertFailedException($"unexpected result: {other}"),
     };
 
