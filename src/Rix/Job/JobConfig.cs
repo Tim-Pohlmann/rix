@@ -4,18 +4,18 @@ namespace Rix.Job;
 
 internal record JobConfig
 {
-    internal RepoIdentifier Repo { get; }
-    internal GitReadToken ReadToken { get; }
-    internal TimeoutMinutes TimeoutMinutes { get; }
-    internal DirectoryPath WorkDir { get; }
-    internal DirectoryPath OutputDir { get; }
-    internal AgentConfig Agent { get; }
+    internal RepoIdentifier Repo { get; init; }
+    internal GitReadToken ReadToken { get; init; }
+    internal TimeoutMinutes TimeoutMinutes { get; init; }
+    internal DirectoryPath WorkDir { get; init; }
+    internal DirectoryPath OutputDir { get; init; }
+    internal AgentConfig Agent { get; init; }
 
     /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
     /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.
     /// Any branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates
     /// via <c>/pr</c>), since these already exist on the remote before the job ever runs.</summary>
-    internal IReadOnlyList<BranchName> AllowedPushBranches { get; }
+    internal IReadOnlyList<BranchName> AllowedPushBranches { get; init; }
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
@@ -64,8 +64,8 @@ internal record JobConfig
         if (string.IsNullOrWhiteSpace(readToken))
             errors.Add("--read-token is required");
 
-        var resolvedMaxTokens = ParsePositiveInt(inputs.MaxTokens, DefaultMaxTokens, "--max-tokens", errors);
-        var resolvedTimeout = ParsePositiveInt(inputs.TimeoutMinutes, DefaultTimeoutMinutes, "--timeout", errors);
+        var resolvedMaxTokens = NumericFlag.ParsePositiveInt<int>(inputs.MaxTokens, DefaultMaxTokens, "--max-tokens", errors);
+        var resolvedTimeout = NumericFlag.ParsePositiveInt<int>(inputs.TimeoutMinutes, DefaultTimeoutMinutes, "--timeout", errors);
 
         var resolvedWorkDir = string.IsNullOrWhiteSpace(inputs.WorkDir) switch
         {
@@ -134,28 +134,6 @@ internal record JobConfig
             .Select(entry => new BranchName(entry))
             .Distinct()
             .ToList();
-    }
-
-    /// <summary>Parses a raw <c>--max-tokens</c>/<c>--timeout</c>-style value: blank resolves to
-    /// <paramref name="defaultValue"/> (the flag was never set), and anything else must parse as a
-    /// positive integer or <paramref name="errors"/> gets a message naming exactly what was wrong -
-    /// unparseable text or a non-positive number - rather than silently falling back to the default,
-    /// which would hide a caller's typo instead of reporting it.</summary>
-    private static int ParsePositiveInt(string? raw, int defaultValue, string flag, List<string> errors)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return defaultValue;
-        if (!int.TryParse(raw, out var value))
-        {
-            errors.Add($"{flag} must be an integer, got '{raw}'");
-            return defaultValue;
-        }
-        if (value <= 0)
-        {
-            errors.Add($"{flag} must be a positive integer");
-            return defaultValue;
-        }
-        return value;
     }
 }
 
