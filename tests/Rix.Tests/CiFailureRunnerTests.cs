@@ -29,7 +29,7 @@ public class CiFailureRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsNotRun_AndNeverClones_WhenRunDidNotFail()
     {
-        var ciFailureHost = new StubCiFailureHost(getRun: _ => Task.FromResult(SampleRun("success")));
+        var ciFailureHost = new StubCiFailureHost(getRun: _ => Task.FromResult(TestRuns.Sample("success")));
         var cloneCalled = false;
         var repositoryHost = new StubRepositoryHost(clone: () => { cloneCalled = true; return Task.CompletedTask; });
 
@@ -57,7 +57,7 @@ public class CiFailureRunnerTests
     public async Task RunAsync_RunsJob_WithDetectedPrompt_WhenRunFailed()
     {
         var ciFailureHost = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
             getLogs: _ => Task.FromResult("boom: it broke"),
             findPr: _ => Task.FromResult<int?>(null));
 
@@ -89,7 +89,7 @@ public class CiFailureRunnerTests
     [TestMethod]
     public async Task ExecuteCiFailureAsync_Returns0_AndWritesNoResultJson_WhenRunDidNotFail()
     {
-        var ciFailureHost = new StubCiFailureHost(getRun: _ => Task.FromResult(SampleRun("success")));
+        var ciFailureHost = new StubCiFailureHost(getRun: _ => Task.FromResult(TestRuns.Sample("success")));
 
         // No jobContext: the run didn't fail, so CiFailureRunner never reaches the job path
         // that would need one - Startup defaults it, unused.
@@ -114,7 +114,7 @@ public class CiFailureRunnerTests
     public async Task ExecuteCiFailureAsync_Returns0_AndWritesResultJson_WhenRunFailedAndJobSucceeded()
     {
         var ciFailureHost = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
             getLogs: _ => Task.FromResult("boom: it broke"),
             findPr: _ => Task.FromResult<int?>(null));
 
@@ -131,7 +131,7 @@ public class CiFailureRunnerTests
     public async Task RunAsync_AllowsPushOnly_ToTheFailingRunsOwnBranch()
     {
         var ciFailureHost = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure", branch: "rix/fix")),
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure", branch: "rix/fix")),
             getLogs: _ => Task.FromResult("boom: it broke"),
             findPr: _ => Task.FromResult<int?>(null));
 
@@ -145,7 +145,7 @@ public class CiFailureRunnerTests
     public async Task RunAsync_AllowsPush_ToTheFailingRunsOwnBranch_EvenWhenNotARixBranch()
     {
         var ciFailureHost = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure", branch: "feature/human-work")),
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure", branch: "feature/human-work")),
             getLogs: _ => Task.FromResult("boom: it broke"),
             findPr: _ => Task.FromResult<int?>(null));
 
@@ -176,9 +176,6 @@ public class CiFailureRunnerTests
 
         return systemPrompt;
     }
-
-    private static WorkflowRun SampleRun(string conclusion, string branch = "rix/fix")
-    => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", branch);
 
     private CiFailureConfig MakeConfig()
     => TestConfig.ValidCiFailure(workDir: _workDir, outputDir: _outputDir);

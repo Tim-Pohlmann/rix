@@ -11,7 +11,9 @@ namespace Rix.CiFailure;
 /// </summary>
 internal static class CiFailureDetector
 {
-    /// <summary>Caps the log excerpt so a flooding failure can't blow the model's context budget.</summary>
+    /// <summary>Caps the log excerpt so a flooding failure can't blow the model's context budget.
+    /// Handed to the host as a per-job cap too, so the same budget bounds what is held in memory
+    /// while the logs are being read, not just what ends up in the prompt.</summary>
     private const int LogTailChars = 20_000;
 
     internal static async Task<ICiFailureResult> DetectAsync(RepoIdentifier repo, RunId runId, IGitHubCiFailureHost host, CancellationToken cancellationToken)
@@ -31,7 +33,7 @@ internal static class CiFailureDetector
 
         // Independent of each other - only the already-fetched run is needed by both - so they run
         // concurrently rather than paying two sequential network round-trips.
-        var logsTask = FetchAsync(ct => host.GetFailedJobLogsAsync(runId, ct), $"could not fetch failing job logs for run {runId.Value}", cancellationToken);
+        var logsTask = FetchAsync(ct => host.GetFailedJobLogsAsync(runId, LogTailChars, ct), $"could not fetch failing job logs for run {runId.Value}", cancellationToken);
         var prTask = FetchAsync(ct => host.FindOpenPullRequestNumberAsync(new BranchName(run.HeadBranch), ct), $"could not look up open PR for branch {run.HeadBranch}", cancellationToken);
 
         try

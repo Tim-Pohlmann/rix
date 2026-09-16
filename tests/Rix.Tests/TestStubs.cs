@@ -11,14 +11,39 @@ internal sealed class StubCiFailureHost(
     Func<RunId, Task<string>>? getLogs = null,
     Func<BranchName, Task<int?>>? findPr = null) : IGitHubCiFailureHost
 {
+    /// <summary>The per-job log budget the caller asked for, so a test can assert the cap is
+    /// actually pushed down to the host rather than only applied afterwards.</summary>
+    internal int? TailCharsPerJob { get; private set; }
+
     public Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
     => getRun switch { { } check => check(runId), _ => throw new InvalidOperationException("getRun not stubbed") };
 
-    public Task<string> GetFailedJobLogsAsync(RunId runId, CancellationToken cancellationToken)
-    => getLogs switch { { } check => check(runId), _ => Task.FromResult("") };
+    public Task<string> GetFailedJobLogsAsync(RunId runId, int tailCharsPerJob, CancellationToken cancellationToken)
+    {
+        TailCharsPerJob = tailCharsPerJob;
+        return getLogs switch { { } check => check(runId), _ => Task.FromResult("") };
+    }
 
     public Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken)
     => findPr switch { { } check => check(branch), _ => Task.FromResult<int?>(null) };
+}
+
+/// <summary>An <see cref="HttpMessageHandler"/> that answers every request from
+/// <paramref name="handler"/>, for tests that drive a real host against canned GitHub API
+/// responses.</summary>
+internal sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    => Task.FromResult(handler(request));
+}
+
+/// <summary>The workflow run most ci-failure tests describe: one that ran, on a branch, with a
+/// title and URL. Only <paramref name="conclusion"/> and <paramref name="branch"/> vary between
+/// scenarios, so the rest is fixed here rather than restated per test.</summary>
+internal static class TestRuns
+{
+    internal static WorkflowRun Sample(string? conclusion, string branch = "rix/fix")
+    => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", branch);
 }
 
 internal sealed class StubRepositoryHost(

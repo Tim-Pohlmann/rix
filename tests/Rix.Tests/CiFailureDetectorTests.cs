@@ -12,7 +12,7 @@ public class CiFailureDetectorTests
     [TestMethod]
     public async Task DetectAsync_ReturnsSkipped_WhenRunDidNotFail()
     {
-        var host = new StubCiFailureHost(getRun: _ => Task.FromResult(SampleRun("success")));
+        var host = new StubCiFailureHost(getRun: _ => Task.FromResult(TestRuns.Sample("success")));
 
         var result = await CiFailureDetector.DetectAsync(Repo, Run, host, CancellationToken.None);
 
@@ -23,7 +23,7 @@ public class CiFailureDetectorTests
     [TestMethod]
     public async Task DetectAsync_ReturnsSkipped_WhenRunStillInProgress()
     {
-        var host = new StubCiFailureHost(getRun: _ => Task.FromResult(SampleRun(conclusion: null)));
+        var host = new StubCiFailureHost(getRun: _ => Task.FromResult(TestRuns.Sample(conclusion: null)));
 
         var result = await CiFailureDetector.DetectAsync(Repo, Run, host, CancellationToken.None);
 
@@ -47,7 +47,7 @@ public class CiFailureDetectorTests
     public async Task DetectAsync_ReturnsDetected_WithPromptAndFacts_WhenRunFailed()
     {
         var host = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
             getLogs: _ => Task.FromResult("boom: it broke"),
             findPr: _ => Task.FromResult<int?>(7));
 
@@ -67,7 +67,7 @@ public class CiFailureDetectorTests
     public async Task DetectAsync_OmitsPrLine_WhenNoOpenPr()
     {
         var host = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
             findPr: _ => Task.FromResult<int?>(null));
 
         var result = await CiFailureDetector.DetectAsync(Repo, Run, host, CancellationToken.None);
@@ -82,7 +82,7 @@ public class CiFailureDetectorTests
     {
         var hugeLog = new string('x', 25_000) + "TAIL-MARKER";
         var host = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
             getLogs: _ => Task.FromResult(hugeLog));
 
         var result = await CiFailureDetector.DetectAsync(Repo, Run, host, CancellationToken.None);
@@ -90,13 +90,14 @@ public class CiFailureDetectorTests
         var detected = AssertDetected(result);
         StringAssert.Contains(detected.Prompt, "TAIL-MARKER");
         Assert.IsTrue(detected.Prompt.Length < hugeLog.Length + 500, "log excerpt must be capped, not passed through whole");
+        Assert.IsNotNull(host.TailCharsPerJob, "the same cap must reach the host, so a huge log is never fully held in memory");
     }
 
     [TestMethod]
     public async Task DetectAsync_ReturnsError_WhenLogFetchFails()
     {
         var host = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
             getLogs: _ => throw new HttpRequestException("log fetch failed"));
 
         var result = await CiFailureDetector.DetectAsync(Repo, Run, host, CancellationToken.None);
@@ -108,16 +109,13 @@ public class CiFailureDetectorTests
     public async Task DetectAsync_ReturnsError_WhenPrLookupFails()
     {
         var host = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
             findPr: _ => throw new HttpRequestException("pr lookup failed"));
 
         var result = await CiFailureDetector.DetectAsync(Repo, Run, host, CancellationToken.None);
 
         AssertError(result);
     }
-
-    private static WorkflowRun SampleRun(string? conclusion)
-    => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", "rix/fix");
 
     private static CiFailureDetected AssertDetected(ICiFailureResult result) => result switch
     {

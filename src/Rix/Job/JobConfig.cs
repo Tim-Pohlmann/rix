@@ -4,18 +4,18 @@ namespace Rix.Job;
 
 internal record JobConfig
 {
-    internal RepoIdentifier Repo { get; init; }
-    internal GitReadToken ReadToken { get; init; }
-    internal TimeoutMinutes TimeoutMinutes { get; init; }
-    internal DirectoryPath WorkDir { get; init; }
-    internal DirectoryPath OutputDir { get; init; }
-    internal AgentConfig Agent { get; init; }
+    internal RepoIdentifier Repo { get; }
+    internal GitReadToken ReadToken { get; }
+    internal TimeoutMinutes TimeoutMinutes { get; }
+    internal DirectoryPath WorkDir { get; }
+    internal DirectoryPath OutputDir { get; }
+    internal AgentConfig Agent { get; }
 
     /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
     /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.
     /// Any branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates
     /// via <c>/pr</c>), since these already exist on the remote before the job ever runs.</summary>
-    internal IReadOnlyList<BranchName> AllowedPushBranches { get; init; }
+    internal IReadOnlyList<BranchName> AllowedPushBranches { get; }
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
@@ -208,7 +208,7 @@ internal record JobConfig
 /// <paramref name="ApiKey"/> and <paramref name="ApiKeyEnv"/> (already resolved and validated by
 /// <see cref="AgentCredential.ResolveEnvName"/>) are <see cref="JobRunner"/>'s instructions for
 /// which single env var to add to the agent invocation's <see cref="AgentInvocation.EnvironmentOverrides"/>
-/// — never null together, and never both null unless no key was supplied at all.</summary>
+/// — both null when no key was supplied, otherwise both set; never one without the other.</summary>
 internal sealed record AgentConfig
 (
     AgentKind Kind,

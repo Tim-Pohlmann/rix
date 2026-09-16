@@ -14,6 +14,9 @@ public class CiFailureHostTests
     private static readonly RunProcessAsync SuccessGitRunner =
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
 
+    /// <summary>Generous enough that the tests not about truncation are unaffected by it.</summary>
+    private const int TailChars = 10_000;
+
     private static GitHubReadHost BuildHost(Func<HttpRequestMessage, HttpResponseMessage> handler, string repo = "owner/repo")
     => new(TestConfig.Repo(repo), new GitReadToken("read-tok"), SuccessGitRunner, new DelegatingHandlerStub(handler));
 
@@ -75,7 +78,7 @@ public class CiFailureHostTests
             throw new InvalidOperationException($"unexpected request: {request.RequestUri}");
         });
 
-        var logs = await host.GetFailedJobLogsAsync(new RunId(1), CancellationToken.None);
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None);
 
         Assert.AreEqual("log one\nlog three", logs);
     }
@@ -85,9 +88,25 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("""{"jobs":[{"id":1,"conclusion":"success"}]}"""));
 
-        var logs = await host.GetFailedJobLogsAsync(new RunId(1), CancellationToken.None);
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None);
 
         Assert.AreEqual("", logs);
+    }
+
+    [TestMethod]
+    public async Task GetFailedJobLogsAsync_KeepsOnlyTheTailOfEachJobLog()
+    {
+        var host = BuildHost(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/jobs"))
+                return Json("""{"jobs":[{"id":1,"conclusion":"failure"},{"id":2,"conclusion":"failure"}]}""");
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(new string('x', 500) + "END") };
+        });
+
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), tailCharsPerJob: 10, CancellationToken.None);
+
+        // Each job contributes its last 10 chars only, so nothing scales with the full log size.
+        Assert.AreEqual("xxxxxxxEND\nxxxxxxxEND", logs);
     }
 
     [TestMethod]
@@ -95,7 +114,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("{}"));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetFailedJobLogsAsync(new RunId(1), CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None));
     }
 
     [TestMethod]
@@ -128,14 +147,5 @@ public class CiFailureHostTests
 
         Assert.IsNotNull(capturedUri);
         StringAssert.Contains(Uri.UnescapeDataString(capturedUri!.Query), "head=owner:rix/fix");
-    }
-
-    private sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler)
-        : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        => Task.FromResult(handler(request));
     }
 }

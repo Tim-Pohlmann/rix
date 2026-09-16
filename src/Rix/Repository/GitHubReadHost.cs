@@ -119,8 +119,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
-        var url = $"https://api.github.com/repos/{Repo.Value}/branches/{Uri.EscapeDataString(branch.Value)}";
-        using var response = await Http.GetAsync(url, cancellationToken);
+        using var response = await Http.GetAsync(Url($"branches/{Uri.EscapeDataString(branch.Value)}"), cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return false;
         response.EnsureSuccessStatusCode();
@@ -133,10 +132,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     /// field this doesn't require.</summary>
     public async Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
     {
-        var url = $"https://api.github.com/repos/{Repo.Value}/actions/runs/{runId.Value}";
-        using var response = await Http.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var run = await ReadJsonAsync(response, GitHubReadApiJsonContext.Default.WorkflowRunApiResponse, cancellationToken);
+        var run = await GetJsonAsync($"actions/runs/{runId.Value}", GitHubReadApiJsonContext.Default.WorkflowRunApiResponse, cancellationToken);
         if (run.DisplayTitle is null || run.HtmlUrl is null || run.HeadBranch is null)
             throw new HttpRequestException($"get workflow run {runId.Value} response was missing a required field");
         return new WorkflowRun(run.Conclusion, run.DisplayTitle, run.HtmlUrl, run.HeadBranch);
@@ -147,25 +143,29 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     /// <c>Authorization</c> header when a redirect crosses to a different host — this endpoint always
     /// 302s to short-lived, pre-signed blob storage URLs that reject an unexpected auth header, so the
     /// token must not follow.</summary>
-    public async Task<string> GetFailedJobLogsAsync(RunId runId, CancellationToken cancellationToken)
+    public async Task<string> GetFailedJobLogsAsync(RunId runId, int tailCharsPerJob, CancellationToken cancellationToken)
     {
-        var jobsUrl = $"https://api.github.com/repos/{Repo.Value}/actions/runs/{runId.Value}/jobs";
-        using var jobsResponse = await Http.GetAsync(jobsUrl, cancellationToken);
-        jobsResponse.EnsureSuccessStatusCode();
-        var jobs = await ReadJsonAsync(jobsResponse, GitHubReadApiJsonContext.Default.WorkflowJobsApiResponse, cancellationToken);
+        var jobs = await GetJsonAsync($"actions/runs/{runId.Value}/jobs", GitHubReadApiJsonContext.Default.WorkflowJobsApiResponse, cancellationToken);
         if (jobs.Jobs is null)
             throw new HttpRequestException($"list jobs for run {runId.Value} response was missing the jobs field");
 
-        var logs = await Task.WhenAll(jobs.Jobs.Where(j => j.Conclusion == "failure").Select(job => GetJobLogAsync(job.Id, cancellationToken)));
+        var logs = await Task.WhenAll(jobs.Jobs.Where(j => j.Conclusion == "failure").Select(job => GetJobLogAsync(job.Id, tailCharsPerJob, cancellationToken)));
         return string.Join("\n", logs);
     }
 
-    private async Task<string> GetJobLogAsync(long jobId, CancellationToken cancellationToken)
+    /// <summary>Keeps only the last <paramref name="tailChars"/> characters of the job's log. A
+    /// flooding CI job can emit tens of MB, and the caller only ever keeps a tail of the joined
+    /// result — which can never reach further back into any one job than that job's own tail — so
+    /// discarding the rest here yields the same string while bounding peak memory at
+    /// <c>failed jobs × tailChars</c> instead of the full download.</summary>
+    private async Task<string> GetJobLogAsync(long jobId, int tailChars, CancellationToken cancellationToken)
     {
-        var logUrl = $"https://api.github.com/repos/{Repo.Value}/actions/jobs/{jobId}/logs";
-        using var logResponse = await Http.GetAsync(logUrl, cancellationToken);
+        using var logResponse = await Http.GetAsync(Url($"actions/jobs/{jobId}/logs"), cancellationToken);
         logResponse.EnsureSuccessStatusCode();
-        return await logResponse.Content.ReadAsStringAsync(cancellationToken);
+        var log = await logResponse.Content.ReadAsStringAsync(cancellationToken);
+        if (log.Length > tailChars)
+            return log[^tailChars..];
+        return log;
     }
 
     /// <summary>Finds the number of the open PR whose head is <paramref name="branch"/>, or
@@ -174,11 +174,24 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     public async Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken)
     {
         var head = Uri.EscapeDataString($"{Repo.Owner}:{branch.Value}");
-        var url = $"https://api.github.com/repos/{Repo.Value}/pulls?state=open&head={head}";
-        using var response = await Http.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var pulls = await ReadJsonAsync(response, GitHubReadApiJsonContext.Default.ListPullRequestApiResponse, cancellationToken);
+        var pulls = await GetJsonAsync($"pulls?state=open&head={head}", GitHubReadApiJsonContext.Default.ListPullRequestApiResponse, cancellationToken);
         return pulls.FirstOrDefault()?.Number;
+    }
+
+    /// <summary>Builds a URL for <paramref name="path"/> under this host's repo, so the API base
+    /// address is written once rather than at every call site.</summary>
+    private string Url(string path) => $"https://api.github.com/repos/{Repo.Value}/{path}";
+
+    /// <summary>GETs <paramref name="path"/> and parses the JSON body, collapsing the
+    /// request/status-check/parse sequence every read endpoint here would otherwise repeat. Only
+    /// for endpoints where any non-success status is a genuine failure — <see
+    /// cref="BranchExistsOnRemoteAsync"/> reads 404 as an answer, so it calls
+    /// <see cref="Http"/> directly.</summary>
+    private async Task<T> GetJsonAsync<T>(string path, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken)
+    {
+        using var response = await Http.GetAsync(Url(path), cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await ReadJsonAsync(response, typeInfo, cancellationToken);
     }
 
     /// <summary>Shared by <see cref="GitHubHost.CreatePullRequestAsync"/> for its write-side response

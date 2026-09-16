@@ -112,11 +112,18 @@ internal static class Startup
     internal static async Task<int> ExecuteJobAsync(JobConfig config, CancellationToken cancellationToken, JobContext? context = null)
     {
         var transcriptLines = new List<string>();
-        context ??= DefaultContext(config);
-        var transcriptSink = context.TranscriptLine;
-        context = context with { TranscriptLine = line => { transcriptSink(line); transcriptLines.Add(line); } };
-        var result = await JobRunner.RunAsync(config, context, cancellationToken);
+        var result = await JobRunner.RunAsync(config, Teeing(context ?? DefaultContext(config), transcriptLines), cancellationToken);
         return await WriteJobResultAsync(config, result, transcriptLines);
+    }
+
+    /// <summary>Wraps <paramref name="context"/>'s transcript sink so every line it emits is also
+    /// collected into <paramref name="transcriptLines"/>, which <see cref="WriteJobResultAsync"/>
+    /// later writes to <c>transcript.md</c>. Tees rather than replaces, so whatever the context
+    /// already did with each line (printing it, in the default case) still happens.</summary>
+    private static JobContext Teeing(JobContext context, List<string> transcriptLines)
+    {
+        var transcriptSink = context.TranscriptLine;
+        return context with { TranscriptLine = line => { transcriptSink(line); transcriptLines.Add(line); } };
     }
 
     /// <summary>
@@ -235,25 +242,17 @@ internal static class Startup
     /// </summary>
     internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, IGitHubCiFailureHost? ciFailureHost = null, JobContext? jobContext = null)
     {
-        // Lets a test stub only the host its scenario actually exercises - e.g. a run that never
-        // fails needs no jobContext stub, since the agent then never runs - instead of forcing
-        // every test to fabricate both. Reuses either supplied host when it's already a
-        // GitHubReadHost rather than minting a second one.
-        var host = jobContext?.Host as GitHubReadHost
-            ?? ciFailureHost as GitHubReadHost
-            ?? new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync);
+        // The two optional arguments let a test stub only the host its scenario actually exercises
+        // - e.g. a run that never fails needs no jobContext, since the agent then never runs -
+        // instead of forcing every test to fabricate both.
+        var host = new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync);
         ciFailureHost ??= host;
 
         var transcriptLines = new List<string>();
 
         // Deferred until CiFailureRunner has a JobConfig to hand back: that config needs the prompt
         // describing the failure, which doesn't exist until the run is known to have failed.
-        JobContext ContextFor(JobConfig job)
-        {
-            var context = jobContext ?? DefaultContext(job, host);
-            var transcriptSink = context.TranscriptLine;
-            return context with { TranscriptLine = line => { transcriptSink(line); transcriptLines.Add(line); } };
-        }
+        JobContext ContextFor(JobConfig job) => Teeing(jobContext ?? DefaultContext(job, host), transcriptLines);
 
         var outcome = await CiFailureRunner.RunAsync(config, ciFailureHost, ContextFor, cancellationToken);
         return outcome switch

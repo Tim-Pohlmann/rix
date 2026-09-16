@@ -6,6 +6,16 @@ namespace Rix.Cli;
 
 internal static class CiFailureCommand
 {
+    /// <summary>The one option this command adds on top of <see cref="JobOptions"/>, kept private
+    /// for the same reason <c>job</c> keeps <c>--prompt</c> to itself: no other command takes
+    /// it.</summary>
+    private static readonly Option<string> RunIdOption = new
+    (
+        name: "--run-id",
+        description: "ID of the (possibly failed) workflow run to inspect"
+    )
+    { IsRequired = false };
+
     internal static Command Build(Func<CiFailureConfig, Task<int>> handler)
     {
         var command = new Command
@@ -14,17 +24,8 @@ internal static class CiFailureCommand
             "Check whether a workflow run failed and, if so, run a coding agent against the failure"
         );
 
-        command.AddOption(CiFailureOptions.RepoOption);
-        command.AddOption(CiFailureOptions.RunIdOption);
-        command.AddOption(CiFailureOptions.ReadTokenOption);
-        command.AddOption(JobOptions.MaxTokensOption);
-        command.AddOption(JobOptions.TimeoutOption);
-        command.AddOption(JobOptions.WorkDirOption);
-        command.AddOption(JobOptions.OutputDirOption);
-        command.AddOption(JobOptions.AgentOption);
-        command.AddOption(JobOptions.ModelOption);
-        command.AddOption(JobOptions.AgentApiKeyOption);
-        command.AddOption(JobOptions.AgentApiKeyEnvOption);
+        JobOptions.AddTo(command);
+        command.AddOption(RunIdOption);
 
         command.SetHandler
         (
@@ -33,20 +34,8 @@ internal static class CiFailureCommand
                 var parsed = ctx.ParseResult;
                 var inputs = new CiFailureInputs
                 (
-                    RunId: parsed.Str(CiFailureOptions.RunIdOption, "RIX_RUN_ID"),
-                    Job: new JobInputs
-                    (
-                        Repo:           parsed.Str(CiFailureOptions.RepoOption,      "RIX_REPO"),
-                        ReadToken:      parsed.Str(CiFailureOptions.ReadTokenOption, "RIX_READ_TOKEN"),
-                        MaxTokens:      parsed.Str(JobOptions.MaxTokensOption, "RIX_MAX_TOKENS"),
-                        TimeoutMinutes: parsed.Str(JobOptions.TimeoutOption,   "RIX_TIMEOUT"),
-                        WorkDir:        parsed.Str(JobOptions.WorkDirOption,   "RIX_WORK_DIR"),
-                        OutputDir:      parsed.Str(JobOptions.OutputDirOption, "RIX_OUTPUT_DIR"),
-                        Agent:          parsed.Str(JobOptions.AgentOption,     "RIX_AGENT"),
-                        Model:          parsed.Str(JobOptions.ModelOption,     "RIX_MODEL"),
-                        AgentApiKey:    parsed.Str(JobOptions.AgentApiKeyOption,    "AGENT_API_KEY"),
-                        AgentApiKeyEnv: parsed.Str(JobOptions.AgentApiKeyEnvOption, "AGENT_API_KEY_ENV")
-                    )
+                    RunId: parsed.Str(RunIdOption, "RIX_RUN_ID"),
+                    Job: JobOptions.ReadInputs(parsed)
                 );
                 var result = CiFailureConfig.Create(inputs);
 
