@@ -27,6 +27,7 @@ internal static class TestConfig
     (
         Repo: repo,
         ReadToken: readToken,
+        Prompt: prompt,
         MaxTokens: maxTokens,
         TimeoutMinutes: timeoutMinutes,
         WorkDir: workDir ?? Path.GetTempPath(),
@@ -36,7 +37,7 @@ internal static class TestConfig
         AgentApiKey: agentApiKey,
         AgentApiKeyEnv: agentApiKeyEnv,
         AllowedPushBranches: allowedPushBranches
-    ), prompt) switch
+    )) switch
     {
         JobConfigValid v => v.Config,
         JobConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),

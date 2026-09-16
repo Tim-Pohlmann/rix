@@ -65,7 +65,7 @@ internal sealed record CiFailureConfig
     /// branch a fix for it could sensibly be pushed to, which is why it's derived here rather than
     /// accepted as a caller-supplied input.</summary>
     internal JobConfig ToJobConfig(string prompt, BranchName allowedPushBranch)
-    => JobConfig.Create(JobInputs with { AllowedPushBranches = allowedPushBranch.Value }, prompt) switch
+    => JobConfig.Create(JobInputs with { Prompt = prompt, AllowedPushBranches = allowedPushBranch.Value }) switch
     {
         JobConfigValid v => v.Config,
         // Unreachable: Create already proved these inputs parse, and neither substituted value can
@@ -78,8 +78,10 @@ internal sealed record CiFailureConfig
 /// <see cref="RunId"/> plus a <see cref="JobInputs"/> carrying everything <see cref="JobConfig"/>
 /// needs (including the shared <c>Repo</c>/<c>ReadToken</c>). Wrapping <see cref="JobInputs"/>
 /// directly, rather than re-listing its fields, means a new <c>job</c> option needs no matching
-/// field here to stay in sync. <see cref="JobInputs.AllowedPushBranches"/> is ignored —
-/// <see cref="CiFailureConfig.ToJobConfig"/> always derives it from the failing run.</summary>
+/// field here to stay in sync. <see cref="JobInputs.Prompt"/> and
+/// <see cref="JobInputs.AllowedPushBranches"/> are ignored if set: both describe a failure that
+/// hasn't happened yet, so <see cref="CiFailureConfig.ToJobConfig"/> always derives them from the
+/// detected run.</summary>
 internal sealed record CiFailureInputs(string RunId, JobInputs Job);
 
 /// <summary>The result of <see cref="CiFailureConfig.Create"/>: a validated config or the list

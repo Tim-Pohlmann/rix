@@ -24,6 +24,7 @@ public class JobConfigTests
     (
         Repo: repo,
         ReadToken: readToken,
+        Prompt: prompt,
         MaxTokens: maxTokens,
         TimeoutMinutes: timeoutMinutes,
         WorkDir: workDir,
@@ -33,7 +34,7 @@ public class JobConfigTests
         AgentApiKey: agentApiKey,
         AgentApiKeyEnv: agentApiKeyEnv,
         AllowedPushBranches: allowedPushBranches
-    ), prompt);
+    ));
 
     private static JobConfig Valid(JobConfigResult result) => result switch
     {

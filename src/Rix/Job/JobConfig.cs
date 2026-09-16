@@ -46,29 +46,28 @@ internal record JobConfig
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
     /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
     /// collected, so a <see cref="JobConfigValid"/> is produced only when the whole configuration is
-    /// well-formed — business logic downstream never sees an invalid value. <paramref name="prompt"/>
-    /// is separate from <paramref name="inputs"/> because it is the one value a caller may not know
-    /// at CLI-parse time: <c>rix ci-failure</c> only learns it once a failure is actually detected,
-    /// and validates everything else up front via <see cref="Validate"/>.</summary>
-    internal static JobConfigResult Create(JobInputs inputs, string prompt)
+    /// well-formed — business logic downstream never sees an invalid value.</summary>
+    internal static JobConfigResult Create(JobInputs inputs)
     {
         var errors = new List<string>();
         var parsed = Parse(inputs, errors);
 
-        if (string.IsNullOrWhiteSpace(prompt))
+        if (string.IsNullOrWhiteSpace(inputs.Prompt))
             errors.Add("--prompt is required");
 
         if (errors.Count > 0)
             return new JobConfigInvalid([.. errors]);
 
-        // Non-null here: Parse only returns null after adding at least one error.
-        return new JobConfigValid(parsed!.ToConfig(prompt));
+        // Both non-null here: Parse only returns null after adding at least one error, and a blank
+        // prompt would have added one too.
+        return new JobConfigValid(parsed!.ToConfig(inputs.Prompt!));
     }
 
     /// <summary>Reports whether <paramref name="inputs"/> would produce a valid <see cref="JobConfig"/>,
-    /// without building one and without needing a prompt. Lets <c>rix ci-failure</c> reject bad
-    /// input at CLI-parse time — before it knows the prompt, and long before it knows whether it
-    /// will run the agent at all — instead of constructing a throwaway config around a placeholder.</summary>
+    /// without building one — and without requiring <see cref="JobInputs.Prompt"/>, the one field a
+    /// caller may legitimately not have yet. Lets <c>rix ci-failure</c> reject bad input at
+    /// CLI-parse time, before it knows the prompt and long before it knows whether it will run the
+    /// agent at all, instead of constructing a throwaway config around a placeholder.</summary>
     internal static IReadOnlyList<string> Validate(JobInputs inputs)
     {
         var errors = new List<string>();
@@ -220,16 +219,18 @@ internal sealed record AgentConfig
     string? ApiKeyEnv = null
 );
 
-/// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
-/// values first, then the optional ones (which default to <c>null</c> so callers set only what they
-/// care about). <see cref="JobConfig.Create"/> is the boundary that turns these primitives into the
-/// always-valid, strongly-typed <see cref="JobConfig"/>. The prompt is deliberately absent — it is
-/// passed to <see cref="JobConfig.Create"/> separately, since <c>rix ci-failure</c> validates these
-/// inputs long before it knows what the prompt will be.</summary>
+/// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: whatever
+/// the caller supplied, if anything. Which of these a job actually requires is
+/// <see cref="JobConfig.Create"/>'s call, not the type's — <see cref="Prompt"/> defaults to
+/// <c>null</c> like every other unsupplied flag even though <c>job</c> demands one, because
+/// <c>rix ci-failure</c> builds these inputs before it knows what the prompt will be and fills it in
+/// via <c>with</c> once a failure hands it one. <see cref="JobConfig.Create"/> is the boundary that
+/// turns these primitives into the always-valid, strongly-typed <see cref="JobConfig"/>.</summary>
 internal record JobInputs
 (
     string Repo,
     string ReadToken,
+    string? Prompt = null,
     string? MaxTokens = null,
     string? TimeoutMinutes = null,
     string? WorkDir = null,
