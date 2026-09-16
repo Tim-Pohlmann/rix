@@ -4,37 +4,50 @@ namespace Rix.CiFailure;
 
 /// <summary>The validated configuration behind <c>rix ci-failure</c>, which checks whether a
 /// workflow run failed and, only if it did, runs a coding agent against the failure. Carries the
-/// facts needed to perform the check itself (<see cref="Repo"/>, <see cref="ReadToken"/>,
-/// <see cref="RunId"/>) plus the still-raw job inputs, because the agent's prompt and its
-/// <c>/push</c> allow-list aren't known until a failure is actually detected —
+/// <see cref="RunId"/> this command adds plus the still-raw job inputs, because the agent's prompt
+/// and its <c>/push</c> allow-list aren't known until a failure is actually detected —
 /// <see cref="ToJobConfig"/> builds the job's half on demand once they are.</summary>
 internal sealed record CiFailureConfig
 {
-    internal RepoIdentifier Repo { get; }
-    internal GitReadToken ReadToken { get; }
     internal RunId RunId { get; }
 
     /// <summary>Kept raw rather than pre-built into a <see cref="JobConfig"/>: a <see cref="JobConfig"/>
     /// cannot exist without a prompt, and there is no prompt until the run is known to have failed.</summary>
     private JobInputs JobInputs { get; }
 
+    /// <summary>The <c>--repo</c> job input, in the form the failure check needs it — that check
+    /// runs before any <see cref="JobConfig"/> exists to read it from. Converted once here rather
+    /// than per read, and derived from <see cref="JobInputs"/> rather than supplied alongside it,
+    /// so the two can't describe different repos.</summary>
+    internal RepoIdentifier Repo { get; }
+
+    /// <summary>The <c>--read-token</c> job input, wrapped once for the same reason as
+    /// <see cref="Repo"/>.</summary>
+    internal GitReadToken ReadToken { get; }
+
     /// <summary>Private so a <see cref="CiFailureConfig"/> can only be produced by
     /// <see cref="Create"/>, which guarantees every field is validated — the type can never exist
     /// in an invalid state.</summary>
-    private CiFailureConfig(RepoIdentifier repo, GitReadToken readToken, RunId runId, JobInputs jobInputs)
+    private CiFailureConfig(RunId runId, JobInputs jobInputs)
     {
-        Repo = repo;
-        ReadToken = readToken;
         RunId = runId;
         JobInputs = jobInputs;
+        Repo = RepoIdentifier.Parse(jobInputs.Repo) switch
+        {
+            ParseSuccess<RepoIdentifier> parsed => parsed.Value,
+            // Unreachable: Create only gets here once JobConfig.Validate, which parses --repo the
+            // same way, reported no error.
+            var result => throw new InvalidOperationException($"JobConfig.Validate accepted a repo that does not parse: {result}"),
+        };
+        ReadToken = new GitReadToken(jobInputs.ReadToken);
     }
 
     /// <summary>Validates raw CLI/environment inputs in one pass. <c>--run-id</c> is the only one
     /// this command adds, so it is the only one checked here; everything else is a job input, left
     /// to <see cref="JobConfig.Validate"/> — which reports whether a <see cref="JobConfig"/> could be
-    /// built without building one, so no prompt has to be invented here. <see cref="Repo"/> and
-    /// <see cref="ReadToken"/> are needed before any job exists, but validating them a second time
-    /// just to get them would report every complaint about them twice.</summary>
+    /// built without building one, so no prompt has to be invented here. Validating a job input a
+    /// second time just because this command also needs it would report every complaint about it
+    /// twice; the two it needs early are converted by the constructor instead.</summary>
     internal static CiFailureConfigResult Create(CiFailureInputs inputs)
     {
         var errors = new List<string>(JobConfig.Validate(inputs.Job));
@@ -43,16 +56,7 @@ internal sealed record CiFailureConfig
         if (errors.Count > 0)
             return new CiFailureConfigInvalid([.. errors]);
 
-        var repo = RepoIdentifier.Parse(inputs.Job.Repo) switch
-        {
-            ParseSuccess<RepoIdentifier> parsed => parsed.Value,
-            // Unreachable: JobConfig.Validate parses --repo the same way and reported no error.
-            var result => throw new InvalidOperationException($"JobConfig.Validate accepted a repo that does not parse: {result}"),
-        };
-
-        // GitReadToken is a plain wrapper over a string JobConfig.Validate already rejected if blank.
-        var config = new CiFailureConfig(repo, new GitReadToken(inputs.Job.ReadToken), new RunId(runId), inputs.Job);
-        return new CiFailureConfigValid(config);
+        return new CiFailureConfigValid(new CiFailureConfig(new RunId(runId), inputs.Job));
     }
 
     /// <summary>Builds the agent-running half of this config, now that a failure has actually been
