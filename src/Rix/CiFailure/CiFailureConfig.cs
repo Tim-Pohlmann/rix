@@ -29,33 +29,29 @@ internal sealed record CiFailureConfig
         JobInputs = jobInputs;
     }
 
-    /// <summary>Validates raw CLI/environment inputs in one pass: the run-identifying fields it
-    /// parses itself, and the job's fields via <see cref="JobConfig.Validate"/> — which reports
-    /// whether a <see cref="JobConfig"/> could be built without building one, so no prompt has to be
-    /// invented here. <c>--repo</c> and <c>--read-token</c> are checked by both sides, so identical
-    /// complaints are collapsed before being returned.</summary>
+    /// <summary>Validates raw CLI/environment inputs in one pass. <c>--run-id</c> is the only one
+    /// this command adds, so it is the only one checked here; everything else is a job input, left
+    /// to <see cref="JobConfig.Validate"/> — which reports whether a <see cref="JobConfig"/> could be
+    /// built without building one, so no prompt has to be invented here. <see cref="Repo"/> and
+    /// <see cref="ReadToken"/> are needed before any job exists, but validating them a second time
+    /// just to get them would report every complaint about them twice.</summary>
     internal static CiFailureConfigResult Create(CiFailureInputs inputs)
     {
-        var errors = new List<string>();
-
-        RepoIdentifier? repo = null;
-        if (string.IsNullOrWhiteSpace(inputs.Job.Repo))
-            errors.Add("--repo is required");
-        else
-            repo = RepoIdentifier.Parse(inputs.Job.Repo).Collect(errors, "--repo");
-
-        if (string.IsNullOrWhiteSpace(inputs.Job.ReadToken))
-            errors.Add("--read-token is required");
-
+        var errors = new List<string>(JobConfig.Validate(inputs.Job));
         var runId = NumericFlag.ParsePositiveInt<long>(inputs.RunId, null, "--run-id", errors);
 
-        errors.AddRange(JobConfig.Validate(inputs.Job));
-
         if (errors.Count > 0)
-            return new CiFailureConfigInvalid([.. errors.Distinct()]);
+            return new CiFailureConfigInvalid([.. errors]);
 
-        // Non-null here: any blank or unparseable input would have added an error above.
-        var config = new CiFailureConfig(repo!, new GitReadToken(inputs.Job.ReadToken), new RunId(runId), inputs.Job);
+        var repo = RepoIdentifier.Parse(inputs.Job.Repo) switch
+        {
+            ParseSuccess<RepoIdentifier> parsed => parsed.Value,
+            // Unreachable: JobConfig.Validate parses --repo the same way and reported no error.
+            var result => throw new InvalidOperationException($"JobConfig.Validate accepted a repo that does not parse: {result}"),
+        };
+
+        // GitReadToken is a plain wrapper over a string JobConfig.Validate already rejected if blank.
+        var config = new CiFailureConfig(repo, new GitReadToken(inputs.Job.ReadToken), new RunId(runId), inputs.Job);
         return new CiFailureConfigValid(config);
     }
 

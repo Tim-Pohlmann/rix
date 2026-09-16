@@ -55,8 +55,8 @@ public class CiFailureConfigTests
     [TestMethod]
     public void Create_RejectsEmptyRepo_Once()
     {
-        // Repo is validated on both the CiFailure and Job side; Create must not surface the same
-        // complaint twice.
+        // --repo is a job input that CiFailureConfig also needs for itself; it must still be
+        // validated in exactly one place, not complained about once per consumer.
         var errors = Errors(Create(repo: ""));
         Assert.AreEqual(1, errors.Count(e => e.Contains("--repo is required")));
     }
