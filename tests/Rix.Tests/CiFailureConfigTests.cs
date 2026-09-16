@@ -110,7 +110,7 @@ public class CiFailureConfigTests
     {
         var job = Valid(Create()).ToJobConfig("fix it", new BranchName("rix/fix"));
         Assert.AreEqual("fix it", job.Agent.Prompt);
-        CollectionAssert.AreEqual(new[] { "rix/fix" }, job.AllowedPushBranches.Select(b => b.Value).ToArray());
+        Assert.AreEqual("rix/fix", job.AllowedPushBranches.Single().Value);
         Assert.AreEqual("owner/repo", job.Repo.ToString());
         Assert.AreEqual("read-tok", job.ReadToken.Value);
     }

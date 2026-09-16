@@ -21,7 +21,7 @@ internal static class CiFailureDetector
         {
             run = await FetchAsync(ct => host.GetRunAsync(runId, ct), $"could not fetch run {runId.Value}", cancellationToken);
         }
-        catch (CiFailureFetchException ex)
+        catch (HttpRequestException ex)
         {
             return new CiFailureError(ex.Message);
         }
@@ -38,7 +38,7 @@ internal static class CiFailureDetector
         {
             await Task.WhenAll(logsTask, prTask);
         }
-        catch (CiFailureFetchException ex)
+        catch (HttpRequestException ex)
         {
             return new CiFailureError(ex.Message);
         }
@@ -53,10 +53,11 @@ internal static class CiFailureDetector
     }
 
     /// <summary>Runs <paramref name="call"/> with <paramref name="cancellationToken"/> forwarded,
-    /// wrapping any <see cref="HttpRequestException"/> as a <see cref="CiFailureFetchException"/>
-    /// carrying a message prefixed with <paramref name="what"/> — collapses what would otherwise be
-    /// a separate try/catch per API call into one shared helper, while keeping each call's own
-    /// failure message.</summary>
+    /// rethrowing any <see cref="HttpRequestException"/> with its message prefixed by
+    /// <paramref name="what"/> — collapses what would otherwise be a separate try/catch per API
+    /// call into one shared helper, while keeping each call's own failure message. Every HTTP call
+    /// this class makes goes through here, so catching that type at the call sites catches exactly
+    /// the failures described this way.</summary>
     private static async Task<T> FetchAsync<T>(Func<CancellationToken, Task<T>> call, string what, CancellationToken cancellationToken)
     {
         try
@@ -65,11 +66,9 @@ internal static class CiFailureDetector
         }
         catch (HttpRequestException ex)
         {
-            throw new CiFailureFetchException($"{what}: {ex.Message}");
+            throw new HttpRequestException($"{what}: {ex.Message}", ex);
         }
     }
-
-    private sealed class CiFailureFetchException(string message) : Exception(message);
 
     private static string BuildPrompt(RepoIdentifier repo, WorkflowRun run, int? prNumber, string logs)
     {
