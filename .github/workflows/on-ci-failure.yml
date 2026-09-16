@@ -116,9 +116,9 @@ jobs:
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
-      - name: Run rix ci-failure-job
+      - name: Run rix ci-failure
         id: run
-        uses: ./.github/actions/run-ci-failure-job
+        uses: ./.github/actions/run-ci-failure
         with:
           repo: ${{ inputs.repo || github.repository }}
           run-id: ${{ inputs.run-id }}

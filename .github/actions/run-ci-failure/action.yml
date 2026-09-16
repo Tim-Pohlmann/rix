@@ -1,4 +1,4 @@
-name: Run rix ci-failure-job
+name: Run rix ci-failure
 description: >-
   Checks whether a specific workflow run actually failed and, only if it did, runs the coding
   agent against the failure, writing result.json and any git bundles to ./out.
@@ -63,7 +63,7 @@ runs:
         rix-version: ${{ inputs.rix-version }}
         rix-bin: ${{ inputs.rix-bin }}
 
-    - name: Run rix ci-failure-job
+    - name: Run rix ci-failure
       id: run
       env:
         AGENT_API_KEY: ${{ inputs.agent-api-key }}
@@ -91,11 +91,11 @@ runs:
           echo "${s//$'\n'/'%0A'}"
         }
 
-        # rix ci-failure-job always prints its JSON result to stdout, on every exit code (see
-        # Startup.ExecuteCiFailureJobAsync) - capture it before deciding, rather than letting a
+        # rix ci-failure always prints its JSON result to stdout, on every exit code (see
+        # Startup.ExecuteCiFailureAsync) - capture it before deciding, rather than letting a
         # non-zero exit short-circuit under errexit before it can be read.
         set +e
-        result=$("$RIX_BIN" ci-failure-job --agent "$RIX_AGENT" --output-dir out --work-dir work)
+        result=$("$RIX_BIN" ci-failure --agent "$RIX_AGENT" --output-dir out --work-dir work)
         exit_code=$?
         set -e
 
@@ -122,14 +122,14 @@ runs:
             echo "::error::$(escape_workflow_command "$error")"
             ;;
           *)
-            echo "::error::$(escape_workflow_command "rix ci-failure-job did not produce a usable result: $result")"
+            echo "::error::$(escape_workflow_command "rix ci-failure did not produce a usable result: $result")"
             ;;
         esac
 
         exit "$exit_code"
 
     - name: Post job summary
-      # result.json only exists once the agent actually ran (see Startup.ExecuteCiFailureJobAsync)
+      # result.json only exists once the agent actually ran (see Startup.ExecuteCiFailureAsync)
       # - post-job-summary.sh handles a missing file gracefully, so this is safe to call
       # unconditionally, including when the run above never got past the ci-failure check.
       if: always()
