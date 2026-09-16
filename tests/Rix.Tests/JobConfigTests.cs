@@ -23,7 +23,6 @@ public class JobConfigTests
     => JobConfig.Create(new JobInputs
     (
         Repo: repo,
-        Prompt: prompt,
         ReadToken: readToken,
         MaxTokens: maxTokens,
         TimeoutMinutes: timeoutMinutes,
@@ -34,7 +33,7 @@ public class JobConfigTests
         AgentApiKey: agentApiKey,
         AgentApiKeyEnv: agentApiKeyEnv,
         AllowedPushBranches: allowedPushBranches
-    ));
+    ), prompt);
 
     private static JobConfig Valid(JobConfigResult result) => result switch
     {

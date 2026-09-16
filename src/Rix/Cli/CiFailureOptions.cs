@@ -2,8 +2,9 @@ using System.CommandLine;
 
 namespace Rix.Cli;
 
-/// <summary>CLI options shared by <c>ci-failure</c> and <c>ci-failure-job</c>, which both identify
-/// the same workflow run to inspect.</summary>
+/// <summary>The <c>ci-failure</c> options that identify which workflow run to inspect, kept
+/// alongside <see cref="JobOptions"/> (which the same command also takes) rather than mixed into
+/// it, since these say nothing about how the agent is run.</summary>
 internal static class CiFailureOptions
 {
     internal static readonly Option<string> RepoOption = new

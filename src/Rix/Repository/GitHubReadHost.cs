@@ -131,14 +131,14 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     /// whether it failed and to describe the failure. <c>conclusion</c> is the one field GitHub
     /// itself sends as <c>null</c> (while the run is still queued/in-progress), so it's the one
     /// field this doesn't require.</summary>
-    public async Task<WorkflowRun> GetRunAsync(long runId, CancellationToken cancellationToken)
+    public async Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
     {
-        var url = $"https://api.github.com/repos/{Repo.Value}/actions/runs/{runId}";
+        var url = $"https://api.github.com/repos/{Repo.Value}/actions/runs/{runId.Value}";
         using var response = await Http.GetAsync(url, cancellationToken);
         response.EnsureSuccessStatusCode();
         var run = await ReadJsonAsync(response, GitHubReadApiJsonContext.Default.WorkflowRunApiResponse, cancellationToken);
         if (run.DisplayTitle is null || run.HtmlUrl is null || run.HeadBranch is null)
-            throw new HttpRequestException($"get workflow run {runId} response was missing a required field");
+            throw new HttpRequestException($"get workflow run {runId.Value} response was missing a required field");
         return new WorkflowRun(run.Conclusion, run.DisplayTitle, run.HtmlUrl, run.HeadBranch);
     }
 
@@ -147,14 +147,14 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     /// <c>Authorization</c> header when a redirect crosses to a different host — this endpoint always
     /// 302s to short-lived, pre-signed blob storage URLs that reject an unexpected auth header, so the
     /// token must not follow.</summary>
-    public async Task<string> GetFailedJobLogsAsync(long runId, CancellationToken cancellationToken)
+    public async Task<string> GetFailedJobLogsAsync(RunId runId, CancellationToken cancellationToken)
     {
-        var jobsUrl = $"https://api.github.com/repos/{Repo.Value}/actions/runs/{runId}/jobs";
+        var jobsUrl = $"https://api.github.com/repos/{Repo.Value}/actions/runs/{runId.Value}/jobs";
         using var jobsResponse = await Http.GetAsync(jobsUrl, cancellationToken);
         jobsResponse.EnsureSuccessStatusCode();
         var jobs = await ReadJsonAsync(jobsResponse, GitHubReadApiJsonContext.Default.WorkflowJobsApiResponse, cancellationToken);
         if (jobs.Jobs is null)
-            throw new HttpRequestException($"list jobs for run {runId} response was missing the jobs field");
+            throw new HttpRequestException($"list jobs for run {runId.Value} response was missing the jobs field");
 
         var logs = await Task.WhenAll(jobs.Jobs.Where(j => j.Conclusion == "failure").Select(job => GetJobLogAsync(job.Id, cancellationToken)));
         return string.Join("\n", logs);

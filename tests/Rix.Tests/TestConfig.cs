@@ -26,7 +26,6 @@ internal static class TestConfig
     => JobConfig.Create(new JobInputs
     (
         Repo: repo,
-        Prompt: prompt,
         ReadToken: readToken,
         MaxTokens: maxTokens,
         TimeoutMinutes: timeoutMinutes,
@@ -37,7 +36,7 @@ internal static class TestConfig
         AgentApiKey: agentApiKey,
         AgentApiKeyEnv: agentApiKeyEnv,
         AllowedPushBranches: allowedPushBranches
-    )) switch
+    ), prompt) switch
     {
         JobConfigValid v => v.Config,
         JobConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
@@ -62,38 +61,24 @@ internal static class TestConfig
     (
         string repo = "owner/repo",
         string readToken = "read-tok",
-        string runId = "1"
-    )
-    => CiFailureConfig.Create(repo, readToken, runId) switch
-    {
-        CiFailureConfigValid v => v.Config,
-        CiFailureConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
-        var other => throw new AssertFailedException($"unexpected result: {other}"),
-    };
-
-    internal static CiFailureJobConfig ValidCiFailureJob
-    (
-        string repo = "owner/repo",
-        string readToken = "read-tok",
         string runId = "1",
         string? workDir = null,
         string? outputDir = null
     )
-    => CiFailureJobConfig.Create(new CiFailureJobInputs
+    => CiFailureConfig.Create(new CiFailureInputs
     (
         RunId: runId,
         Job: new JobInputs
         (
             Repo: repo,
-            Prompt: "",
             ReadToken: readToken,
             WorkDir: workDir ?? Path.GetTempPath(),
             OutputDir: outputDir ?? Path.GetTempPath()
         )
     )) switch
     {
-        CiFailureJobConfigValid v => v.Config,
-        CiFailureJobConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
+        CiFailureConfigValid v => v.Config,
+        CiFailureConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
         var other => throw new AssertFailedException($"unexpected result: {other}"),
     };
 

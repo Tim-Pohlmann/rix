@@ -46,20 +46,49 @@ internal record JobConfig
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
     /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
     /// collected, so a <see cref="JobConfigValid"/> is produced only when the whole configuration is
-    /// well-formed — business logic downstream never sees an invalid value.</summary>
-    internal static JobConfigResult Create(JobInputs inputs)
+    /// well-formed — business logic downstream never sees an invalid value. <paramref name="prompt"/>
+    /// is separate from <paramref name="inputs"/> because it is the one value a caller may not know
+    /// at CLI-parse time: <c>rix ci-failure</c> only learns it once a failure is actually detected,
+    /// and validates everything else up front via <see cref="Validate"/>.</summary>
+    internal static JobConfigResult Create(JobInputs inputs, string prompt)
     {
-        var (repo, prompt, readToken) = (inputs.Repo, inputs.Prompt, inputs.ReadToken);
         var errors = new List<string>();
+        var parsed = Parse(inputs, errors);
+
+        if (string.IsNullOrWhiteSpace(prompt))
+            errors.Add("--prompt is required");
+
+        if (errors.Count > 0)
+            return new JobConfigInvalid([.. errors]);
+
+        // Non-null here: Parse only returns null after adding at least one error.
+        return new JobConfigValid(parsed!.ToConfig(prompt));
+    }
+
+    /// <summary>Reports whether <paramref name="inputs"/> would produce a valid <see cref="JobConfig"/>,
+    /// without building one and without needing a prompt. Lets <c>rix ci-failure</c> reject bad
+    /// input at CLI-parse time — before it knows the prompt, and long before it knows whether it
+    /// will run the agent at all — instead of constructing a throwaway config around a placeholder.</summary>
+    internal static IReadOnlyList<string> Validate(JobInputs inputs)
+    {
+        var errors = new List<string>();
+        Parse(inputs, errors);
+        return errors;
+    }
+
+    /// <summary>The shared parsing core behind <see cref="Create"/> and <see cref="Validate"/>:
+    /// converts every field of <paramref name="inputs"/> to its strong type, appending a message to
+    /// <paramref name="errors"/> for each one that fails. Returns <c>null</c> exactly when it added
+    /// an error, so <see cref="Validate"/> can ignore the result while <see cref="Create"/> uses it.</summary>
+    private static Parsed? Parse(JobInputs inputs, List<string> errors)
+    {
+        var (repo, readToken) = (inputs.Repo, inputs.ReadToken);
 
         RepoIdentifier? parsedRepo = null;
         if (string.IsNullOrWhiteSpace(repo))
             errors.Add("--repo is required");
         else
             parsedRepo = RepoIdentifier.Parse(repo).Collect(errors, "--repo");
-
-        if (string.IsNullOrWhiteSpace(prompt))
-            errors.Add("--prompt is required");
 
         if (string.IsNullOrWhiteSpace(readToken))
             errors.Add("--read-token is required");
@@ -102,20 +131,54 @@ internal record JobConfig
         var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches);
 
         if (errors.Count > 0)
-            return new JobConfigInvalid([.. errors]);
+            return null;
 
         // Non-null here: any blank or unparseable input would have added an error above.
-        var config = new JobConfig
+        return new Parsed
         (
-            repo: parsedRepo!,
-            readToken: new GitReadToken(readToken),
-            timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
-            workDir: parsedWorkDir!,
-            outputDir: parsedOutputDir!,
-            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel, resolvedApiKey, resolvedApiKeyEnv),
-            allowedPushBranches: allowedPushBranches
+            Repo: parsedRepo!,
+            ReadToken: new GitReadToken(readToken),
+            TimeoutMinutes: new TimeoutMinutes(resolvedTimeout),
+            WorkDir: parsedWorkDir!,
+            OutputDir: parsedOutputDir!,
+            Agent: resolvedAgent,
+            MaxTokens: new MaxTokens(resolvedMaxTokens),
+            Model: resolvedModel,
+            ApiKey: resolvedApiKey,
+            ApiKeyEnv: resolvedApiKeyEnv,
+            AllowedPushBranches: allowedPushBranches
         );
-        return new JobConfigValid(config);
+    }
+
+    /// <summary>A <see cref="JobConfig"/> minus its prompt: everything <see cref="Parse"/> could
+    /// determine from <see cref="JobInputs"/> alone. Exists so <see cref="Validate"/> and
+    /// <see cref="Create"/> share one parsing pass without <see cref="Validate"/> having to invent a
+    /// prompt just to reach the end of it.</summary>
+    private sealed record Parsed
+    (
+        RepoIdentifier Repo,
+        GitReadToken ReadToken,
+        TimeoutMinutes TimeoutMinutes,
+        DirectoryPath WorkDir,
+        DirectoryPath OutputDir,
+        AgentKind Agent,
+        MaxTokens MaxTokens,
+        string? Model,
+        string? ApiKey,
+        string? ApiKeyEnv,
+        IReadOnlyList<BranchName> AllowedPushBranches
+    )
+    {
+        internal JobConfig ToConfig(string prompt) => new
+        (
+            repo: Repo,
+            readToken: ReadToken,
+            timeoutMinutes: TimeoutMinutes,
+            workDir: WorkDir,
+            outputDir: OutputDir,
+            agent: new AgentConfig(Agent, prompt, MaxTokens, Model, ApiKey, ApiKeyEnv),
+            allowedPushBranches: AllowedPushBranches
+        );
     }
 
     /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
@@ -160,11 +223,12 @@ internal sealed record AgentConfig
 /// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
 /// values first, then the optional ones (which default to <c>null</c> so callers set only what they
 /// care about). <see cref="JobConfig.Create"/> is the boundary that turns these primitives into the
-/// always-valid, strongly-typed <see cref="JobConfig"/>.</summary>
+/// always-valid, strongly-typed <see cref="JobConfig"/>. The prompt is deliberately absent — it is
+/// passed to <see cref="JobConfig.Create"/> separately, since <c>rix ci-failure</c> validates these
+/// inputs long before it knows what the prompt will be.</summary>
 internal record JobInputs
 (
     string Repo,
-    string Prompt,
     string ReadToken,
     string? MaxTokens = null,
     string? TimeoutMinutes = null,

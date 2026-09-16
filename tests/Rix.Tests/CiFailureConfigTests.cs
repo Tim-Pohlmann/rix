@@ -1,4 +1,5 @@
 using Rix.CiFailure;
+using Rix.Job;
 
 namespace Rix.Tests;
 
@@ -9,9 +10,25 @@ public class CiFailureConfigTests
     (
         string repo = "owner/repo",
         string readToken = "read-tok",
-        string runId = "123"
+        string runId = "123",
+        string? agent = null,
+        string? agentApiKey = null,
+        string? agentApiKeyEnv = null
     )
-    => CiFailureConfig.Create(repo, readToken, runId);
+    => CiFailureConfig.Create(new CiFailureInputs
+    (
+        RunId: runId,
+        Job: new JobInputs
+        (
+            Repo: repo,
+            ReadToken: readToken,
+            WorkDir: Path.GetTempPath(),
+            OutputDir: Path.GetTempPath(),
+            Agent: agent,
+            AgentApiKey: agentApiKey,
+            AgentApiKeyEnv: agentApiKeyEnv
+        )
+    ));
 
     private static CiFailureConfig Valid(CiFailureConfigResult result) => result switch
     {
@@ -31,28 +48,24 @@ public class CiFailureConfigTests
     {
         var config = Valid(Create());
         Assert.AreEqual("owner/repo", config.Repo.ToString());
+        Assert.AreEqual(123, config.RunId.Value);
         Assert.AreEqual("read-tok", config.ReadToken.Value);
-        Assert.AreEqual(123, config.RunId);
     }
 
     [TestMethod]
-    public void Create_RejectsEmptyRepo()
+    public void Create_RejectsEmptyRepo_Once()
     {
-        Assert.IsTrue(Errors(Create(repo: "")).Any(e => e.Contains("--repo is required")));
+        // Repo is validated on both the CiFailure and Job side; Create must not surface the same
+        // complaint twice.
+        var errors = Errors(Create(repo: ""));
+        Assert.AreEqual(1, errors.Count(e => e.Contains("--repo is required")));
     }
 
     [TestMethod]
-    [DataRow("noslash")]
-    [DataRow("owner/repo/extra")]
-    public void Create_RejectsMalformedRepo(string repo)
+    public void Create_RejectsEmptyReadToken_Once()
     {
-        Assert.IsTrue(Errors(Create(repo: repo)).Any(e => e.Contains("repo identifier")));
-    }
-
-    [TestMethod]
-    public void Create_RejectsEmptyReadToken()
-    {
-        Assert.IsTrue(Errors(Create(readToken: "")).Any(e => e.Contains("--read-token")));
+        var errors = Errors(Create(readToken: ""));
+        Assert.AreEqual(1, errors.Count(e => e.Contains("--read-token is required")));
     }
 
     [TestMethod]
@@ -62,18 +75,49 @@ public class CiFailureConfigTests
     }
 
     [TestMethod]
-    [DataRow("abc")]
-    [DataRow("0")]
-    [DataRow("-5")]
-    public void Create_RejectsMalformedRunId(string runId)
+    public void Create_RejectsMalformedAgent()
     {
-        Assert.IsTrue(Errors(Create(runId: runId)).Any(e => e.Contains("--run-id must be a positive integer")));
+        Assert.IsTrue(Errors(Create(agent: "not-a-real-agent")).Any(e => e.Contains("--agent")));
     }
 
     [TestMethod]
-    public void Create_CollectsAllErrors()
+    public void Create_DoesNotRequireAPrompt()
     {
-        var errors = Errors(Create(repo: "", readToken: "", runId: ""));
-        Assert.IsTrue(errors.Count >= 3, $"expected several errors, got: {string.Join("; ", errors)}");
+        // The prompt describes a failure that hasn't been detected yet, so validation must pass
+        // without one - and ToJobConfig supplies it later.
+        Assert.IsFalse(Errors(Create(runId: "")).Any(e => e.Contains("--prompt")));
+    }
+
+    [TestMethod]
+    public void Create_CollectsErrors_FromBothCiFailureAndJobSides()
+    {
+        var errors = Errors(Create(runId: "", agent: "not-a-real-agent"));
+        Assert.IsTrue(errors.Any(e => e.Contains("--run-id is required")));
+        Assert.IsTrue(errors.Any(e => e.Contains("--agent")));
+    }
+
+    [TestMethod]
+    public void Create_ThreadsAgentApiKeyAndEnv_ThroughToJobConfig()
+    {
+        var job = Valid(Create(agentApiKey: "secret", agentApiKeyEnv: "ANTHROPIC_API_KEY"))
+            .ToJobConfig("fix it", new BranchName("rix/fix"));
+        Assert.AreEqual("secret", job.Agent.ApiKey);
+        Assert.AreEqual("ANTHROPIC_API_KEY", job.Agent.ApiKeyEnv);
+    }
+
+    [TestMethod]
+    public void ToJobConfig_AppliesPromptAndAllowedPushBranch()
+    {
+        var job = Valid(Create()).ToJobConfig("fix it", new BranchName("rix/fix"));
+        Assert.AreEqual("fix it", job.Agent.Prompt);
+        CollectionAssert.AreEqual(new[] { "rix/fix" }, job.AllowedPushBranches.Select(b => b.Value).ToArray());
+        Assert.AreEqual("owner/repo", job.Repo.ToString());
+        Assert.AreEqual("read-tok", job.ReadToken.Value);
+    }
+
+    [TestMethod]
+    public void Create_RejectsApiKeyEnv_ThatIsNotCredentialShaped()
+    {
+        Assert.IsTrue(Errors(Create(agentApiKey: "secret", agentApiKeyEnv: "NOT_CREDENTIAL_SHAPED")).Any(e => e.Contains("--agent-api-key-env")));
     }
 }

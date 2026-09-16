@@ -6,9 +6,9 @@ namespace Rix.Repository;
 /// operations it never uses.</summary>
 internal interface IGitHubCiFailureHost
 {
-    Task<WorkflowRun> GetRunAsync(long runId, CancellationToken cancellationToken);
+    Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken);
 
-    Task<string> GetFailedJobLogsAsync(long runId, CancellationToken cancellationToken);
+    Task<string> GetFailedJobLogsAsync(RunId runId, CancellationToken cancellationToken);
 
     Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken);
 }

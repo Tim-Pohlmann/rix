@@ -3,7 +3,7 @@ using System.CommandLine;
 
 namespace Rix.Cli;
 
-/// <summary>CLI options shared by <c>job</c> and <c>ci-failure-job</c>, which both run the coding
+/// <summary>CLI options shared by <c>job</c> and <c>ci-failure</c>, which both run the coding
 /// agent and so take the same execution parameters.</summary>
 internal static class JobOptions
 {

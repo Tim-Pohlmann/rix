@@ -26,7 +26,7 @@ public class CiFailureHostTests
         var host = BuildHost(_ => Json(
             """{"conclusion":"failure","display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix"}"""));
 
-        var run = await host.GetRunAsync(1, CancellationToken.None);
+        var run = await host.GetRunAsync(new RunId(1), CancellationToken.None);
 
         Assert.AreEqual("failure", run.Conclusion);
         Assert.AreEqual("Fix thing", run.DisplayTitle);
@@ -39,7 +39,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("""{"conclusion":"failure"}"""));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetRunAsync(1, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
     }
 
     [TestMethod]
@@ -48,7 +48,7 @@ public class CiFailureHostTests
         var host = BuildHost(_ => Json(
             """{"conclusion":null,"display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix"}"""));
 
-        var run = await host.GetRunAsync(1, CancellationToken.None);
+        var run = await host.GetRunAsync(new RunId(1), CancellationToken.None);
 
         Assert.IsNull(run.Conclusion);
     }
@@ -58,7 +58,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetRunAsync(1, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
     }
 
     [TestMethod]
@@ -75,7 +75,7 @@ public class CiFailureHostTests
             throw new InvalidOperationException($"unexpected request: {request.RequestUri}");
         });
 
-        var logs = await host.GetFailedJobLogsAsync(1, CancellationToken.None);
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), CancellationToken.None);
 
         Assert.AreEqual("log one\nlog three", logs);
     }
@@ -85,7 +85,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("""{"jobs":[{"id":1,"conclusion":"success"}]}"""));
 
-        var logs = await host.GetFailedJobLogsAsync(1, CancellationToken.None);
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), CancellationToken.None);
 
         Assert.AreEqual("", logs);
     }
@@ -95,7 +95,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("{}"));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetFailedJobLogsAsync(1, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetFailedJobLogsAsync(new RunId(1), CancellationToken.None));
     }
 
     [TestMethod]

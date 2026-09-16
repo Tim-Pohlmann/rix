@@ -51,7 +51,6 @@ internal static class JobCommand
                 var inputs = new JobInputs
                 (
                     Repo:           parsed.Str(RepoOption,      "RIX_REPO"),
-                    Prompt:         parsed.Str(PromptOption,    "RIX_PROMPT"),
                     ReadToken:      parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"),
                     MaxTokens:      parsed.Str(JobOptions.MaxTokensOption, "RIX_MAX_TOKENS"),
                     TimeoutMinutes: parsed.Str(JobOptions.TimeoutOption,   "RIX_TIMEOUT"),
@@ -63,7 +62,7 @@ internal static class JobCommand
                     AgentApiKeyEnv: parsed.Str(JobOptions.AgentApiKeyEnvOption, "AGENT_API_KEY_ENV"),
                     AllowedPushBranches: parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES")
                 );
-                var result = JobConfig.Create(inputs);
+                var result = JobConfig.Create(inputs, parsed.Str(PromptOption, "RIX_PROMPT"));
 
                 switch (result)
                 {

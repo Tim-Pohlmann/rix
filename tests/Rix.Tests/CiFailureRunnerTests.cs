@@ -1,4 +1,7 @@
+using Rix.Agents;
 using Rix.CiFailure;
+using Rix.Job;
+using Rix.Process;
 using Rix.Repository;
 
 namespace Rix.Tests;
@@ -6,133 +9,207 @@ namespace Rix.Tests;
 [TestClass]
 public class CiFailureRunnerTests
 {
-    private static readonly CiFailureConfig Config = TestConfig.ValidCiFailure();
+    private string _workDir = null!;
+    private string _outputDir = null!;
 
-    [TestMethod]
-    public async Task RunAsync_ReturnsSkipped_WhenRunDidNotFail()
+    [TestInitialize]
+    public void Setup()
     {
-        var host = new StubCiFailureHost(getRun: _ => Task.FromResult(SampleRun("success")));
+        _workDir = Directory.CreateTempSubdirectory("rix-work-").FullName;
+        _outputDir = Directory.CreateTempSubdirectory("rix-out-").FullName;
+    }
 
-        var result = await CiFailureRunner.RunAsync(Config, host, CancellationToken.None);
-
-        var skipped = AssertSkipped(result);
-        Assert.AreEqual("success", skipped.Conclusion);
+    [TestCleanup]
+    public void Cleanup()
+    {
+        try { Directory.Delete(_workDir, recursive: true); } catch (DirectoryNotFoundException) { }
+        try { Directory.Delete(_outputDir, recursive: true); } catch (DirectoryNotFoundException) { }
     }
 
     [TestMethod]
-    public async Task RunAsync_ReturnsSkipped_WhenRunStillInProgress()
+    public async Task RunAsync_ReturnsNotRun_AndNeverClones_WhenRunDidNotFail()
     {
-        var host = new StubCiFailureHost(getRun: _ => Task.FromResult(SampleRun(conclusion: null)));
+        var ciFailureHost = new StubCiFailureHost(getRun: _ => Task.FromResult(SampleRun("success")));
+        var cloneCalled = false;
+        var repositoryHost = new StubRepositoryHost(clone: () => { cloneCalled = true; return Task.CompletedTask; });
 
-        var result = await CiFailureRunner.RunAsync(Config, host, CancellationToken.None);
+        var outcome = await CiFailureRunner.RunAsync(
+            MakeConfig(), ciFailureHost, ContextFor(repositoryHost), CancellationToken.None);
 
-        var skipped = AssertSkipped(result);
-        Assert.IsNull(skipped.Conclusion);
+        var notRun = AssertNotRun(outcome);
+        Assert.IsInstanceOfType<CiFailureSkipped>(notRun.Reason);
+        Assert.IsFalse(cloneCalled, "the job pipeline must never run when no failure was detected");
     }
 
     [TestMethod]
-    public async Task RunAsync_ReturnsError_WhenGetRunFails()
+    public async Task RunAsync_ReturnsNotRun_WhenCiFailureCheckErrors()
     {
-        var host = new StubCiFailureHost(
-            getRun: _ => throw new HttpRequestException("boom"));
+        var ciFailureHost = new StubCiFailureHost(getRun: _ => throw new HttpRequestException("boom"));
 
-        var result = await CiFailureRunner.RunAsync(Config, host, CancellationToken.None);
+        var outcome = await CiFailureRunner.RunAsync(
+            MakeConfig(), ciFailureHost, ContextFor(new StubRepositoryHost()), CancellationToken.None);
 
-        var error = AssertError(result);
-        StringAssert.Contains(error.Error, "boom");
+        var notRun = AssertNotRun(outcome);
+        Assert.IsInstanceOfType<CiFailureError>(notRun.Reason);
     }
 
     [TestMethod]
-    public async Task RunAsync_ReturnsDetected_WithPromptAndFacts_WhenRunFailed()
+    public async Task RunAsync_RunsJob_WithDetectedPrompt_WhenRunFailed()
     {
-        var host = new StubCiFailureHost(
+        var ciFailureHost = new StubCiFailureHost(
             getRun: _ => Task.FromResult(SampleRun("failure")),
             getLogs: _ => Task.FromResult("boom: it broke"),
-            findPr: _ => Task.FromResult<int?>(7));
-
-        var result = await CiFailureRunner.RunAsync(Config, host, CancellationToken.None);
-
-        var detected = AssertDetected(result);
-        Assert.AreEqual("https://github.com/owner/repo/actions/runs/1", detected.RunUrl);
-        Assert.AreEqual("rix/fix", detected.Branch);
-        Assert.AreEqual(7, detected.PrNumber);
-        StringAssert.Contains(detected.Prompt, "CI failed on branch 'rix/fix'");
-        StringAssert.Contains(detected.Prompt, "This is PR #7 in owner/repo.");
-        StringAssert.Contains(detected.Prompt, "Fix thing");
-        StringAssert.Contains(detected.Prompt, "boom: it broke");
-    }
-
-    [TestMethod]
-    public async Task RunAsync_OmitsPrLine_WhenNoOpenPr()
-    {
-        var host = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure")),
             findPr: _ => Task.FromResult<int?>(null));
 
-        var result = await CiFailureRunner.RunAsync(Config, host, CancellationToken.None);
+        string? capturedPrompt = null;
+        RunProcessAsync capture = (fileName, args, workDir, envOverrides, onLine, ct) =>
+        {
+            if (fileName == "claude")
+            {
+                var argList = args.ToList();
+                // The task prompt is the positional arg immediately before --append-system-prompt
+                // (see ClaudeAgent.BuildInvocation), not the appended system prompt itself.
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 1)
+                    capturedPrompt = argList[idx - 1];
+            }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
 
-        var detected = AssertDetected(result);
-        Assert.IsNull(detected.PrNumber);
-        Assert.IsFalse(detected.Prompt.Contains("This is PR"));
+        var outcome = await CiFailureRunner.RunAsync(
+            MakeConfig(), ciFailureHost, ContextFor(new StubRepositoryHost(), capture), CancellationToken.None);
+
+        var ran = AssertRan(outcome);
+        Assert.IsInstanceOfType<JobSuccess>(ran.Result);
+        StringAssert.Contains(capturedPrompt, "CI failed on branch 'rix/fix'");
+        StringAssert.Contains(capturedPrompt, "boom: it broke");
+        StringAssert.Contains(ran.Job.Agent.Prompt, "CI failed on branch 'rix/fix'");
     }
 
     [TestMethod]
-    public async Task RunAsync_TruncatesLogsToTail_WhenTooLong()
+    public async Task ExecuteCiFailureAsync_Returns0_AndWritesNoResultJson_WhenRunDidNotFail()
     {
-        var hugeLog = new string('x', 25_000) + "TAIL-MARKER";
-        var host = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure")),
-            getLogs: _ => Task.FromResult(hugeLog));
+        var ciFailureHost = new StubCiFailureHost(getRun: _ => Task.FromResult(SampleRun("success")));
 
-        var result = await CiFailureRunner.RunAsync(Config, host, CancellationToken.None);
+        // No jobContext: the run didn't fail, so CiFailureRunner never reaches the job path
+        // that would need one - Startup defaults it, unused.
+        var exitCode = await Startup.ExecuteCiFailureAsync(MakeConfig(), CancellationToken.None, ciFailureHost);
 
-        var detected = AssertDetected(result);
-        StringAssert.Contains(detected.Prompt, "TAIL-MARKER");
-        Assert.IsTrue(detected.Prompt.Length < hugeLog.Length + 500, "log excerpt must be capped, not passed through whole");
+        Assert.AreEqual(0, exitCode);
+        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")));
     }
 
     [TestMethod]
-    public async Task RunAsync_ReturnsError_WhenLogFetchFails()
+    public async Task ExecuteCiFailureAsync_Returns1_WhenCiFailureCheckErrors()
     {
-        var host = new StubCiFailureHost(
-            getRun: _ => Task.FromResult(SampleRun("failure")),
-            getLogs: _ => throw new HttpRequestException("log fetch failed"));
+        var ciFailureHost = new StubCiFailureHost(getRun: _ => throw new HttpRequestException("boom"));
 
-        var result = await CiFailureRunner.RunAsync(Config, host, CancellationToken.None);
+        // No jobContext: the check errors before the job path that would need one ever runs.
+        var exitCode = await Startup.ExecuteCiFailureAsync(MakeConfig(), CancellationToken.None, ciFailureHost);
 
-        AssertError(result);
+        Assert.AreEqual(1, exitCode);
     }
 
     [TestMethod]
-    public async Task RunAsync_ReturnsError_WhenPrLookupFails()
+    public async Task ExecuteCiFailureAsync_Returns0_AndWritesResultJson_WhenRunFailedAndJobSucceeded()
     {
-        var host = new StubCiFailureHost(
+        var ciFailureHost = new StubCiFailureHost(
             getRun: _ => Task.FromResult(SampleRun("failure")),
-            findPr: _ => throw new HttpRequestException("pr lookup failed"));
+            getLogs: _ => Task.FromResult("boom: it broke"),
+            findPr: _ => Task.FromResult<int?>(null));
 
-        var result = await CiFailureRunner.RunAsync(Config, host, CancellationToken.None);
+        var exitCode = await Startup.ExecuteCiFailureAsync(
+            MakeConfig(), CancellationToken.None, ciFailureHost, JobContext(new StubRepositoryHost()));
 
-        AssertError(result);
+        Assert.AreEqual(0, exitCode);
+        var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.AreEqual("success", doc.RootElement.GetProperty("status").GetString());
     }
 
-    private static WorkflowRun SampleRun(string? conclusion)
-    => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", "rix/fix");
-
-    private static CiFailureDetected AssertDetected(ICiFailureResult result) => result switch
+    [TestMethod]
+    public async Task RunAsync_AllowsPushOnly_ToTheFailingRunsOwnBranch()
     {
-        CiFailureDetected d => d,
-        _ => throw new AssertFailedException($"expected CiFailureDetected, got {result}"),
+        var ciFailureHost = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(SampleRun("failure", branch: "rix/fix")),
+            getLogs: _ => Task.FromResult("boom: it broke"),
+            findPr: _ => Task.FromResult<int?>(null));
+
+        var systemPrompt = await CaptureSystemPromptAsync(ciFailureHost);
+
+        Assert.IsNotNull(systemPrompt);
+        StringAssert.Contains(systemPrompt, "rix/fix");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_AllowsPush_ToTheFailingRunsOwnBranch_EvenWhenNotARixBranch()
+    {
+        var ciFailureHost = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(SampleRun("failure", branch: "feature/human-work")),
+            getLogs: _ => Task.FromResult("boom: it broke"),
+            findPr: _ => Task.FromResult<int?>(null));
+
+        var systemPrompt = await CaptureSystemPromptAsync(ciFailureHost);
+
+        Assert.IsNotNull(systemPrompt);
+        Assert.IsFalse(systemPrompt.Contains("not allowed any push branches"));
+        StringAssert.Contains(systemPrompt, "feature/human-work");
+    }
+
+    private async Task<string?> CaptureSystemPromptAsync(IGitHubCiFailureHost ciFailureHost)
+    {
+        string? systemPrompt = null;
+        RunProcessAsync capture = (fileName, args, workDir, envOverrides, onLine, ct) =>
+        {
+            if (fileName == "claude")
+            {
+                var argList = args.ToList();
+                var idx = argList.IndexOf("--append-system-prompt");
+                if (idx >= 0 && idx + 1 < argList.Count)
+                    systemPrompt = argList[idx + 1];
+            }
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await CiFailureRunner.RunAsync(
+            MakeConfig(), ciFailureHost, ContextFor(new StubRepositoryHost(), capture), CancellationToken.None);
+
+        return systemPrompt;
+    }
+
+    private static WorkflowRun SampleRun(string conclusion, string branch = "rix/fix")
+    => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", branch);
+
+    private CiFailureConfig MakeConfig()
+    => TestConfig.ValidCiFailure(workDir: _workDir, outputDir: _outputDir);
+
+    /// <summary>The same context regardless of which <see cref="JobConfig"/>
+    /// <see cref="CiFailureRunner"/> ends up building: these tests stub every host the context
+    /// wires up, so none of them depends on the config.</summary>
+    private static Func<JobConfig, JobContext> ContextFor(IRepositoryReadHost host, RunProcessAsync? processRunner = null)
+    => _ => JobContext(host, processRunner);
+
+    private static JobContext JobContext(IRepositoryReadHost host, RunProcessAsync? processRunner = null)
+    => new(host, processRunner ?? DefaultRunner, new StubAgent(_ => Task.FromResult<InstallResult>(new Installed())), _ => { }, _ => { });
+
+    private static Task<ProcessResult> DefaultRunner(
+        string fileName, IEnumerable<string> args, string workDir,
+        IReadOnlyDictionary<string, string>? envOverrides, Action<string>? onLine, CancellationToken ct)
+    => fileName switch
+    {
+        "claude" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
+        _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
     };
 
-    private static CiFailureSkipped AssertSkipped(ICiFailureResult result) => result switch
+    private static CiFailureNotRun AssertNotRun(CiFailureOutcome outcome) => outcome switch
     {
-        CiFailureSkipped s => s,
-        _ => throw new AssertFailedException($"expected CiFailureSkipped, got {result}"),
+        CiFailureNotRun n => n,
+        _ => throw new AssertFailedException($"expected CiFailureNotRun, got {outcome}"),
     };
 
-    private static CiFailureError AssertError(ICiFailureResult result) => result switch
+    private static CiFailureRan AssertRan(CiFailureOutcome outcome) => outcome switch
     {
-        CiFailureError e => e,
-        _ => throw new AssertFailedException($"expected CiFailureError, got {result}"),
+        CiFailureRan r => r,
+        _ => throw new AssertFailedException($"expected CiFailureRan, got {outcome}"),
     };
 }

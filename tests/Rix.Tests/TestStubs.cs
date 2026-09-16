@@ -7,14 +7,14 @@ using Rix.Repository;
 namespace Rix.Tests;
 
 internal sealed class StubCiFailureHost(
-    Func<long, Task<WorkflowRun>>? getRun = null,
-    Func<long, Task<string>>? getLogs = null,
+    Func<RunId, Task<WorkflowRun>>? getRun = null,
+    Func<RunId, Task<string>>? getLogs = null,
     Func<BranchName, Task<int?>>? findPr = null) : IGitHubCiFailureHost
 {
-    public Task<WorkflowRun> GetRunAsync(long runId, CancellationToken cancellationToken)
+    public Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
     => getRun switch { { } check => check(runId), _ => throw new InvalidOperationException("getRun not stubbed") };
 
-    public Task<string> GetFailedJobLogsAsync(long runId, CancellationToken cancellationToken)
+    public Task<string> GetFailedJobLogsAsync(RunId runId, CancellationToken cancellationToken)
     => getLogs switch { { } check => check(runId), _ => Task.FromResult("") };
 
     public Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken)
