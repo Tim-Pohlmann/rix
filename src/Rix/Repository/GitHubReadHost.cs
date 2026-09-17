@@ -16,6 +16,15 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     private readonly RunProcessAsync _runProcess;
     private readonly IReadOnlyDictionary<string, string> _gitAuthEnv;
 
+    /// <summary>GitHub's maximum page size for the jobs endpoint, so a run's jobs are walked in as
+    /// few round trips as the API allows. Also the signal that ends the walk: a page holding fewer
+    /// than this many jobs is the last one.</summary>
+    private const int JobsPageSize = 100;
+
+    /// <summary>How much of a job log is held at once while streaming it. Only ever this much on top
+    /// of the tail being kept, no matter how large the log is.</summary>
+    private const int LogChunkChars = 8192;
+
     /// <summary>The target repo, exposed so the composing <see cref="GitHubHost"/> can build REST
     /// URLs without keeping a second copy.</summary>
     internal RepoIdentifier Repo { get; }
@@ -145,27 +154,62 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     /// token must not follow.</summary>
     public async Task<string> GetFailedJobLogsAsync(RunId runId, int tailCharsPerJob, CancellationToken cancellationToken)
     {
-        var jobs = await GetJsonAsync($"actions/runs/{runId.Value}/jobs", GitHubReadApiJsonContext.Default.WorkflowJobsApiResponse, cancellationToken);
-        if (jobs.Jobs is null)
-            throw new HttpRequestException($"list jobs for run {runId.Value} response was missing the jobs field");
-
-        var logs = await Task.WhenAll(jobs.Jobs.Where(j => j.Conclusion == "failure").Select(job => GetJobLogAsync(job.Id, tailCharsPerJob, cancellationToken)));
+        var failedJobIds = await ListFailedJobIdsAsync(runId, cancellationToken);
+        var logs = await Task.WhenAll(failedJobIds.Select(jobId => GetJobLogAsync(jobId, tailCharsPerJob, cancellationToken)));
         return string.Join("\n", logs);
+    }
+
+    /// <summary>Collects the run's failed job IDs across every page of the jobs endpoint, which is
+    /// paginated. A matrix build can easily exceed one page, and the job that failed is no more
+    /// likely to be on the first page than the last, so stopping there would silently produce an
+    /// empty or partial log excerpt for exactly the runs this command exists to explain. Pages are
+    /// read sequentially rather than concurrently because how many there are isn't known until a
+    /// short page ends the walk.</summary>
+    private async Task<List<long>> ListFailedJobIdsAsync(RunId runId, CancellationToken cancellationToken)
+    {
+        var failedJobIds = new List<long>();
+        for (var page = 1; ; page++)
+        {
+            var jobs = await GetJsonAsync
+            (
+                $"actions/runs/{runId.Value}/jobs?per_page={JobsPageSize}&page={page}",
+                GitHubReadApiJsonContext.Default.WorkflowJobsApiResponse,
+                cancellationToken
+            );
+            if (jobs.Jobs is null)
+                throw new HttpRequestException($"list jobs for run {runId.Value} response was missing the jobs field");
+
+            failedJobIds.AddRange(jobs.Jobs.Where(job => job.Conclusion == "failure").Select(job => job.Id));
+            if (jobs.Jobs.Count < JobsPageSize)
+                return failedJobIds;
+        }
     }
 
     /// <summary>Keeps only the last <paramref name="tailChars"/> characters of the job's log. A
     /// flooding CI job can emit tens of MB, and the caller only ever keeps a tail of the joined
     /// result — which can never reach further back into any one job than that job's own tail — so
-    /// discarding the rest here yields the same string while bounding peak memory at
-    /// <c>failed jobs × tailChars</c> instead of the full download.</summary>
+    /// the rest is never worth holding. The response is read headers-first and consumed as a stream,
+    /// with each chunk dropped once it falls out of the tail window, which bounds peak memory at
+    /// <c>failed jobs × tailChars</c>; letting the response buffer itself and slicing the resulting
+    /// string would materialize every full log first and make the cap purely cosmetic.</summary>
     private async Task<string> GetJobLogAsync(long jobId, int tailChars, CancellationToken cancellationToken)
     {
-        using var logResponse = await Http.GetAsync(Url($"actions/jobs/{jobId}/logs"), cancellationToken);
+        using var logResponse = await Http.GetAsync(Url($"actions/jobs/{jobId}/logs"), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         logResponse.EnsureSuccessStatusCode();
-        var log = await logResponse.Content.ReadAsStringAsync(cancellationToken);
-        if (log.Length > tailChars)
-            return log[^tailChars..];
-        return log;
+
+        using var reader = new StreamReader(await logResponse.Content.ReadAsStreamAsync(cancellationToken));
+        var tail = new StringBuilder();
+        var buffer = new char[LogChunkChars];
+        while (true)
+        {
+            var read = await reader.ReadAsync(buffer, cancellationToken);
+            if (read == 0)
+                return tail.ToString();
+
+            tail.Append(buffer, 0, read);
+            if (tail.Length > tailChars)
+                tail.Remove(0, tail.Length - tailChars);
+        }
     }
 
     /// <summary>Finds the number of the open PR whose head is <paramref name="branch"/>, or

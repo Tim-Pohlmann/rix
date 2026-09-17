@@ -46,11 +46,17 @@ internal record JobConfig
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
     /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
     /// collected, so a <see cref="JobConfigValid"/> is produced only when the whole configuration is
-    /// well-formed — business logic downstream never sees an invalid value.</summary>
-    internal static JobConfigResult Create(JobInputs inputs)
+    /// well-formed — business logic downstream never sees an invalid value.
+    /// <paramref name="allowedPushBranches"/> lets a caller that already holds the allow-list as
+    /// values supply it directly, replacing <see cref="JobInputs.AllowedPushBranches"/> rather than
+    /// being merged with it. Only the CLI has a comma-separated string to begin with; a caller that
+    /// derives the allow-list (<c>ci-failure</c>, from the failing run's branch) must not flatten it
+    /// back into one, since a branch name may itself contain a comma and would then be split into
+    /// two entries that permit pushing to other branches while rejecting the intended one.</summary>
+    internal static JobConfigResult Create(JobInputs inputs, IReadOnlyList<BranchName>? allowedPushBranches = null)
     {
         var errors = new List<string>();
-        var parsed = Parse(inputs, errors);
+        var parsed = Parse(inputs, errors, allowedPushBranches);
 
         if (string.IsNullOrWhiteSpace(inputs.Prompt))
             errors.Add("--prompt is required");
@@ -78,8 +84,10 @@ internal record JobConfig
     /// <summary>The shared parsing core behind <see cref="Create"/> and <see cref="Validate"/>:
     /// converts every field of <paramref name="inputs"/> to its strong type, appending a message to
     /// <paramref name="errors"/> for each one that fails. Returns <c>null</c> exactly when it added
-    /// an error, so <see cref="Validate"/> can ignore the result while <see cref="Create"/> uses it.</summary>
-    private static Parsed? Parse(JobInputs inputs, List<string> errors)
+    /// an error, so <see cref="Validate"/> can ignore the result while <see cref="Create"/> uses it.
+    /// <paramref name="allowedPushBranches"/>, when given, is used verbatim in place of parsing
+    /// <see cref="JobInputs.AllowedPushBranches"/>.</summary>
+    private static Parsed? Parse(JobInputs inputs, List<string> errors, IReadOnlyList<BranchName>? allowedPushBranches = null)
     {
         var (repo, readToken) = (inputs.Repo, inputs.ReadToken);
 
@@ -127,7 +135,7 @@ internal record JobConfig
             ? null
             : AgentCredential.ResolveEnvName(resolvedAgent, inputs.AgentApiKeyEnv).Collect(errors, "--agent-api-key-env");
 
-        var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches);
+        var resolvedPushBranches = allowedPushBranches ?? ParseAllowedPushBranches(inputs.AllowedPushBranches);
 
         if (errors.Count > 0)
             return null;
@@ -145,7 +153,7 @@ internal record JobConfig
             Model: resolvedModel,
             ApiKey: resolvedApiKey,
             ApiKeyEnv: resolvedApiKeyEnv,
-            AllowedPushBranches: allowedPushBranches
+            AllowedPushBranches: resolvedPushBranches
         );
     }
 

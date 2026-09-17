@@ -109,6 +109,47 @@ public class CiFailureHostTests
         Assert.AreEqual("xxxxxxxEND\nxxxxxxxEND", logs);
     }
 
+    /// <summary>The jobs endpoint is paginated, and a matrix build can exceed one page. The job that
+    /// failed is no more likely to be on the first page than the last, so stopping there would
+    /// produce an empty excerpt for exactly the runs this exists to explain.</summary>
+    [TestMethod]
+    public async Task GetFailedJobLogsAsync_FindsFailedJob_OnAPageAfterTheFirst()
+    {
+        var firstPage = string.Join(",", Enumerable.Range(1, 100).Select(id => $$"""{"id":{{id}},"conclusion":"success"}"""));
+        var host = BuildHost(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/jobs/101/logs"))
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("log from the last page") };
+            if (request.RequestUri.Query.Contains("&page=1"))
+                return Json($$"""{"jobs":[{{firstPage}}]}""");
+            if (request.RequestUri.Query.Contains("&page=2"))
+                return Json("""{"jobs":[{"id":101,"conclusion":"failure"}]}""");
+            throw new InvalidOperationException($"unexpected request: {request.RequestUri}");
+        });
+
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None);
+
+        Assert.AreEqual("log from the last page", logs);
+    }
+
+    /// <summary>A log far larger than one stream read, so the retained tail has to be carried across
+    /// several reads rather than sliced out of a single fully-materialized string.</summary>
+    [TestMethod]
+    public async Task GetFailedJobLogsAsync_KeepsTail_WhenItSpansStreamReads()
+    {
+        var hugeLog = new string('x', 50_000) + "END-OF-LOG";
+        var host = BuildHost(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/logs"))
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(hugeLog) };
+            return Json("""{"jobs":[{"id":1,"conclusion":"failure"}]}""");
+        });
+
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), tailCharsPerJob: 20, CancellationToken.None);
+
+        Assert.AreEqual(new string('x', 10) + "END-OF-LOG", logs);
+    }
+
     [TestMethod]
     public async Task GetFailedJobLogsAsync_Throws_WhenJobsFieldMissing()
     {

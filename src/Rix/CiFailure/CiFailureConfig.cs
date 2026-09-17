@@ -63,9 +63,12 @@ internal sealed record CiFailureConfig
     /// detected and both missing pieces are known: the <paramref name="prompt"/> describing the
     /// failure, and <paramref name="allowedPushBranch"/>, the failing run's own branch — the only
     /// branch a fix for it could sensibly be pushed to, which is why it's derived here rather than
-    /// accepted as a caller-supplied input.</summary>
+    /// accepted as a caller-supplied input. The branch is handed over as a one-element allow-list
+    /// rather than written into <see cref="JobInputs.AllowedPushBranches"/>, whose comma-separated
+    /// form would split a branch name containing a comma into two entries — permitting pushes to
+    /// branches that merely share those halves while rejecting the failing branch itself.</summary>
     internal JobConfig ToJobConfig(string prompt, BranchName allowedPushBranch)
-    => JobConfig.Create(JobInputs with { Prompt = prompt, AllowedPushBranches = allowedPushBranch.Value }) switch
+    => JobConfig.Create(JobInputs with { Prompt = prompt }, [allowedPushBranch]) switch
     {
         JobConfigValid v => v.Config,
         // Unreachable: Create already proved these inputs parse, and neither substituted value can

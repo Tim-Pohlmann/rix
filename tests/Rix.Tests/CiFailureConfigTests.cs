@@ -115,6 +115,16 @@ public class CiFailureConfigTests
         Assert.AreEqual("read-tok", job.ReadToken.Value);
     }
 
+    /// <summary>Commas are legal in git branch names, and the allow-list is what stops <c>/push</c>
+    /// delivering anywhere else — so the failing branch must survive as one entry, rather than being
+    /// split into halves that permit two other branches and reject this one.</summary>
+    [TestMethod]
+    public void ToJobConfig_KeepsBranchWhole_WhenBranchNameContainsAComma()
+    {
+        var job = Valid(Create()).ToJobConfig("fix it", new BranchName("feature/a,b"));
+        Assert.AreEqual("feature/a,b", job.AllowedPushBranches.Single().Value);
+    }
+
     [TestMethod]
     public void Create_RejectsApiKeyEnv_ThatIsNotCredentialShaped()
     {
