@@ -168,7 +168,8 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     private async Task<List<long>> ListFailedJobIdsAsync(RunId runId, CancellationToken cancellationToken)
     {
         var failedJobIds = new List<long>();
-        for (var page = 1; ; page++)
+        var page = 1;
+        while (true)
         {
             var jobs = await GetJsonAsync
             (
@@ -182,6 +183,8 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
             failedJobIds.AddRange(jobs.Jobs.Where(job => job.Conclusion == "failure").Select(job => job.Id));
             if (jobs.Jobs.Count < JobsPageSize)
                 return failedJobIds;
+
+            page++;
         }
     }
 
