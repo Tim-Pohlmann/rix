@@ -4,18 +4,18 @@ namespace Rix.Job;
 
 internal record JobConfig
 {
-    internal RepoIdentifier Repo { get; init; }
-    internal GitReadToken ReadToken { get; init; }
-    internal TimeoutMinutes TimeoutMinutes { get; init; }
-    internal DirectoryPath WorkDir { get; init; }
-    internal DirectoryPath OutputDir { get; init; }
-    internal AgentConfig Agent { get; init; }
+    internal RepoIdentifier Repo { get; }
+    internal GitReadToken ReadToken { get; }
+    internal TimeoutMinutes TimeoutMinutes { get; }
+    internal DirectoryPath WorkDir { get; }
+    internal DirectoryPath OutputDir { get; }
+    internal AgentConfig Agent { get; }
 
     /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
     /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.
     /// Any branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates
     /// via <c>/pr</c>), since these already exist on the remote before the job ever runs.</summary>
-    internal IReadOnlyList<BranchName> AllowedPushBranches { get; init; }
+    internal IReadOnlyList<BranchName> AllowedPushBranches { get; }
 
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
@@ -46,20 +46,56 @@ internal record JobConfig
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
     /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
     /// collected, so a <see cref="JobConfigValid"/> is produced only when the whole configuration is
-    /// well-formed — business logic downstream never sees an invalid value.</summary>
-    internal static JobConfigResult Create(JobInputs inputs)
+    /// well-formed — business logic downstream never sees an invalid value.
+    /// <paramref name="allowedPushBranches"/> lets a caller that already holds the allow-list as
+    /// values supply it directly, replacing <see cref="JobInputs.AllowedPushBranches"/> rather than
+    /// being merged with it. Only the CLI has a comma-separated string to begin with; a caller that
+    /// derives the allow-list (<c>ci-failure</c>, from the failing run's branch) must not flatten it
+    /// back into one, since a branch name may itself contain a comma and would then be split into
+    /// two entries that permit pushing to other branches while rejecting the intended one.</summary>
+    internal static JobConfigResult Create(JobInputs inputs, IReadOnlyList<BranchName>? allowedPushBranches = null)
     {
-        var (repo, prompt, readToken) = (inputs.Repo, inputs.Prompt, inputs.ReadToken);
         var errors = new List<string>();
+        var parsed = Parse(inputs, errors, allowedPushBranches);
+
+        if (string.IsNullOrWhiteSpace(inputs.Prompt))
+            errors.Add("--prompt is required");
+
+        if (errors.Count > 0)
+            return new JobConfigInvalid([.. errors]);
+
+        // Both non-null here: Parse only returns null after adding at least one error, and a blank
+        // prompt would have added one too.
+        return new JobConfigValid(parsed!.ToConfig(inputs.Prompt!));
+    }
+
+    /// <summary>Reports whether <paramref name="inputs"/> would produce a valid <see cref="JobConfig"/>,
+    /// without building one — and without requiring <see cref="JobInputs.Prompt"/>, the one field a
+    /// caller may legitimately not have yet. Lets <c>rix ci-failure</c> reject bad input at
+    /// CLI-parse time, before it knows the prompt and long before it knows whether it will run the
+    /// agent at all, instead of constructing a throwaway config around a placeholder.</summary>
+    internal static IReadOnlyList<string> Validate(JobInputs inputs)
+    {
+        var errors = new List<string>();
+        Parse(inputs, errors);
+        return errors;
+    }
+
+    /// <summary>The shared parsing core behind <see cref="Create"/> and <see cref="Validate"/>:
+    /// converts every field of <paramref name="inputs"/> to its strong type, appending a message to
+    /// <paramref name="errors"/> for each one that fails. Returns <c>null</c> exactly when it added
+    /// an error, so <see cref="Validate"/> can ignore the result while <see cref="Create"/> uses it.
+    /// <paramref name="allowedPushBranches"/>, when given, is used verbatim in place of parsing
+    /// <see cref="JobInputs.AllowedPushBranches"/>.</summary>
+    private static Parsed? Parse(JobInputs inputs, List<string> errors, IReadOnlyList<BranchName>? allowedPushBranches = null)
+    {
+        var (repo, readToken) = (inputs.Repo, inputs.ReadToken);
 
         RepoIdentifier? parsedRepo = null;
         if (string.IsNullOrWhiteSpace(repo))
             errors.Add("--repo is required");
         else
             parsedRepo = RepoIdentifier.Parse(repo).Collect(errors, "--repo");
-
-        if (string.IsNullOrWhiteSpace(prompt))
-            errors.Add("--prompt is required");
 
         if (string.IsNullOrWhiteSpace(readToken))
             errors.Add("--read-token is required");
@@ -99,47 +135,58 @@ internal record JobConfig
             ? null
             : AgentCredential.ResolveEnvName(resolvedAgent, inputs.AgentApiKeyEnv).Collect(errors, "--agent-api-key-env");
 
-        var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches);
+        var resolvedPushBranches = allowedPushBranches ?? ParseAllowedPushBranches(inputs.AllowedPushBranches);
 
         if (errors.Count > 0)
-            return new JobConfigInvalid([.. errors]);
+            return null;
 
         // Non-null here: any blank or unparseable input would have added an error above.
-        var config = new JobConfig
+        return new Parsed
         (
-            repo: parsedRepo!,
-            readToken: new GitReadToken(readToken),
-            timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
-            workDir: parsedWorkDir!,
-            outputDir: parsedOutputDir!,
-            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel, resolvedApiKey, resolvedApiKeyEnv),
-            allowedPushBranches: allowedPushBranches
+            Repo: parsedRepo!,
+            ReadToken: new GitReadToken(readToken),
+            TimeoutMinutes: new TimeoutMinutes(resolvedTimeout),
+            WorkDir: parsedWorkDir!,
+            OutputDir: parsedOutputDir!,
+            Agent: resolvedAgent,
+            MaxTokens: new MaxTokens(resolvedMaxTokens),
+            Model: resolvedModel,
+            ApiKey: resolvedApiKey,
+            ApiKeyEnv: resolvedApiKeyEnv,
+            AllowedPushBranches: resolvedPushBranches
         );
-        return new JobConfigValid(config);
     }
 
-    /// <summary>Returns a copy of this config with <paramref name="prompt"/> substituted for the
-    /// agent's task prompt. Used by <c>rix ci-failure-job</c>, where the real prompt is only known
-    /// once the CI-failure check actually finds a failure — everything else is validated up front
-    /// by <see cref="Create"/> against a placeholder prompt. <paramref name="prompt"/> itself is
-    /// never blank in practice (it's always built by <see cref="CiFailure.CiFailureRunner"/> from
-    /// a fixed template, not raw external input), but the check below still guards the invariant
-    /// <see cref="Create"/> would otherwise enforce for any other caller-supplied prompt.</summary>
-    internal JobConfig WithPrompt(string prompt)
+    /// <summary>A <see cref="JobConfig"/> minus its prompt: everything <see cref="Parse"/> could
+    /// determine from <see cref="JobInputs"/> alone. Exists so <see cref="Validate"/> and
+    /// <see cref="Create"/> share one parsing pass without <see cref="Validate"/> having to invent a
+    /// prompt just to reach the end of it.</summary>
+    private sealed record Parsed
+    (
+        RepoIdentifier Repo,
+        GitReadToken ReadToken,
+        TimeoutMinutes TimeoutMinutes,
+        DirectoryPath WorkDir,
+        DirectoryPath OutputDir,
+        AgentKind Agent,
+        MaxTokens MaxTokens,
+        string? Model,
+        string? ApiKey,
+        string? ApiKeyEnv,
+        IReadOnlyList<BranchName> AllowedPushBranches
+    )
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
-        return this with { Agent = Agent with { Prompt = prompt } };
+        internal JobConfig ToConfig(string prompt) => new
+        (
+            repo: Repo,
+            readToken: ReadToken,
+            timeoutMinutes: TimeoutMinutes,
+            workDir: WorkDir,
+            outputDir: OutputDir,
+            agent: new AgentConfig(Agent, prompt, MaxTokens, Model, ApiKey, ApiKeyEnv),
+            allowedPushBranches: AllowedPushBranches
+        );
     }
-
-    /// <summary>Returns a copy of this config with <paramref name="allowedPushBranches"/>
-    /// substituted for the <c>/push</c> allow-list. Used by <c>rix ci-failure-job</c>, which
-    /// derives the allow-list itself from the branch whose CI actually failed once that's known,
-    /// rather than accepting it as a caller-supplied input — the whole point of resuming a CI
-    /// failure is pushing a fix back onto that exact branch, so letting a caller widen the
-    /// allow-list to unrelated branches would undermine the restriction rather than configure
-    /// it.</summary>
-    internal JobConfig WithAllowedPushBranches(IReadOnlyList<BranchName> allowedPushBranches)
-    => this with { AllowedPushBranches = allowedPushBranches };
 
     /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
     /// branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
@@ -169,7 +216,7 @@ internal record JobConfig
 /// <paramref name="ApiKey"/> and <paramref name="ApiKeyEnv"/> (already resolved and validated by
 /// <see cref="AgentCredential.ResolveEnvName"/>) are <see cref="JobRunner"/>'s instructions for
 /// which single env var to add to the agent invocation's <see cref="AgentInvocation.EnvironmentOverrides"/>
-/// — never null together, and never both null unless no key was supplied at all.</summary>
+/// — both null when no key was supplied, otherwise both set; never one without the other.</summary>
 internal sealed record AgentConfig
 (
     AgentKind Kind,
@@ -180,15 +227,18 @@ internal sealed record AgentConfig
     string? ApiKeyEnv = null
 );
 
-/// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
-/// values first, then the optional ones (which default to <c>null</c> so callers set only what they
-/// care about). <see cref="JobConfig.Create"/> is the boundary that turns these primitives into the
-/// always-valid, strongly-typed <see cref="JobConfig"/>.</summary>
+/// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: whatever
+/// the caller supplied, if anything. Which of these a job actually requires is
+/// <see cref="JobConfig.Create"/>'s call, not the type's — <see cref="Prompt"/> defaults to
+/// <c>null</c> like every other unsupplied flag even though <c>job</c> demands one, because
+/// <c>rix ci-failure</c> builds these inputs before it knows what the prompt will be and fills it in
+/// via <c>with</c> once a failure hands it one. <see cref="JobConfig.Create"/> is the boundary that
+/// turns these primitives into the always-valid, strongly-typed <see cref="JobConfig"/>.</summary>
 internal record JobInputs
 (
     string Repo,
-    string Prompt,
     string ReadToken,
+    string? Prompt = null,
     string? MaxTokens = null,
     string? TimeoutMinutes = null,
     string? WorkDir = null,

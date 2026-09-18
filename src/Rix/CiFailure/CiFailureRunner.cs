@@ -1,67 +1,55 @@
+using Rix.Job;
 using Rix.Repository;
 
 namespace Rix.CiFailure;
 
 /// <summary>
-/// Given a specific workflow run, verifies it actually failed and, if so, builds a prompt
-/// describing the failure (PR number, run URL, failing step logs) for a coding agent to act on.
-/// Replaces what used to be bash + <c>gh</c> CLI in <c>on-ci-failure.yml</c>, so the "turn a
-/// failure into a prompt" logic lives in one tested place instead of a workflow script.
+/// Checks whether a workflow run failed and, only if it did, runs the coding agent against the
+/// prompt built from that failure — the full pipeline behind <c>rix ci-failure</c>. Thin
+/// orchestration over <see cref="CiFailureDetector.DetectAsync"/> and <see cref="JobRunner.RunAsync"/>;
+/// neither is duplicated here.
 /// </summary>
 internal static class CiFailureRunner
 {
-    /// <summary>Caps the log excerpt so a flooding failure can't blow the model's context budget.</summary>
-    private const int LogTailChars = 20_000;
-
-    internal static async Task<ICiFailureResult> RunAsync(CiFailureConfig config, IGitHubCiFailureHost host, CancellationToken cancellationToken)
+    /// <summary><paramref name="jobContextFor"/> is a factory rather than a ready-made
+    /// <see cref="JobContext"/> because a context is built around the <see cref="JobConfig"/> it
+    /// will run, and that config cannot exist until a failure has been detected and supplied the
+    /// prompt. It is never invoked when the run hadn't failed.</summary>
+    internal static async Task<CiFailureOutcome> RunAsync
+    (
+        CiFailureConfig config,
+        IGitHubCiFailureHost ciFailureHost,
+        Func<JobConfig, JobContext> jobContextFor,
+        CancellationToken cancellationToken
+    )
     {
-        // Every host call here fails the same way — a CiFailureError naming the operation that
-        // threw — so one catch at the boundary replaces a per-call try/catch. The host's exception
-        // message already says which fetch failed.
-        try
-        {
-            var run = await host.GetRunAsync(config.RunId, cancellationToken);
+        var detection = await CiFailureDetector.DetectAsync(config.Repo, config.RunId, ciFailureHost, cancellationToken);
+        if (detection is not CiFailureDetected detected)
+            return new CiFailureNotRun(detection);
 
-            if (run.Conclusion != "failure")
-                return new CiFailureSkipped(run.Conclusion);
-
-            // Independent of each other - only the already-fetched run is needed by both - so they
-            // run concurrently rather than paying two sequential network round-trips.
-            var logsTask = host.GetFailedJobLogsAsync(config.RunId, cancellationToken);
-            var prTask = host.FindOpenPullRequestNumberAsync(new BranchName(run.HeadBranch), cancellationToken);
-            await Task.WhenAll(logsTask, prTask);
-
-            var logs = await logsTask;
-            var prNumber = await prTask;
-
-            if (logs.Length > LogTailChars)
-                logs = logs[^LogTailChars..];
-
-            var prompt = BuildPrompt(config.Repo, run, prNumber, logs);
-            return new CiFailureDetected(prompt, run.HtmlUrl, run.HeadBranch, prNumber);
-        }
-        catch (RepositoryHostException ex)
-        {
-            return new CiFailureError(ex.Message);
-        }
-    }
-
-    private static string BuildPrompt(RepoIdentifier repo, WorkflowRun run, int? prNumber, string logs)
-    {
-        var prLine = prNumber switch
-        {
-            { } number => $"This is PR #{number} in {repo.Value}.\n",
-            null => "",
-        };
-
-        return $"""
-        CI failed on branch '{run.HeadBranch}' (run: {run.HtmlUrl}).
-        {prLine}Failing run title: {run.DisplayTitle}
-
-        Investigate the failure and fix it. Failing step log (tail):
-        ```
-        {logs}
-        ```
-        """;
+        // Resuming a CI failure means pushing a fix back onto the exact branch that failed - the
+        // only sensible /push target here, so it's derived from the detected run rather than
+        // accepted as a caller-supplied input (see CiFailureConfig.ToJobConfig). That branch
+        // already exists on the remote regardless of whether it happens to be rix/*-named (e.g. CI
+        // failed on a human's own branch, not a previous rix run), so it's always allowed.
+        var job = config.ToJobConfig(detected.Prompt, new BranchName(detected.Branch));
+        var jobResult = await JobRunner.RunAsync(job, jobContextFor(job), cancellationToken);
+        return new CiFailureRan(job, jobResult);
     }
 }
+
+/// <summary>Whether <see cref="CiFailureRunner.RunAsync"/> ran the agent at all.</summary>
+internal abstract record CiFailureOutcome
+{
+    private protected CiFailureOutcome() { }
+}
+
+/// <summary>The run either hadn't failed (<see cref="CiFailureSkipped"/>) or couldn't be checked
+/// (<see cref="CiFailureError"/>) — never <see cref="CiFailureDetected"/>, which always leads to
+/// <see cref="CiFailureRan"/> instead.</summary>
+internal sealed record CiFailureNotRun(ICiFailureResult Reason) : CiFailureOutcome;
+
+/// <summary>The agent ran. Carries the <see cref="JobConfig"/> it ran under, which only exists once
+/// a failure has been detected, so the caller can report the outcome against the same config
+/// instead of building a promptless stand-in for it.</summary>
+internal sealed record CiFailureRan(JobConfig Job, IJobResult Result) : CiFailureOutcome;

@@ -387,6 +387,8 @@ public class LocalApiServerTests
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         Assert.AreEqual(1, server.GetQueuedPushRequests().Count);
+        Assert.AreEqual(new BranchName("feature/human-work"), server.GetQueuedPushRequests()[0].Branch);
+        Assert.AreEqual(new BranchName("main"), server.GetQueuedPushRequests()[0].BaseBranch);
     }
 
     [DataTestMethod]

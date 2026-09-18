@@ -1,6 +1,6 @@
 name: Prepare rix environment
 description: >-
-  Shared setup for any rix job-shaped subcommand ('job', 'ci-failure-job'): installs the coding
+  Shared setup for any rix job-shaped subcommand ('job', 'ci-failure'): installs the coding
   agent CLI, downloads rix (exporting RIX_BIN), and normalizes max-tokens/timeout. Exports
   everything via $GITHUB_ENV so it reaches whichever later step in the calling job actually
   invokes rix. Does not touch agent-api-key at all - resolving its target env var and exporting

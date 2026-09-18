@@ -45,7 +45,9 @@ internal sealed class GitHubHost : IRepositoryHost
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
     => _read.RunGitAsync
     (
-        ["push", "origin", branch.Value],
+        // --end-of-options stops git from reading a branch name starting with "-" as an option —
+        // see GitHubReadHost.CreateBundleAsync for why it's this flag and not "--".
+        ["push", "origin", "--end-of-options", branch.Value],
         workingDirectory: repoDirectory,
         authenticated: true,
         cancellationToken
