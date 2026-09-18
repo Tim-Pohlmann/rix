@@ -1,7 +1,6 @@
 using Rix.Cli;
 using Rix.Job;
 using System.CommandLine;
-using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
@@ -13,7 +12,7 @@ public class JobCommandTests
     {
         var root = new RootCommand();
         root.AddCommand(JobCommand.Build(handler));
-        return new CommandLineBuilder(root).UseDefaults().Build();
+        return CliPipeline.Build(root);
     }
 
     [TestMethod]
@@ -219,5 +218,82 @@ public class JobCommandTests
 
         Assert.IsNotNull(captured);
         Assert.AreEqual(0, captured.AllowedPushBranches.Count);
+    }
+
+    [TestMethod]
+    public async Task Command_DropsBlankAndDuplicateAllowedPushBranches()
+    {
+        JobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r",
+             "--output-dir", Path.GetTempPath(), "--allowed-push-branches", "rix/a,,rix/a, rix/b"]);
+
+        Assert.IsNotNull(captured);
+        CollectionAssert.AreEqual(
+            new[] { "rix/a", "rix/b" },
+            captured.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
+
+    [TestMethod]
+    public async Task Command_AcceptsAllowedPushBranches_ThatAreNotRixBranches()
+    {
+        // The rix/* naming pattern is only a requirement for branches the agent creates via /pr;
+        // /push always delivers to a branch that already exists on the remote, so any name is fine.
+        JobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r",
+             "--output-dir", Path.GetTempPath(), "--allowed-push-branches", "rix/good,main,prod"]);
+
+        Assert.IsNotNull(captured);
+        CollectionAssert.AreEqual(
+            new[] { "rix/good", "main", "prod" },
+            captured.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
+
+    [TestMethod]
+    [DataRow("", "p", "r", "error: --repo is required")]
+    [DataRow("noslash", "p", "r", "error: --repo: 'noslash' is not a valid repo identifier")]
+    [DataRow("o/r", "", "r", "error: --prompt is required")]
+    [DataRow("o/r", "p", "", "error: --read-token is required")]
+    public async Task Command_Returns2_AndReportsTheFlag_WhenInputInvalid(string repo, string prompt, string readToken, string expectedError)
+    {
+        JobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        using var stderr = new ConsoleErrorScope();
+        var exitCode = await parser.InvokeAsync(
+            ["job", "--repo", repo, "--prompt", prompt, "--read-token", readToken, "--output-dir", Path.GetTempPath()]);
+
+        Assert.IsNull(captured);
+        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
+        StringAssert.Contains(stderr.Text, expectedError);
+    }
+
+    [TestMethod]
+    public async Task Command_ReportsOnlyTheFirstProblem()
+    {
+        var parser = BuildParser(_ => Task.FromResult(0));
+
+        using var stderr = new ConsoleErrorScope();
+        var exitCode = await parser.InvokeAsync(["job", "--repo", "", "--prompt", "", "--read-token", ""]);
+
+        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
+        Assert.AreEqual("error: --repo is required", stderr.Text.Trim());
     }
 }

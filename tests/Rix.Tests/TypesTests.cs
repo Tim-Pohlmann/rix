@@ -21,7 +21,42 @@ public class TypesTests
     [DataRow("")]
     public void RixBranchName_ThrowsOnInvalidValues(string value)
     {
-        Assert.ThrowsExactly<ArgumentException>(() => new RixBranchName(value));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => new RixBranchName(value));
+        StringAssert.Contains(ex.Message, "rix/*");
+    }
+
+    [TestMethod]
+    [DataRow("noslash")]
+    [DataRow("owner/repo/extra")]
+    [DataRow("/repo")]
+    [DataRow("owner/")]
+    public void RepoIdentifier_RejectsInvalidFormat(string repo)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => new RepoIdentifier(repo));
+        StringAssert.Contains(ex.Message, "repo identifier");
+    }
+
+    [TestMethod]
+    public void RepoIdentifier_AcceptsOwnerSlashRepo()
+    {
+        var repo = new RepoIdentifier("owner/repo");
+        Assert.AreEqual("owner/repo", repo.Value);
+        Assert.AreEqual("owner", repo.Owner);
+    }
+
+    [TestMethod]
+    public void DirectoryPath_NormalisesRelativeToAbsolute()
+    {
+        var path = new DirectoryPath(".");
+        Assert.IsTrue(Path.IsPathRooted(path.Value), $"expected an absolute path, got: {path.Value}");
+        Assert.AreEqual(Path.GetFullPath("."), path.Value);
+    }
+
+    [TestMethod]
+    public void DirectoryPath_RejectsNonExistent()
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => new DirectoryPath("/nonexistent/path/xyz"));
+        Assert.AreEqual("directory does not exist: /nonexistent/path/xyz", ex.Message);
     }
 
     [TestMethod]
@@ -69,7 +104,7 @@ public class TypesTests
     [TestMethod]
     public void RixBranchName_DeserializeInvalidValue_ThrowsJsonException()
     {
-        // ArgumentException from RixBranchName ctor should be wrapped as JsonException
+        // InvalidInputException from RixBranchName ctor should be wrapped as JsonException
         Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<RixBranchName>("\"main\""));
     }
 

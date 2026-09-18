@@ -15,30 +15,7 @@ internal static class CiFailureCommand
 
         command.SetHandler
         (
-            async ctx =>
-            {
-                var parsed = ctx.ParseResult;
-                var result = CiFailureConfig.Create
-                (
-                    repo:      parsed.Str(CiFailureOptions.RepoOption,      "RIX_REPO"),
-                    readToken: parsed.Str(CiFailureOptions.ReadTokenOption, "RIX_READ_TOKEN"),
-                    runId:     parsed.Str(CiFailureOptions.RunIdOption,     "RIX_RUN_ID")
-                );
-
-                switch (result)
-                {
-                    case CiFailureConfigValid valid:
-                        ctx.ExitCode = await handler(valid.Config);
-                        break;
-                    case CiFailureConfigInvalid invalid:
-                        foreach (var error in invalid.Errors)
-                            Console.Error.WriteLine($"error: {error}");
-                        ctx.ExitCode = ExitCodes.SetupFailed;
-                        break;
-                    default:
-                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
-                }
-            }
+            async ctx => ctx.ExitCode = await handler(CiFailureOptions.ReadConfig(ctx.ParseResult))
         );
 
         return command;

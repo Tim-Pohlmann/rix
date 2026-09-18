@@ -1,4 +1,6 @@
+using Rix.CiFailure;
 using System.CommandLine;
+using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
@@ -26,4 +28,14 @@ internal static class CiFailureOptions
         description: "GitHub PAT with read access to the repo, including Actions:read"
     )
     { IsRequired = false };
+
+    /// <summary>Turns the shared options into a <see cref="CiFailureConfig"/>; the first malformed
+    /// value throws <see cref="InvalidInputException"/>, which <see cref="CliPipeline"/> reports.</summary>
+    internal static CiFailureConfig ReadConfig(ParseResult parsed)
+    => new
+    (
+        Repo: Input.Required("--repo", parsed.Str(RepoOption, "RIX_REPO"), value => new RepoIdentifier(value)),
+        ReadToken: Input.Required("--read-token", parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"), value => new GitReadToken(value)),
+        RunId: Input.Required("--run-id", parsed.Str(RunIdOption, "RIX_RUN_ID"), Input.Positive<long>)
+    );
 }

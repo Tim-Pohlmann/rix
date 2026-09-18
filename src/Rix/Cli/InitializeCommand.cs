@@ -26,21 +26,8 @@ internal static class InitializeCommand
                 // Unlike the CI-run commands, `initialize` is a local dev step - no RIX_* env
                 // fallback; an absent --dir just means "this repo".
                 var dir = ctx.ParseResult.GetValueForOption(DirOption) ?? Directory.GetCurrentDirectory();
-                var result = InitializeConfig.Create(dir);
-
-                switch (result)
-                {
-                    case InitializeConfigValid valid:
-                        ctx.ExitCode = await handler(valid.Config);
-                        break;
-                    case InitializeConfigInvalid invalid:
-                        foreach (var error in invalid.Errors)
-                            Console.Error.WriteLine($"error: {error}");
-                        ctx.ExitCode = ExitCodes.SetupFailed;
-                        break;
-                    default:
-                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
-                }
+                var config = new InitializeConfig(Input.Required("--dir", dir, path => new DirectoryPath(path)));
+                ctx.ExitCode = await handler(config);
             }
         );
 

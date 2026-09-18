@@ -807,7 +807,7 @@ public class JobRunnerTests
     private JobConfig MakeConfig(string? allowedPushBranches = null, string? agentApiKey = null, string? agentApiKeyEnv = null)
     => TestConfig.Valid(
         prompt: "Do something", workDir: _workDir, outputDir: _outputDir,
-        allowedPushBranches: allowedPushBranches,
+        allowedPushBranches: (allowedPushBranches ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(b => new BranchName(b)).ToList(),
         agentApiKey: agentApiKey, agentApiKeyEnv: agentApiKeyEnv);
 
     private static RunProcessAsync FakeRunner(

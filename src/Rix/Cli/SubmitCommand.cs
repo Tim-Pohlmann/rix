@@ -47,27 +47,14 @@ internal static class SubmitCommand
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var result = SubmitConfig.Create
+                var config = new SubmitConfig
                 (
-                    repo:       parsed.Str(RepoOption,        "RIX_REPO"),
-                    writeToken: parsed.Str(WriteTokenOption,  "RIX_WRITE_TOKEN"),
-                    inputDir:   parsed.Str(InputDirOption,    "RIX_INPUT_DIR"),
-                    workDir:    parsed.Str(WorkDirOption,     "RIX_WORK_DIR")
+                    Repo: Input.Required("--repo", parsed.Str(RepoOption, "RIX_REPO"), value => new RepoIdentifier(value)),
+                    WriteToken: Input.Required("--write-token", parsed.Str(WriteTokenOption, "RIX_WRITE_TOKEN"), value => new GitToken(value)),
+                    InputDir: Input.Required("--input-dir", parsed.Str(InputDirOption, "RIX_INPUT_DIR"), path => new DirectoryPath(path)),
+                    WorkDir: Input.Optional("--work-dir", parsed.Str(WorkDirOption, "RIX_WORK_DIR"), path => new DirectoryPath(path), new DirectoryPath(Path.GetTempPath()))
                 );
-
-                switch (result)
-                {
-                    case SubmitConfigValid valid:
-                        ctx.ExitCode = await handler(valid.Config);
-                        break;
-                    case SubmitConfigInvalid invalid:
-                        foreach (var error in invalid.Errors)
-                            Console.Error.WriteLine($"error: {error}");
-                        ctx.ExitCode = ExitCodes.SetupFailed;
-                        break;
-                    default:
-                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
-                }
+                ctx.ExitCode = await handler(config);
             }
         );
 

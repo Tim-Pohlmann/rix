@@ -1,5 +1,4 @@
 using Rix.CiFailure;
-using Rix.Job;
 using System.CommandLine;
 
 namespace Rix.Cli;
@@ -30,41 +29,19 @@ internal static class CiFailureJobCommand
         (
             async ctx =>
             {
-                var parsed = ctx.ParseResult;
-                var inputs = new CiFailureJobInputs
+                var ciFailure = CiFailureOptions.ReadConfig(ctx.ParseResult);
+                // The prompt is a placeholder and the /push allow-list empty on purpose: both are
+                // derived by CiFailureJobRunner from the failure it detects, never taken from the
+                // caller (see CiFailureJobConfig).
+                var job = JobOptions.ReadConfig
                 (
-                    RunId: parsed.Str(CiFailureOptions.RunIdOption, "RIX_RUN_ID"),
-                    Job: new JobInputs
-                    (
-                        Repo:           parsed.Str(CiFailureOptions.RepoOption,      "RIX_REPO"),
-                        // Overwritten by CiFailureJobConfig.Create once a failure is detected.
-                        Prompt:         "",
-                        ReadToken:      parsed.Str(CiFailureOptions.ReadTokenOption, "RIX_READ_TOKEN"),
-                        MaxTokens:      parsed.Str(JobOptions.MaxTokensOption, "RIX_MAX_TOKENS"),
-                        TimeoutMinutes: parsed.Str(JobOptions.TimeoutOption,   "RIX_TIMEOUT"),
-                        WorkDir:        parsed.Str(JobOptions.WorkDirOption,   "RIX_WORK_DIR"),
-                        OutputDir:      parsed.Str(JobOptions.OutputDirOption, "RIX_OUTPUT_DIR"),
-                        Agent:          parsed.Str(JobOptions.AgentOption,     "RIX_AGENT"),
-                        Model:          parsed.Str(JobOptions.ModelOption,     "RIX_MODEL"),
-                        AgentApiKey:    parsed.Str(JobOptions.AgentApiKeyOption,    "AGENT_API_KEY"),
-                        AgentApiKeyEnv: parsed.Str(JobOptions.AgentApiKeyEnvOption, "AGENT_API_KEY_ENV")
-                    )
+                    ctx.ParseResult,
+                    repo: ciFailure.Repo,
+                    readToken: ciFailure.ReadToken,
+                    prompt: CiFailureJobConfig.PlaceholderPrompt,
+                    allowedPushBranches: []
                 );
-                var result = CiFailureJobConfig.Create(inputs);
-
-                switch (result)
-                {
-                    case CiFailureJobConfigValid valid:
-                        ctx.ExitCode = await handler(valid.Config);
-                        break;
-                    case CiFailureJobConfigInvalid invalid:
-                        foreach (var error in invalid.Errors)
-                            Console.Error.WriteLine($"error: {error}");
-                        ctx.ExitCode = ExitCodes.SetupFailed;
-                        break;
-                    default:
-                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
-                }
+                ctx.ExitCode = await handler(new CiFailureJobConfig(ciFailure, job));
             }
         );
 

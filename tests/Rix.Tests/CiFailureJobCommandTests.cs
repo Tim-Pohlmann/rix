@@ -1,7 +1,6 @@
 using Rix.Cli;
 using Rix.CiFailure;
 using System.CommandLine;
-using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
@@ -13,7 +12,7 @@ public class CiFailureJobCommandTests
     {
         var root = new RootCommand();
         root.AddCommand(CiFailureJobCommand.Build(handler));
-        return new CommandLineBuilder(root).UseDefaults().Build();
+        return CliPipeline.Build(root);
     }
 
     [TestMethod]
@@ -119,5 +118,49 @@ public class CiFailureJobCommandTests
         Assert.IsNotNull(captured);
         Assert.AreEqual("secret", captured.Job.Agent.ApiKey);
         Assert.AreEqual("ANTHROPIC_API_KEY", captured.Job.Agent.ApiKeyEnv);
+    }
+
+    [TestMethod]
+    public async Task Command_UsesPlaceholderPrompt_AndNoAllowedPushBranches()
+    {
+        CiFailureJobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["ci-failure-job", "--repo", "o/r", "--read-token", "r", "--run-id", "1", "--output-dir", Path.GetTempPath()]);
+
+        Assert.IsNotNull(captured);
+        // Both are derived from the detected failure by CiFailureJobRunner, never from the caller.
+        Assert.AreEqual(CiFailureJobConfig.PlaceholderPrompt, captured.Job.Agent.Prompt);
+        Assert.AreEqual(0, captured.Job.AllowedPushBranches.Count);
+        Assert.AreEqual(captured.CiFailure.Repo, captured.Job.Repo);
+        Assert.AreEqual(captured.CiFailure.ReadToken, captured.Job.ReadToken);
+    }
+
+    [TestMethod]
+    [DataRow("--max-tokens", "abc", "error: --max-tokens: must be a positive integer, got 'abc'")]
+    [DataRow("--agent", "not-a-real-agent", "error: --agent: unknown agent 'not-a-real-agent'")]
+    [DataRow("--agent-api-key-env", "NOT_CREDENTIAL_SHAPED", "error: --agent-api-key-env: 'NOT_CREDENTIAL_SHAPED' must be")]
+    public async Task Command_Returns2_AndReportsTheFlag_WhenInputInvalid(string flag, string value, string expectedError)
+    {
+        CiFailureJobConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        using var stderr = new ConsoleErrorScope();
+        var exitCode = await parser.InvokeAsync(
+            ["ci-failure-job", "--repo", "o/r", "--read-token", "r", "--run-id", "1", "--output-dir", Path.GetTempPath(),
+             "--agent-api-key", "secret", flag, value]);
+
+        Assert.IsNull(captured);
+        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
+        StringAssert.Contains(stderr.Text, expectedError);
     }
 }

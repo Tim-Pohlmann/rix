@@ -1,7 +1,6 @@
 using Rix.Cli;
 using Rix.CiFailure;
 using System.CommandLine;
-using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
@@ -13,7 +12,7 @@ public class CiFailureCommandTests
     {
         var root = new RootCommand();
         root.AddCommand(CiFailureCommand.Build(handler));
-        return new CommandLineBuilder(root).UseDefaults().Build();
+        return CliPipeline.Build(root);
     }
 
     [TestMethod]

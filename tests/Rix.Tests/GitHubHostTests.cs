@@ -30,7 +30,7 @@ public class GitHubHostTests
         RunProcessAsync? gitRunner = null)
     => new
     (
-        TestConfig.Repo(repo),
+        new RepoIdentifier(repo),
         new GitReadToken(readToken),
         gitRunner ?? SuccessGitRunner,
         new DelegatingHandlerStub(handler)
@@ -345,7 +345,7 @@ public class GitHubHostTests
         RunProcessAsync? gitRunner = null)
     => new
     (
-        TestConfig.Repo(repo),
+        new RepoIdentifier(repo),
         new GitToken(writeToken),
         gitRunner ?? SuccessGitRunner,
         new DelegatingHandlerStub(handler)

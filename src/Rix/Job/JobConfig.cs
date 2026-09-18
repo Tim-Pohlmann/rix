@@ -2,129 +2,36 @@ using Rix.Agents;
 
 namespace Rix.Job;
 
+/// <summary>Everything <c>rix job</c> needs, already strongly typed: every field is a value object
+/// that validated itself on construction, so a <see cref="JobConfig"/> can't exist in an invalid
+/// state and nothing downstream re-checks it. Turning raw CLI/environment text into these values
+/// is the CLI layer's job (see <see cref="Cli.JobOptions"/>).</summary>
+/// <param name="AllowedPushBranches">The only branches <c>/push</c> may deliver to. Empty means
+/// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch. Any
+/// branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates via
+/// <c>/pr</c>), since these already exist on the remote before the job ever runs.</param>
 internal record JobConfig
+(
+    RepoIdentifier Repo,
+    GitReadToken ReadToken,
+    TimeoutMinutes TimeoutMinutes,
+    DirectoryPath WorkDir,
+    DirectoryPath OutputDir,
+    AgentConfig Agent,
+    IReadOnlyList<BranchName> AllowedPushBranches
+)
 {
-    internal RepoIdentifier Repo { get; init; }
-    internal GitReadToken ReadToken { get; init; }
-    internal TimeoutMinutes TimeoutMinutes { get; init; }
-    internal DirectoryPath WorkDir { get; init; }
-    internal DirectoryPath OutputDir { get; init; }
-    internal AgentConfig Agent { get; init; }
-
-    /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
-    /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.
-    /// Any branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates
-    /// via <c>/pr</c>), since these already exist on the remote before the job ever runs.</summary>
-    internal IReadOnlyList<BranchName> AllowedPushBranches { get; init; }
-
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
     internal const AgentKind DefaultAgent = AgentKind.OpenCode;
 
-    /// <summary>Private so a <see cref="JobConfig"/> can only be produced by <see cref="Create"/>,
-    /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
-    private JobConfig
-    (
-        RepoIdentifier repo,
-        GitReadToken readToken,
-        TimeoutMinutes timeoutMinutes,
-        DirectoryPath workDir,
-        DirectoryPath outputDir,
-        AgentConfig agent,
-        IReadOnlyList<BranchName> allowedPushBranches
-    )
-    {
-        Repo = repo;
-        ReadToken = readToken;
-        TimeoutMinutes = timeoutMinutes;
-        WorkDir = workDir;
-        OutputDir = outputDir;
-        Agent = agent;
-        AllowedPushBranches = allowedPushBranches;
-    }
-
-    /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
-    /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
-    /// collected, so a <see cref="JobConfigValid"/> is produced only when the whole configuration is
-    /// well-formed — business logic downstream never sees an invalid value.</summary>
-    internal static JobConfigResult Create(JobInputs inputs)
-    {
-        var (repo, prompt, readToken) = (inputs.Repo, inputs.Prompt, inputs.ReadToken);
-        var errors = new List<string>();
-
-        RepoIdentifier? parsedRepo = null;
-        if (string.IsNullOrWhiteSpace(repo))
-            errors.Add("--repo is required");
-        else
-            parsedRepo = RepoIdentifier.Parse(repo).Collect(errors, "--repo");
-
-        if (string.IsNullOrWhiteSpace(prompt))
-            errors.Add("--prompt is required");
-
-        if (string.IsNullOrWhiteSpace(readToken))
-            errors.Add("--read-token is required");
-
-        var resolvedMaxTokens = NumericFlag.ParsePositiveInt<int>(inputs.MaxTokens, DefaultMaxTokens, "--max-tokens", errors);
-        var resolvedTimeout = NumericFlag.ParsePositiveInt<int>(inputs.TimeoutMinutes, DefaultTimeoutMinutes, "--timeout", errors);
-
-        var resolvedWorkDir = string.IsNullOrWhiteSpace(inputs.WorkDir) switch
-        {
-            true => Path.GetTempPath(),
-            false => inputs.WorkDir,
-        };
-        var parsedWorkDir = DirectoryPath.Parse(resolvedWorkDir).Collect(errors, "--work-dir");
-
-        DirectoryPath? parsedOutputDir = null;
-        if (string.IsNullOrWhiteSpace(inputs.OutputDir))
-            errors.Add("--output-dir is required");
-        else
-            parsedOutputDir = DirectoryPath.Parse(inputs.OutputDir).Collect(errors, "--output-dir");
-
-        var resolvedAgent = string.IsNullOrWhiteSpace(inputs.Agent) switch
-        {
-            true => DefaultAgent,
-            false => AgentKindParser.Parse(inputs.Agent).Match
-            (
-                onSuccess: kind => kind,
-                onError: error => { errors.Add($"--agent: {error}"); return DefaultAgent; }
-            ),
-        };
-
-        var resolvedModel = string.IsNullOrWhiteSpace(inputs.Model) ? null : inputs.Model;
-
-        // No key is required when model is left unset - opencode then picks its own free model.
-        // The env var name is only resolved (and validated) once a key actually needs exporting.
-        string? resolvedApiKey = string.IsNullOrWhiteSpace(inputs.AgentApiKey) ? null : inputs.AgentApiKey;
-        string? resolvedApiKeyEnv = resolvedApiKey is null
-            ? null
-            : AgentCredential.ResolveEnvName(resolvedAgent, inputs.AgentApiKeyEnv).Collect(errors, "--agent-api-key-env");
-
-        var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches);
-
-        if (errors.Count > 0)
-            return new JobConfigInvalid([.. errors]);
-
-        // Non-null here: any blank or unparseable input would have added an error above.
-        var config = new JobConfig
-        (
-            repo: parsedRepo!,
-            readToken: new GitReadToken(readToken),
-            timeoutMinutes: new TimeoutMinutes(resolvedTimeout),
-            workDir: parsedWorkDir!,
-            outputDir: parsedOutputDir!,
-            agent: new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel, resolvedApiKey, resolvedApiKeyEnv),
-            allowedPushBranches: allowedPushBranches
-        );
-        return new JobConfigValid(config);
-    }
-
     /// <summary>Returns a copy of this config with <paramref name="prompt"/> substituted for the
     /// agent's task prompt. Used by <c>rix ci-failure-job</c>, where the real prompt is only known
-    /// once the CI-failure check actually finds a failure — everything else is validated up front
-    /// by <see cref="Create"/> against a placeholder prompt. <paramref name="prompt"/> itself is
-    /// never blank in practice (it's always built by <see cref="CiFailure.CiFailureRunner"/> from
-    /// a fixed template, not raw external input), but the check below still guards the invariant
-    /// <see cref="Create"/> would otherwise enforce for any other caller-supplied prompt.</summary>
+    /// once the CI-failure check actually finds a failure — everything else is built up front
+    /// around a placeholder prompt. <paramref name="prompt"/> itself is never blank in practice
+    /// (it's always built by <see cref="CiFailure.CiFailureRunner"/> from a fixed template, not
+    /// raw external input), but the check below still guards the invariant the CLI enforces for
+    /// any other caller-supplied prompt.</summary>
     internal JobConfig WithPrompt(string prompt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
@@ -140,24 +47,6 @@ internal record JobConfig
     /// it.</summary>
     internal JobConfig WithAllowedPushBranches(IReadOnlyList<BranchName> allowedPushBranches)
     => this with { AllowedPushBranches = allowedPushBranches };
-
-    /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
-    /// branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
-    /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
-    /// must opt in to letting the agent push at all. Unlike the <c>rix/*</c>-restricted branches the
-    /// agent creates via <c>/pr</c>, any branch name is acceptable here, since these already exist on
-    /// the remote before the job ever runs. Duplicates are dropped.</summary>
-    private static List<BranchName> ParseAllowedPushBranches(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return [];
-
-        return raw
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(entry => new BranchName(entry))
-            .Distinct()
-            .ToList();
-    }
 }
 
 /// <summary>How the coding agent should be run: which agent (<see cref="AgentKind"/>), the task
@@ -179,34 +68,3 @@ internal sealed record AgentConfig
     string? ApiKey = null,
     string? ApiKeyEnv = null
 );
-
-/// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
-/// values first, then the optional ones (which default to <c>null</c> so callers set only what they
-/// care about). <see cref="JobConfig.Create"/> is the boundary that turns these primitives into the
-/// always-valid, strongly-typed <see cref="JobConfig"/>.</summary>
-internal record JobInputs
-(
-    string Repo,
-    string Prompt,
-    string ReadToken,
-    string? MaxTokens = null,
-    string? TimeoutMinutes = null,
-    string? WorkDir = null,
-    string? OutputDir = null,
-    string? Agent = null,
-    string? Model = null,
-    string? AgentApiKey = null,
-    string? AgentApiKeyEnv = null,
-    string? AllowedPushBranches = null
-);
-
-/// <summary>The result of <see cref="JobConfig.Create"/>: a validated config or the list of
-/// reasons it was rejected. Pattern-matched by callers; never cast.</summary>
-internal abstract record JobConfigResult
-{
-    private protected JobConfigResult() { }
-}
-
-internal sealed record JobConfigValid(JobConfig Config) : JobConfigResult;
-
-internal sealed record JobConfigInvalid(IReadOnlyList<string> Errors) : JobConfigResult;

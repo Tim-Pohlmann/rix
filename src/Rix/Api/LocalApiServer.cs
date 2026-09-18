@@ -67,6 +67,25 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         var app = builder.Build();
 
+        // The one place a malformed request field becomes a response: the handlers construct their
+        // value objects straight from the request, and the first field that can't be (blank, or
+        // e.g. a /pr branch outside rix/*) throws an InvalidInputException that surfaces here as a
+        // 400 naming that field.
+        app.Use
+        (
+            async (context, next) =>
+            {
+                try
+                {
+                    await next(context);
+                }
+                catch (InvalidInputException ex)
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await context.Response.WriteAsJsonAsync(new ErrorResponse(ex.Message), ApiJsonContext.Default.ErrorResponse, cancellationToken: context.RequestAborted);
+                }
+            }
+        );
         MapEndpoints(app, host, cloneDir, pendingPrRequests, pendingPushRequests, allowedPushBranches);
 
         await app.StartAsync(cancellationToken);
@@ -103,11 +122,13 @@ internal sealed class LocalApiServer : IAsyncDisposable
         CancellationToken ct
     )
     {
-        var validation = req.Validate();
-        if (validation is InvalidPr(var reason))
-            return Results.BadRequest(new ErrorResponse(reason));
-        if (validation is not ValidPr(var queuedPr))
-            throw new NotSupportedException($"Unexpected PR validation {validation.GetType()}");
+        var queuedPr = new QueuedPr
+        (
+            Branch: Input.Required("branch", req.Branch, value => new RixBranchName(value)),
+            BaseBranch: Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value)),
+            Title: Input.Required("title", req.Title, value => new PrTitle(value)),
+            Body: Input.Required("body", req.Body, value => new PrBody(value))
+        );
 
         if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
             return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
@@ -136,11 +157,13 @@ internal sealed class LocalApiServer : IAsyncDisposable
         CancellationToken ct
     )
     {
-        var validation = req.Validate();
-        if (validation is InvalidPush(var reason))
-            return Results.BadRequest(new ErrorResponse(reason));
-        if (validation is not ValidPush(var queuedPush))
-            throw new NotSupportedException($"Unexpected push validation {validation.GetType()}");
+        // Unlike /pr, the branch here already exists on the remote (checked below), so it isn't a
+        // name the agent is inventing - any branch name is acceptable, not just rix/*.
+        var queuedPush = new QueuedPush
+        (
+            Branch: Input.Required("branch", req.Branch, value => new BranchName(value)),
+            BaseBranch: Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value))
+        );
 
         // The job's configuration names the only branches /push may deliver to (e.g. just the branch
         // this run is resuming); an empty/unset list means none are allowed. Enforced here, before
@@ -185,17 +208,11 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
     /// <summary>Cancels the queued request for <paramref name="req"/>'s branch by dispatching to
     /// <paramref name="remove"/> once the branch is known well-formed — shared by /pr and /push,
-    /// which differ only in where the branch is actually removed from.</summary>
+    /// which differ only in where the branch is actually removed from. So the branch can't be
+    /// restricted to rix/* here: only /pr's own POST enforces that when it queues the branch in the
+    /// first place; deleting a queued push must accept whatever name was queued.</summary>
     private static IResult HandleDelete(DeleteRequest req, Func<BranchName, IResult> remove)
-    {
-        var validation = req.Validate();
-        if (validation is InvalidDelete(var reason))
-            return Results.BadRequest(new ErrorResponse(reason));
-        if (validation is not ValidDelete(var branch))
-            throw new NotSupportedException($"Unexpected delete validation {validation.GetType()}");
-
-        return remove(branch);
-    }
+    => remove(Input.Required("branch", req.Branch, value => new BranchName(value)));
 
     // A well-formed branch with nothing queued is a 404 so the agent learns its cancel was a no-op
     // rather than assuming it took.

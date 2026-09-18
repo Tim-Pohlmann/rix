@@ -1,7 +1,6 @@
 using Rix.Cli;
 using Rix.Initialize;
 using System.CommandLine;
-using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
@@ -13,7 +12,7 @@ public class InitializeCommandTests
     {
         var root = new RootCommand();
         root.AddCommand(InitializeCommand.Build(handler));
-        return new CommandLineBuilder(root).UseDefaults().Build();
+        return CliPipeline.Build(root);
     }
 
     [TestMethod]
@@ -54,8 +53,32 @@ public class InitializeCommandTests
     [TestMethod]
     public async Task Command_Returns2_WhenDirDoesNotExist()
     {
-        var parser = BuildParser(_ => Task.FromResult(0));
+        InitializeConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        using var stderr = new ConsoleErrorScope();
         var exitCode = await parser.InvokeAsync(["initialize", "--dir", "/nonexistent/path/xyz"]);
-        Assert.AreEqual(2, exitCode);
+
+        Assert.IsNull(captured);
+        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
+        StringAssert.Contains(stderr.Text, "error: --dir: directory does not exist: /nonexistent/path/xyz");
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("   ")]
+    public async Task Command_Returns2_WhenDirIsBlank(string dir)
+    {
+        var parser = BuildParser(_ => Task.FromResult(0));
+
+        using var stderr = new ConsoleErrorScope();
+        var exitCode = await parser.InvokeAsync(["initialize", "--dir", dir]);
+
+        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
+        StringAssert.Contains(stderr.Text, "error: --dir is required");
     }
 }
