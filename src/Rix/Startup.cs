@@ -1,4 +1,5 @@
 using Rix.Agents;
+using Rix.CiFailure;
 using Rix.Cli;
 using Rix.Job;
 using Rix.Process;
@@ -20,9 +21,15 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
+    => DefaultContext(config, new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
+
+    /// <summary>Overload for callers (e.g. <see cref="ExecuteCiFailureAsync"/>) that already
+    /// have a host instance to reuse — e.g. one also serving as the <see cref="IGitHubCiFailureHost"/>
+    /// for the same run, rather than opening a second, redundant connection.</summary>
+    internal static JobContext DefaultContext(JobConfig config, IRepositoryReadHost host)
     => new
     (
-        Host: new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
+        Host: host,
         RunProcess: ProcessWrapper.RunAsync,
         Agent: SelectAgent(config.Agent.Kind),
         LogLine: Console.Error.WriteLine,
@@ -37,6 +44,17 @@ internal static class Startup
         AgentKind.Pi => new PiAgent(),
         _ => throw new NotSupportedException($"Unsupported agent: {agent}"),
     };
+
+    /// <summary>The production <see cref="CiFailureContext"/>: one <see cref="GitHubReadHost"/>
+    /// backs both halves, since it implements the ci-failure check and the job's clone alike —
+    /// two roles against the same repo under the same credential, rather than two independently
+    /// connected hosts. Built only when no context was supplied, so a test that brings its own
+    /// stubs opens no connection at all.</summary>
+    private static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
+    {
+        var host = new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync);
+        return new CiFailureContext(host, job => DefaultContext(job, host));
+    }
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub host authenticated with the
     /// write token, the default process runner, and a stderr log sink.</summary>
@@ -71,6 +89,7 @@ internal static class Startup
             var rootCommand = new RootCommand("RIX - AI-powered code automation");
             rootCommand.AddCommand(JobCommand.Build(config => ExecuteJobAsync(config, cts.Token)));
             rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, cts.Token)));
+            rootCommand.AddCommand(CiFailureCommand.Build(config => ExecuteCiFailureAsync(config, cts.Token)));
             return await new CommandLineBuilder(rootCommand).UseDefaults().Build().InvokeAsync(args);
         }
         finally
@@ -104,10 +123,30 @@ internal static class Startup
     internal static async Task<int> ExecuteJobAsync(JobConfig config, CancellationToken cancellationToken, JobContext? context = null)
     {
         var transcriptLines = new List<string>();
-        context ??= DefaultContext(config);
+        var result = await JobRunner.RunAsync(config, Teeing(context ?? DefaultContext(config), transcriptLines), cancellationToken);
+        return await WriteJobResultAsync(config, result, transcriptLines);
+    }
+
+    /// <summary>Wraps <paramref name="context"/>'s transcript sink so every line it emits is also
+    /// collected into <paramref name="transcriptLines"/>, which <see cref="WriteJobResultAsync"/>
+    /// later writes to <c>transcript.md</c>. Tees rather than replaces, so whatever the context
+    /// already did with each line (printing it, in the default case) still happens.</summary>
+    private static JobContext Teeing(JobContext context, List<string> transcriptLines)
+    {
         var transcriptSink = context.TranscriptLine;
-        context = context with { TranscriptLine = line => { transcriptSink(line); transcriptLines.Add(line); } };
-        var result = await JobRunner.RunAsync(config, context, cancellationToken);
+        return context with { TranscriptLine = line => { transcriptSink(line); transcriptLines.Add(line); } };
+    }
+
+    /// <summary>
+    /// Writes a job's outcome the same way regardless of what led to it: the result JSON to
+    /// stdout, <c>result.json</c> to <paramref name="config"/>'s output dir (even on failure, so
+    /// downstream tooling has one reliable place to read the outcome from), and
+    /// <c>transcript.md</c> if the agent said anything worth keeping. Shared by
+    /// <see cref="ExecuteJobAsync"/> and <see cref="ExecuteCiFailureAsync"/>, which only differ
+    /// in how they arrive at <paramref name="result"/>.
+    /// </summary>
+    private static async Task<int> WriteJobResultAsync(JobConfig config, IJobResult result, List<string> transcriptLines)
+    {
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
         // Best-effort: once the job outcome above is decided, a broken/closed stdout pipe must not
         // stop the correct exit code from being returned any more than a result.json write failure
@@ -185,6 +224,45 @@ internal static class Startup
             SubmitSuccess => ExitCodes.Success,
             SubmitFailure => ExitCodes.JobFailed,
             _ => throw new NotSupportedException($"Unexpected submit result type: {result.GetType()}"),
+        };
+    }
+
+    /// <summary>Writes the outcome of a check that never reached the agent: the result JSON to
+    /// stdout, mapped to an exit code. <see cref="CiFailureSkipped"/> exits successfully (there was
+    /// simply nothing to do); only <see cref="CiFailureError"/> — a problem talking to the API, not
+    /// the run itself failing — is treated as a job failure. <see cref="CiFailureDetected"/> never
+    /// arrives here: it always leads to <see cref="WriteJobResultAsync"/> instead.</summary>
+    private static int WriteCiFailureResult(ICiFailureResult result)
+    {
+        var json = JsonSerializer.Serialize(result, CiFailureJsonContext.Default.ICiFailureResult);
+        Console.WriteLine(json);
+        return result switch
+        {
+            CiFailureDetected or CiFailureSkipped => ExitCodes.Success,
+            CiFailureError => ExitCodes.JobFailed,
+            _ => throw new NotSupportedException($"Unexpected ci-failure result type: {result.GetType()}"),
+        };
+    }
+
+    /// <summary>
+    /// Imperative shell around <see cref="CiFailureRunner.RunAsync"/>: checks whether the run
+    /// failed and, only if it did, runs the agent — reusing <see cref="WriteCiFailureResult"/> and
+    /// <see cref="WriteJobResultAsync"/> so each outcome is reported identically to its <c>rix
+    /// job</c> counterpart.
+    /// </summary>
+    internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, CiFailureContext? context = null)
+    {
+        var transcriptLines = new List<string>();
+        // Never reassigned, so the teed copy below wraps the original factory rather than itself.
+        var collaborators = context ?? DefaultCiFailureContext(config);
+        var teed = collaborators with { JobFor = job => Teeing(collaborators.JobFor(job), transcriptLines) };
+
+        var outcome = await CiFailureRunner.RunAsync(config, teed, cancellationToken);
+        return outcome switch
+        {
+            CiFailureNotRun(var reason) => WriteCiFailureResult(reason),
+            CiFailureRan(var job, var result) => await WriteJobResultAsync(job, result, transcriptLines),
+            _ => throw new NotSupportedException($"Unexpected ci-failure outcome: {outcome.GetType()}"),
         };
     }
 }

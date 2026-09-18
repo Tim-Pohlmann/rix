@@ -39,12 +39,15 @@ internal static partial class AgentCredential
 
     /// <summary>claude and opencode expect different credentials by default; pi is multi-provider
     /// with no single default credential, unlike opencode's own free-model provider - the caller
-    /// must say which env var to use.</summary>
+    /// must say which env var to use. Every kind is listed explicitly rather than one of them
+    /// serving as the fallback, so a new agent has to state its own default here instead of
+    /// silently inheriting opencode's.</summary>
     private static ParseResult<string> DefaultEnvName(AgentKind agent) => agent switch
     {
         AgentKind.Claude => new ParseSuccess<string>("ANTHROPIC_API_KEY"),
+        AgentKind.OpenCode => new ParseSuccess<string>("OPENCODE_API_KEY"),
         AgentKind.Pi => new ParseError<string>("is required when agent=pi and agent-api-key is set"),
-        _ => new ParseSuccess<string>("OPENCODE_API_KEY"),
+        _ => throw new NotSupportedException($"No default credential env var for agent: {agent}"),
     };
 
     private static ParseResult<string> Validate(string envName) => CredentialShapedName().IsMatch(envName) switch

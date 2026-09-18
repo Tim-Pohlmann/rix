@@ -23,8 +23,8 @@ public class JobConfigTests
     => JobConfig.Create(new JobInputs
     (
         Repo: repo,
-        Prompt: prompt,
         ReadToken: readToken,
+        Prompt: prompt,
         MaxTokens: maxTokens,
         TimeoutMinutes: timeoutMinutes,
         WorkDir: workDir,

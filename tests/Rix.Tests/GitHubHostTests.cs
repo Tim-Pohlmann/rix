@@ -350,13 +350,4 @@ public class GitHubHostTests
         gitRunner ?? SuccessGitRunner,
         new DelegatingHandlerStub(handler)
     );
-
-    private sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler)
-        : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        => Task.FromResult(handler(request));
-    }
 }

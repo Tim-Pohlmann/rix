@@ -1,3 +1,4 @@
+using Rix.CiFailure;
 using Rix.Job;
 using Rix.Submit;
 
@@ -25,8 +26,8 @@ internal static class TestConfig
     => JobConfig.Create(new JobInputs
     (
         Repo: repo,
-        Prompt: prompt,
         ReadToken: readToken,
+        Prompt: prompt,
         MaxTokens: maxTokens,
         TimeoutMinutes: timeoutMinutes,
         WorkDir: workDir ?? Path.GetTempPath(),
@@ -54,6 +55,31 @@ internal static class TestConfig
     {
         SubmitConfigValid v => v.Config,
         SubmitConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
+        var other => throw new AssertFailedException($"unexpected result: {other}"),
+    };
+
+    internal static CiFailureConfig ValidCiFailure
+    (
+        string repo = "owner/repo",
+        string readToken = "read-tok",
+        string runId = "1",
+        string? workDir = null,
+        string? outputDir = null
+    )
+    => CiFailureConfig.Create(new CiFailureInputs
+    (
+        RunId: runId,
+        Job: new JobInputs
+        (
+            Repo: repo,
+            ReadToken: readToken,
+            WorkDir: workDir ?? Path.GetTempPath(),
+            OutputDir: outputDir ?? Path.GetTempPath()
+        )
+    )) switch
+    {
+        CiFailureConfigValid v => v.Config,
+        CiFailureConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
         var other => throw new AssertFailedException($"unexpected result: {other}"),
     };
 
