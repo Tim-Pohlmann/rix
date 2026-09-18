@@ -27,6 +27,21 @@ internal static class Input
         return Named(name, () => construct(raw));
     }
 
+    /// <summary>Like <see cref="Optional{T}(string, string?, Func{string, T}, T)"/>, but the
+    /// fallback is only built when it's needed — for defaults that cost something to construct,
+    /// e.g. a <see cref="DirectoryPath"/> that stats the directory.</summary>
+    internal static T Optional<T>(string name, string? raw, Func<string, T> construct, Func<T> fallback)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return fallback();
+        return Named(name, () => construct(raw));
+    }
+
+    /// <summary>Plain text the caller must supply, e.g. <c>--prompt</c>: blank is an error naming
+    /// <paramref name="name"/>, anything else is passed through as-is.</summary>
+    internal static string RequiredText(string name, string? raw)
+    => Required(name, raw, value => value);
+
     /// <summary>Plain text the caller may omit, normalised so blank and absent are the same
     /// <c>null</c> — e.g. <c>--model</c>, where unset means "let the agent CLI pick".</summary>
     internal static string? OptionalText(string? raw)

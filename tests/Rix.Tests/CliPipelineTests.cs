@@ -10,7 +10,7 @@ public class CliPipelineTests
     private static Parser BuildParser(Func<Task> handler)
     {
         var command = new Command("boom");
-        command.SetHandler(async _ => await handler());
+        command.SetHandler(_ => handler());
         var root = new RootCommand();
         root.AddCommand(command);
         return CliPipeline.Build(root);

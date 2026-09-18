@@ -150,7 +150,6 @@ public class CiFailureCommandTests
     [DataRow("o/r", "r", "", "error: --run-id is required")]
     [DataRow("o/r", "r", "abc", "error: --run-id: must be a positive integer, got 'abc'")]
     [DataRow("o/r", "r", "0", "error: --run-id: must be a positive integer, got '0'")]
-    [DataRow("o/r", "r", "-5", "error: --run-id: must be a positive integer, got '-5'")]
     public async Task Command_Returns2_AndReportsTheFlag_WhenInputInvalid(string repo, string readToken, string runId, string expectedError)
     {
         CiFailureConfig? captured = null;

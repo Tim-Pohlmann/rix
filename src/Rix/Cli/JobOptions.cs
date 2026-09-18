@@ -123,33 +123,33 @@ internal static class JobOptions
     }
 
     internal static RepoIdentifier ReadRepo(ParseResult parsed)
-    => Input.Required("--repo", parsed.Str(RepoOption, "RIX_REPO"), value => new RepoIdentifier(value));
+    => parsed.Required(RepoOption, "RIX_REPO", value => new RepoIdentifier(value));
 
     internal static GitReadToken ReadReadToken(ParseResult parsed)
-    => Input.Required("--read-token", parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"), value => new GitReadToken(value));
+    => parsed.Required(ReadTokenOption, "RIX_READ_TOKEN", value => new GitReadToken(value));
 
     internal static AgentKind ReadAgent(ParseResult parsed)
-    => Input.Optional("--agent", parsed.Str(AgentOption, "RIX_AGENT"), AgentKindParser.Parse, JobConfig.DefaultAgent);
+    => parsed.Optional(AgentOption, "RIX_AGENT", AgentKindParser.Parse, JobConfig.DefaultAgent);
 
     internal static MaxTokens ReadMaxTokens(ParseResult parsed)
-    => new(Input.Optional("--max-tokens", parsed.Str(MaxTokensOption, "RIX_MAX_TOKENS"), Input.Positive<int>, JobConfig.DefaultMaxTokens));
+    => new(parsed.Optional(MaxTokensOption, "RIX_MAX_TOKENS", Input.Positive<int>, JobConfig.DefaultMaxTokens));
 
     internal static TimeoutMinutes ReadTimeout(ParseResult parsed)
-    => new(Input.Optional("--timeout", parsed.Str(TimeoutOption, "RIX_TIMEOUT"), Input.Positive<int>, JobConfig.DefaultTimeoutMinutes));
+    => new(parsed.Optional(TimeoutOption, "RIX_TIMEOUT", Input.Positive<int>, JobConfig.DefaultTimeoutMinutes));
 
     internal static DirectoryPath ReadWorkDir(ParseResult parsed)
-    => Input.Optional("--work-dir", parsed.Str(WorkDirOption, "RIX_WORK_DIR"), path => new DirectoryPath(path), new DirectoryPath(Path.GetTempPath()));
+    => parsed.Optional(WorkDirOption, "RIX_WORK_DIR", path => new DirectoryPath(path), () => new DirectoryPath(Path.GetTempPath()));
 
     internal static DirectoryPath ReadOutputDir(ParseResult parsed)
-    => Input.Required("--output-dir", parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"), path => new DirectoryPath(path));
+    => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path));
 
     internal static string? ReadModel(ParseResult parsed)
-    => Input.OptionalText(parsed.Str(ModelOption, "RIX_MODEL"));
+    => parsed.OptionalText(ModelOption, "RIX_MODEL");
 
     /// <summary>No key is required when <c>--model</c> is left unset - opencode then picks its own
     /// free model - so this is simply <c>null</c> when nothing was supplied.</summary>
     internal static string? ReadAgentApiKey(ParseResult parsed)
-    => Input.OptionalText(parsed.Str(AgentApiKeyOption, "AGENT_API_KEY"));
+    => parsed.OptionalText(AgentApiKeyOption, "AGENT_API_KEY");
 
     /// <summary>The env var name is only resolved (and validated) once there is actually a
     /// <paramref name="apiKey"/> to export, and its default depends on <paramref name="agent"/>,
@@ -158,6 +158,6 @@ internal static class JobOptions
     => apiKey switch
     {
         null => null,
-        _ => Input.Named("--agent-api-key-env", () => AgentCredential.ResolveEnvName(agent, parsed.Str(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV"))),
+        _ => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.ResolveEnvName(agent, raw)),
     };
 }

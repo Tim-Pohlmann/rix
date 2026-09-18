@@ -48,7 +48,7 @@ internal static partial class AgentCredential
     {
         AgentKind.Claude => "ANTHROPIC_API_KEY",
         AgentKind.OpenCode => "OPENCODE_API_KEY",
-        AgentKind.Pi => throw new InvalidInputException("is required when agent=pi and agent-api-key is set"),
+        AgentKind.Pi => throw new InvalidInputException("pi has no default credential env var, so one must be given whenever an agent api key is set"),
         _ => throw new NotSupportedException($"No default credential env var for agent: {agent}"),
     };
 

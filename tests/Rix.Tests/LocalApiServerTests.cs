@@ -645,10 +645,10 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task DeletePr_Returns404_ForNonRixBranch_SinceNoneWasEverQueued()
     {
-        // DeleteValidation no longer enforces rix/* itself (see DeleteRequestExtensions) - it's
-        // shared with /push, which must accept any branch name. /pr's own rix/* invariant still
-        // holds in practice, since PrValidation only ever lets a rix/*-named branch into the
-        // queue, so a non-rix branch simply can't be found rather than being rejected as malformed.
+        // DELETE /pr reads the branch as a plain BranchName, not a RixBranchName: the delete handler
+        // is shared with /push, which must accept any branch name. /pr's own rix/* invariant still
+        // holds in practice, since POST /pr only ever lets a rix/*-named branch into the queue, so a
+        // non-rix branch simply can't be found rather than being rejected as malformed.
         await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 

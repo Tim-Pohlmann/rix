@@ -81,8 +81,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 }
                 catch (InvalidInputException ex)
                 {
-                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                    await context.Response.WriteAsJsonAsync(new ErrorResponse(ex.Message), ApiJsonContext.Default.ErrorResponse, cancellationToken: context.RequestAborted);
+                    await Results.BadRequest(new ErrorResponse(ex.Message)).ExecuteAsync(context);
                 }
             }
         );

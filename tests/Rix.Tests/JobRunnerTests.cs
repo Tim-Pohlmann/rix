@@ -493,7 +493,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: "rix/my-fix"), CancellationToken.None,
+        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: ["rix/my-fix"]), CancellationToken.None,
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
@@ -520,7 +520,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/my-fix"),
+        await JobRunner.RunAsync(MakeConfig(allowedPushBranches: ["rix/my-fix"]),
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -549,7 +549,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        var result = await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/dup"),
+        var result = await JobRunner.RunAsync(MakeConfig(allowedPushBranches: ["rix/dup"]),
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -562,7 +562,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_SystemPrompt_ListsAllowedPushBranches_WhenRestricted()
     {
-        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig(allowedPushBranches: "rix/continue-a,rix/continue-b"));
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig(allowedPushBranches: ["rix/continue-a", "rix/continue-b"]));
 
         Assert.IsNotNull(systemPrompt);
         StringAssert.Contains(systemPrompt, "rix/continue-a");
@@ -598,7 +598,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: "rix/allowed"),
+        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: ["rix/allowed"]),
             CancellationToken.None,
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
 
@@ -804,10 +804,10 @@ public class JobRunnerTests
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
             _ => Task.FromResult<InstallResult>(new Installed())));
 
-    private JobConfig MakeConfig(string? allowedPushBranches = null, string? agentApiKey = null, string? agentApiKeyEnv = null)
+    private JobConfig MakeConfig(string[]? allowedPushBranches = null, string? agentApiKey = null, string? agentApiKeyEnv = null)
     => TestConfig.Valid(
         prompt: "Do something", workDir: _workDir, outputDir: _outputDir,
-        allowedPushBranches: (allowedPushBranches ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(b => new BranchName(b)).ToList(),
+        allowedPushBranches: (allowedPushBranches ?? []).Select(b => new BranchName(b)).ToList(),
         agentApiKey: agentApiKey, agentApiKeyEnv: agentApiKeyEnv);
 
     private static RunProcessAsync FakeRunner(

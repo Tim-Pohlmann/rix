@@ -7,11 +7,11 @@ public class AgentCredentialTests
 {
     [TestMethod]
     public void ResolveEnvName_DefaultsToAnthropicApiKey_ForClaude()
-    => Assert.AreEqual("ANTHROPIC_API_KEY", (AgentCredential.ResolveEnvName(AgentKind.Claude, null)));
+    => Assert.AreEqual("ANTHROPIC_API_KEY", AgentCredential.ResolveEnvName(AgentKind.Claude, null));
 
     [TestMethod]
     public void ResolveEnvName_DefaultsToOpenCodeApiKey_ForOpenCode()
-    => Assert.AreEqual("OPENCODE_API_KEY", (AgentCredential.ResolveEnvName(AgentKind.OpenCode, null)));
+    => Assert.AreEqual("OPENCODE_API_KEY", AgentCredential.ResolveEnvName(AgentKind.OpenCode, null));
 
     [TestMethod]
     public void ResolveEnvName_RequiresExplicitEnv_ForPi()
@@ -23,11 +23,11 @@ public class AgentCredentialTests
 
     [TestMethod]
     public void ResolveEnvName_TrimsAndUsesExplicitOverride()
-    => Assert.AreEqual("OPENAI_API_KEY", (AgentCredential.ResolveEnvName(AgentKind.OpenCode, " OPENAI_API_KEY ")));
+    => Assert.AreEqual("OPENAI_API_KEY", AgentCredential.ResolveEnvName(AgentKind.OpenCode, " OPENAI_API_KEY "));
 
     [TestMethod]
     public void ResolveEnvName_UsesExplicitOverride_ForPi()
-    => Assert.AreEqual("OPENAI_API_KEY", (AgentCredential.ResolveEnvName(AgentKind.Pi, "OPENAI_API_KEY")));
+    => Assert.AreEqual("OPENAI_API_KEY", AgentCredential.ResolveEnvName(AgentKind.Pi, "OPENAI_API_KEY"));
 
     [TestMethod]
     [DataRow("AWS_ACCESS_KEY_ID")]
@@ -35,7 +35,7 @@ public class AgentCredentialTests
     [DataRow("SNOWFLAKE_CORTEX_TOKEN")]
     [DataRow("AZURE_CLIENT_ID_KEY_ID")]
     public void ResolveEnvName_AcceptsCredentialShapedNames(string envName)
-    => Assert.AreEqual(envName, (AgentCredential.ResolveEnvName(AgentKind.OpenCode, envName)));
+    => Assert.AreEqual(envName, AgentCredential.ResolveEnvName(AgentKind.OpenCode, envName));
 
     [TestMethod]
     public void ResolveEnvName_RejectsNameWithoutCredentialShapedSuffix()
@@ -54,5 +54,5 @@ public class AgentCredentialTests
 
     [TestMethod]
     public void ResolveEnvName_TreatsBlankOverride_AsOmitted()
-    => Assert.AreEqual("ANTHROPIC_API_KEY", (AgentCredential.ResolveEnvName(AgentKind.Claude, "   ")));
+    => Assert.AreEqual("ANTHROPIC_API_KEY", AgentCredential.ResolveEnvName(AgentKind.Claude, "   "));
 }

@@ -62,12 +62,10 @@ public class JobOptionsTests
     => Assert.AreEqual(1000, JobOptions.ReadMaxTokens(Parse("--max-tokens", "1000")).Value);
 
     [TestMethod]
-    public void ReadMaxTokens_RejectsNonPositive()
-    => Assert.AreEqual("--max-tokens: must be a positive integer, got '0'", ErrorOf(() => JobOptions.ReadMaxTokens(Parse("--max-tokens", "0"))));
-
-    [TestMethod]
-    public void ReadMaxTokens_RejectsNonNumeric()
-    => Assert.AreEqual("--max-tokens: must be a positive integer, got 'abc'", ErrorOf(() => JobOptions.ReadMaxTokens(Parse("--max-tokens", "abc"))));
+    [DataRow("0")]
+    [DataRow("abc")]
+    public void ReadMaxTokens_RejectsNonPositiveInteger(string raw)
+    => Assert.AreEqual($"--max-tokens: must be a positive integer, got '{raw}'", ErrorOf(() => JobOptions.ReadMaxTokens(Parse("--max-tokens", raw))));
 
     [TestMethod]
     public void ReadTimeout_AppliesDefault()
@@ -78,12 +76,10 @@ public class JobOptionsTests
     => Assert.AreEqual(5, JobOptions.ReadTimeout(Parse("--timeout", "5")).Value);
 
     [TestMethod]
-    public void ReadTimeout_RejectsNonPositive()
-    => Assert.AreEqual("--timeout: must be a positive integer, got '-1'", ErrorOf(() => JobOptions.ReadTimeout(Parse("--timeout", "-1"))));
-
-    [TestMethod]
-    public void ReadTimeout_RejectsNonNumeric()
-    => Assert.AreEqual("--timeout: must be a positive integer, got 'abc'", ErrorOf(() => JobOptions.ReadTimeout(Parse("--timeout", "abc"))));
+    [DataRow("-1")]
+    [DataRow("abc")]
+    public void ReadTimeout_RejectsNonPositiveInteger(string raw)
+    => Assert.AreEqual($"--timeout: must be a positive integer, got '{raw}'", ErrorOf(() => JobOptions.ReadTimeout(Parse("--timeout", raw))));
 
     [TestMethod]
     public void ReadWorkDir_DefaultsToTemp_WhenBlank()

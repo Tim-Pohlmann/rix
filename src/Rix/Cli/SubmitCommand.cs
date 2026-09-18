@@ -49,10 +49,10 @@ internal static class SubmitCommand
                 var parsed = ctx.ParseResult;
                 var config = new SubmitConfig
                 (
-                    Repo: Input.Required("--repo", parsed.Str(RepoOption, "RIX_REPO"), value => new RepoIdentifier(value)),
-                    WriteToken: Input.Required("--write-token", parsed.Str(WriteTokenOption, "RIX_WRITE_TOKEN"), value => new GitToken(value)),
-                    InputDir: Input.Required("--input-dir", parsed.Str(InputDirOption, "RIX_INPUT_DIR"), path => new DirectoryPath(path)),
-                    WorkDir: Input.Optional("--work-dir", parsed.Str(WorkDirOption, "RIX_WORK_DIR"), path => new DirectoryPath(path), new DirectoryPath(Path.GetTempPath()))
+                    Repo: parsed.Required(RepoOption, "RIX_REPO", value => new RepoIdentifier(value)),
+                    WriteToken: parsed.Required(WriteTokenOption, "RIX_WRITE_TOKEN", value => new GitToken(value)),
+                    InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path)),
+                    WorkDir: parsed.Optional(WorkDirOption, "RIX_WORK_DIR", path => new DirectoryPath(path), () => new DirectoryPath(Path.GetTempPath()))
                 );
                 ctx.ExitCode = await handler(config);
             }

@@ -1,4 +1,3 @@
-using Rix.Agents;
 using Rix.Job;
 using System.CommandLine;
 
@@ -22,7 +21,7 @@ internal static class JobCommand
                 // Read in the order problems should be reported: the first failing read is the
                 // one the user sees.
                 var repo = JobOptions.ReadRepo(parsed);
-                var prompt = Input.Required("--prompt", parsed.Str(JobOptions.PromptOption, "RIX_PROMPT"), value => value);
+                var prompt = parsed.RequiredText(JobOptions.PromptOption, "RIX_PROMPT");
                 var readToken = JobOptions.ReadReadToken(parsed);
                 var agent = JobOptions.ReadAgent(parsed);
                 var maxTokens = JobOptions.ReadMaxTokens(parsed);
