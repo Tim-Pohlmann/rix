@@ -21,11 +21,20 @@ internal sealed record CiFailureConfig
     DirectoryPath OutputDir,
     AgentKind Agent,
     MaxTokens MaxTokens,
+    MaxRixCommits MaxRixCommits,
     string? Model = null,
     string? ApiKey = null,
     string? ApiKeyEnv = null
 )
 {
+    /// <summary>How many of rix's own commits may already sit at a failing branch's tip before
+    /// <c>ci-failure</c> leaves it alone. Five rather than one because rix fixing its own last
+    /// attempt is the normal case, not the pathological one - the first attempt failing is exactly
+    /// why there is a second - and rather than unbounded because nothing else ever stops a branch
+    /// that fails the same way every time. A single agent run can produce more than one commit, so
+    /// this bounds commits, not attempts: the effective number of attempts is at most this.</summary>
+    internal const int DefaultMaxRixCommits = 5;
+
     /// <summary>Builds the agent-running half of this config, now that a failure has actually been
     /// detected and both missing pieces are known: the <paramref name="prompt"/> describing the
     /// failure, and <paramref name="allowedPushBranch"/>, the failing run's own branch — the only

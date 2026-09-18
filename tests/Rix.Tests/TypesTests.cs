@@ -1,3 +1,4 @@
+using Rix.CiFailure;
 using Rix.Job;
 using System.Text.Json;
 
@@ -152,6 +153,39 @@ public class TypesTests
     public void PrBody_DeserializeNonString_ThrowsJsonException()
     {
         Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<PrBody>("42"));
+    }
+
+    [TestMethod]
+    [DataRow(1)]
+    [DataRow(MaxRixCommits.MaxValue)]
+    public void MaxRixCommits_AcceptsBothEndsOfItsRange(int value)
+    => Assert.AreEqual(value, new MaxRixCommits(value).Value);
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    [DataRow(MaxRixCommits.MaxValue + 1)]
+    public void MaxRixCommits_RejectsValuesOutsideIt(int value)
+    {
+        // The upper bound is GitHub's page size: a cap above it could not be distinguished from
+        // no cap at all, since the streak is read in a single request.
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new MaxRixCommits(value).ToString()).Message;
+        StringAssert.Contains(error, "must be between 1 and 100");
+    }
+
+    /// <summary>The discriminator the composite action switches on: run-ci-failure/action.yml reads
+    /// `.status` and treats anything it doesn't recognize as a broken result, so renaming this
+    /// silently turns a guarded run into a reported error.</summary>
+    [TestMethod]
+    public void CiFailureLoopGuarded_SerializesWithLoopGuardedStatus()
+    {
+        var json = JsonSerializer.Serialize<ICiFailureResult>(new CiFailureLoopGuarded("rix/fix", 5), CiFailureJsonContext.Default.ICiFailureResult);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.AreEqual("loopGuarded", root.GetProperty("status").GetString());
+        Assert.AreEqual("rix/fix", root.GetProperty("branch").GetString());
+        Assert.AreEqual(5, root.GetProperty("rixCommits").GetInt32());
     }
 
     [TestMethod]

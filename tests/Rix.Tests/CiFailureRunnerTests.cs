@@ -34,7 +34,7 @@ public class CiFailureRunnerTests
         var repositoryHost = new StubRepositoryHost(clone: () => { cloneCalled = true; return Task.CompletedTask; });
 
         var outcome = await CiFailureRunner.RunAsync(
-            MakeConfig(), ciFailureHost, ContextFor(repositoryHost), CancellationToken.None);
+            MakeConfig(), Context(ciFailureHost, repositoryHost), CancellationToken.None);
 
         var notRun = AssertNotRun(outcome);
         Assert.IsInstanceOfType<CiFailureSkipped>(notRun.Reason);
@@ -47,7 +47,7 @@ public class CiFailureRunnerTests
         var ciFailureHost = new StubCiFailureHost(getRun: _ => throw new RepositoryHostException("boom"));
 
         var outcome = await CiFailureRunner.RunAsync(
-            MakeConfig(), ciFailureHost, ContextFor(new StubRepositoryHost()), CancellationToken.None);
+            MakeConfig(), Context(ciFailureHost, new StubRepositoryHost()), CancellationToken.None);
 
         var notRun = AssertNotRun(outcome);
         Assert.IsInstanceOfType<CiFailureError>(notRun.Reason);
@@ -77,7 +77,7 @@ public class CiFailureRunnerTests
         };
 
         var outcome = await CiFailureRunner.RunAsync(
-            MakeConfig(), ciFailureHost, ContextFor(new StubRepositoryHost(), capture), CancellationToken.None);
+            MakeConfig(), Context(ciFailureHost, new StubRepositoryHost(), capture), CancellationToken.None);
 
         var ran = AssertRan(outcome);
         Assert.IsInstanceOfType<JobSuccess>(ran.Result);
@@ -91,9 +91,57 @@ public class CiFailureRunnerTests
     {
         var ciFailureHost = new StubCiFailureHost(getRun: _ => Task.FromResult(TestRuns.Sample("success")));
 
-        // No jobContext: the run didn't fail, so CiFailureRunner never reaches the job path
-        // that would need one - Startup defaults it, unused.
-        var exitCode = await Startup.ExecuteCiFailureAsync(MakeConfig(), CancellationToken.None, ciFailureHost);
+        // The job half is stubbed but never reached: the run didn't fail, so no agent runs.
+        var exitCode = await Startup.ExecuteCiFailureAsync(
+            MakeConfig(), CancellationToken.None, Context(ciFailureHost, new StubRepositoryHost()));
+
+        Assert.AreEqual(0, exitCode);
+        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsNotRun_AndNeverClones_WhenRixCommitsAlreadyFillTheBranchTip()
+    {
+        var ciFailureHost = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            countRixCommits: _ => Task.FromResult(CiFailureConfig.DefaultMaxRixCommits));
+        var cloneCalled = false;
+        var repositoryHost = new StubRepositoryHost(clone: () => { cloneCalled = true; return Task.CompletedTask; });
+
+        var outcome = await CiFailureRunner.RunAsync(
+            MakeConfig(), Context(ciFailureHost, repositoryHost), CancellationToken.None);
+
+        var notRun = AssertNotRun(outcome);
+        Assert.IsInstanceOfType<CiFailureLoopGuarded>(notRun.Reason);
+        Assert.IsFalse(cloneCalled, "a guarded failure must not start an agent run at all");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PassesTheConfiguredCap_ToTheLoopGuard()
+    {
+        var ciFailureHost = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            getLogs: _ => Task.FromResult("boom"),
+            countRixCommits: _ => Task.FromResult(1));
+
+        await CiFailureRunner.RunAsync(
+            TestConfig.ValidCiFailure(workDir: _workDir, outputDir: _outputDir, maxRixCommits: 2),
+            Context(ciFailureHost, new StubRepositoryHost()), CancellationToken.None);
+
+        Assert.AreEqual(2, ciFailureHost.MaxRixCommits?.Value);
+    }
+
+    [TestMethod]
+    public async Task ExecuteCiFailureAsync_Returns0_AndWritesNoResultJson_WhenGuardedAgainstALoop()
+    {
+        var ciFailureHost = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            countRixCommits: _ => Task.FromResult(CiFailureConfig.DefaultMaxRixCommits));
+
+        // Exit 0, like any other reason not to act: the branch being rix's own work is a decision,
+        // not a failure of this run, and a non-zero exit would fail the caller's workflow for it.
+        var exitCode = await Startup.ExecuteCiFailureAsync(
+            MakeConfig(), CancellationToken.None, Context(ciFailureHost, new StubRepositoryHost()));
 
         Assert.AreEqual(0, exitCode);
         Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")));
@@ -104,8 +152,9 @@ public class CiFailureRunnerTests
     {
         var ciFailureHost = new StubCiFailureHost(getRun: _ => throw new RepositoryHostException("boom"));
 
-        // No jobContext: the check errors before the job path that would need one ever runs.
-        var exitCode = await Startup.ExecuteCiFailureAsync(MakeConfig(), CancellationToken.None, ciFailureHost);
+        // The check errors before the job path the stubbed job half would serve ever runs.
+        var exitCode = await Startup.ExecuteCiFailureAsync(
+            MakeConfig(), CancellationToken.None, Context(ciFailureHost, new StubRepositoryHost()));
 
         Assert.AreEqual(1, exitCode);
     }
@@ -119,7 +168,7 @@ public class CiFailureRunnerTests
             findPr: _ => Task.FromResult<int?>(null));
 
         var exitCode = await Startup.ExecuteCiFailureAsync(
-            MakeConfig(), CancellationToken.None, ciFailureHost, JobContext(new StubRepositoryHost()));
+            MakeConfig(), CancellationToken.None, Context(ciFailureHost, new StubRepositoryHost()));
 
         Assert.AreEqual(0, exitCode);
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
@@ -172,7 +221,7 @@ public class CiFailureRunnerTests
         };
 
         await CiFailureRunner.RunAsync(
-            MakeConfig(), ciFailureHost, ContextFor(new StubRepositoryHost(), capture), CancellationToken.None);
+            MakeConfig(), Context(ciFailureHost, new StubRepositoryHost(), capture), CancellationToken.None);
 
         return systemPrompt;
     }
@@ -180,11 +229,12 @@ public class CiFailureRunnerTests
     private CiFailureConfig MakeConfig()
     => TestConfig.ValidCiFailure(workDir: _workDir, outputDir: _outputDir);
 
-    /// <summary>The same context regardless of which <see cref="JobConfig"/>
-    /// <see cref="CiFailureRunner"/> ends up building: these tests stub every host the context
-    /// wires up, so none of them depends on the config.</summary>
-    private static Func<JobConfig, JobContext> ContextFor(IRepositoryReadHost host, RunProcessAsync? processRunner = null)
-    => _ => JobContext(host, processRunner);
+    /// <summary>Both halves stubbed: the ci-failure check's host, and a job context that is the
+    /// same regardless of which <see cref="JobConfig"/> <see cref="CiFailureRunner"/> ends up
+    /// building, since these tests stub every collaborator it wires up.</summary>
+    private static CiFailureContext Context(
+        IGitHubCiFailureHost ciFailureHost, IRepositoryReadHost host, RunProcessAsync? processRunner = null)
+    => new(ciFailureHost, _ => JobContext(host, processRunner));
 
     private static JobContext JobContext(IRepositoryReadHost host, RunProcessAsync? processRunner = null)
     => new(host, processRunner ?? DefaultRunner, new StubAgent(_ => Task.FromResult<InstallResult>(new Installed())), _ => { }, _ => { });

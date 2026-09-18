@@ -129,6 +129,62 @@ public class CiFailureCommandTests
     }
 
     [TestMethod]
+    public async Task Command_DefaultsMaxRixCommits_WhenFlagAndEnvAbsent()
+    {
+        CiFailureConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1", "--output-dir", Path.GetTempPath()]);
+
+        Assert.AreEqual(CiFailureConfig.DefaultMaxRixCommits, captured?.MaxRixCommits.Value);
+    }
+
+    [TestMethod]
+    public async Task Command_PassesThroughMaxRixCommits_FromFlag()
+    {
+        CiFailureConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
+             "--output-dir", Path.GetTempPath(), "--max-rix-commits", "2"]);
+
+        Assert.AreEqual(2, captured?.MaxRixCommits.Value);
+    }
+
+    [TestMethod]
+    [DataRow("abc", "error: --max-rix-commits: must be a positive integer, got 'abc'")]
+    [DataRow("0", "error: --max-rix-commits: must be a positive integer, got '0'")]
+    [DataRow("101", "error: --max-rix-commits: must be between 1 and 100, got '101'")]
+    public async Task Command_Returns2_WhenMaxRixCommitsIsOutOfRange(string raw, string expectedError)
+    {
+        CiFailureConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        using var stderr = new ConsoleErrorScope();
+        var exitCode = await parser.InvokeAsync(
+            ["ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
+             "--output-dir", Path.GetTempPath(), "--max-rix-commits", raw]);
+
+        Assert.IsNull(captured);
+        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
+        StringAssert.Contains(stderr.Text, expectedError);
+    }
+
+    [TestMethod]
     public async Task Command_DoesNotTakeAPrompt()
     {
         // The prompt describes a failure that hasn't been detected yet, so the command neither

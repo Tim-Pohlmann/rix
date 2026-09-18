@@ -31,6 +31,12 @@ inputs:
       opencode, ANTHROPIC_API_KEY for claude. Required for pi whenever agent-api-key is set,
       since pi has no single default provider to fall back on.
     required: false
+  max-rix-commits:
+    description: >-
+      How many of rix's own commits may already sit at the failing branch's tip before the failure
+      is left alone instead of answered (default: 5). Bounds rix reacting to the CI failures of its
+      own fixes forever; a commit by anyone else at the tip clears the count.
+    required: false
   max-tokens:
     description: Coding agent token budget cap
     required: false
@@ -73,6 +79,7 @@ runs:
         RIX_READ_TOKEN: ${{ inputs.read-token }}
         RIX_REPO: ${{ inputs.repo }}
         RIX_RUN_ID: ${{ inputs.run-id }}
+        RIX_MAX_RIX_COMMITS: ${{ inputs.max-rix-commits }}
       shell: bash
       run: |
         # AGENT_API_KEY/AGENT_API_KEY_ENV are forwarded to rix as-is - it resolves which single env
@@ -101,7 +108,7 @@ runs:
 
         # One jq call over the already-in-memory $result, rather than a separate subprocess per
         # field - status/conclusion/error are all read from it below.
-        IFS=$'\t' read -r status conclusion error < <(jq -r '[.status, (.conclusion // ""), (.error // "")] | @tsv' <<<"$result")
+        IFS=$'\t' read -r status conclusion error branch rix_commits < <(jq -r '[.status, (.conclusion // ""), (.error // ""), (.branch // ""), (.rixCommits // "")] | @tsv' <<<"$result")
         # Default to false so every branch below (including an unrecognized status) leaves
         # has-result in a defined state; only the success branch needs to override it.
         echo "has-result=false" >> "$GITHUB_OUTPUT"
@@ -113,6 +120,11 @@ runs:
             ;;
           skipped)
             echo "Run $RIX_RUN_ID concluded '$conclusion', not 'failure' — skipping."
+            ;;
+          loopGuarded)
+            # Not an error: rix has already had its turns on this branch and is standing down so a
+            # human can look. Their next commit to the branch clears the streak on its own.
+            echo "::notice::The last $rix_commits commits on '$branch' are rix's own — not answering this failure. Push a commit to the branch (or raise max-rix-commits) to re-enable rix on it."
             ;;
           failure | setupFailure)
             # The agent ran but the job itself failed - exit_code is already non-zero here, which

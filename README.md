@@ -172,6 +172,11 @@ on:
   workflow_run:
     workflows: ["CI"] # must match the `name:` of the workflow to watch
     types: [completed]
+# One rix run per branch at a time: when CI fails again while rix is still working on the
+# previous failure, the second run waits instead of starting a second agent from the same tip.
+concurrency:
+  group: rix-on-ci-failure-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
 jobs:
   rix:
     # Cheap short-circuit; on-ci-failure.yml re-checks the conclusion via the API regardless.
@@ -263,3 +268,28 @@ not just its own. Since the factory's `read-token`/`write-token` span every proj
 serves, an unvalidated payload lets one onboarded repo trigger rix runs (and PR writes) against
 another. Gate the factory job on an explicit allowlist of onboarded repos (as shown above with
 `RIX_FACTORY_ALLOWED_REPOS`) rather than trusting `client_payload.repo` directly.
+
+### Keeping rix from answering its own failures
+
+rix pushes commits, those commits run CI, and a failing one triggers this workflow again — so
+left alone, rix answering its own failures is a loop with nothing to stop it. Two things bound
+it, and both apply to either pattern above:
+
+- **The loop guard.** Before doing any work, `on-ci-failure.yml` counts how many commits at the
+  tip of the failing branch rix authored itself, and leaves the failure alone once that reaches
+  `max-rix-commits` (default 5, max 100). The count stops at the first commit rix didn't write,
+  so anyone pushing to the branch re-enables rix on it; a guarded run logs a notice, succeeds,
+  and creates nothing. The default is 5 rather than 1 because rix fixing up its own previous
+  attempt is the normal case — the first attempt failing is exactly why there is a second.
+  Note it bounds *commits*, not attempts: one agent run can produce more than one commit, so the
+  effective number of attempts is at most this.
+- **The `concurrency` group** in the caller workflow above, keyed on the failing branch, so a
+  branch that fails twice in quick succession queues the second run rather than starting a
+  second agent from the same tip. `cancel-in-progress: false` because a run already talking to
+  the agent has work worth finishing.
+
+```yaml
+    with:
+      run-id: ${{ github.event.workflow_run.id }}
+      max-rix-commits: 3
+```
