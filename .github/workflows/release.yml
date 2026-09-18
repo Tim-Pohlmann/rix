@@ -1,5 +1,9 @@
 name: Release
 
+# Second half of a release: run the Version Bump workflow for this version first, merge its PR,
+# then run this. The bump commit is what gets tagged, and it is the commit whose workflows name
+# the binary this release publishes - so tagging anything else would hand callers of this release
+# a different release's binary.
 on:
   workflow_dispatch:
     inputs:
@@ -148,11 +152,3 @@ jobs:
           MAJOR="v$(echo "$VERSION" | grep -oP '(?<=^v)\d+')"
           git tag -f "$MAJOR"
           git push origin "$MAJOR" --force
-
-  bump-version:
-    name: Bump Version
-    needs: publish
-    uses: ./.github/workflows/version-bump.yml
-    permissions:
-      contents: write
-      pull-requests: write
