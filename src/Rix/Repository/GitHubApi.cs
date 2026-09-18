@@ -7,7 +7,7 @@ namespace Rix.Repository;
 
 /// <summary>The REST half of talking to GitHub: one authenticated client scoped to one repo, plus
 /// the request/status-check/parse sequence every endpoint would otherwise repeat. Split from the
-/// hosts so the read and write paths share a connection pool and an error shape by construction
+/// repo hosts so the read and write paths share a connection pool and an error shape by construction
 /// rather than by one host holding a reference to another's <see cref="HttpClient"/>.</summary>
 internal sealed class GitHubApi
 {
@@ -50,7 +50,7 @@ internal sealed class GitHubApi
 
     /// <summary>GETs <paramref name="path"/> and parses the JSON body, collapsing the
     /// request/status-check/parse sequence every read endpoint would otherwise repeat.
-    /// <paramref name="operation"/> names the call in the <see cref="RepositoryHostException"/> a
+    /// <paramref name="operation"/> names the call in the <see cref="RepoHostException"/> a
     /// failed status produces.</summary>
     internal async Task<T> GetJsonAsync<T>(string path, JsonTypeInfo<T> typeInfo, string operation, CancellationToken cancellationToken)
     {
@@ -78,7 +78,7 @@ internal sealed class GitHubApi
         return await ReadJsonAsync(response, responseTypeInfo, cancellationToken);
     }
 
-    /// <summary>Turns any non-2xx response into a <see cref="RepositoryHostException"/> naming the
+    /// <summary>Turns any non-2xx response into a <see cref="RepoHostException"/> naming the
     /// operation, so every REST call reports an error status the same way instead of leaking
     /// <see cref="HttpRequestException"/> from a bare <c>EnsureSuccessStatusCode</c>. Public to the
     /// assembly because callers of <see cref="GetAsync"/> check the status themselves and still
@@ -91,7 +91,7 @@ internal sealed class GitHubApi
         }
         catch (HttpRequestException ex)
         {
-            throw new RepositoryHostException($"{operation} failed: {ex.Message}", ex);
+            throw new RepoHostException($"{operation} failed: {ex.Message}", ex);
         }
     }
 
@@ -101,12 +101,12 @@ internal sealed class GitHubApi
         {
             var value = await response.Content.ReadFromJsonAsync(typeInfo, cancellationToken);
             if (value is null)
-                throw new RepositoryHostException($"{typeof(T).Name} response body was empty");
+                throw new RepoHostException($"{typeof(T).Name} response body was empty");
             return value;
         }
         catch (JsonException ex)
         {
-            throw new RepositoryHostException($"could not parse {typeof(T).Name} response", ex);
+            throw new RepoHostException($"could not parse {typeof(T).Name} response", ex);
         }
     }
 

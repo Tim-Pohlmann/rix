@@ -43,7 +43,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// by the agent.</param>
     internal static async Task<LocalApiServer> StartAsync
     (
-        IJobHost host,
+        IJobRepoHost host,
         string cloneDir,
         CancellationToken cancellationToken,
         Action<string>? logLine = null,
@@ -88,7 +88,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 {
                     await Results.BadRequest(new ErrorResponse(ex.Message)).ExecuteAsync(context);
                 }
-                catch (RepositoryHostException ex) when (!context.Response.HasStarted)
+                catch (RepoHostException ex) when (!context.Response.HasStarted)
                 {
                     await Results.Json
                     (
@@ -110,7 +110,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static void MapEndpoints
     (
         WebApplication app,
-        IJobHost host,
+        IJobRepoHost host,
         string cloneDir,
         PrQueue pendingPrRequests,
         ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
@@ -129,7 +129,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static async Task<IResult> HandlePrAsync
     (
         PrRequest req,
-        IJobHost host,
+        IJobRepoHost host,
         string cloneDir,
         PrQueue pendingPrRequests,
         CancellationToken ct
@@ -163,7 +163,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static async Task<IResult> HandlePushAsync
     (
         PushRequest req,
-        IJobHost host,
+        IJobRepoHost host,
         string cloneDir,
         ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
         IReadOnlyList<BranchName>? allowedPushBranches,

@@ -3,12 +3,13 @@ using Rix.Repository;
 
 namespace Rix.CiFailure;
 
-/// <summary>The side-effecting collaborators <c>rix ci-failure</c> needs: the host it checks the
-/// run with, and the <see cref="JobContext"/> the agent run gets once a failure has been detected.
+/// <summary>The side-effecting collaborators <c>rix ci-failure</c> needs: the repo host it checks
+/// the run with, and the <see cref="JobContext"/> the agent run gets once a failure has been
+/// detected.
 /// Stands to <see cref="JobContext"/> exactly as <see cref="CiFailureConfig"/> stands to
 /// <see cref="JobConfig"/> — this command's are the job's plus the one role only it has — so
 /// <see cref="CiFailureRunner.RunAsync"/> takes a config and a context just as
-/// <see cref="JobRunner.RunAsync"/> does, rather than a loose host alongside a bundle.
+/// <see cref="JobRunner.RunAsync"/> does, rather than a loose repo host alongside a bundle.
 ///
 /// Composed rather than flattened into the job's five fields plus a <c>ToJobContext()</c>: the
 /// runner reads each half exactly once, so nothing pays for the extra hop, while a positional copy
@@ -22,4 +23,4 @@ namespace Rix.CiFailure;
 /// <see cref="CiFailureConfig.Agent"/> names that up front — unlike the prompt, which only a
 /// detected failure can supply. A run that hadn't failed leaves it unused, which costs nothing:
 /// building one opens no connection and starts no process.</param>
-internal sealed record CiFailureContext(ICiFailureHost CiFailureHost, JobContext Job);
+internal sealed record CiFailureContext(ICiFailureRepoHost RepoHost, JobContext Job);

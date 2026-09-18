@@ -4,17 +4,17 @@ using System.Text.Json.Serialization;
 namespace Rix.Repository;
 
 /// <summary>The full GitHub host behind <c>rix submit</c>: delegates every read operation to a
-/// <see cref="GitHubJobHost"/> and layers the write operations (push, open PR) on top of the same
+/// <see cref="GitHubJobRepoHost"/> and layers the write operations (push, open PR) on top of the same
 /// <see cref="GitCli"/> and
 /// <see cref="GitHubApi"/> that host was built from — so both paths share one connection pool and
 /// one credential injection by construction. Requires a write-capable <see cref="GitToken"/>.</summary>
-internal sealed class GitHubSubmitHost : ISubmitHost
+internal sealed class GitHubSubmitRepoHost : ISubmitRepoHost
 {
-    private readonly GitHubJobHost _job;
+    private readonly GitHubJobRepoHost _job;
     private readonly GitCli _git;
     private readonly GitHubApi _api;
 
-    internal GitHubSubmitHost
+    internal GitHubSubmitRepoHost
     (
         RepoIdentifier repo,
         GitToken token,
@@ -24,7 +24,7 @@ internal sealed class GitHubSubmitHost : ISubmitHost
     {
         _git = new GitCli(token, runProcess);
         _api = new GitHubApi(repo, token, handler);
-        _job = new GitHubJobHost(_git, _api);
+        _job = new GitHubJobRepoHost(_git, _api);
     }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
@@ -53,7 +53,7 @@ internal sealed class GitHubSubmitHost : ISubmitHost
     => _git.RunAsync
     (
         // --end-of-options stops git from reading a branch name starting with "-" as an option —
-        // see GitHubJobHost.CreateBundleAsync for why it's this flag and not "--".
+        // see GitHubJobRepoHost.CreateBundleAsync for why it's this flag and not "--".
         ["push", "origin", "--end-of-options", branch.Value],
         workingDirectory: repoDirectory,
         authenticated: true,
@@ -81,7 +81,7 @@ internal sealed class GitHubSubmitHost : ISubmitHost
             cancellationToken
         );
         if (created.HtmlUrl is null)
-            throw new RepositoryHostException("create PR response did not include html_url");
+            throw new RepoHostException("create PR response did not include html_url");
         return created.HtmlUrl;
     }
 }

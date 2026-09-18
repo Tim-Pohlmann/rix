@@ -5,20 +5,20 @@ namespace Rix.Repository;
 /// <summary>The read-only GitHub host behind <c>rix job</c>, scoped to one repo: the clone, the
 /// local inspection and the bundling that command needs, expressed as git commands plus one REST
 /// lookup. Owns neither the
-/// git invocation nor the HTTP client — both arrive as collaborators, so <see cref="GitHubSubmitHost"/>
+/// git invocation nor the HTTP client — both arrive as collaborators, so <see cref="GitHubSubmitRepoHost"/>
 /// can layer its writes on the same two without reaching into this class for them.</summary>
-internal sealed class GitHubJobHost : IJobHost
+internal sealed class GitHubJobRepoHost : IJobRepoHost
 {
     private readonly GitCli _git;
     private readonly GitHubApi _api;
 
-    internal GitHubJobHost(GitCli git, GitHubApi api)
+    internal GitHubJobRepoHost(GitCli git, GitHubApi api)
     {
         _git = git;
         _api = api;
     }
 
-    internal GitHubJobHost(RepoIdentifier repo, GitReadToken token, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
+    internal GitHubJobRepoHost(RepoIdentifier repo, GitReadToken token, RunProcessAsync runProcess, HttpMessageHandler? handler = null)
         : this(new GitCli(token, runProcess), new GitHubApi(repo, token, handler)) { }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
@@ -74,7 +74,7 @@ internal sealed class GitHubJobHost : IJobHost
             cancellationToken
         );
         if (result is ProcessFailure { Reason: not "exited with code 1" } f)
-            throw new RepositoryHostException($"git rev-parse failed: {f.Reason}");
+            throw new RepoHostException($"git rev-parse failed: {f.Reason}");
         return result is ProcessSuccess;
     }
 
