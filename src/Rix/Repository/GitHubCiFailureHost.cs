@@ -5,10 +5,10 @@ namespace Rix.Repository;
 
 /// <summary>Reads everything <c>rix ci-failure</c> needs to know about a workflow run: whether it
 /// failed, what its failing jobs logged, whether a PR is open for its branch, and how much of that
-/// branch's tip rix wrote itself. A separate class from <see cref="GitHubReadHost"/> rather than a
+/// branch's tip rix wrote itself. A separate class from <see cref="GitHubJobHost"/> rather than a
 /// second interface on it, because the two roles share only their transport — which they now share
 /// explicitly, by being handed the same <see cref="GitHubApi"/>.</summary>
-internal sealed class GitHubCiFailureHost : IGitHubCiFailureHost
+internal sealed class GitHubCiFailureHost : ICiFailureHost
 {
     private readonly GitHubApi _api;
 
@@ -135,7 +135,7 @@ internal sealed class GitHubCiFailureHost : IGitHubCiFailureHost
     /// <summary>Counts the run of rix's own commits at <paramref name="branch"/>'s tip, which is how
     /// <c>rix ci-failure</c> tells "CI failed" from "CI failed on rix's last attempt to fix it".
     /// Authorship is read from <c>commit.author</c>, git's own metadata written by
-    /// <see cref="GitHubReadHost.ConfigureGitAsync"/>, rather than the sibling top-level
+    /// <see cref="GitHubJobHost.ConfigureGitAsync"/>, rather than the sibling top-level
     /// <c>author</c> — that one is the linked GitHub account, which is <c>null</c> for rix precisely
     /// because <see cref="GitIdentity.Email"/> belongs to no account. One page of at most
     /// <paramref name="max"/> commits answers it: a streak that long already trips the cap, so a
@@ -198,7 +198,7 @@ internal sealed record PullRequestApiResponse
     [property: JsonPropertyName("number")] int Number
 );
 
-/// <summary>Separate from <see cref="GitHubApiJsonContext"/> (defined in <c>GitHubHost.cs</c>):
+/// <summary>Separate from <see cref="GitHubApiJsonContext"/> (defined in <c>GitHubSubmitHost.cs</c>):
 /// splitting one <see cref="JsonSerializerContext"/>'s <c>[JsonSerializable]</c> attributes across
 /// multiple files trips a source-generator bug (duplicate-hint-name failure), so these DTOs get
 /// their own context instead.</summary>

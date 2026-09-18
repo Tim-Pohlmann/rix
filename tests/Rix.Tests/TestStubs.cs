@@ -10,7 +10,7 @@ internal sealed class StubCiFailureHost(
     Func<RunId, Task<WorkflowRun>>? getRun = null,
     Func<RunId, Task<string>>? getLogs = null,
     Func<BranchName, Task<int?>>? findPr = null,
-    Func<BranchName, Task<int>>? countRixCommits = null) : IGitHubCiFailureHost
+    Func<BranchName, Task<int>>? countRixCommits = null) : ICiFailureHost
 {
     /// <summary>The cap the loop guard was asked to count against, so a test can assert the
     /// configured value reaches the host instead of a constant fixed in the detector.</summary>
@@ -57,16 +57,16 @@ internal static class TestRuns
     => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", branch);
 }
 
-internal sealed class StubRepositoryHost(
+internal sealed class StubJobHost(
     Func<BranchName, Task<bool>>? branchExists = null,
     Func<string, Task>? createBundle = null,
     Func<Task>? clone = null,
     Func<BranchName, Task<bool>>? branchExistsLocally = null,
-    Func<Task>? configureGit = null) : IRepositoryReadHost
+    Func<Task>? configureGit = null) : IJobHost
 {
     /// <summary>Succeeds by default; override via the <c>clone</c> constructor parameter to
     /// simulate a git clone failure (e.g. throwing <see cref="RepositoryHostException"/>, as the
-    /// real <see cref="GitHubReadHost.CloneAsync"/> does).</summary>
+    /// real <see cref="GitHubJobHost.CloneAsync"/> does).</summary>
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
     => clone switch { { } check => check(), _ => Task.CompletedTask };
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
@@ -98,7 +98,7 @@ internal sealed class StubRepositoryHost(
 internal sealed class StubSubmitHost(
     Func<BranchName, Task<bool>>? branchExists = null,
     Func<PendingPr, Task<string>>? createPullRequest = null,
-    Func<BranchName, Task>? pushBranch = null) : IRepositoryHost
+    Func<BranchName, Task>? pushBranch = null) : ISubmitHost
 {
     public List<PendingPr> CreatedPrs { get; } = [];
     public List<BranchName> PushedBranches { get; } = [];

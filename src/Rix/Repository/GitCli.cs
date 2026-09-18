@@ -5,7 +5,7 @@ namespace Rix.Repository;
 
 /// <summary>The <c>git</c> half of talking to GitHub: runs the binary and owns the credential
 /// injection, and nothing else. Split from the hosts so that "how a git command is run" is stated
-/// once and both the read host and the write host get the exact same treatment of the token —
+/// once and both the job host and the submit host get the exact same treatment of the token —
 /// rather than one of them reaching into the other's private runner to borrow it.</summary>
 internal sealed class GitCli
 {
