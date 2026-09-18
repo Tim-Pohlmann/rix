@@ -6,9 +6,9 @@ namespace Rix;
 /// boundary that received the input (the CLI pipeline, the API server) is the one place that
 /// catches it, reports <see cref="Exception.Message"/>, and stops. Everything in between stays
 /// free of validation plumbing: types validate in their constructors and nothing else.</summary>
-internal sealed class InvalidInputException : Exception
+public sealed class InvalidInputException : Exception
 {
-    internal InvalidInputException(string message) : base(message) { }
+    public InvalidInputException(string message) : base(message) { }
 
-    internal InvalidInputException(string message, Exception inner) : base(message, inner) { }
+    public InvalidInputException(string message, Exception inner) : base(message, inner) { }
 }

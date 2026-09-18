@@ -21,7 +21,7 @@ public class TypesTests
     [DataRow("")]
     public void RixBranchName_ThrowsOnInvalidValues(string value)
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => new RixBranchName(value));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new RixBranchName(value));
         StringAssert.Contains(ex.Message, "rix/*");
     }
 
@@ -32,7 +32,7 @@ public class TypesTests
     [DataRow("owner/")]
     public void RepoIdentifier_RejectsInvalidFormat(string repo)
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => new RepoIdentifier(repo));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new RepoIdentifier(repo));
         StringAssert.Contains(ex.Message, "repo identifier");
     }
 
@@ -55,7 +55,7 @@ public class TypesTests
     [TestMethod]
     public void DirectoryPath_RejectsNonExistent()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => new DirectoryPath("/nonexistent/path/xyz"));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new DirectoryPath("/nonexistent/path/xyz"));
         Assert.AreEqual("directory does not exist: /nonexistent/path/xyz", ex.Message);
     }
 

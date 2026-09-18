@@ -21,20 +21,20 @@ internal static class Input
     /// <summary>A value the caller may omit: blank yields <paramref name="fallback"/>, anything
     /// else must construct successfully — a typo never silently falls back to the default.</summary>
     internal static T Optional<T>(string name, string? raw, Func<string, T> construct, T fallback)
-    => string.IsNullOrWhiteSpace(raw) switch
     {
-        true => fallback,
-        false => Named(name, () => construct(raw)),
-    };
+        if (string.IsNullOrWhiteSpace(raw))
+            return fallback;
+        return Named(name, () => construct(raw));
+    }
 
     /// <summary>Plain text the caller may omit, normalised so blank and absent are the same
     /// <c>null</c> — e.g. <c>--model</c>, where unset means "let the agent CLI pick".</summary>
     internal static string? OptionalText(string? raw)
-    => string.IsNullOrWhiteSpace(raw) switch
     {
-        true => null,
-        false => raw,
-    };
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        return raw;
+    }
 
     /// <summary>Runs <paramref name="construct"/> and re-raises any <see cref="InvalidInputException"/>
     /// with <paramref name="name"/> prefixed, for values built from more than one raw input (e.g.

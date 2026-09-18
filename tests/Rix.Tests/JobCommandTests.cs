@@ -235,9 +235,8 @@ public class JobCommandTests
              "--output-dir", Path.GetTempPath(), "--allowed-push-branches", "rix/a,,rix/a, rix/b"]);
 
         Assert.IsNotNull(captured);
-        CollectionAssert.AreEqual(
-            new[] { "rix/a", "rix/b" },
-            captured.AllowedPushBranches.Select(b => b.Value).ToArray());
+        string[] expected = ["rix/a", "rix/b"];
+        CollectionAssert.AreEqual(expected, captured.AllowedPushBranches.Select(b => b.Value).ToArray());
     }
 
     [TestMethod]
@@ -257,9 +256,8 @@ public class JobCommandTests
              "--output-dir", Path.GetTempPath(), "--allowed-push-branches", "rix/good,main,prod"]);
 
         Assert.IsNotNull(captured);
-        CollectionAssert.AreEqual(
-            new[] { "rix/good", "main", "prod" },
-            captured.AllowedPushBranches.Select(b => b.Value).ToArray());
+        string[] expected = ["rix/good", "main", "prod"];
+        CollectionAssert.AreEqual(expected, captured.AllowedPushBranches.Select(b => b.Value).ToArray());
     }
 
     [TestMethod]
