@@ -65,7 +65,8 @@ internal static class TestConfig
         long runId = 1,
         string? workDir = null,
         string? outputDir = null,
-        int maxRixCommits = CiFailureConfig.DefaultMaxRixCommits
+        int maxRixCommits = CiFailureConfig.DefaultMaxRixCommits,
+        AgentKind agent = JobConfig.DefaultAgent
     )
     => new
     (
@@ -75,7 +76,7 @@ internal static class TestConfig
         TimeoutMinutes: new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes),
         WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
         OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
-        Agent: JobConfig.DefaultAgent,
+        Agent: agent,
         MaxTokens: new MaxTokens(JobConfig.DefaultMaxTokens),
         MaxRixCommits: new MaxRixCommits(maxRixCommits)
     );

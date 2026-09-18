@@ -52,7 +52,7 @@ internal static class Startup
     /// over one shared <see cref="GitHubApi"/> transport rather than two independently connected
     /// ones. Built only when no context was supplied, so a test that brings its own stubs opens no
     /// connection at all.</summary>
-    private static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
+    internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
         var host = new GitHubReadHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
