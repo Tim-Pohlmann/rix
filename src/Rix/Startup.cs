@@ -21,14 +21,14 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultContext(config.Agent.Kind, new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
+    => DefaultContext(config.Agent.Kind, new GitHubJobHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
 
     /// <summary>Overload for callers that already have a host to reuse rather than a second,
     /// redundant connection — and that know which agent to run before they have a
     /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
     /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
     /// agent it will run is configured up front.</summary>
-    internal static JobContext DefaultContext(AgentKind agent, IRepositoryReadHost host)
+    internal static JobContext DefaultContext(AgentKind agent, IJobHost host)
     => new
     (
         Host: host,
@@ -55,7 +55,7 @@ internal static class Startup
     internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
-        var host = new GitHubReadHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
+        var host = new GitHubJobHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
         return new CiFailureContext(new GitHubCiFailureHost(api), DefaultContext(config.Agent, host));
     }
 
@@ -64,7 +64,7 @@ internal static class Startup
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        Host: new GitHubHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
+        Host: new GitHubSubmitHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
         RunProcess: ProcessWrapper.RunAsync,
         LogLine: Console.Error.WriteLine
     );

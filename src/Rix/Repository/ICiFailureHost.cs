@@ -3,9 +3,9 @@ namespace Rix.Repository;
 /// <summary>Read-only GitHub Actions operations needed to describe why a run failed: the run's own
 /// outcome, its failing jobs' logs, any open PR for its branch, and how much of that branch's tip
 /// rix wrote itself. Kept separate from
-/// <see cref="IRepositoryReadHost"/> so <c>rix job</c>'s stub host isn't forced to implement
+/// <see cref="IJobHost"/> so <c>rix job</c>'s stub host isn't forced to implement
 /// operations it never uses.</summary>
-internal interface IGitHubCiFailureHost
+internal interface ICiFailureHost
 {
     Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken);
 

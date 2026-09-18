@@ -178,7 +178,7 @@ internal static class SubmitRunner
     )
     {
         // --end-of-options stops git from reading a branch name starting with "-" as an option —
-        // see GitHubReadHost.CreateBundleAsync for why it's this flag and not "--".
+        // see GitHubJobHost.CreateBundleAsync for why it's this flag and not "--".
         var fetch = await Git
         (
             context, cloneDir, ["fetch", bundlePath, "--end-of-options", $"{branch.Value}:{branch.Value}"], cancellationToken
