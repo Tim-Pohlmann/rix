@@ -1,24 +1,20 @@
-using Rix.Process;
 using Rix.Repository;
 using System.Net;
 using System.Text;
 
 namespace Rix.Tests;
 
-/// <summary>Covers the <see cref="IGitHubCiFailureHost"/> methods <see cref="GitHubReadHost"/>
-/// implements: fetching a run's facts, concatenating its failed jobs' logs, looking up an open PR
-/// for its branch, and counting rix's own commits at that branch's tip.</summary>
+/// <summary>Covers <see cref="GitHubCiFailureHost"/>: fetching a run's facts, concatenating its
+/// failed jobs' logs, looking up an open PR for its branch, and counting rix's own commits at that
+/// branch's tip. Only the REST side is stubbed - this host runs no git commands.</summary>
 [TestClass]
 public class CiFailureHostTests
 {
-    private static readonly RunProcessAsync SuccessGitRunner =
-        (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
-
     /// <summary>Generous enough that the tests not about truncation are unaffected by it.</summary>
     private const int TailChars = 10_000;
 
-    private static GitHubReadHost BuildHost(Func<HttpRequestMessage, HttpResponseMessage> handler, string repo = "owner/repo")
-    => new(new RepoIdentifier(repo), new GitReadToken("read-tok"), SuccessGitRunner, new DelegatingHandlerStub(handler));
+    private static GitHubCiFailureHost BuildHost(Func<HttpRequestMessage, HttpResponseMessage> handler, string repo = "owner/repo")
+    => new(new RepoIdentifier(repo), new GitReadToken("read-tok"), new DelegatingHandlerStub(handler));
 
     private static HttpResponseMessage Json(string body)
     => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };

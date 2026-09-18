@@ -11,19 +11,14 @@ namespace Rix.CiFailure;
 /// </summary>
 internal static class CiFailureRunner
 {
-    /// <summary><paramref name="jobContextFor"/> is a factory rather than a ready-made
-    /// <see cref="JobContext"/> because a context is built around the <see cref="JobConfig"/> it
-    /// will run, and that config cannot exist until a failure has been detected and supplied the
-    /// prompt. It is never invoked when the run hadn't failed.</summary>
     internal static async Task<CiFailureOutcome> RunAsync
     (
         CiFailureConfig config,
-        IGitHubCiFailureHost ciFailureHost,
-        Func<JobConfig, JobContext> jobContextFor,
+        CiFailureContext context,
         CancellationToken cancellationToken
     )
     {
-        var detection = await CiFailureDetector.DetectAsync(config.Repo, config.RunId, ciFailureHost, config.MaxRixCommits, cancellationToken);
+        var detection = await CiFailureDetector.DetectAsync(config.Repo, config.RunId, context.CiFailureHost, config.MaxRixCommits, cancellationToken);
         if (detection is not CiFailureDetected detected)
             return new CiFailureNotRun(detection);
 
@@ -33,7 +28,7 @@ internal static class CiFailureRunner
         // already exists on the remote regardless of whether it happens to be rix/*-named (e.g. CI
         // failed on a human's own branch, not a previous rix run), so it's always allowed.
         var job = config.ToJobConfig(detected.Prompt, new BranchName(detected.Branch));
-        var jobResult = await JobRunner.RunAsync(job, jobContextFor(job), cancellationToken);
+        var jobResult = await JobRunner.RunAsync(job, context.JobFor(job), cancellationToken);
         return new CiFailureRan(job, jobResult);
     }
 }

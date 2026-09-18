@@ -1,15 +1,17 @@
 using Rix.Process;
-using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
 namespace Rix.Repository;
 
-/// <summary>Full GitHub host: composes a <see cref="GitHubReadHost"/> for the read operations and
-/// layers the write operations (push, open PR) on top of its shared transport. Requires a
-/// write-capable <see cref="GitToken"/>.</summary>
+/// <summary>Full GitHub host: delegates every read operation to a <see cref="GitHubReadHost"/> and
+/// layers the write operations (push, open PR) on top of the same <see cref="GitCli"/> and
+/// <see cref="GitHubApi"/> that host was built from — so both paths share one connection pool and
+/// one credential injection by construction. Requires a write-capable <see cref="GitToken"/>.</summary>
 internal sealed class GitHubHost : IRepositoryHost
 {
     private readonly GitHubReadHost _read;
+    private readonly GitCli _git;
+    private readonly GitHubApi _api;
 
     internal GitHubHost
     (
@@ -18,7 +20,11 @@ internal sealed class GitHubHost : IRepositoryHost
         RunProcessAsync runProcess,
         HttpMessageHandler? handler = null
     )
-    => _read = new GitHubReadHost(repo, token, runProcess, handler);
+    {
+        _git = new GitCli(token, runProcess);
+        _api = new GitHubApi(repo, token, handler);
+        _read = new GitHubReadHost(_git, _api);
+    }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
     => _read.CloneAsync(targetDirectory, cancellationToken);
@@ -43,7 +49,7 @@ internal sealed class GitHubHost : IRepositoryHost
     => _read.CreateBundleAsync(repoDirectory, bundlePath, baseBranch, branch, cancellationToken);
 
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
-    => _read.RunGitAsync
+    => _git.RunAsync
     (
         // --end-of-options stops git from reading a branch name starting with "-" as an option —
         // see GitHubReadHost.CreateBundleAsync for why it's this flag and not "--".
@@ -57,7 +63,6 @@ internal sealed class GitHubHost : IRepositoryHost
     /// (and link) the opened PR rather than only its branch name.</summary>
     public async Task<string> CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
     {
-        var url = $"https://api.github.com/repos/{_read.Repo.Value}/pulls";
         var request = new CreatePullRequestRequest
         (
             Title: pullRequest.Title.Value,
@@ -65,10 +70,15 @@ internal sealed class GitHubHost : IRepositoryHost
             Base: pullRequest.BaseBranch.Value,
             Body: pullRequest.Body.Value
         );
-        using var content = JsonContent.Create(request, GitHubApiJsonContext.Default.CreatePullRequestRequest);
-        using var response = await _read.Http.PostAsync(url, content, cancellationToken);
-        GitHubReadHost.EnsureSuccess(response, $"create pull request for {pullRequest.Branch.Value}");
-        var created = await GitHubReadHost.ReadJsonAsync(response, GitHubApiJsonContext.Default.CreatePullRequestResponse, cancellationToken);
+        var created = await _api.PostJsonAsync
+        (
+            "pulls",
+            request,
+            GitHubApiJsonContext.Default.CreatePullRequestRequest,
+            GitHubApiJsonContext.Default.CreatePullRequestResponse,
+            $"create pull request for {pullRequest.Branch.Value}",
+            cancellationToken
+        );
         if (created.HtmlUrl is null)
             throw new RepositoryHostException("create PR response did not include html_url");
         return created.HtmlUrl;
