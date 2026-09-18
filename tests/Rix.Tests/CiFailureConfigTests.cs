@@ -46,8 +46,6 @@ public class CiFailureConfigTests
         Assert.AreEqual("the-api-key", job.Agent.ApiKey);
         Assert.AreEqual("THE_API_KEY", job.Agent.ApiKeyEnv);
         Assert.AreEqual("the prompt", job.Agent.Prompt);
-        CollectionAssert.AreEqual(
-            new[] { "rix/the-branch" },
-            job.AllowedPushBranches.Select(branch => branch.Value).ToArray());
+        Assert.AreEqual("rix/the-branch", job.AllowedPushBranches.Single().Value);
     }
 }
