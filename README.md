@@ -128,9 +128,11 @@ SHA (e.g. `...job.yml@v1.0.0`) for reproducible, supply-chain-safe runs.
 The read/write split keeps the agent run (which executes untrusted, model-generated work)
 on a read-only token; only the final, deterministic PR-creation step holds write access.
 
-The workflow downloads the latest published `rix` release binary and verifies it against the
-release's published SHA-256 checksum before running it; pin a specific build with the optional
-`rix-version` input.
+The workflow downloads the `rix` release binary belonging to the workflow ref you pinned in
+`uses:` — not whatever was published most recently — and verifies it against that release's
+published SHA-256 checksum before running it, so the workflow and the binary it drives always
+come from the same release. Override with the optional `rix-version` input (an exact tag, or
+`latest`) only if you specifically want them to differ.
 
 Both jobs run on `ubuntu-latest` by default. Pass the optional `runner` input to run them
 on a different runner (e.g. a self-hosted label). The workflow detects the runner's OS and
