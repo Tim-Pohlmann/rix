@@ -14,6 +14,11 @@ internal sealed record GitToken(string Value) : GitReadToken(Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 
+/// <summary>The GitHub Actions identifier of a single workflow run. A distinct type rather than a
+/// bare <c>long</c> so it can't be transposed with the other numbers threaded through the same
+/// calls (a PR number, a job count).</summary>
+internal readonly record struct RunId(long Value);
+
 /// <summary>A validated GitHub <c>owner/name</c> identifier. The constructor is the single source
 /// of the format rule: it throws <see cref="InvalidInputException"/> for anything else, so any
 /// <c>RepoIdentifier</c> that exists is guaranteed well-formed.</summary>
@@ -21,18 +26,20 @@ internal sealed record RepoIdentifier
 {
     internal string Value { get; }
 
+    /// <summary>The <c>owner</c> segment, needed to scope a pull-request lookup to same-repo
+    /// branches: GitHub's <c>/pulls?head=</c> filter matches <c>owner:branch</c>, not branch name
+    /// alone. Split off once here, where the separator has already been located, rather than
+    /// re-scanning <see cref="Value"/> on every read.</summary>
+    internal string Owner { get; }
+
     internal RepoIdentifier(string value)
     {
         var slash = value.IndexOf('/');
         if (slash <= 0 || slash == value.Length - 1 || value.IndexOf('/', slash + 1) >= 0)
             throw new InvalidInputException($"'{value}' is not a valid repo identifier; expected owner/name format.");
         Value = value;
+        Owner = value[..slash];
     }
-
-    /// <summary>The <c>owner</c> segment, needed to scope a pull-request lookup to same-repo
-    /// branches: GitHub's <c>/pulls?head=</c> filter matches <c>owner:branch</c>, not branch name
-    /// alone.</summary>
-    internal string Owner => Value[..Value.IndexOf('/')];
 
     public override string ToString() => Value;
 }

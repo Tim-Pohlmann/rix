@@ -5,10 +5,34 @@ using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
-/// <summary>CLI options shared by <c>job</c> and <c>ci-failure-job</c>, which both run the coding
-/// agent and so take the same execution parameters.</summary>
+/// <summary>The CLI options every <see cref="JobSettings"/> field is read from, shared by <c>job</c>
+/// and <c>ci-failure</c>, which both run the coding agent and so take the same execution
+/// parameters. <see cref="PromptOption"/> and <see cref="AllowedPushBranchesOption"/> are the
+/// exception: <c>ci-failure</c> derives both from the failure it detects rather than accepting them
+/// as inputs, so <see cref="AddTo"/> and <see cref="ReadSettings"/> leave those two to <c>job</c>.</summary>
 internal static class JobOptions
 {
+    internal static readonly Option<string> RepoOption = new
+    (
+        name: "--repo",
+        description: "Full GitHub repo identifier (owner/repo)"
+    )
+    { IsRequired = false };
+
+    internal static readonly Option<string> ReadTokenOption = new
+    (
+        name: "--read-token",
+        description: "GitHub PAT with read access to the repo, including Actions:read"
+    )
+    { IsRequired = false };
+
+    internal static readonly Option<string> PromptOption = new
+    (
+        name: "--prompt",
+        description: "Task prompt passed to the coding agent"
+    )
+    { IsRequired = false };
+
     internal static readonly Option<string> MaxTokensOption = new
     (
         name: "--max-tokens",
@@ -78,20 +102,31 @@ internal static class JobOptions
     )
     { IsRequired = false };
 
-    /// <summary>Turns the shared options (plus the values the two commands source differently:
-    /// <paramref name="repo"/>/<paramref name="readToken"/> from their own flags,
-    /// <paramref name="prompt"/> and <paramref name="allowedPushBranches"/> only meaningful to
-    /// <c>job</c>) into a <see cref="JobConfig"/>. The first malformed value throws
-    /// <see cref="InvalidInputException"/>, which <see cref="CliPipeline"/> reports.</summary>
-    internal static JobConfig ReadConfig
-    (
-        ParseResult parsed,
-        RepoIdentifier repo,
-        GitReadToken readToken,
-        string prompt,
-        IReadOnlyList<BranchName> allowedPushBranches
-    )
+    /// <summary>Registers every option <see cref="ReadSettings"/> reads, so the two can't drift: a
+    /// new job option is added here once and both commands accept it.</summary>
+    internal static void AddTo(Command command)
     {
+        command.AddOption(RepoOption);
+        command.AddOption(ReadTokenOption);
+        command.AddOption(MaxTokensOption);
+        command.AddOption(TimeoutOption);
+        command.AddOption(WorkDirOption);
+        command.AddOption(OutputDirOption);
+        command.AddOption(AgentOption);
+        command.AddOption(ModelOption);
+        command.AddOption(AgentApiKeyOption);
+        command.AddOption(AgentApiKeyEnvOption);
+    }
+
+    /// <summary>Reads the options <see cref="AddTo"/> registered, each falling back to its
+    /// environment variable, into a <see cref="JobSettings"/>. The first missing or malformed value
+    /// throws <see cref="InvalidInputException"/> naming the flag, which <see cref="CliPipeline"/>
+    /// reports. Leaves the prompt and the <c>/push</c> allow-list for the caller to supply —
+    /// <c>job</c> from its own two options, <c>ci-failure</c> from the failure it detects.</summary>
+    internal static JobSettings ReadSettings(ParseResult parsed)
+    {
+        var repo = Input.Required("--repo", parsed.Str(RepoOption, "RIX_REPO"), value => new RepoIdentifier(value));
+        var readToken = Input.Required("--read-token", parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"), value => new GitReadToken(value));
         var agent = Input.Optional("--agent", parsed.Str(AgentOption, "RIX_AGENT"), AgentKindParser.Parse, JobConfig.DefaultAgent);
         var maxTokens = Input.Optional("--max-tokens", parsed.Str(MaxTokensOption, "RIX_MAX_TOKENS"), Input.Positive<int>, JobConfig.DefaultMaxTokens);
         var timeout = Input.Optional("--timeout", parsed.Str(TimeoutOption, "RIX_TIMEOUT"), Input.Positive<int>, JobConfig.DefaultTimeoutMinutes);
@@ -108,15 +143,18 @@ internal static class JobOptions
             _ => Input.Named("--agent-api-key-env", () => AgentCredential.ResolveEnvName(agent, parsed.Str(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV"))),
         };
 
-        return new JobConfig
+        return new JobSettings
         (
             Repo: repo,
             ReadToken: readToken,
             TimeoutMinutes: new TimeoutMinutes(timeout),
             WorkDir: workDir,
             OutputDir: outputDir,
-            Agent: new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, apiKey, apiKeyEnv),
-            AllowedPushBranches: allowedPushBranches
+            Agent: agent,
+            MaxTokens: new MaxTokens(maxTokens),
+            Model: model,
+            ApiKey: apiKey,
+            ApiKeyEnv: apiKeyEnv
         );
     }
 }

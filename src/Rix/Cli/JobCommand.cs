@@ -5,42 +5,12 @@ namespace Rix.Cli;
 
 internal static class JobCommand
 {
-    private static readonly Option<string> RepoOption = new
-    (
-        name: "--repo",
-        description: "Full GitHub repo identifier (owner/repo)"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> PromptOption = new
-    (
-        name: "--prompt",
-        description: "Task prompt passed to the coding agent"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> ReadTokenOption = new
-    (
-        name: "--read-token",
-        description: "GitHub PAT with read-only repo access"
-    )
-    { IsRequired = false };
-
     internal static Command Build(Func<JobConfig, Task<int>> handler)
     {
         var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
 
-        command.AddOption(RepoOption);
-        command.AddOption(PromptOption);
-        command.AddOption(ReadTokenOption);
-        command.AddOption(JobOptions.MaxTokensOption);
-        command.AddOption(JobOptions.TimeoutOption);
-        command.AddOption(JobOptions.WorkDirOption);
-        command.AddOption(JobOptions.OutputDirOption);
-        command.AddOption(JobOptions.AgentOption);
-        command.AddOption(JobOptions.ModelOption);
-        command.AddOption(JobOptions.AgentApiKeyOption);
-        command.AddOption(JobOptions.AgentApiKeyEnvOption);
+        JobOptions.AddTo(command);
+        command.AddOption(JobOptions.PromptOption);
         command.AddOption(JobOptions.AllowedPushBranchesOption);
 
         command.SetHandler
@@ -48,12 +18,9 @@ internal static class JobCommand
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var config = JobOptions.ReadConfig
+                var config = JobOptions.ReadSettings(parsed).ToJob
                 (
-                    parsed,
-                    repo: Input.Required("--repo", parsed.Str(RepoOption, "RIX_REPO"), value => new RepoIdentifier(value)),
-                    readToken: Input.Required("--read-token", parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"), value => new GitReadToken(value)),
-                    prompt: Input.Required("--prompt", parsed.Str(PromptOption, "RIX_PROMPT"), value => value),
+                    prompt: Input.Required("--prompt", parsed.Str(JobOptions.PromptOption, "RIX_PROMPT"), value => value),
                     allowedPushBranches: ParseAllowedPushBranches(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"))
                 );
                 ctx.ExitCode = await handler(config);

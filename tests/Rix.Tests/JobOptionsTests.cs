@@ -5,106 +5,152 @@ using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
 
-/// <summary>Covers <see cref="JobOptions.ReadConfig"/>, the boundary that turns the shared
-/// <c>job</c>/<c>ci-failure-job</c> flags into a <see cref="JobConfig"/>: defaults, parsing, and
-/// the message each malformed flag produces. The flags only <c>job</c> owns (<c>--repo</c>,
-/// <c>--prompt</c>, <c>--read-token</c>, <c>--allowed-push-branches</c>) are covered by
-/// <see cref="JobCommandTests"/>.</summary>
+/// <summary>Covers <see cref="JobOptions.ReadSettings"/>, the boundary that turns the flags shared
+/// by <c>job</c> and <c>ci-failure</c> into a <see cref="JobSettings"/>: defaults, parsing, and the
+/// message each malformed flag produces. The two flags only <c>job</c> owns (<c>--prompt</c>,
+/// <c>--allowed-push-branches</c>) are covered by <see cref="JobCommandTests"/>.</summary>
 [TestClass]
 public class JobOptionsTests
 {
     private static readonly string ExistingDir = Path.GetTempPath();
 
-    private static JobConfig Read(params string[] args) => ReadWithOutputDir(ExistingDir, args);
+    private static JobSettings Read(params string[] args) => ReadWith("owner/repo", "read-tok", ExistingDir, args);
 
-    private static JobConfig ReadWithOutputDir(string outputDir, params string[] args)
+    private static JobSettings ReadWithOutputDir(string outputDir, params string[] args) => ReadWith("owner/repo", "read-tok", outputDir, args);
+
+    private static JobSettings ReadWith(string repo, string readToken, string outputDir, params string[] args)
     {
         var root = new RootCommand();
         root.AddCommand(JobCommand.Build(_ => Task.FromResult(0)));
-        var parsed = root.Parse(["job", "--output-dir", outputDir, .. args]);
-        return JobOptions.ReadConfig(parsed, new RepoIdentifier("owner/repo"), new GitReadToken("read-tok"), "Fix the bug", []);
+        var parsed = root.Parse(["job", "--repo", repo, "--read-token", readToken, "--output-dir", outputDir, .. args]);
+        return JobOptions.ReadSettings(parsed);
     }
 
-    private static string ErrorOf(Func<JobConfig> read) => Assert.ThrowsExactly<InvalidInputException>(() => read()).Message;
+    private static string ErrorOf(Func<JobSettings> read) => Assert.ThrowsExactly<InvalidInputException>(() => read()).Message;
 
     [TestMethod]
-    public void ReadConfig_AppliesDefaults()
+    public void ReadSettings_AppliesDefaults()
     {
-        var config = Read();
+        var settings = Read();
 
-        Assert.AreEqual(JobConfig.DefaultMaxTokens, config.Agent.MaxTokens.Value);
-        Assert.AreEqual(JobConfig.DefaultTimeoutMinutes, config.TimeoutMinutes.Value);
-        Assert.AreEqual(Path.GetTempPath(), config.WorkDir.Value);
-        Assert.AreEqual(JobConfig.DefaultAgent, config.Agent.Kind);
-        Assert.IsNull(config.Agent.Model);
-        Assert.IsNull(config.Agent.ApiKey);
-        Assert.IsNull(config.Agent.ApiKeyEnv);
+        Assert.AreEqual(JobConfig.DefaultMaxTokens, settings.MaxTokens.Value);
+        Assert.AreEqual(JobConfig.DefaultTimeoutMinutes, settings.TimeoutMinutes.Value);
+        Assert.AreEqual(Path.GetTempPath(), settings.WorkDir.Value);
+        Assert.AreEqual(JobConfig.DefaultAgent, settings.Agent);
+        Assert.IsNull(settings.Model);
+        Assert.IsNull(settings.ApiKey);
+        Assert.IsNull(settings.ApiKeyEnv);
     }
 
     [TestMethod]
-    public void ReadConfig_PassesThroughTheValuesItIsGiven()
+    public void ReadSettings_ReadsRepoAndReadToken()
     {
-        var config = Read();
+        var settings = Read();
 
-        Assert.AreEqual("owner/repo", config.Repo.ToString());
-        Assert.AreEqual("read-tok", config.ReadToken.Value);
-        Assert.AreEqual("Fix the bug", config.Agent.Prompt);
-        Assert.AreEqual(0, config.AllowedPushBranches.Count);
+        Assert.AreEqual("owner/repo", settings.Repo.ToString());
+        Assert.AreEqual("read-tok", settings.ReadToken.Value);
     }
 
     [TestMethod]
-    public void ReadConfig_OverridesDefaults()
+    public void ReadSettings_RejectsEmptyRepo()
+    => Assert.AreEqual("--repo is required", ErrorOf(() => ReadWith("", "read-tok", ExistingDir)));
+
+    [TestMethod]
+    [DataRow("noslash")]
+    [DataRow("owner/repo/extra")]
+    [DataRow("/repo")]
+    [DataRow("owner/")]
+    public void ReadSettings_RejectsMalformedRepo(string repo)
+    {
+        var error = ErrorOf(() => ReadWith(repo, "read-tok", ExistingDir));
+        StringAssert.StartsWith(error, "--repo: ");
+        StringAssert.Contains(error, "repo identifier");
+    }
+
+    [TestMethod]
+    public void ReadSettings_RejectsEmptyReadToken()
+    => Assert.AreEqual("--read-token is required", ErrorOf(() => ReadWith("owner/repo", "", ExistingDir)));
+
+    [TestMethod]
+    public void ReadSettings_ReportsTheFirstProblemOnly()
+    => Assert.AreEqual("--repo is required", ErrorOf(() => ReadWith("", "", "")));
+
+    [TestMethod]
+    public void ToJob_CompletesSettings_WithPromptAndAllowedPushBranches()
+    {
+        var job = Read("--agent", "claude", "--max-tokens", "1234").ToJob("Fix the bug", [new BranchName("main")]);
+
+        Assert.AreEqual("owner/repo", job.Repo.ToString());
+        Assert.AreEqual("read-tok", job.ReadToken.Value);
+        Assert.AreEqual("Fix the bug", job.Agent.Prompt);
+        Assert.AreEqual(Rix.Agents.AgentKind.Claude, job.Agent.Kind);
+        Assert.AreEqual(1234, job.Agent.MaxTokens.Value);
+        Assert.AreEqual("main", job.AllowedPushBranches.Single().Value);
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("   ")]
+    public void ToJob_RejectsBlankPrompt(string prompt)
+    {
+        // Not an input error: every caller either required the prompt from the user already or built
+        // it from a template, so a blank one here is a bug in that caller.
+        Assert.ThrowsExactly<ArgumentException>(() => Read().ToJob(prompt, []));
+    }
+
+    [TestMethod]
+    public void ReadSettings_OverridesDefaults()
     {
         var config = Read("--max-tokens", "1000", "--timeout", "5", "--work-dir", ExistingDir);
 
-        Assert.AreEqual(1000, config.Agent.MaxTokens.Value);
+        Assert.AreEqual(1000, config.MaxTokens.Value);
         Assert.AreEqual(5, config.TimeoutMinutes.Value);
     }
 
     [TestMethod]
-    public void ReadConfig_RejectsNonPositiveMaxTokens()
+    public void ReadSettings_RejectsNonPositiveMaxTokens()
     => Assert.AreEqual("--max-tokens: must be a positive integer, got '0'", ErrorOf(() => Read("--max-tokens", "0")));
 
     [TestMethod]
-    public void ReadConfig_RejectsNonPositiveTimeout()
+    public void ReadSettings_RejectsNonPositiveTimeout()
     => Assert.AreEqual("--timeout: must be a positive integer, got '-1'", ErrorOf(() => Read("--timeout", "-1")));
 
     [TestMethod]
-    public void ReadConfig_RejectsNonNumericMaxTokens()
+    public void ReadSettings_RejectsNonNumericMaxTokens()
     => Assert.AreEqual("--max-tokens: must be a positive integer, got 'abc'", ErrorOf(() => Read("--max-tokens", "abc")));
 
     [TestMethod]
-    public void ReadConfig_RejectsNonNumericTimeout()
+    public void ReadSettings_RejectsNonNumericTimeout()
     => Assert.AreEqual("--timeout: must be a positive integer, got 'abc'", ErrorOf(() => Read("--timeout", "abc")));
 
     [TestMethod]
-    public void ReadConfig_RejectsNonExistentWorkDir()
+    public void ReadSettings_RejectsNonExistentWorkDir()
     => Assert.AreEqual("--work-dir: directory does not exist: /nonexistent/path/xyz", ErrorOf(() => Read("--work-dir", "/nonexistent/path/xyz")));
 
     [TestMethod]
-    public void ReadConfig_RejectsEmptyOutputDir()
+    public void ReadSettings_RejectsEmptyOutputDir()
     => Assert.AreEqual("--output-dir is required", ErrorOf(() => ReadWithOutputDir("")));
 
     [TestMethod]
-    public void ReadConfig_RejectsNonExistentOutputDir()
+    public void ReadSettings_RejectsNonExistentOutputDir()
     => Assert.AreEqual("--output-dir: directory does not exist: /nonexistent/out", ErrorOf(() => ReadWithOutputDir("/nonexistent/out")));
 
     [TestMethod]
-    public void ReadConfig_DefaultsWorkDirToTemp_WhenBlank()
+    public void ReadSettings_DefaultsWorkDirToTemp_WhenBlank()
     {
         Assert.AreEqual(Path.GetTempPath(), Read("--work-dir", "").WorkDir.Value);
         Assert.AreEqual(Path.GetTempPath(), Read("--work-dir", "   ").WorkDir.Value);
     }
 
     [TestMethod]
-    public void ReadConfig_SelectsAgent()
+    public void ReadSettings_SelectsAgent()
     {
-        Assert.AreEqual(Rix.Agents.AgentKind.Claude, Read("--agent", "claude").Agent.Kind);
-        Assert.AreEqual(Rix.Agents.AgentKind.Pi, Read("--agent", "pi").Agent.Kind);
+        Assert.AreEqual(Rix.Agents.AgentKind.Claude, Read("--agent", "claude").Agent);
+        Assert.AreEqual(Rix.Agents.AgentKind.Pi, Read("--agent", "pi").Agent);
     }
 
     [TestMethod]
-    public void ReadConfig_RejectsUnknownAgent()
+    public void ReadSettings_RejectsUnknownAgent()
     {
         var error = ErrorOf(() => Read("--agent", "devin"));
         StringAssert.StartsWith(error, "--agent: ");
@@ -112,50 +158,50 @@ public class JobOptionsTests
     }
 
     [TestMethod]
-    public void ReadConfig_DefaultsModelToNull_WhenBlank()
+    public void ReadSettings_DefaultsModelToNull_WhenBlank()
     {
         // Unset means "let the agent CLI pick its own default" for every agent — opencode and
         // claude both fall back to a free/default model on their own when --model is omitted.
-        Assert.IsNull(Read("--agent", "opencode", "--model", "").Agent.Model);
-        Assert.IsNull(Read("--agent", "claude").Agent.Model);
-        Assert.IsNull(Read("--agent", "pi").Agent.Model);
+        Assert.IsNull(Read("--agent", "opencode", "--model", "").Model);
+        Assert.IsNull(Read("--agent", "claude").Model);
+        Assert.IsNull(Read("--agent", "pi").Model);
     }
 
     [TestMethod]
-    public void ReadConfig_PassesThroughExplicitModel()
+    public void ReadSettings_PassesThroughExplicitModel()
     {
-        Assert.AreEqual("openai/gpt-4o", Read("--agent", "opencode", "--model", "openai/gpt-4o").Agent.Model);
-        Assert.AreEqual("claude-opus-4", Read("--agent", "claude", "--model", "claude-opus-4").Agent.Model);
-        Assert.AreEqual("openai/gpt-4o", Read("--agent", "pi", "--model", "openai/gpt-4o").Agent.Model);
+        Assert.AreEqual("openai/gpt-4o", Read("--agent", "opencode", "--model", "openai/gpt-4o").Model);
+        Assert.AreEqual("claude-opus-4", Read("--agent", "claude", "--model", "claude-opus-4").Model);
+        Assert.AreEqual("openai/gpt-4o", Read("--agent", "pi", "--model", "openai/gpt-4o").Model);
     }
 
     [TestMethod]
-    public void ReadConfig_LeavesApiKeyAndEnvNull_WhenNoKeySupplied()
+    public void ReadSettings_LeavesApiKeyAndEnvNull_WhenNoKeySupplied()
     {
         var config = Read("--agent-api-key-env", "ANTHROPIC_API_KEY");
 
-        Assert.IsNull(config.Agent.ApiKey);
-        Assert.IsNull(config.Agent.ApiKeyEnv);
+        Assert.IsNull(config.ApiKey);
+        Assert.IsNull(config.ApiKeyEnv);
     }
 
     [TestMethod]
-    public void ReadConfig_DefaultsApiKeyEnv_PerAgent_WhenKeySuppliedWithoutOverride()
+    public void ReadSettings_DefaultsApiKeyEnv_PerAgent_WhenKeySuppliedWithoutOverride()
     {
-        Assert.AreEqual("OPENCODE_API_KEY", Read("--agent", "opencode", "--agent-api-key", "secret").Agent.ApiKeyEnv);
-        Assert.AreEqual("ANTHROPIC_API_KEY", Read("--agent", "claude", "--agent-api-key", "secret").Agent.ApiKeyEnv);
+        Assert.AreEqual("OPENCODE_API_KEY", Read("--agent", "opencode", "--agent-api-key", "secret").ApiKeyEnv);
+        Assert.AreEqual("ANTHROPIC_API_KEY", Read("--agent", "claude", "--agent-api-key", "secret").ApiKeyEnv);
     }
 
     [TestMethod]
-    public void ReadConfig_UsesExplicitApiKeyEnv_WhenValid()
+    public void ReadSettings_UsesExplicitApiKeyEnv_WhenValid()
     {
         var config = Read("--agent", "opencode", "--agent-api-key", "secret", "--agent-api-key-env", "OPENAI_API_KEY");
 
-        Assert.AreEqual("secret", config.Agent.ApiKey);
-        Assert.AreEqual("OPENAI_API_KEY", config.Agent.ApiKeyEnv);
+        Assert.AreEqual("secret", config.ApiKey);
+        Assert.AreEqual("OPENAI_API_KEY", config.ApiKeyEnv);
     }
 
     [TestMethod]
-    public void ReadConfig_RejectsPiAgent_WithApiKey_AndNoEnvOverride()
+    public void ReadSettings_RejectsPiAgent_WithApiKey_AndNoEnvOverride()
     {
         var error = ErrorOf(() => Read("--agent", "pi", "--agent-api-key", "secret"));
         StringAssert.StartsWith(error, "--agent-api-key-env: ");
@@ -165,9 +211,9 @@ public class JobOptionsTests
     [TestMethod]
     [DataRow("NOT_A_CREDENTIAL")]
     // Full rejection matrix (RIX_*, AGENT_API_KEY*, GITHUB_*) is covered by
-    // AgentCredentialTests; this just proves ReadConfig wires the error through.
+    // AgentCredentialTests; this just proves ReadSettings wires the error through.
     [DataRow("RIX_AGENT")]
-    public void ReadConfig_RejectsApiKeyEnv_ThatIsNotCredentialShaped(string envName)
+    public void ReadSettings_RejectsApiKeyEnv_ThatIsNotCredentialShaped(string envName)
     {
         var error = ErrorOf(() => Read("--agent-api-key", "secret", "--agent-api-key-env", envName));
         StringAssert.StartsWith(error, "--agent-api-key-env: ");
