@@ -10,7 +10,7 @@ namespace Rix.Submit;
 /// </summary>
 internal sealed record SubmitContext
 (
-    ISubmitHost Host,
+    ISubmitRepoHost RepoHost,
     RunProcessAsync RunProcess,
     LogLine LogLine
 );

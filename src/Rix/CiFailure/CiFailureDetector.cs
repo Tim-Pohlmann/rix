@@ -24,12 +24,12 @@ internal static class CiFailureDetector
     (
         RepoIdentifier repo,
         RunId runId,
-        ICiFailureHost host,
+        ICiFailureRepoHost host,
         MaxRixCommits maxRixCommits,
         CancellationToken cancellationToken
     )
     {
-        // Every host call here fails the same way — a RepositoryHostException whose message already
+        // Every host call here fails the same way — a RepoHostException whose message already
         // names the operation that failed — so one catch at the boundary replaces a try/catch per
         // call, and a CiFailureError carries that message through unchanged.
         try
@@ -65,7 +65,7 @@ internal static class CiFailureDetector
             var prompt = BuildPrompt(repo, run, prNumber, logs);
             return new CiFailureDetected(prompt, run.HtmlUrl, run.HeadBranch, prNumber);
         }
-        catch (RepositoryHostException ex)
+        catch (RepoHostException ex)
         {
             return new CiFailureError(ex.Message);
         }
