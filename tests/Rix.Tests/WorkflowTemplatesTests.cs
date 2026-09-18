@@ -32,6 +32,9 @@ public class WorkflowTemplatesTests
         var (_, content) = WorkflowTemplates.For(Ref)[1];
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v9");
         StringAssert.Contains(content, "workflow_run:");
+        // Rix refuses a fork's run itself (see CiFailureDetector), but the generated caller must
+        // not hand one a runner and this repo's secrets in the first place.
+        StringAssert.Contains(content, "github.event.workflow_run.head_repository.full_name == github.repository");
     }
 
     [TestMethod]

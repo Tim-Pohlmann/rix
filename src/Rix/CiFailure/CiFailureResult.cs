@@ -5,6 +5,7 @@ namespace Rix.CiFailure;
 [JsonDerivedType(typeof(CiFailureDetected), "detected")]
 [JsonDerivedType(typeof(CiFailureSkipped), "skipped")]
 [JsonDerivedType(typeof(CiFailureLoopGuarded), "loopGuarded")]
+[JsonDerivedType(typeof(CiFailureUntrustedRun), "untrustedRun")]
 [JsonDerivedType(typeof(CiFailureError), "error")]
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "status")]
 internal interface ICiFailureResult;
@@ -36,6 +37,22 @@ internal sealed record CiFailureLoopGuarded
     [property: JsonPropertyName("rixCommits")] int RixCommits
 ) : ICiFailureResult;
 
+/// <summary>The run failed, but its branch lives in <paramref name="HeadRepo"/> rather than in the
+/// watched repo — a fork's pull request. Nobody needs write access to the watched repo to push to a
+/// fork, so the code, the failing test and the log output that would become the agent's prompt are
+/// all attacker-controlled, while the workflow answering them holds the watched repo's write token.
+/// Rix therefore doesn't answer these at all; who can push to the repo is the permission check it
+/// defers to, rather than asking the API about the triggering account.
+///
+/// A maintainer's own fork PR is turned away by the same rule. That costs nothing: its branch
+/// doesn't exist in the watched repo, so the clone rix would push a fix onto has nowhere to come
+/// from — the fork PR is outside what rix can act on either way.</summary>
+internal sealed record CiFailureUntrustedRun
+(
+    [property: JsonPropertyName("headRepo")] string HeadRepo,
+    [property: JsonPropertyName("branch")] string Branch
+) : ICiFailureResult;
+
 /// <summary>Something went wrong fetching or interpreting the run's data, as opposed to the run
 /// itself having failed — e.g. a bad token or an unreachable API.</summary>
 internal sealed record CiFailureError
@@ -47,5 +64,6 @@ internal sealed record CiFailureError
 [JsonSerializable(typeof(CiFailureDetected))]
 [JsonSerializable(typeof(CiFailureSkipped))]
 [JsonSerializable(typeof(CiFailureLoopGuarded))]
+[JsonSerializable(typeof(CiFailureUntrustedRun))]
 [JsonSerializable(typeof(CiFailureError))]
 internal partial class CiFailureJsonContext : JsonSerializerContext { }

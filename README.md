@@ -179,8 +179,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   rix:
-    # Cheap short-circuit; on-ci-failure.yml re-checks the conclusion via the API regardless.
-    if: github.event.workflow_run.conclusion == 'failure'
+    # Cheap short-circuit; on-ci-failure.yml re-checks both conditions via the API regardless.
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v0
     with:
       # repo defaults to the calling repo — no need to set it here.
@@ -195,16 +197,16 @@ jobs:
 
 **Fork PRs:** `workflow_run` always executes with the base repo's secrets, even when the CI run
 it's reacting to came from a fork PR. Since `on-ci-failure.yml` feeds that run's log output
-straight into the agent's prompt, an untrusted fork PR could smuggle prompt-injection text into
-a failing test's output and have it interpreted as instructions by an agent holding
-`write-token`. If CI runs on fork PRs, add an explicit trust gate before calling the reusable
-workflow, e.g.:
+straight into the agent's prompt, an untrusted fork PR could otherwise smuggle prompt-injection
+text into a failing test's output and have it interpreted as instructions by an agent holding
+`write-token` — and pushing to a fork takes no permission on your repo at all.
 
-```yaml
-if: >-
-  github.event.workflow_run.conclusion == 'failure' &&
-  github.event.workflow_run.head_repository.full_name == github.repository
-```
+Rix therefore refuses these runs itself: `rix ci-failure` compares the run's head repo against the
+target repo and stops with an `untrustedRun` result — reported as a notice, not a failure — before
+fetching any logs. Getting a branch into the repo requires write access to it, so that one
+comparison is the permission check; a maintainer's own fork PR is turned away by it too, but rix
+could not have pushed a fix onto that branch anyway. The `head_repository` condition in the `if:`
+above is the same rule applied a step earlier, so a fork's failure costs no runner minutes.
 
 ### Advanced: a central factory repo
 
@@ -222,7 +224,11 @@ on:
     types: [completed]
 jobs:
   notify:
-    if: github.event.workflow_run.conclusion == 'failure'
+    # Same two conditions as the simple pattern: rix re-checks both against the API, so this only
+    # saves the round trip through the factory.
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch to factory repo

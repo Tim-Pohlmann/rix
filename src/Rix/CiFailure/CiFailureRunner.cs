@@ -39,9 +39,10 @@ internal abstract record CiFailureOutcome
     private protected CiFailureOutcome() { }
 }
 
-/// <summary>The run either hadn't failed (<see cref="CiFailureSkipped"/>), had failed but on a
-/// branch rix has already been fixing on its own (<see cref="CiFailureLoopGuarded"/>), or couldn't
-/// be checked (<see cref="CiFailureError"/>) — never <see cref="CiFailureDetected"/>, which always
+/// <summary>The run either hadn't failed (<see cref="CiFailureSkipped"/>), had failed on a fork's
+/// branch that rix may not answer (<see cref="CiFailureUntrustedRun"/>), had failed on a branch rix
+/// has already been fixing on its own (<see cref="CiFailureLoopGuarded"/>), or couldn't be checked
+/// (<see cref="CiFailureError"/>) — never <see cref="CiFailureDetected"/>, which always
 /// leads to <see cref="CiFailureRan"/> instead.</summary>
 internal sealed record CiFailureNotRun(ICiFailureResult Reason) : CiFailureOutcome;
 

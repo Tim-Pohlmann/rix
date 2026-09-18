@@ -7,8 +7,9 @@ namespace Rix.CiFailure;
 /// describing the failure (PR number, run URL, failing step logs) for a coding agent to act on.
 /// Replaces what used to be bash + <c>gh</c> CLI in <c>on-ci-failure.yml</c>, so the "turn a
 /// failure into a prompt" logic lives in one tested place instead of a workflow script. Also the
-/// one place that decides a failure is not worth answering at all — a run that didn't fail, or one
-/// whose branch rix has already been fixing on its own for too long. Deciding what to do with the
+/// one place that decides a failure is not worth answering at all — a run that didn't fail, one
+/// rix isn't allowed to answer because it came from a fork, or one whose branch rix has already
+/// been fixing on its own for too long. Deciding what to do with the
 /// outcome is <see cref="CiFailureRunner"/>'s job, not this one's.
 /// </summary>
 internal static class CiFailureDetector
@@ -36,6 +37,14 @@ internal static class CiFailureDetector
             var run = await host.GetRunAsync(runId, cancellationToken);
             if (run.Conclusion != "failure")
                 return new CiFailureSkipped(run.Conclusion);
+
+            // The trust boundary, applied before a single byte of the run reaches a prompt: getting
+            // a branch into this repo takes write access to it, so a run whose head is this repo was
+            // put there by someone who has it, and a run whose head is a fork was not. Compared
+            // case-insensitively because GitHub treats owner and repo names that way, so the same
+            // repo can be named in either case and still be the same repo.
+            if (!run.HeadRepo.Equals(repo.Value, StringComparison.OrdinalIgnoreCase))
+                return new CiFailureUntrustedRun(run.HeadRepo, run.HeadBranch);
 
             // Answered before anything else is fetched, rather than concurrently with it: it is the
             // one question whose answer makes all the remaining work pointless, and the log fetch is

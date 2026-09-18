@@ -188,6 +188,21 @@ public class TypesTests
         Assert.AreEqual(5, root.GetProperty("rixCommits").GetInt32());
     }
 
+    /// <summary>Same contract as the loop guard's discriminator above: run-ci-failure/action.yml
+    /// reports an unrecognized status as a broken result, so a fork's failure turning up as an
+    /// error in the Actions tab is one rename away.</summary>
+    [TestMethod]
+    public void CiFailureUntrustedRun_SerializesWithUntrustedRunStatus()
+    {
+        var json = JsonSerializer.Serialize<ICiFailureResult>(new CiFailureUntrustedRun("outsider/repo", "patch-1"), CiFailureJsonContext.Default.ICiFailureResult);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.AreEqual("untrustedRun", root.GetProperty("status").GetString());
+        Assert.AreEqual("outsider/repo", root.GetProperty("headRepo").GetString());
+        Assert.AreEqual("patch-1", root.GetProperty("branch").GetString());
+    }
+
     [TestMethod]
     public void JobSuccess_SerializesCorrectly()
     {
