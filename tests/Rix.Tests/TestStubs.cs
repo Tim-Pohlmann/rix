@@ -11,16 +11,16 @@ internal sealed class StubCiFailureHost(
     Func<RunId, Task<string>>? getLogs = null,
     Func<BranchName, Task<int?>>? findPr = null) : IGitHubCiFailureHost
 {
-    /// <summary>The per-job log budget the caller asked for, so a test can assert the cap is
-    /// actually pushed down to the host rather than only applied afterwards.</summary>
-    internal int? TailCharsPerJob { get; private set; }
+    /// <summary>The log budget the caller asked for, so a test can assert the cap is actually
+    /// pushed down to the host rather than only applied afterwards.</summary>
+    internal int? TotalTailChars { get; private set; }
 
     public Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
     => getRun switch { { } check => check(runId), _ => throw new InvalidOperationException("getRun not stubbed") };
 
-    public Task<string> GetFailedJobLogsAsync(RunId runId, int tailCharsPerJob, CancellationToken cancellationToken)
+    public Task<string> GetFailedJobLogsAsync(RunId runId, int totalTailChars, CancellationToken cancellationToken)
     {
-        TailCharsPerJob = tailCharsPerJob;
+        TotalTailChars = totalTailChars;
         return getLogs switch { { } check => check(runId), _ => Task.FromResult("") };
     }
 
