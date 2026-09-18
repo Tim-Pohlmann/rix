@@ -8,27 +8,37 @@ public class WorkflowTemplatesTests
     private static readonly string[] ExpectedRelativePaths =
         [".github/workflows/rix.yml", ".github/workflows/rix-on-ci-failure.yml"];
 
+    private static readonly WorkflowRef Ref = new("v9");
+
     [TestMethod]
-    public void All_ResolvesBothEmbeddedTemplates_Nonempty()
+    public void For_ResolvesBothEmbeddedTemplates_Nonempty()
     {
-        var paths = WorkflowTemplates.All.Select(t => t.RelativePath).ToArray();
-        CollectionAssert.AreEqual(ExpectedRelativePaths, paths);
-        Assert.IsTrue(WorkflowTemplates.All.All(t => t.Content.Contains("jobs:") && t.Content.Contains("uses:")));
+        var templates = WorkflowTemplates.For(Ref);
+        CollectionAssert.AreEqual(ExpectedRelativePaths, templates.Select(t => t.RelativePath).ToArray());
+        Assert.IsTrue(templates.All(t => t.Content.Contains("jobs:") && t.Content.Contains("uses:")));
     }
 
     [TestMethod]
-    public void All_RixCaller_TargetsJobReusableWorkflow()
+    public void For_RixCaller_TargetsJobReusableWorkflow_AtTheGivenRef()
     {
-        var (_, content) = WorkflowTemplates.All[0];
-        StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/job.yml@main");
+        var (_, content) = WorkflowTemplates.For(Ref)[0];
+        StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/job.yml@v9");
         StringAssert.Contains(content, "workflow_dispatch:");
     }
 
     [TestMethod]
-    public void All_CiFailureCaller_TargetsOnCiFailureReusableWorkflow()
+    public void For_CiFailureCaller_TargetsOnCiFailureReusableWorkflow_AtTheGivenRef()
     {
-        var (_, content) = WorkflowTemplates.All[1];
-        StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main");
+        var (_, content) = WorkflowTemplates.For(Ref)[1];
+        StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v9");
         StringAssert.Contains(content, "workflow_run:");
+    }
+
+    [TestMethod]
+    public void For_LeavesTheEmbeddedTemplatesIntact_SoEachCallSeesItsOwnRef()
+    {
+        // The substitution is per call, not applied once to the cached copy: two inits in the same
+        // process with different refs must not have the first one's ref baked into the second's.
+        Assert.AreEqual(WorkflowTemplates.For(new("v1"))[0].Content.Replace("@v1", "@v2", StringComparison.Ordinal), WorkflowTemplates.For(new("v2"))[0].Content);
     }
 }

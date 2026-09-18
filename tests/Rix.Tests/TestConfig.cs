@@ -78,6 +78,6 @@ internal static class TestConfig
         MaxTokens: new MaxTokens(JobConfig.DefaultMaxTokens)
     );
 
-    internal static InitializeConfig ValidInitialize(string? dir = null)
-    => new(new DirectoryPath(dir ?? Path.GetTempPath()));
+    internal static InitializeConfig ValidInitialize(string? dir = null, string? workflowRef = null)
+    => new(new DirectoryPath(dir ?? Path.GetTempPath()), new WorkflowRef(workflowRef ?? "v0"));
 }

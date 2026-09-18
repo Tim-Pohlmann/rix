@@ -7,7 +7,7 @@ on:
         required: true
 jobs:
   rix:
-    uses: Tim-Pohlmann/rix/.github/workflows/job.yml@main
+    uses: Tim-Pohlmann/rix/.github/workflows/job.yml@__RIX_REF__
     with:
       repo: ${{ github.repository }}
       prompt: ${{ inputs.prompt }}

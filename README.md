@@ -20,15 +20,18 @@ the resulting PRs. Each repo drives it through a small caller workflow.
 Run `rix initialize` inside a checkout of the target repo to write both caller workflows
 (`.github/workflows/rix.yml` and `.github/workflows/rix-on-ci-failure.yml`; existing files are
 overwritten). The templates are baked into the `rix` binary, so this needs no network access.
-Then:
+Their `uses:` lines point at the floating major-version tag of the release this `rix` comes
+from (`@v0` for any 0.x build), so the caller workflows call the reusable workflows they were
+released with. Then:
 
 1. Add repo secrets `RIX_READ_TOKEN` and `RIX_WRITE_TOKEN` (see [Secrets](#secrets)).
 2. In `rix-on-ci-failure.yml`, change `workflows: ["CI"]` to the `name:` of the workflow rix
    should react to.
 3. Commit and push the two files.
 
-Pass `--dir <path>` to target a repo other than the current directory. The sections below
-describe the files it writes and how to customize them further.
+Pass `--dir <path>` to target a repo other than the current directory, and `--ref <git-ref>` to
+pin the written workflows to a different tag, branch, or commit SHA of this repo. The sections
+below describe the files it writes and how to customize them further.
 
 ### The `rix` caller workflow
 
@@ -42,7 +45,7 @@ on:
         required: true
 jobs:
   rix:
-    uses: Tim-Pohlmann/rix/.github/workflows/job.yml@main
+    uses: Tim-Pohlmann/rix/.github/workflows/job.yml@v0
     with:
       repo: ${{ github.repository }}
       prompt: ${{ inputs.prompt }}
@@ -114,8 +117,11 @@ Local/self-hosted backends (e.g. Ollama, LM Studio) aren't supported yet — ope
 reach those through a generated config file rather than a model string + API key, which is a
 separate mechanism this workflow doesn't build today.
 
-`@main` tracks the latest workflow; once a release is tagged, pin to that tag or a commit
-SHA (e.g. `...job.yml@v1.0.0`) for reproducible, supply-chain-safe runs.
+`@v0` is the floating major-version tag: it moves to each new 0.x release, so callers pick up
+fixes without re-pinning, and the workflow keeps fetching the binary belonging to that release.
+Pin an exact tag (e.g. `...job.yml@v0.5.0`) or a commit SHA for byte-for-byte reproducible,
+supply-chain-safe runs. `@main` is not recommended: between a version bump and the release it
+names, it asks for a binary that isn't published yet.
 
 ### Secrets
 
@@ -170,7 +176,7 @@ jobs:
   rix:
     # Cheap short-circuit; on-ci-failure.yml re-checks the conclusion via the API regardless.
     if: github.event.workflow_run.conclusion == 'failure'
-    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main
+    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v0
     with:
       # repo defaults to the calling repo — no need to set it here.
       run-id: ${{ github.event.workflow_run.id }}
@@ -237,7 +243,7 @@ jobs:
   rix:
     # Validate before trusting client_payload — see caveat below.
     if: contains(fromJSON(vars.RIX_FACTORY_ALLOWED_REPOS), github.event.client_payload.repo)
-    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main
+    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v0
     with:
       repo: ${{ github.event.client_payload.repo }}
       run-id: ${{ github.event.client_payload.run_id }}
