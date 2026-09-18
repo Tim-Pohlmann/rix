@@ -28,6 +28,16 @@ internal interface ICiFailureHost
     Task<int> CountLeadingRixCommitsAsync(BranchName branch, MaxRixCommits max, CancellationToken cancellationToken);
 }
 
-/// <summary>The facts about one workflow run needed to describe why it failed. <paramref
-/// name="Conclusion"/> is <c>null</c> while the run is still queued/in-progress.</summary>
-internal sealed record WorkflowRun(string? Conclusion, string DisplayTitle, string HtmlUrl, string HeadBranch);
+/// <summary>The facts about one workflow run needed to describe why it failed, and to decide
+/// whether it may be answered at all. <paramref name="Conclusion"/> is <c>null</c> while the run is
+/// still queued/in-progress. <paramref name="HeadRepo"/> is the <c>owner/name</c> of the repo the
+/// run's branch lives in, which is the fork rather than the watched repo when the run belongs to a
+/// fork's pull request.</summary>
+internal sealed record WorkflowRun
+(
+    string? Conclusion,
+    string DisplayTitle,
+    string HtmlUrl,
+    string HeadBranch,
+    string HeadRepo
+);

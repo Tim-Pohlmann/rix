@@ -108,7 +108,7 @@ runs:
 
         # One jq call over the already-in-memory $result, rather than a separate subprocess per
         # field - status/conclusion/error are all read from it below.
-        IFS=$'\t' read -r status conclusion error branch rix_commits < <(jq -r '[.status, (.conclusion // ""), (.error // ""), (.branch // ""), (.rixCommits // "")] | @tsv' <<<"$result")
+        IFS=$'\t' read -r status conclusion error branch rix_commits head_repo < <(jq -r '[.status, (.conclusion // ""), (.error // ""), (.branch // ""), (.rixCommits // ""), (.headRepo // "")] | @tsv' <<<"$result")
         # Default to false so every branch below (including an unrecognized status) leaves
         # has-result in a defined state; only the success branch needs to override it.
         echo "has-result=false" >> "$GITHUB_OUTPUT"
@@ -120,6 +120,12 @@ runs:
             ;;
           skipped)
             echo "Run $RIX_RUN_ID concluded '$conclusion', not 'failure' — skipping."
+            ;;
+          untrustedRun)
+            # Not an error either: the run belongs to a fork's PR, so its code and logs are written
+            # by someone who needs no write access here - rix does not hand those to an agent
+            # holding this repo's write token.
+            echo "::notice::Run $RIX_RUN_ID is from '$head_repo', not this repository — not answering a failure on a fork's branch '$branch'."
             ;;
           loopGuarded)
             # Not an error: rix has already had its turns on this branch and is standing down so a

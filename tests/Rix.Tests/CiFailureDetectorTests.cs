@@ -125,6 +125,39 @@ public class CiFailureDetectorTests
         AssertError(result);
     }
 
+    /// <summary>The trust boundary: a fork's branch can be pushed to by anyone, so its logs must
+    /// never reach the agent — which means they must never even be fetched.</summary>
+    [TestMethod]
+    public async Task DetectAsync_ReturnsUntrustedRun_WhenTheRunsBranchIsAForks()
+    {
+        var host = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure", branch: "patch-1", headRepo: "outsider/repo")),
+            getLogs: _ => throw new AssertFailedException("a fork's logs must not be fetched at all"),
+            countRixCommits: _ => throw new AssertFailedException("a fork's branch must not be inspected at all"));
+
+        var result = await Detect(host);
+
+        var untrusted = result switch
+        {
+            CiFailureUntrustedRun u => u,
+            _ => throw new AssertFailedException($"expected CiFailureUntrustedRun, got {result}"),
+        };
+        Assert.AreEqual("outsider/repo", untrusted.HeadRepo);
+        Assert.AreEqual("patch-1", untrusted.Branch);
+    }
+
+    /// <summary>GitHub treats owner and repo names case-insensitively, so the repo the run was
+    /// checked against can be spelled differently from the one the API reports and still be it —
+    /// turning rix off for a whole repo over a capital letter would be the worse failure.</summary>
+    [TestMethod]
+    public async Task DetectAsync_TreatsTheRepoAsItsOwn_WhenOnlyItsCasingDiffers()
+    {
+        var host = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure", headRepo: "Owner/Repo")));
+
+        AssertDetected(await Detect(host));
+    }
+
     [TestMethod]
     public async Task DetectAsync_ReturnsLoopGuarded_WhenRixCommitsFillTheBranchTip()
     {
