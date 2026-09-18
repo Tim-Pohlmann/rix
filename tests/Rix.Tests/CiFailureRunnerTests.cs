@@ -100,6 +100,53 @@ public class CiFailureRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_ReturnsNotRun_AndNeverClones_WhenRixCommitsAlreadyFillTheBranchTip()
+    {
+        var ciFailureHost = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            countRixCommits: _ => Task.FromResult(CiFailureConfig.DefaultMaxRixCommits));
+        var cloneCalled = false;
+        var repositoryHost = new StubRepositoryHost(clone: () => { cloneCalled = true; return Task.CompletedTask; });
+
+        var outcome = await CiFailureRunner.RunAsync(
+            MakeConfig(), ciFailureHost, ContextFor(repositoryHost), CancellationToken.None);
+
+        var notRun = AssertNotRun(outcome);
+        Assert.IsInstanceOfType<CiFailureLoopGuarded>(notRun.Reason);
+        Assert.IsFalse(cloneCalled, "a guarded failure must not start an agent run at all");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PassesTheConfiguredCap_ToTheLoopGuard()
+    {
+        var ciFailureHost = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            getLogs: _ => Task.FromResult("boom"),
+            countRixCommits: _ => Task.FromResult(1));
+
+        await CiFailureRunner.RunAsync(
+            TestConfig.ValidCiFailure(workDir: _workDir, outputDir: _outputDir, maxRixCommits: 2),
+            ciFailureHost, ContextFor(new StubRepositoryHost()), CancellationToken.None);
+
+        Assert.AreEqual(2, ciFailureHost.MaxRixCommits?.Value);
+    }
+
+    [TestMethod]
+    public async Task ExecuteCiFailureAsync_Returns0_AndWritesNoResultJson_WhenGuardedAgainstALoop()
+    {
+        var ciFailureHost = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            countRixCommits: _ => Task.FromResult(CiFailureConfig.DefaultMaxRixCommits));
+
+        // Exit 0, like any other reason not to act: the branch being rix's own work is a decision,
+        // not a failure of this run, and a non-zero exit would fail the caller's workflow for it.
+        var exitCode = await Startup.ExecuteCiFailureAsync(MakeConfig(), CancellationToken.None, ciFailureHost);
+
+        Assert.AreEqual(0, exitCode);
+        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")));
+    }
+
+    [TestMethod]
     public async Task ExecuteCiFailureAsync_Returns1_WhenCiFailureCheckErrors()
     {
         var ciFailureHost = new StubCiFailureHost(getRun: _ => throw new RepositoryHostException("boom"));

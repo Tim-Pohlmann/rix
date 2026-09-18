@@ -1,7 +1,8 @@
 namespace Rix.Repository;
 
 /// <summary>Read-only GitHub Actions operations needed to describe why a run failed: the run's own
-/// outcome, its failing jobs' logs, and any open PR for its branch. Kept separate from
+/// outcome, its failing jobs' logs, any open PR for its branch, and how much of that branch's tip
+/// rix wrote itself. Kept separate from
 /// <see cref="IRepositoryReadHost"/> so <c>rix job</c>'s stub host isn't forced to implement
 /// operations it never uses.</summary>
 internal interface IGitHubCiFailureHost
@@ -18,6 +19,13 @@ internal interface IGitHubCiFailureHost
     Task<string> GetFailedJobLogsAsync(RunId runId, int totalTailChars, CancellationToken cancellationToken);
 
     Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken);
+
+    /// <summary>How many commits at <paramref name="branch"/>'s tip rix authored itself, counting
+    /// back from the tip and stopping at the first commit it didn't — so anyone else pushing to the
+    /// branch clears the streak, which is what makes a human stepping in enough to re-enable rix.
+    /// Never reports more than <paramref name="max"/>: the caller only needs to know whether the
+    /// streak reaches its cap, so counting past it would be work no answer depends on.</summary>
+    Task<int> CountLeadingRixCommitsAsync(BranchName branch, MaxRixCommits max, CancellationToken cancellationToken);
 }
 
 /// <summary>The facts about one workflow run needed to describe why it failed. <paramref

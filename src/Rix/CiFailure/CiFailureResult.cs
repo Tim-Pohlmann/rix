@@ -4,6 +4,7 @@ namespace Rix.CiFailure;
 
 [JsonDerivedType(typeof(CiFailureDetected), "detected")]
 [JsonDerivedType(typeof(CiFailureSkipped), "skipped")]
+[JsonDerivedType(typeof(CiFailureLoopGuarded), "loopGuarded")]
 [JsonDerivedType(typeof(CiFailureError), "error")]
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "status")]
 internal interface ICiFailureResult;
@@ -25,6 +26,16 @@ internal sealed record CiFailureSkipped
     [property: JsonPropertyName("conclusion")] string? Conclusion
 ) : ICiFailureResult;
 
+/// <summary>The run failed, but the tip of its branch is already <paramref name="RixCommits"/> of
+/// rix's own commits in a row — rix reacting to a failure of its own last attempt. Answering again
+/// would extend a loop that has already had its chances, so it stops here and leaves the branch to
+/// a human, whose next commit to it clears the streak and re-enables rix on its own.</summary>
+internal sealed record CiFailureLoopGuarded
+(
+    [property: JsonPropertyName("branch")] string Branch,
+    [property: JsonPropertyName("rixCommits")] int RixCommits
+) : ICiFailureResult;
+
 /// <summary>Something went wrong fetching or interpreting the run's data, as opposed to the run
 /// itself having failed — e.g. a bad token or an unreachable API.</summary>
 internal sealed record CiFailureError
@@ -35,5 +46,6 @@ internal sealed record CiFailureError
 [JsonSerializable(typeof(ICiFailureResult))]
 [JsonSerializable(typeof(CiFailureDetected))]
 [JsonSerializable(typeof(CiFailureSkipped))]
+[JsonSerializable(typeof(CiFailureLoopGuarded))]
 [JsonSerializable(typeof(CiFailureError))]
 internal partial class CiFailureJsonContext : JsonSerializerContext { }

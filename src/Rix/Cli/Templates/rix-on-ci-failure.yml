@@ -3,6 +3,11 @@ on:
   workflow_run:
     workflows: ["CI"] # change "CI" to the name: of the workflow rix should react to
     types: [completed]
+# One rix run per branch at a time: when CI fails again while rix is still working on the
+# previous failure, the second run waits instead of starting a second agent from the same tip.
+concurrency:
+  group: rix-on-ci-failure-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
 jobs:
   rix:
     # Cheap short-circuit; on-ci-failure.yml re-checks the conclusion via the API regardless.

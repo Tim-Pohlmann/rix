@@ -14,6 +14,26 @@ internal sealed record GitToken(string Value) : GitReadToken(Value);
 internal readonly record struct MaxTokens(int Value);
 internal readonly record struct TimeoutMinutes(int Value);
 
+/// <summary>How many rix-authored commits may sit at the tip of a branch before
+/// <c>rix ci-failure</c> stops reacting to that branch's failures — the bound on rix answering its
+/// own output forever. At least one, since zero would refuse every branch rix has ever touched,
+/// and at most <see cref="MaxValue"/>: the streak is read in a single request, so a cap beyond one
+/// page could not be told apart from no cap at all.</summary>
+internal readonly record struct MaxRixCommits
+{
+    /// <summary>GitHub's largest <c>per_page</c> for the commits endpoint.</summary>
+    internal const int MaxValue = 100;
+
+    internal int Value { get; }
+
+    internal MaxRixCommits(int value)
+    {
+        if (value < 1 || value > MaxValue)
+            throw new InvalidInputException($"must be between 1 and {MaxValue}, got '{value}'");
+        Value = value;
+    }
+}
+
 /// <summary>The GitHub Actions identifier of a single workflow run. A distinct type rather than a
 /// bare <c>long</c> so it can't be transposed with the other numbers threaded through the same
 /// calls (a PR number, a job count).</summary>

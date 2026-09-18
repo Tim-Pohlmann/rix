@@ -257,6 +257,26 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
         return pulls.FirstOrDefault()?.Number;
     }
 
+    /// <summary>Counts the run of rix's own commits at <paramref name="branch"/>'s tip, which is how
+    /// <c>rix ci-failure</c> tells "CI failed" from "CI failed on rix's last attempt to fix it".
+    /// Authorship is read from <c>commit.author</c>, git's own metadata written by
+    /// <see cref="ConfigureGitAsync"/>, rather than the sibling top-level <c>author</c> — that one is
+    /// the linked GitHub account, which is <c>null</c> for rix precisely because
+    /// <see cref="GitIdentity.Email"/> belongs to no account. One page of at most
+    /// <paramref name="max"/> commits answers it: a streak that long already trips the cap, so a
+    /// second page could not change the outcome.</summary>
+    public async Task<int> CountLeadingRixCommitsAsync(BranchName branch, MaxRixCommits max, CancellationToken cancellationToken)
+    {
+        var commits = await GetJsonAsync
+        (
+            $"commits?sha={Uri.EscapeDataString(branch.Value)}&per_page={max.Value}",
+            GitHubReadApiJsonContext.Default.ListCommitApiResponse,
+            $"list commits on branch {branch.Value}",
+            cancellationToken
+        );
+        return commits.TakeWhile(commit => commit.Commit?.Author?.Email == GitIdentity.Email).Count();
+    }
+
     /// <summary>Builds a URL for <paramref name="path"/> under this host's repo, so the API base
     /// address is written once rather than at every call site.</summary>
     private string Url(string path) => $"https://api.github.com/repos/{Repo.Value}/{path}";
@@ -355,6 +375,23 @@ internal sealed record WorkflowJobApiResponse
 /// by and the name to head its block with.</summary>
 internal sealed record FailedJob(long Id, string Name);
 
+/// <summary>The JSON body of one entry of a GitHub "list commits" REST response, kept down to the
+/// nesting the loop guard actually reads: <c>commit.author.email</c>.</summary>
+internal sealed record CommitApiResponse
+(
+    [property: JsonPropertyName("commit")] CommitDetailApiResponse? Commit
+);
+
+internal sealed record CommitDetailApiResponse
+(
+    [property: JsonPropertyName("author")] CommitAuthorApiResponse? Author
+);
+
+internal sealed record CommitAuthorApiResponse
+(
+    [property: JsonPropertyName("email")] string? Email
+);
+
 /// <summary>The one field <c>rix ci-failure</c> reads from a "list pull requests" REST response.</summary>
 internal sealed record PullRequestApiResponse
 (
@@ -368,4 +405,5 @@ internal sealed record PullRequestApiResponse
 [JsonSerializable(typeof(WorkflowRunApiResponse))]
 [JsonSerializable(typeof(WorkflowJobsApiResponse))]
 [JsonSerializable(typeof(List<PullRequestApiResponse>))]
+[JsonSerializable(typeof(List<CommitApiResponse>))]
 internal partial class GitHubReadApiJsonContext : JsonSerializerContext { }

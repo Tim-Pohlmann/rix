@@ -228,7 +228,7 @@ internal static class Startup
         Console.WriteLine(json);
         return result switch
         {
-            CiFailureDetected or CiFailureSkipped => ExitCodes.Success,
+            CiFailureDetected or CiFailureSkipped or CiFailureLoopGuarded => ExitCodes.Success,
             CiFailureError => ExitCodes.JobFailed,
             _ => throw new NotSupportedException($"Unexpected ci-failure result type: {result.GetType()}"),
         };
