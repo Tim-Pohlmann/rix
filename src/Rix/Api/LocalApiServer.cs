@@ -184,7 +184,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     }
 
     /// <summary>Cancels the queued request for <paramref name="req"/>'s branch by dispatching to
-    /// <paramref name="remove"/> once the branch is known well-formed — shared by /pr and /push,
+    /// <paramref name="remove"/> once the branch is known non-empty — shared by /pr and /push,
     /// which differ only in where the branch is actually removed from.</summary>
     private static IResult HandleDelete(DeleteRequest req, Func<BranchName, IResult> remove)
     {
@@ -197,7 +197,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return remove(branch);
     }
 
-    // A well-formed branch with nothing queued is a 404 so the agent learns its cancel was a no-op
+    // A branch name with nothing queued is a 404 so the agent learns its cancel was a no-op
     // rather than assuming it took.
     private static IResult RemoveFromDictionary(ConcurrentDictionary<string, QueuedPush> pendingRequests, BranchName branch)
     {

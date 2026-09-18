@@ -1,29 +1,43 @@
 using Rix.CiFailure;
+using Rix.Job;
 using System.CommandLine;
 
 namespace Rix.Cli;
 
 internal static class CiFailureCommand
 {
+    /// <summary>The one option this command adds on top of <see cref="JobOptions"/>, kept private
+    /// for the same reason <c>job</c> keeps <c>--prompt</c> to itself: no other command takes
+    /// it.</summary>
+    private static readonly Option<string> RunIdOption = new
+    (
+        name: "--run-id",
+        description: "ID of the (possibly failed) workflow run to inspect"
+    )
+    { IsRequired = false };
+
     internal static Command Build(Func<CiFailureConfig, Task<int>> handler)
     {
-        var command = new Command("ci-failure", "Check whether a workflow run failed and, if so, print a prompt describing it");
+        var command = new Command
+        (
+            "ci-failure",
+            "Check whether a workflow run failed and, if so, run a coding agent against the failure"
+        );
 
-        command.AddOption(CiFailureOptions.RepoOption);
-        command.AddOption(CiFailureOptions.RunIdOption);
-        command.AddOption(CiFailureOptions.ReadTokenOption);
+        JobOptions.AddTo(command);
+        command.AddOption(RunIdOption);
 
         command.SetHandler
         (
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var result = CiFailureConfig.Create
+                var inputs = new CiFailureInputs
                 (
-                    repo:      parsed.Str(CiFailureOptions.RepoOption,      "RIX_REPO"),
-                    readToken: parsed.Str(CiFailureOptions.ReadTokenOption, "RIX_READ_TOKEN"),
-                    runId:     parsed.Str(CiFailureOptions.RunIdOption,     "RIX_RUN_ID")
+                    RunId: parsed.Str(RunIdOption, "RIX_RUN_ID"),
+                    Job: JobOptions.ReadInputs(parsed)
                 );
+                var result = CiFailureConfig.Create(inputs);
 
                 switch (result)
                 {

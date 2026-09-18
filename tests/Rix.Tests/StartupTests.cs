@@ -17,6 +17,17 @@ public class StartupTests
         Assert.AreEqual(0, exitCode);
     }
 
+    /// <summary><c>job</c> and <c>ci-failure</c> register the same static <c>JobOptions</c>
+    /// instances, so both of them living under one root is the case that would break if a shared
+    /// option could belong to only one command. Pinned explicitly rather than left to the help test,
+    /// which would fail for this reason without naming it.</summary>
+    [TestMethod]
+    public async Task RunAsync_BuildsBothCommands_ThatShareJobOptionInstances()
+    {
+        Assert.AreEqual(0, await Startup.RunAsync(["job", "--help"]));
+        Assert.AreEqual(0, await Startup.RunAsync(["ci-failure", "--help"]));
+    }
+
     [TestMethod]
     public async Task RunJobAsync_Returns2_WhenConfigIsInvalid()
     {
