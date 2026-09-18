@@ -3,17 +3,18 @@ using System.Text.Json.Serialization;
 
 namespace Rix.Repository;
 
-/// <summary>Full GitHub host: delegates every read operation to a <see cref="GitHubReadHost"/> and
-/// layers the write operations (push, open PR) on top of the same <see cref="GitCli"/> and
+/// <summary>The full GitHub host behind <c>rix submit</c>: delegates every read operation to a
+/// <see cref="GitHubJobHost"/> and layers the write operations (push, open PR) on top of the same
+/// <see cref="GitCli"/> and
 /// <see cref="GitHubApi"/> that host was built from — so both paths share one connection pool and
 /// one credential injection by construction. Requires a write-capable <see cref="GitToken"/>.</summary>
-internal sealed class GitHubHost : IRepositoryHost
+internal sealed class GitHubSubmitHost : ISubmitHost
 {
-    private readonly GitHubReadHost _read;
+    private readonly GitHubJobHost _job;
     private readonly GitCli _git;
     private readonly GitHubApi _api;
 
-    internal GitHubHost
+    internal GitHubSubmitHost
     (
         RepoIdentifier repo,
         GitToken token,
@@ -23,20 +24,20 @@ internal sealed class GitHubHost : IRepositoryHost
     {
         _git = new GitCli(token, runProcess);
         _api = new GitHubApi(repo, token, handler);
-        _read = new GitHubReadHost(_git, _api);
+        _job = new GitHubJobHost(_git, _api);
     }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
-    => _read.CloneAsync(targetDirectory, cancellationToken);
+    => _job.CloneAsync(targetDirectory, cancellationToken);
 
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
-    => _read.BranchExistsOnRemoteAsync(branch, cancellationToken);
+    => _job.BranchExistsOnRemoteAsync(branch, cancellationToken);
 
     public Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
-    => _read.BranchExistsLocallyAsync(repoDirectory, branch, cancellationToken);
+    => _job.BranchExistsLocallyAsync(repoDirectory, branch, cancellationToken);
 
     public Task ConfigureGitAsync(string repoDirectory, CancellationToken cancellationToken)
-    => _read.ConfigureGitAsync(repoDirectory, cancellationToken);
+    => _job.ConfigureGitAsync(repoDirectory, cancellationToken);
 
     public Task CreateBundleAsync
     (
@@ -46,13 +47,13 @@ internal sealed class GitHubHost : IRepositoryHost
         BranchName branch,
         CancellationToken cancellationToken
     )
-    => _read.CreateBundleAsync(repoDirectory, bundlePath, baseBranch, branch, cancellationToken);
+    => _job.CreateBundleAsync(repoDirectory, bundlePath, baseBranch, branch, cancellationToken);
 
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
     => _git.RunAsync
     (
         // --end-of-options stops git from reading a branch name starting with "-" as an option —
-        // see GitHubReadHost.CreateBundleAsync for why it's this flag and not "--".
+        // see GitHubJobHost.CreateBundleAsync for why it's this flag and not "--".
         ["push", "origin", "--end-of-options", branch.Value],
         workingDirectory: repoDirectory,
         authenticated: true,

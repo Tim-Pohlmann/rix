@@ -22,4 +22,4 @@ namespace Rix.CiFailure;
 /// <see cref="CiFailureConfig.Agent"/> names that up front — unlike the prompt, which only a
 /// detected failure can supply. A run that hadn't failed leaves it unused, which costs nothing:
 /// building one opens no connection and starts no process.</param>
-internal sealed record CiFailureContext(IGitHubCiFailureHost CiFailureHost, JobContext Job);
+internal sealed record CiFailureContext(ICiFailureHost CiFailureHost, JobContext Job);
