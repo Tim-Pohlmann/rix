@@ -3,13 +3,19 @@ name: Release
 # Second half of a release: run the Version Bump workflow for this version first, merge its PR,
 # then run this. The bump commit is what gets tagged, and it is the commit whose workflows name
 # the binary this release publishes - so tagging anything else would hand callers of this release
-# a different release's binary.
+# a different release's binary. Forgetting the bump is refused rather than tolerated: a version
+# that already has a release can only be re-released with `rerun` explicitly enabled.
 on:
   workflow_dispatch:
     inputs:
       version:
         description: 'Version to release (e.g. v1.2.3)'
         required: true
+      rerun:
+        description: 'Finish a release that only partly completed for this version (e.g. an asset upload failed). Off by default, so re-running an already-released version is refused instead of republishing it.'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}
@@ -29,6 +35,8 @@ jobs:
       - name: Validate
         env:
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          RERUN: ${{ inputs.rerun }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [[ ! "$INPUT_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "Error: version must match v<major>.<minor>.<patch> with no leading zeros (got: $INPUT_VERSION)"
@@ -41,17 +49,29 @@ jobs:
             echo "Bump the version first by running the Version Bump workflow with version $INPUT_VERSION."
             exit 1
           fi
+          # The bump runs before the release now, so the check above passes just as happily on the
+          # version that is already out - it is the same number in both cases. An existing release
+          # for it is what distinguishes "forgot to bump" from "ready to release", so refuse that
+          # rather than republishing over a release people are already downloading.
+          if gh release view "$INPUT_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            if [[ "$RERUN" != "true" ]]; then
+              echo "Error: $INPUT_VERSION is already released."
+              echo "Run the Version Bump workflow for the next version and merge its PR before releasing."
+              echo "To finish a release that only partly completed, re-run this workflow with rerun enabled."
+              exit 1
+            fi
+            echo "rerun enabled: finishing the existing $INPUT_VERSION release."
+          fi
 
       - name: Create tag and GitHub Release
         run: |
           git fetch --tags origin
+          # A tag with no release behind it is a release that was started and didn't finish, so
+          # carry on and create the release for it. Whether finishing it is what the caller meant
+          # is settled in Validate, above; the publish job always builds from the tag, so what
+          # ships matches the tag either way, however far the default branch has moved since.
           if git rev-parse --verify "refs/tags/${{ github.event.inputs.version }}" >/dev/null 2>&1; then
-            commits_after=$(git rev-list "refs/tags/${{ github.event.inputs.version }}..origin/${{ github.event.repository.default_branch }}" --count)
-            if [[ "$commits_after" -gt 0 ]]; then
-              echo "Error: release ${{ github.event.inputs.version }} already completed ($commits_after commit(s) after tag)." >&2
-              exit 1
-            fi
-            echo "Partial re-run: tag already exists — skipping."
+            echo "Tag ${{ github.event.inputs.version }} already exists - finishing its release."
           else
             git tag "${{ github.event.inputs.version }}"
             git push origin "${{ github.event.inputs.version }}"
