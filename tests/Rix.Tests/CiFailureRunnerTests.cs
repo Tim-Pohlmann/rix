@@ -229,12 +229,11 @@ public class CiFailureRunnerTests
     private CiFailureConfig MakeConfig()
     => TestConfig.ValidCiFailure(workDir: _workDir, outputDir: _outputDir);
 
-    /// <summary>Both halves stubbed: the ci-failure check's host, and a job context that is the
-    /// same regardless of which <see cref="JobConfig"/> <see cref="CiFailureRunner"/> ends up
-    /// building, since these tests stub every collaborator it wires up.</summary>
+    /// <summary>Both halves stubbed: the ci-failure check's host, and the job context the agent
+    /// run would get, with every collaborator <see cref="CiFailureRunner"/> wires up replaced.</summary>
     private static CiFailureContext Context(
         IGitHubCiFailureHost ciFailureHost, IRepositoryReadHost host, RunProcessAsync? processRunner = null)
-    => new(ciFailureHost, _ => JobContext(host, processRunner));
+    => new(ciFailureHost, JobContext(host, processRunner));
 
     private static JobContext JobContext(IRepositoryReadHost host, RunProcessAsync? processRunner = null)
     => new(host, processRunner ?? DefaultRunner, new StubAgent(_ => Task.FromResult<InstallResult>(new Installed())), _ => { }, _ => { });

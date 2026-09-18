@@ -21,17 +21,19 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultContext(config, new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
+    => DefaultContext(config.Agent.Kind, new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
 
-    /// <summary>Overload for callers (e.g. <see cref="ExecuteCiFailureAsync"/>) that already
-    /// have a host instance to reuse — e.g. one also serving as the <see cref="IGitHubCiFailureHost"/>
-    /// for the same run, rather than opening a second, redundant connection.</summary>
-    internal static JobContext DefaultContext(JobConfig config, IRepositoryReadHost host)
+    /// <summary>Overload for callers that already have a host to reuse rather than a second,
+    /// redundant connection — and that know which agent to run before they have a
+    /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
+    /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
+    /// agent it will run is configured up front.</summary>
+    internal static JobContext DefaultContext(AgentKind agent, IRepositoryReadHost host)
     => new
     (
         Host: host,
         RunProcess: ProcessWrapper.RunAsync,
-        Agent: SelectAgent(config.Agent.Kind),
+        Agent: SelectAgent(agent),
         LogLine: Console.Error.WriteLine,
         TranscriptLine: _ => { }
     );
@@ -54,7 +56,7 @@ internal static class Startup
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
         var host = new GitHubReadHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
-        return new CiFailureContext(new GitHubCiFailureHost(api), job => DefaultContext(job, host));
+        return new CiFailureContext(new GitHubCiFailureHost(api), DefaultContext(config.Agent, host));
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub host authenticated with the
@@ -255,9 +257,8 @@ internal static class Startup
     internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, CiFailureContext? context = null)
     {
         var transcriptLines = new List<string>();
-        // Never reassigned, so the teed copy below wraps the original factory rather than itself.
         var collaborators = context ?? DefaultCiFailureContext(config);
-        var teed = collaborators with { JobFor = job => Teeing(collaborators.JobFor(job), transcriptLines) };
+        var teed = collaborators with { Job = Teeing(collaborators.Job, transcriptLines) };
 
         var outcome = await CiFailureRunner.RunAsync(config, teed, cancellationToken);
         return outcome switch
