@@ -12,8 +12,9 @@ namespace Rix.CiFailure;
 internal static class CiFailureDetector
 {
     /// <summary>Caps the log excerpt so a flooding failure can't blow the model's context budget.
-    /// Handed to the host as a per-job cap too, so the same budget bounds what is held in memory
-    /// while the logs are being read, not just what ends up in the prompt.</summary>
+    /// The host applies it while streaming the logs, so it bounds what is held in memory as well as
+    /// what ends up in the prompt, and it covers the excerpt as a whole rather than each failed job
+    /// — nothing here re-trims what comes back.</summary>
     private const int LogTailChars = 20_000;
 
     internal static async Task<ICiFailureResult> DetectAsync(RepoIdentifier repo, RunId runId, IGitHubCiFailureHost host, CancellationToken cancellationToken)
@@ -34,10 +35,6 @@ internal static class CiFailureDetector
             await Task.WhenAll(logsTask, prTask);
             var logs = logsTask.Result;
             var prNumber = prTask.Result;
-
-            if (logs.Length > LogTailChars)
-                logs = logs[^LogTailChars..];
-
             var prompt = BuildPrompt(repo, run, prNumber, logs);
             return new CiFailureDetected(prompt, run.HtmlUrl, run.HeadBranch, prNumber);
         }

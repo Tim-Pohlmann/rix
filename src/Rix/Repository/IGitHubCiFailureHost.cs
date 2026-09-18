@@ -8,11 +8,14 @@ internal interface IGitHubCiFailureHost
 {
     Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken);
 
-    /// <summary>Concatenates the logs of every job that failed in the run, keeping only the last
-    /// <paramref name="tailCharsPerJob"/> characters of each. The caller owns that budget because
-    /// it is the one that has to fit the excerpt into a prompt; passing it down means the bytes
-    /// beyond it are dropped as they arrive instead of after a whole multi-MB log is in memory.</summary>
-    Task<string> GetFailedJobLogsAsync(RunId runId, int tailCharsPerJob, CancellationToken cancellationToken);
+    /// <summary>Builds an excerpt of the run's failed jobs' logs, each job's tail under a heading
+    /// naming it, in at most <paramref name="totalTailChars"/> characters however many jobs failed.
+    /// The caller owns that budget because it is the one that has to fit the excerpt into a prompt,
+    /// and owns it in full rather than per job so the size it asks for is the size it gets; passing
+    /// it down means the bytes beyond it are dropped as they arrive instead of after a whole
+    /// multi-MB log is in memory. How the budget is divided, and how many jobs are worth covering
+    /// before each share is too small to read, is the implementation's call.</summary>
+    Task<string> GetFailedJobLogsAsync(RunId runId, int totalTailChars, CancellationToken cancellationToken);
 
     Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken);
 }

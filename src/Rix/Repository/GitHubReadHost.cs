@@ -25,6 +25,13 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     /// of the tail being kept, no matter how large the log is.</summary>
     private const int LogChunkChars = 8192;
 
+    /// <summary>How many failed jobs the excerpt covers at most. The caller's budget is split evenly
+    /// across the jobs included, so every extra job shrinks all the others' share; past a handful
+    /// each slice is too short to show a stack trace, which is worse than covering fewer jobs well.
+    /// A matrix that fails in twenty configurations is almost always failing for one reason, so the
+    /// jobs left out are named in the excerpt rather than covered.</summary>
+    private const int MaxJobsInExcerpt = 5;
+
     /// <summary>The target repo, exposed so the composing <see cref="GitHubHost"/> can build REST
     /// URLs without keeping a second copy.</summary>
     internal RepoIdentifier Repo { get; }
@@ -153,28 +160,45 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
         return new WorkflowRun(run.Conclusion, run.DisplayTitle, run.HtmlUrl, run.HeadBranch);
     }
 
-    /// <summary>Concatenates the logs of every job that failed in the run, fetched concurrently since
-    /// each job's log is independent. Relies on .NET's default redirect handling, which strips the
+    /// <summary>Builds one excerpt covering every job that failed in the run, each job's tail under a
+    /// heading naming it — without which a multi-job failure reads as one undifferentiated log whose
+    /// parts can't be told apart. <paramref name="totalTailChars"/> is shared evenly between the jobs
+    /// included rather than granted to each, so the excerpt as a whole stays inside the budget the
+    /// caller has to fit into a prompt however many jobs failed. Logs are fetched concurrently since
+    /// each is independent. Relies on .NET's default redirect handling, which strips the
     /// <c>Authorization</c> header when a redirect crosses to a different host — this endpoint always
     /// 302s to short-lived, pre-signed blob storage URLs that reject an unexpected auth header, so the
     /// token must not follow.</summary>
-    public async Task<string> GetFailedJobLogsAsync(RunId runId, int tailCharsPerJob, CancellationToken cancellationToken)
+    public async Task<string> GetFailedJobLogsAsync(RunId runId, int totalTailChars, CancellationToken cancellationToken)
     {
-        var failedJobIds = await ListFailedJobIdsAsync(runId, cancellationToken);
-        var logs = await Task.WhenAll(failedJobIds.Select(jobId => GetJobLogAsync(jobId, tailCharsPerJob, cancellationToken)));
-        return string.Join("\n", logs);
+        var failedJobs = await ListFailedJobsAsync(runId, cancellationToken);
+        var included = failedJobs.Take(MaxJobsInExcerpt).ToList();
+        if (included.Count == 0)
+            return "";
+
+        // At least one character each, so a budget smaller than the job count still yields a log
+        // rather than a division that truncates to nothing.
+        var tailCharsPerJob = Math.Max(totalTailChars / included.Count, 1);
+        var logs = await Task.WhenAll(included.Select(job => GetJobLogAsync(job.Id, tailCharsPerJob, cancellationToken)));
+        var excerpt = string.Join("\n", included.Select((job, index) => $"===== {job.Name} =====\n{logs[index]}"));
+        return (failedJobs.Count - included.Count) switch
+        {
+            0 => excerpt,
+            var omitted => $"{excerpt}\n===== {omitted} further failed job(s) omitted =====",
+        };
     }
 
-    /// <summary>Collects the run's failed job IDs across every page of the jobs endpoint, which is
+    /// <summary>Collects the run's failed jobs across every page of the jobs endpoint, which is
     /// paginated. A matrix build can easily exceed one page, and the job that failed is no more
     /// likely to be on the first page than the last, so stopping there would silently produce an
     /// empty or partial log excerpt for exactly the runs this command exists to explain. Pages are
     /// read sequentially rather than concurrently because how many there are isn't known until a
-    /// short page ends the walk.</summary>
-    private async Task<List<long>> ListFailedJobIdsAsync(RunId runId, CancellationToken cancellationToken)
+    /// short page ends the walk. A job GitHub reports without a name falls back to its ID, which is
+    /// still enough to tell one block of the excerpt from another.</summary>
+    private async Task<List<FailedJob>> ListFailedJobsAsync(RunId runId, CancellationToken cancellationToken)
     {
         var operation = $"list jobs for run {runId.Value}";
-        var failedJobIds = new List<long>();
+        var failedJobs = new List<FailedJob>();
         var page = 1;
         while (true)
         {
@@ -188,21 +212,26 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
             if (jobs.Jobs is null)
                 throw new RepositoryHostException($"{operation} response was missing the jobs field");
 
-            failedJobIds.AddRange(jobs.Jobs.Where(job => job.Conclusion == "failure").Select(job => job.Id));
+            failedJobs.AddRange
+            (
+                jobs.Jobs
+                    .Where(job => job.Conclusion == "failure")
+                    .Select(job => new FailedJob(job.Id, job.Name ?? $"job {job.Id}"))
+            );
             if (jobs.Jobs.Count < JobsPageSize)
-                return failedJobIds;
+                return failedJobs;
 
             page++;
         }
     }
 
     /// <summary>Keeps only the last <paramref name="tailChars"/> characters of the job's log. A
-    /// flooding CI job can emit tens of MB, and the caller only ever keeps a tail of the joined
-    /// result — which can never reach further back into any one job than that job's own tail — so
-    /// the rest is never worth holding. The response is read headers-first and consumed as a stream,
-    /// with each chunk dropped once it falls out of the tail window, which bounds peak memory at
-    /// <c>failed jobs × tailChars</c>; letting the response buffer itself and slicing the resulting
-    /// string would materialize every full log first and make the cap purely cosmetic.</summary>
+    /// flooding CI job can emit tens of MB, and only this job's share of the excerpt's budget can
+    /// ever be shown, so the rest is never worth holding. The response is read headers-first and
+    /// consumed as a stream, with each chunk dropped once it falls out of the tail window, which
+    /// bounds peak memory across all the jobs at roughly the caller's whole budget; letting the
+    /// response buffer itself and slicing the resulting string would materialize every full log
+    /// first and make the cap purely cosmetic.</summary>
     private async Task<string> GetJobLogAsync(long jobId, int tailChars, CancellationToken cancellationToken)
     {
         var operation = $"get logs for job {jobId}";
@@ -392,8 +421,13 @@ internal sealed record WorkflowJobsApiResponse
 internal sealed record WorkflowJobApiResponse
 (
     [property: JsonPropertyName("id")] long Id,
+    [property: JsonPropertyName("name")] string? Name,
     [property: JsonPropertyName("conclusion")] string? Conclusion
 );
+
+/// <summary>One job of a run that failed, reduced to what the excerpt needs: the ID to fetch its log
+/// by and the name to head its block with.</summary>
+internal sealed record FailedJob(long Id, string Name);
 
 /// <summary>The one field <c>rix ci-failure</c> reads from a "list pull requests" REST response.</summary>
 internal sealed record PullRequestApiResponse
