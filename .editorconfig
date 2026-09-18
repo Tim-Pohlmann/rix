@@ -2,10 +2,9 @@ root = true
 
 [*.cs]
 
-# S3060 ("don't branch on a subtype from within the hierarchy") encodes the OOP
-# extensibility model: behavior distributed across types via virtual dispatch.
-# ParseResult<T> is a deliberately closed discriminated union (private protected
-# ctor, two sealed cases) consumed functionally — pattern-matching over the cases
-# is the intended style, not a smell. Suppress where that union lives.
-[src/Rix/ParseResult.cs]
-dotnet_diagnostic.S3060.severity = none
+# S3871 ("exception types should be public") exists so code in other assemblies
+# can catch the exception specifically. Rix ships as a single application
+# assembly, never a library, so its exception types are internal by convention
+# and there is no external caller a public one could serve.
+[src/Rix/**.cs]
+dotnet_diagnostic.S3871.severity = none

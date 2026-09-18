@@ -25,11 +25,24 @@ internal static partial class AgentCredential
     private static partial Regex CredentialShapedName();
 
     /// <summary>
+    /// The rule that decides whether there is an env var name at all: a name is only resolved once
+    /// there is an <paramref name="apiKey"/> to export under it, so no key means no name and no
+    /// complaint about one — e.g. opencode's free default model needs neither. Lives here rather
+    /// than at each call site so the CLI and anything else building an <see cref="AgentConfig"/>
+    /// can't disagree about when the name is required.
+    /// </summary>
+    internal static string? ResolveEnvNameOrNull(AgentKind agent, string? apiKey, string? apiKeyEnv)
+    => apiKey switch
+    {
+        null => null,
+        _ => ResolveEnvName(agent, apiKeyEnv),
+    };
+
+    /// <summary>
     /// Resolves the env var name <paramref name="apiKeyEnv"/> (the caller's <c>--agent-api-key-env</c>,
     /// or <c>null</c>/blank to pick a default for <paramref name="agent"/>) and validates its shape.
-    /// Throws <see cref="InvalidInputException"/> when neither yields a usable name. Only called
-    /// when an api key is actually present — the CLI skips this entirely otherwise, since e.g.
-    /// opencode's free default model needs no key.
+    /// Throws <see cref="InvalidInputException"/> when neither yields a usable name. Only reached
+    /// via <see cref="ResolveEnvNameOrNull"/>, i.e. when an api key is actually present.
     /// </summary>
     internal static string ResolveEnvName(AgentKind agent, string? apiKeyEnv)
     {

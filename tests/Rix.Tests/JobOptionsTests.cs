@@ -6,9 +6,11 @@ using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
 
-/// <summary>Covers the <see cref="JobOptions"/> readers, the boundary that turns each flag shared by
-/// <c>job</c> and <c>ci-failure</c> into the value their configs take: defaults, parsing, and the
-/// message each malformed flag produces. Which problem a command reports first, and the two flags
+/// <summary>Covers the readers behind every flag <c>job</c> and <c>ci-failure</c> share, the
+/// boundary that turns each one into the value their configs take: defaults, parsing, and the
+/// message each malformed flag produces. Reached through the <c>job</c> command's own flag surface,
+/// so the <see cref="CommonOptions"/> readers registered alongside <see cref="JobOptions"/>' own are
+/// covered here too rather than separately. Which problem a command reports first, and the two flags
 /// only <c>job</c> owns (<c>--prompt</c>, <c>--allowed-push-branches</c>), are covered by
 /// <see cref="JobCommandTests"/> and <see cref="CiFailureCommandTests"/>.</summary>
 [TestClass]
@@ -27,11 +29,11 @@ public class JobOptionsTests
 
     [TestMethod]
     public void ReadRepo_ParsesOwnerSlashRepo()
-    => Assert.AreEqual("owner/repo", JobOptions.ReadRepo(Parse("--repo", "owner/repo")).Value);
+    => Assert.AreEqual("owner/repo", CommonOptions.ReadRepo(Parse("--repo", "owner/repo")).Value);
 
     [TestMethod]
     public void ReadRepo_RejectsEmpty()
-    => Assert.AreEqual("--repo is required", ErrorOf(() => JobOptions.ReadRepo(Parse("--repo", ""))));
+    => Assert.AreEqual("--repo is required", ErrorOf(() => CommonOptions.ReadRepo(Parse("--repo", ""))));
 
     [TestMethod]
     [DataRow("noslash")]
@@ -40,7 +42,7 @@ public class JobOptionsTests
     [DataRow("owner/")]
     public void ReadRepo_RejectsMalformed(string repo)
     {
-        var error = ErrorOf(() => JobOptions.ReadRepo(Parse("--repo", repo)));
+        var error = ErrorOf(() => CommonOptions.ReadRepo(Parse("--repo", repo)));
         StringAssert.StartsWith(error, "--repo: ");
         StringAssert.Contains(error, "repo identifier");
     }
@@ -84,18 +86,18 @@ public class JobOptionsTests
     [TestMethod]
     public void ReadWorkDir_DefaultsToTemp_WhenBlank()
     {
-        Assert.AreEqual(Path.GetTempPath(), JobOptions.ReadWorkDir(Parse()).Value);
-        Assert.AreEqual(Path.GetTempPath(), JobOptions.ReadWorkDir(Parse("--work-dir", "")).Value);
-        Assert.AreEqual(Path.GetTempPath(), JobOptions.ReadWorkDir(Parse("--work-dir", "   ")).Value);
+        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse()).Value);
+        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse("--work-dir", "")).Value);
+        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse("--work-dir", "   ")).Value);
     }
 
     [TestMethod]
     public void ReadWorkDir_UsesExistingDirectory()
-    => Assert.AreEqual(Path.GetFullPath(ExistingDir), JobOptions.ReadWorkDir(Parse("--work-dir", ExistingDir)).Value);
+    => Assert.AreEqual(Path.GetFullPath(ExistingDir), CommonOptions.ReadWorkDir(Parse("--work-dir", ExistingDir)).Value);
 
     [TestMethod]
     public void ReadWorkDir_RejectsNonExistent()
-    => Assert.AreEqual("--work-dir: directory does not exist: /nonexistent/path/xyz", ErrorOf(() => JobOptions.ReadWorkDir(Parse("--work-dir", "/nonexistent/path/xyz"))));
+    => Assert.AreEqual("--work-dir: directory does not exist: /nonexistent/path/xyz", ErrorOf(() => CommonOptions.ReadWorkDir(Parse("--work-dir", "/nonexistent/path/xyz"))));
 
     [TestMethod]
     public void ReadOutputDir_UsesExistingDirectory()

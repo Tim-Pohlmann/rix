@@ -33,12 +33,12 @@ internal static class CiFailureCommand
                 var parsed = ctx.ParseResult;
                 // Same order as `job` for the shared options, so both commands report the same
                 // first problem for the same mistake; --run-id comes last as the one addition.
-                var repo = JobOptions.ReadRepo(parsed);
+                var repo = CommonOptions.ReadRepo(parsed);
                 var readToken = JobOptions.ReadReadToken(parsed);
                 var agent = JobOptions.ReadAgent(parsed);
                 var maxTokens = JobOptions.ReadMaxTokens(parsed);
                 var timeout = JobOptions.ReadTimeout(parsed);
-                var workDir = JobOptions.ReadWorkDir(parsed);
+                var workDir = CommonOptions.ReadWorkDir(parsed);
                 var outputDir = JobOptions.ReadOutputDir(parsed);
                 var model = JobOptions.ReadModel(parsed);
                 var apiKey = JobOptions.ReadAgentApiKey(parsed);

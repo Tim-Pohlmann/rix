@@ -5,13 +5,6 @@ namespace Rix.Cli;
 
 internal static class SubmitCommand
 {
-    private static readonly Option<string> RepoOption = new
-    (
-        name: "--repo",
-        description: "Full GitHub repo identifier (owner/repo)"
-    )
-    { IsRequired = false };
-
     private static readonly Option<string> WriteTokenOption = new
     (
         name: "--write-token",
@@ -26,21 +19,14 @@ internal static class SubmitCommand
     )
     { IsRequired = false };
 
-    private static readonly Option<string> WorkDirOption = new
-    (
-        name: "--work-dir",
-        description: "Base directory for the temp clone (default: system temp)"
-    )
-    { IsRequired = false };
-
     internal static Command Build(Func<SubmitConfig, Task<int>> handler)
     {
         var command = new Command("submit", "Push the branches from a `rix job` result and open their pull requests");
 
-        command.AddOption(RepoOption);
+        command.AddOption(CommonOptions.RepoOption);
         command.AddOption(WriteTokenOption);
         command.AddOption(InputDirOption);
-        command.AddOption(WorkDirOption);
+        command.AddOption(CommonOptions.WorkDirOption);
 
         command.SetHandler
         (
@@ -49,10 +35,10 @@ internal static class SubmitCommand
                 var parsed = ctx.ParseResult;
                 var config = new SubmitConfig
                 (
-                    Repo: parsed.Required(RepoOption, "RIX_REPO", value => new RepoIdentifier(value)),
+                    Repo: CommonOptions.ReadRepo(parsed),
                     WriteToken: parsed.Required(WriteTokenOption, "RIX_WRITE_TOKEN", value => new GitToken(value)),
                     InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path)),
-                    WorkDir: parsed.Optional(WorkDirOption, "RIX_WORK_DIR", path => new DirectoryPath(path), () => new DirectoryPath(Path.GetTempPath()))
+                    WorkDir: CommonOptions.ReadWorkDir(parsed)
                 );
                 ctx.ExitCode = await handler(config);
             }

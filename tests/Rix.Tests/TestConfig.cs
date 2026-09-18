@@ -28,12 +28,9 @@ internal static class TestConfig
         IReadOnlyList<BranchName>? allowedPushBranches = null
     )
     {
-        // Mirrors the CLI: the env var name is only resolved once there is a key to export.
-        var apiKeyEnv = agentApiKey switch
-        {
-            null => null,
-            _ => AgentCredential.ResolveEnvName(agent, agentApiKeyEnv),
-        };
+        // The same call the CLI makes, so a change to when the name is required reaches the
+        // fixtures too instead of leaving them asserting a rule the CLI no longer follows.
+        var apiKeyEnv = AgentCredential.ResolveEnvNameOrNull(agent, agentApiKey, agentApiKeyEnv);
         return new JobConfig
         (
             Repo: new RepoIdentifier(repo),

@@ -13,16 +13,12 @@ namespace Rix.Cli;
 /// call site, in the order it wants problems reported. <see cref="PromptOption"/> and
 /// <see cref="AllowedPushBranchesOption"/> are the exception: <c>ci-failure</c> derives both from
 /// the failure it detects rather than accepting them as inputs, so <see cref="AddTo"/> leaves
-/// those two to <c>job</c>.</summary>
+/// those two to <c>job</c>. <c>--repo</c> and <c>--work-dir</c> live in <see cref="CommonOptions"/>
+/// instead, since <c>submit</c> takes them too without taking anything else here;
+/// <see cref="AddTo"/> still registers them, so a command accepting the agent-running set keeps
+/// getting the whole flag surface from one call.</summary>
 internal static class JobOptions
 {
-    internal static readonly Option<string> RepoOption = new
-    (
-        name: "--repo",
-        description: "Full GitHub repo identifier (owner/repo)"
-    )
-    { IsRequired = false };
-
     internal static readonly Option<string> ReadTokenOption = new
     (
         name: "--read-token",
@@ -48,13 +44,6 @@ internal static class JobOptions
     (
         name: "--timeout",
         description: $"Wall-clock timeout in minutes (default: {JobConfig.DefaultTimeoutMinutes})"
-    )
-    { IsRequired = false };
-
-    internal static readonly Option<string> WorkDirOption = new
-    (
-        name: "--work-dir",
-        description: "Base directory for the temp clone (default: system temp)"
     )
     { IsRequired = false };
 
@@ -110,20 +99,17 @@ internal static class JobOptions
     /// accept it — each command's handler then reads it via the matching reader below.</summary>
     internal static void AddTo(Command command)
     {
-        command.AddOption(RepoOption);
+        command.AddOption(CommonOptions.RepoOption);
         command.AddOption(ReadTokenOption);
         command.AddOption(MaxTokensOption);
         command.AddOption(TimeoutOption);
-        command.AddOption(WorkDirOption);
+        command.AddOption(CommonOptions.WorkDirOption);
         command.AddOption(OutputDirOption);
         command.AddOption(AgentOption);
         command.AddOption(ModelOption);
         command.AddOption(AgentApiKeyOption);
         command.AddOption(AgentApiKeyEnvOption);
     }
-
-    internal static RepoIdentifier ReadRepo(ParseResult parsed)
-    => parsed.Required(RepoOption, "RIX_REPO", value => new RepoIdentifier(value));
 
     internal static GitReadToken ReadReadToken(ParseResult parsed)
     => parsed.Required(ReadTokenOption, "RIX_READ_TOKEN", value => new GitReadToken(value));
@@ -137,9 +123,6 @@ internal static class JobOptions
     internal static TimeoutMinutes ReadTimeout(ParseResult parsed)
     => new(parsed.Optional(TimeoutOption, "RIX_TIMEOUT", Input.Positive<int>, JobConfig.DefaultTimeoutMinutes));
 
-    internal static DirectoryPath ReadWorkDir(ParseResult parsed)
-    => parsed.Optional(WorkDirOption, "RIX_WORK_DIR", path => new DirectoryPath(path), () => new DirectoryPath(Path.GetTempPath()));
-
     internal static DirectoryPath ReadOutputDir(ParseResult parsed)
     => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path));
 
@@ -151,13 +134,11 @@ internal static class JobOptions
     internal static string? ReadAgentApiKey(ParseResult parsed)
     => parsed.OptionalText(AgentApiKeyOption, "AGENT_API_KEY");
 
-    /// <summary>The env var name is only resolved (and validated) once there is actually a
-    /// <paramref name="apiKey"/> to export, and its default depends on <paramref name="agent"/>,
-    /// so both are read first and passed in rather than re-read here.</summary>
+    /// <summary>Whether the name is needed at all, and what it defaults to, both depend on values
+    /// read from other flags, so <paramref name="agent"/> and <paramref name="apiKey"/> are passed
+    /// in rather than re-read here. <see cref="AgentCredential.ResolveEnvNameOrNull"/> owns both
+    /// rules; this only supplies the raw flag text and the flag name any complaint is reported
+    /// under.</summary>
     internal static string? ReadAgentApiKeyEnv(ParseResult parsed, AgentKind agent, string? apiKey)
-    => apiKey switch
-    {
-        null => null,
-        _ => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.ResolveEnvName(agent, raw)),
-    };
+    => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.ResolveEnvNameOrNull(agent, apiKey, raw));
 }
