@@ -6,7 +6,7 @@ namespace Rix.Tests;
 [TestClass]
 public class CiFailureDetectorTests
 {
-    private static readonly RepoIdentifier Repo = TestConfig.Repo("owner/repo");
+    private static readonly RepoIdentifier Repo = new RepoIdentifier("owner/repo");
     private static readonly RunId Run = new(1);
 
     [TestMethod]

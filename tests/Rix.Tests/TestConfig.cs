@@ -1,3 +1,4 @@
+using Rix.Agents;
 using Rix.CiFailure;
 using Rix.Initialize;
 using Rix.Job;
@@ -5,8 +6,10 @@ using Rix.Submit;
 
 namespace Rix.Tests;
 
-/// <summary>Test helpers for obtaining strongly-typed values that production code only exposes
-/// through validating factories. Failing here means the test fixture itself is malformed.</summary>
+/// <summary>Test helpers for building strongly-typed configs from a few overridable primitives,
+/// so each test names only the values it cares about. Failing here (an
+/// <see cref="InvalidInputException"/> from a value object) means the test fixture itself is
+/// malformed.</summary>
 internal static class TestConfig
 {
     internal static JobConfig Valid
@@ -14,36 +17,31 @@ internal static class TestConfig
         string repo = "owner/repo",
         string prompt = "do it",
         string readToken = "tok",
-        string? maxTokens = null,
-        string? timeoutMinutes = null,
+        int maxTokens = JobConfig.DefaultMaxTokens,
+        int timeoutMinutes = JobConfig.DefaultTimeoutMinutes,
         string? workDir = null,
         string? outputDir = null,
-        string? agent = null,
+        AgentKind agent = JobConfig.DefaultAgent,
         string? model = null,
         string? agentApiKey = null,
         string? agentApiKeyEnv = null,
-        string? allowedPushBranches = null
+        IReadOnlyList<BranchName>? allowedPushBranches = null
     )
-    => JobConfig.Create(new JobInputs
-    (
-        Repo: repo,
-        ReadToken: readToken,
-        Prompt: prompt,
-        MaxTokens: maxTokens,
-        TimeoutMinutes: timeoutMinutes,
-        WorkDir: workDir ?? Path.GetTempPath(),
-        OutputDir: outputDir ?? Path.GetTempPath(),
-        Agent: agent,
-        Model: model,
-        AgentApiKey: agentApiKey,
-        AgentApiKeyEnv: agentApiKeyEnv,
-        AllowedPushBranches: allowedPushBranches
-    )) switch
     {
-        JobConfigValid v => v.Config,
-        JobConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
-        var other => throw new AssertFailedException($"unexpected result: {other}"),
-    };
+        // The same call the CLI makes, so a change to when the name is required reaches the
+        // fixtures too instead of leaving them asserting a rule the CLI no longer follows.
+        var apiKeyEnv = AgentCredential.ResolveEnvNameOrNull(agent, agentApiKey, agentApiKeyEnv);
+        return new JobConfig
+        (
+            Repo: new RepoIdentifier(repo),
+            ReadToken: new GitReadToken(readToken),
+            TimeoutMinutes: new TimeoutMinutes(timeoutMinutes),
+            WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
+            OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
+            Agent: new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, agentApiKey, apiKeyEnv),
+            AllowedPushBranches: allowedPushBranches ?? []
+        );
+    }
 
     internal static SubmitConfig ValidSubmit
     (
@@ -52,50 +50,34 @@ internal static class TestConfig
         string? inputDir = null,
         string? workDir = null
     )
-    => SubmitConfig.Create(repo, writeToken, inputDir ?? Path.GetTempPath(), workDir ?? Path.GetTempPath()) switch
-    {
-        SubmitConfigValid v => v.Config,
-        SubmitConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
-        var other => throw new AssertFailedException($"unexpected result: {other}"),
-    };
+    => new
+    (
+        Repo: new RepoIdentifier(repo),
+        WriteToken: new GitToken(writeToken),
+        InputDir: new DirectoryPath(inputDir ?? Path.GetTempPath()),
+        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath())
+    );
 
     internal static CiFailureConfig ValidCiFailure
     (
         string repo = "owner/repo",
         string readToken = "read-tok",
-        string runId = "1",
+        long runId = 1,
         string? workDir = null,
         string? outputDir = null
     )
-    => CiFailureConfig.Create(new CiFailureInputs
+    => new
     (
-        RunId: runId,
-        Job: new JobInputs
-        (
-            Repo: repo,
-            ReadToken: readToken,
-            WorkDir: workDir ?? Path.GetTempPath(),
-            OutputDir: outputDir ?? Path.GetTempPath()
-        )
-    )) switch
-    {
-        CiFailureConfigValid v => v.Config,
-        CiFailureConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
-        var other => throw new AssertFailedException($"unexpected result: {other}"),
-    };
+        RunId: new RunId(runId),
+        Repo: new RepoIdentifier(repo),
+        ReadToken: new GitReadToken(readToken),
+        TimeoutMinutes: new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes),
+        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
+        OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
+        Agent: JobConfig.DefaultAgent,
+        MaxTokens: new MaxTokens(JobConfig.DefaultMaxTokens)
+    );
 
     internal static InitializeConfig ValidInitialize(string? dir = null)
-    => InitializeConfig.Create(dir ?? Path.GetTempPath()) switch
-    {
-        InitializeConfigValid v => v.Config,
-        InitializeConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
-        var other => throw new AssertFailedException($"unexpected result: {other}"),
-    };
-
-    internal static RepoIdentifier Repo(string value) => RepoIdentifier.Parse(value) switch
-    {
-        ParseSuccess<RepoIdentifier> p => p.Value,
-        ParseError<RepoIdentifier> e => throw new AssertFailedException($"invalid repo in test: {e.Error}"),
-        var other => throw new AssertFailedException($"unexpected result: {other}"),
-    };
+    => new(new DirectoryPath(dir ?? Path.GetTempPath()));
 }
