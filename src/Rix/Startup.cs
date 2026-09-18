@@ -238,16 +238,18 @@ internal static class Startup
     /// Imperative shell around <see cref="CiFailureRunner.RunAsync"/>: checks whether the run
     /// failed and, only if it did, runs the agent — reusing <see cref="WriteCiFailureResult"/> and
     /// <see cref="WriteJobResultAsync"/> so each outcome is reported identically to its <c>rix
-    /// job</c> counterpart. One <see cref="GitHubReadHost"/> backs both the ci-failure check and
-    /// the job's clone, since it implements both roles.
+    /// job</c> counterpart. The ci-failure check and the job's clone are two roles against the same
+    /// repo under the same credential, so they are two hosts over one shared transport rather than
+    /// two independently connected ones.
     /// </summary>
     internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, IGitHubCiFailureHost? ciFailureHost = null, JobContext? jobContext = null)
     {
         // The two optional arguments let a test stub only the host its scenario actually exercises
         // - e.g. a run that never fails needs no jobContext, since the agent then never runs -
         // instead of forcing every test to fabricate both.
-        var host = new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync);
-        ciFailureHost ??= host;
+        var api = new GitHubApi(config.Repo, config.ReadToken);
+        var host = new GitHubReadHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
+        ciFailureHost ??= new GitHubCiFailureHost(api);
 
         var transcriptLines = new List<string>();
 
