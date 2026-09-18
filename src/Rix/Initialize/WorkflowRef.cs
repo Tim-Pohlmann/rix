@@ -20,7 +20,8 @@ internal sealed record WorkflowRef
     /// means the workflows a given rix writes call the reusable workflows it was released with,
     /// while still picking up fixes within the major — the same version-skew rule the reusable
     /// workflows already follow when they download their binary, applied one level up.</summary>
-    internal static WorkflowRef ForThisBuild { get; } = new($"v{Major()}");
+    internal static WorkflowRef ForThisBuild { get; } =
+        new($"v{MajorOf(Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion)}");
 
     internal string Value { get; }
 
@@ -33,15 +34,14 @@ internal sealed record WorkflowRef
 
     public override string ToString() => Value;
 
-    /// <summary>The major of the version stamped into this assembly by <c>Rix.csproj</c>, which
-    /// arrives here as <c>0.5.0+&lt;sha&gt;</c>. A build without it is a broken build rather than
+    /// <summary>The major of a version stamped into an assembly by <c>Rix.csproj</c>, which arrives
+    /// here as <c>0.5.0+&lt;sha&gt;</c>. A build missing or mangling it is a broken build rather than
     /// bad caller input, so it fails the same way a missing embedded template does.</summary>
-    private static string Major()
+    internal static string MajorOf(string? informationalVersion)
     {
-        var informational = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        var major = informational?.Split('.')[0];
+        var major = informationalVersion?.Split('.')[0];
         if (string.IsNullOrEmpty(major) || !major.All(char.IsAsciiDigit))
-            throw new InvalidOperationException($"assembly informational version is not a semantic version: {informational ?? "<missing>"}");
+            throw new InvalidOperationException($"assembly informational version is not a semantic version: {informationalVersion ?? "<missing>"}");
         return major;
     }
 }

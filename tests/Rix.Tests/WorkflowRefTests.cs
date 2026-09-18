@@ -25,8 +25,26 @@ public class WorkflowRefTests
     [DataRow("main\nrun: rm -rf /")]
     public void Constructor_RejectsAnythingThatWouldNotSurviveYaml(string value)
     {
-        var error = Assert.ThrowsExactly<InvalidInputException>(() => new WorkflowRef(value)).Message;
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new WorkflowRef(value).ToString()).Message;
         StringAssert.Contains(error, "not a valid git ref");
+    }
+
+    [TestMethod]
+    [DataRow("0.5.0+10f8ca55a5edface0e59d9bc19e60664ad917024", "0")]
+    [DataRow("12.1.0", "12")]
+    public void MajorOf_TakesTheMajor_OffTheStampedInformationalVersion(string informationalVersion, string expected)
+    => Assert.AreEqual(expected, WorkflowRef.MajorOf(informationalVersion));
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("x.1.0")]
+    public void MajorOf_RejectsAVersionThisBuildCouldNotHaveProduced(string? informationalVersion)
+    {
+        // A broken build, not caller input: it surfaces as an InvalidOperationException rather than
+        // the InvalidInputException a bad --ref raises, so it is never reported as the user's fault.
+        var error = Assert.ThrowsExactly<InvalidOperationException>(() => WorkflowRef.MajorOf(informationalVersion)).Message;
+        StringAssert.Contains(error, "not a semantic version");
     }
 
     [TestMethod]
