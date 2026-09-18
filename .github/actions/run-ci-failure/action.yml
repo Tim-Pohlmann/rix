@@ -134,6 +134,9 @@ runs:
             echo "::error::$(escape_workflow_command "$error")"
             ;;
           *)
+            # Only reachable if rix printed a status no branch above names, which
+            # tests/scripts/ci-failure-status.bats fails on - so in practice this means rix
+            # printed something that isn't a result at all.
             echo "::error::$(escape_workflow_command "rix ci-failure did not produce a usable result: $result")"
             ;;
         esac
