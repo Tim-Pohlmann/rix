@@ -1,3 +1,4 @@
+using Rix.Agents;
 using Rix.Job;
 using System.CommandLine;
 
@@ -18,10 +19,30 @@ internal static class JobCommand
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var config = JobOptions.ReadSettings(parsed).ToJob
+                // Read in the order problems should be reported: the first failing read is the
+                // one the user sees.
+                var repo = JobOptions.ReadRepo(parsed);
+                var prompt = Input.Required("--prompt", parsed.Str(JobOptions.PromptOption, "RIX_PROMPT"), value => value);
+                var readToken = JobOptions.ReadReadToken(parsed);
+                var agent = JobOptions.ReadAgent(parsed);
+                var maxTokens = JobOptions.ReadMaxTokens(parsed);
+                var timeout = JobOptions.ReadTimeout(parsed);
+                var workDir = JobOptions.ReadWorkDir(parsed);
+                var outputDir = JobOptions.ReadOutputDir(parsed);
+                var model = JobOptions.ReadModel(parsed);
+                var apiKey = JobOptions.ReadAgentApiKey(parsed);
+                var apiKeyEnv = JobOptions.ReadAgentApiKeyEnv(parsed, agent, apiKey);
+                var allowedPushBranches = ParseAllowedPushBranches(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
+
+                var config = new JobConfig
                 (
-                    prompt: Input.Required("--prompt", parsed.Str(JobOptions.PromptOption, "RIX_PROMPT"), value => value),
-                    allowedPushBranches: ParseAllowedPushBranches(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"))
+                    Repo: repo,
+                    ReadToken: readToken,
+                    TimeoutMinutes: timeout,
+                    WorkDir: workDir,
+                    OutputDir: outputDir,
+                    Agent: new AgentConfig(agent, prompt, maxTokens, model, apiKey, apiKeyEnv),
+                    AllowedPushBranches: allowedPushBranches
                 );
                 ctx.ExitCode = await handler(config);
             }

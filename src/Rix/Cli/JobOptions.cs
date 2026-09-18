@@ -5,11 +5,15 @@ using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
-/// <summary>The CLI options every <see cref="JobSettings"/> field is read from, shared by <c>job</c>
-/// and <c>ci-failure</c>, which both run the coding agent and so take the same execution
-/// parameters. <see cref="PromptOption"/> and <see cref="AllowedPushBranchesOption"/> are the
-/// exception: <c>ci-failure</c> derives both from the failure it detects rather than accepting them
-/// as inputs, so <see cref="AddTo"/> and <see cref="ReadSettings"/> leave those two to <c>job</c>.</summary>
+/// <summary>The CLI options shared by <c>job</c> and <c>ci-failure</c>, which both run the coding
+/// agent and so take the same execution parameters, plus one reader per option that turns its
+/// flag-or-environment text into the value the command's config takes — the first missing or
+/// malformed value throws <see cref="InvalidInputException"/> naming the flag, which
+/// <see cref="CliPipeline"/> reports. Each command assembles its own config from these at the
+/// call site, in the order it wants problems reported. <see cref="PromptOption"/> and
+/// <see cref="AllowedPushBranchesOption"/> are the exception: <c>ci-failure</c> derives both from
+/// the failure it detects rather than accepting them as inputs, so <see cref="AddTo"/> leaves
+/// those two to <c>job</c>.</summary>
 internal static class JobOptions
 {
     internal static readonly Option<string> RepoOption = new
@@ -102,8 +106,8 @@ internal static class JobOptions
     )
     { IsRequired = false };
 
-    /// <summary>Registers every option <see cref="ReadSettings"/> reads, so the two can't drift: a
-    /// new job option is added here once and both commands accept it.</summary>
+    /// <summary>Registers every shared option, so a new one is added here once and both commands
+    /// accept it — each command's handler then reads it via the matching reader below.</summary>
     internal static void AddTo(Command command)
     {
         command.AddOption(RepoOption);
@@ -118,43 +122,42 @@ internal static class JobOptions
         command.AddOption(AgentApiKeyEnvOption);
     }
 
-    /// <summary>Reads the options <see cref="AddTo"/> registered, each falling back to its
-    /// environment variable, into a <see cref="JobSettings"/>. The first missing or malformed value
-    /// throws <see cref="InvalidInputException"/> naming the flag, which <see cref="CliPipeline"/>
-    /// reports. Leaves the prompt and the <c>/push</c> allow-list for the caller to supply —
-    /// <c>job</c> from its own two options, <c>ci-failure</c> from the failure it detects.</summary>
-    internal static JobSettings ReadSettings(ParseResult parsed)
+    internal static RepoIdentifier ReadRepo(ParseResult parsed)
+    => Input.Required("--repo", parsed.Str(RepoOption, "RIX_REPO"), value => new RepoIdentifier(value));
+
+    internal static GitReadToken ReadReadToken(ParseResult parsed)
+    => Input.Required("--read-token", parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"), value => new GitReadToken(value));
+
+    internal static AgentKind ReadAgent(ParseResult parsed)
+    => Input.Optional("--agent", parsed.Str(AgentOption, "RIX_AGENT"), AgentKindParser.Parse, JobConfig.DefaultAgent);
+
+    internal static MaxTokens ReadMaxTokens(ParseResult parsed)
+    => new(Input.Optional("--max-tokens", parsed.Str(MaxTokensOption, "RIX_MAX_TOKENS"), Input.Positive<int>, JobConfig.DefaultMaxTokens));
+
+    internal static TimeoutMinutes ReadTimeout(ParseResult parsed)
+    => new(Input.Optional("--timeout", parsed.Str(TimeoutOption, "RIX_TIMEOUT"), Input.Positive<int>, JobConfig.DefaultTimeoutMinutes));
+
+    internal static DirectoryPath ReadWorkDir(ParseResult parsed)
+    => Input.Optional("--work-dir", parsed.Str(WorkDirOption, "RIX_WORK_DIR"), path => new DirectoryPath(path), new DirectoryPath(Path.GetTempPath()));
+
+    internal static DirectoryPath ReadOutputDir(ParseResult parsed)
+    => Input.Required("--output-dir", parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"), path => new DirectoryPath(path));
+
+    internal static string? ReadModel(ParseResult parsed)
+    => Input.OptionalText(parsed.Str(ModelOption, "RIX_MODEL"));
+
+    /// <summary>No key is required when <c>--model</c> is left unset - opencode then picks its own
+    /// free model - so this is simply <c>null</c> when nothing was supplied.</summary>
+    internal static string? ReadAgentApiKey(ParseResult parsed)
+    => Input.OptionalText(parsed.Str(AgentApiKeyOption, "AGENT_API_KEY"));
+
+    /// <summary>The env var name is only resolved (and validated) once there is actually a
+    /// <paramref name="apiKey"/> to export, and its default depends on <paramref name="agent"/>,
+    /// so both are read first and passed in rather than re-read here.</summary>
+    internal static string? ReadAgentApiKeyEnv(ParseResult parsed, AgentKind agent, string? apiKey)
+    => apiKey switch
     {
-        var repo = Input.Required("--repo", parsed.Str(RepoOption, "RIX_REPO"), value => new RepoIdentifier(value));
-        var readToken = Input.Required("--read-token", parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"), value => new GitReadToken(value));
-        var agent = Input.Optional("--agent", parsed.Str(AgentOption, "RIX_AGENT"), AgentKindParser.Parse, JobConfig.DefaultAgent);
-        var maxTokens = Input.Optional("--max-tokens", parsed.Str(MaxTokensOption, "RIX_MAX_TOKENS"), Input.Positive<int>, JobConfig.DefaultMaxTokens);
-        var timeout = Input.Optional("--timeout", parsed.Str(TimeoutOption, "RIX_TIMEOUT"), Input.Positive<int>, JobConfig.DefaultTimeoutMinutes);
-        var workDir = Input.Optional("--work-dir", parsed.Str(WorkDirOption, "RIX_WORK_DIR"), path => new DirectoryPath(path), new DirectoryPath(Path.GetTempPath()));
-        var outputDir = Input.Required("--output-dir", parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"), path => new DirectoryPath(path));
-        var model = Input.OptionalText(parsed.Str(ModelOption, "RIX_MODEL"));
-
-        // No key is required when model is left unset - opencode then picks its own free model.
-        // The env var name is only resolved (and validated) once a key actually needs exporting.
-        var apiKey = Input.OptionalText(parsed.Str(AgentApiKeyOption, "AGENT_API_KEY"));
-        var apiKeyEnv = apiKey switch
-        {
-            null => null,
-            _ => Input.Named("--agent-api-key-env", () => AgentCredential.ResolveEnvName(agent, parsed.Str(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV"))),
-        };
-
-        return new JobSettings
-        (
-            Repo: repo,
-            ReadToken: readToken,
-            TimeoutMinutes: new TimeoutMinutes(timeout),
-            WorkDir: workDir,
-            OutputDir: outputDir,
-            Agent: agent,
-            MaxTokens: new MaxTokens(maxTokens),
-            Model: model,
-            ApiKey: apiKey,
-            ApiKeyEnv: apiKeyEnv
-        );
-    }
+        null => null,
+        _ => Input.Named("--agent-api-key-env", () => AgentCredential.ResolveEnvName(agent, parsed.Str(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV"))),
+    };
 }
