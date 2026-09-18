@@ -28,7 +28,7 @@ internal static class CiFailureRunner
         // already exists on the remote regardless of whether it happens to be rix/*-named (e.g. CI
         // failed on a human's own branch, not a previous rix run), so it's always allowed.
         var job = config.ToJobConfig(detected.Prompt, new BranchName(detected.Branch));
-        var jobResult = await JobRunner.RunAsync(job, context.JobFor(job), cancellationToken);
+        var jobResult = await JobRunner.RunAsync(job, context.Job, cancellationToken);
         return new CiFailureRan(job, jobResult);
     }
 }
