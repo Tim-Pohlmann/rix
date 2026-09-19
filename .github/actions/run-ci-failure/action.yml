@@ -108,7 +108,16 @@ runs:
 
         # One jq call over the already-in-memory $result, rather than a separate subprocess per
         # field - status/outcome/error are all read from it below.
-        IFS=$'\t' read -r status outcome error branch rix_commits head_repo < <(jq -r '[.status, (.outcome // ""), (.error // ""), (.branch // ""), (.rixCommits // ""), (.headRepo // "")] | @tsv' <<<"$result")
+        #
+        # read splits on IFS, but a tab counts as IFS *whitespace*, so a run of tabs collapses into
+        # one separator and an empty field shifts every later one left. Most results leave most of
+        # these fields unset - an untrustedRun carries no outcome or error - so splitting on tabs
+        # would read the branch as the outcome and leave the fields each message actually prints
+        # empty. Translate the separators to a non-whitespace character, which read keeps one for
+        # one; @tsv has already escaped any tab inside a field value, so only true separators are
+        # converted.
+        IFS=$'\037' read -r status outcome error branch rix_commits head_repo \
+          < <(jq -r '[.status, (.outcome // ""), (.error // ""), (.branch // ""), (.rixCommits // ""), (.headRepo // "")] | @tsv' <<<"$result" | tr '\t' '\037')
         # Default to false so every branch below (including an unrecognized status) leaves
         # has-result in a defined state; only the success branch needs to override it.
         echo "has-result=false" >> "$GITHUB_OUTPUT"
@@ -140,10 +149,14 @@ runs:
             echo "::error::$(escape_workflow_command "$error")"
             ;;
           *)
-            # Only reachable if rix printed a status no branch above names, which
-            # tests/scripts/ci-failure-status.bats fails on - so in practice this means rix
-            # printed something that isn't a result at all.
+            # Reached when rix printed a status no branch above names. Within this repo
+            # tests/scripts/ci-failure-status.bats fails on that, so in practice this means either
+            # output that isn't a result at all, or a released binary newer than the action calling
+            # it. Either way rix may well have exited 0 - a newer binary emitting a status this
+            # action has not learned yet has succeeded on its own terms - so set a failing code
+            # rather than inheriting it, or the job goes green having submitted nothing.
             echo "::error::$(escape_workflow_command "rix ci-failure did not produce a usable result: $result")"
+            exit_code=1
             ;;
         esac
 
