@@ -1,17 +1,15 @@
 name: Version Bump
 
+# Run this *before* Release, not after it: the commit this produces carries both the csproj
+# version and the binary pin the reusable workflows download (see set-version.sh), and Release
+# tags that commit. Bumping afterwards instead would leave the default branch permanently naming
+# a version that has no release yet, breaking anyone tracking it.
 on:
   workflow_dispatch:
     inputs:
       version:
         description: 'Version (e.g. v1.2.3). Leave empty to auto-bump current minor version.'
         required: false
-  workflow_call:
-    inputs:
-      version:
-        type: string
-        required: false
-        default: ''
 
 jobs:
   version-bump:
