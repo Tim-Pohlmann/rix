@@ -6,6 +6,8 @@ namespace Rix.Tests;
 public class SubmitConfigTests
 {
     private static readonly string ExistingDir = Path.GetTempPath();
+    private static readonly string[] ExpectedTrimmedBranches = ["main", "release/1"];
+    private static readonly string[] ExpectedUnusualBranches = ["--not-a-flag", "feature/ünïcode"];
 
     private static SubmitConfigResult Create
     (
@@ -42,11 +44,7 @@ public class SubmitConfigTests
     {
         var config = Valid(Create(allowedPushBranches: " main , release/1 ,main, "));
 
-        CollectionAssert.AreEqual
-        (
-            new[] { "main", "release/1" },
-            config.AllowedPushBranches.Select(b => b.Value).ToArray()
-        );
+        CollectionAssert.AreEqual(ExpectedTrimmedBranches, config.AllowedPushBranches.Select(b => b.Value).ToArray());
     }
 
     /// <summary>An unusable entry is not an error: every string is a possible branch name, so the
@@ -56,11 +54,7 @@ public class SubmitConfigTests
     {
         var config = Valid(Create(allowedPushBranches: "--not-a-flag,feature/ünïcode"));
 
-        CollectionAssert.AreEqual
-        (
-            new[] { "--not-a-flag", "feature/ünïcode" },
-            config.AllowedPushBranches.Select(b => b.Value).ToArray()
-        );
+        CollectionAssert.AreEqual(ExpectedUnusualBranches, config.AllowedPushBranches.Select(b => b.Value).ToArray());
     }
 
     [TestMethod]
