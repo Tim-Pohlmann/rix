@@ -19,18 +19,18 @@ public class GitHubActionsCiHostTests
     => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
     [TestMethod]
-    public async Task GetRunAsync_ReturnsWorkflowRun_ForValidResponse()
+    public async Task GetRunAsync_ReturnsCiRun_ForValidResponse()
     {
         var host = BuildHost(_ => Json(
             """{"conclusion":"failure","display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix","head_repository":{"full_name":"owner/repo"}}"""));
 
         var run = await host.GetRunAsync(new RunId(1), CancellationToken.None);
 
-        Assert.AreEqual("failure", run.Conclusion);
-        Assert.AreEqual("Fix thing", run.DisplayTitle);
-        Assert.AreEqual("https://github.com/owner/repo/actions/runs/1", run.HtmlUrl);
-        Assert.AreEqual("rix/fix", run.HeadBranch);
-        Assert.AreEqual("owner/repo", run.HeadRepo);
+        Assert.IsInstanceOfType<CiFailed>(run.Outcome);
+        Assert.AreEqual("Fix thing", run.Title);
+        Assert.AreEqual("https://github.com/owner/repo/actions/runs/1", run.Url);
+        Assert.AreEqual("rix/fix", run.HeadBranch.Value);
+        Assert.AreEqual("owner/repo", run.HeadRepo.Value);
     }
 
     /// <summary>head_repository is required like the rest: the caller decides whether to answer the
@@ -53,14 +53,44 @@ public class GitHubActionsCiHostTests
     }
 
     [TestMethod]
-    public async Task GetRunAsync_ReturnsNullConclusion_ForInProgressRun()
+    public async Task GetRunAsync_ReturnsPending_ForInProgressRun()
     {
         var host = BuildHost(_ => Json(
             """{"conclusion":null,"display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix","head_repository":{"full_name":"owner/repo"}}"""));
 
         var run = await host.GetRunAsync(new RunId(1), CancellationToken.None);
 
-        Assert.IsNull(run.Conclusion);
+        Assert.IsInstanceOfType<CiPending>(run.Outcome);
+    }
+
+    /// <summary>The shared outcomes are mapped; everything else keeps GitHub's own word, so the
+    /// notice saying why rix did nothing can name what actually happened rather than "other".</summary>
+    [TestMethod]
+    [DataRow("success", typeof(CiSucceeded), "succeeded")]
+    [DataRow("cancelled", typeof(CiCancelled), "cancelled")]
+    [DataRow("timed_out", typeof(CiOtherOutcome), "timed_out")]
+    [DataRow("startup_failure", typeof(CiOtherOutcome), "startup_failure")]
+    public async Task GetRunAsync_MapsTheConclusion_OntoTheSharedOutcomes(string conclusion, Type expected, string name)
+    {
+        var host = BuildHost(_ => Json(
+            $$$"""{"conclusion":"{{{conclusion}}}","display_title":"Fix thing","html_url":"https://x/1","head_branch":"rix/fix","head_repository":{"full_name":"owner/repo"}}"""));
+
+        var run = await host.GetRunAsync(new RunId(1), CancellationToken.None);
+
+        Assert.IsInstanceOfType(run.Outcome, expected);
+        Assert.AreEqual(name, run.Outcome.Name);
+    }
+
+    /// <summary>A head repo shaped like nothing a repo could be named is a malformed response, not
+    /// a repo that merely isn't this one - the caller's trust comparison would have read it as the
+    /// latter and quietly skipped the run.</summary>
+    [TestMethod]
+    public async Task GetRunAsync_Throws_WhenHeadRepositoryIsNotOwnerSlashName()
+    {
+        var host = BuildHost(_ => Json(
+            """{"conclusion":"failure","display_title":"Fix thing","html_url":"https://x/1","head_branch":"rix/fix","head_repository":{"full_name":"not-a-repo"}}"""));
+
+        await Assert.ThrowsExactlyAsync<CiHostException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
     }
 
     [TestMethod]

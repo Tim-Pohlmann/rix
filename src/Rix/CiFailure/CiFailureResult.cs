@@ -20,11 +20,13 @@ internal sealed record CiFailureDetected
     [property: JsonPropertyName("prNumber")] int? PrNumber
 ) : ICiFailureResult;
 
-/// <summary>The run did not fail (e.g. it succeeded, was cancelled, or is still in progress, in
-/// which case <paramref name="Conclusion"/> is <c>null</c>) — nothing to do.</summary>
+/// <summary>The run did not fail — it succeeded, was cancelled, is still running, or ended some
+/// other way its CI system has a word for. Nothing to do. <paramref name="Outcome"/> is that word,
+/// carried through verbatim rather than narrowed, because saying which of those it was is the whole
+/// content of the notice this becomes.</summary>
 internal sealed record CiFailureSkipped
 (
-    [property: JsonPropertyName("conclusion")] string? Conclusion
+    [property: JsonPropertyName("outcome")] string Outcome
 ) : ICiFailureResult;
 
 /// <summary>The run failed, but the tip of its branch is already <paramref name="RixCommits"/> of

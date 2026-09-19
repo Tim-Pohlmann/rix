@@ -7,14 +7,14 @@ using Rix.Repository;
 namespace Rix.Tests;
 
 internal sealed class StubCiHost(
-    Func<RunId, Task<WorkflowRun>>? getRun = null,
+    Func<RunId, Task<CiRun>>? getRun = null,
     Func<RunId, Task<string>>? getLogs = null) : ICiHost
 {
     /// <summary>The log budget the caller asked for, so a test can assert the cap is actually
     /// pushed down to the host rather than only applied afterwards.</summary>
     internal int? TotalTailChars { get; private set; }
 
-    public Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
+    public Task<CiRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
     => getRun switch { { } check => check(runId), _ => throw new InvalidOperationException("getRun not stubbed") };
 
     public Task<string> GetFailedJobLogsAsync(RunId runId, int totalTailChars, CancellationToken cancellationToken)
@@ -51,14 +51,14 @@ internal sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpRespons
     => Task.FromResult(handler(request));
 }
 
-/// <summary>The workflow run most ci-failure tests describe: one that ran, on a branch of the repo
-/// itself, with a title and URL. Only <paramref name="conclusion"/>, <paramref name="branch"/> and
+/// <summary>The CI run most ci-failure tests describe: one that ran, on a branch of the repo
+/// itself, with a title and URL. Only <paramref name="outcome"/>, <paramref name="branch"/> and
 /// <paramref name="headRepo"/> vary between scenarios, so the rest is fixed here rather than
 /// restated per test.</summary>
 internal static class TestRuns
 {
-    internal static WorkflowRun Sample(string? conclusion, string branch = "rix/fix", string headRepo = "owner/repo")
-    => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", branch, headRepo);
+    internal static CiRun Sample(CiOutcome outcome, string branch = "rix/fix", string headRepo = "owner/repo")
+    => new(outcome, "Fix thing", "https://github.com/owner/repo/actions/runs/1", new BranchName(branch), new RepoIdentifier(headRepo));
 }
 
 internal sealed class StubJobRepoHost(

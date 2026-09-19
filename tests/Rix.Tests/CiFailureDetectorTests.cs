@@ -22,23 +22,23 @@ public class CiFailureDetectorTests
     [TestMethod]
     public async Task DetectAsync_ReturnsSkipped_WhenRunDidNotFail()
     {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("success")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
 
         var result = await Detect(ci);
 
         var skipped = AssertSkipped(result);
-        Assert.AreEqual("success", skipped.Conclusion);
+        Assert.AreEqual("succeeded", skipped.Outcome);
     }
 
     [TestMethod]
     public async Task DetectAsync_ReturnsSkipped_WhenRunStillInProgress()
     {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(conclusion: null)));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiPending())));
 
         var result = await Detect(ci);
 
         var skipped = AssertSkipped(result);
-        Assert.IsNull(skipped.Conclusion);
+        Assert.AreEqual("pending", skipped.Outcome);
     }
 
     [TestMethod]
@@ -57,7 +57,7 @@ public class CiFailureDetectorTests
     public async Task DetectAsync_ReturnsDetected_WithPromptAndFacts_WhenRunFailed()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())),
             getLogs: _ => Task.FromResult("boom: it broke"));
         var repoHost = new StubCiFailureRepoHost(findPr: _ => Task.FromResult<int?>(7));
 
@@ -76,7 +76,7 @@ public class CiFailureDetectorTests
     [TestMethod]
     public async Task DetectAsync_OmitsPrLine_WhenNoOpenPr()
     {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("failure")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())));
         var repoHost = new StubCiFailureRepoHost(findPr: _ => Task.FromResult<int?>(null));
 
         var result = await Detect(ci, repoHost);
@@ -95,7 +95,7 @@ public class CiFailureDetectorTests
     {
         var excerpt = "===== build =====\nTAIL-MARKER";
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())),
             getLogs: _ => Task.FromResult(excerpt));
 
         var result = await Detect(ci);
@@ -109,7 +109,7 @@ public class CiFailureDetectorTests
     public async Task DetectAsync_ReturnsError_WhenLogFetchFails()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())),
             getLogs: _ => throw new CiHostException("log fetch failed"));
 
         var result = await Detect(ci);
@@ -120,7 +120,7 @@ public class CiFailureDetectorTests
     [TestMethod]
     public async Task DetectAsync_ReturnsError_WhenPrLookupFails()
     {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("failure")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())));
         var repoHost = new StubCiFailureRepoHost(findPr: _ => throw new RepoHostException("pr lookup failed"));
 
         var result = await Detect(ci, repoHost);
@@ -134,7 +134,7 @@ public class CiFailureDetectorTests
     public async Task DetectAsync_ReturnsUntrustedRun_WhenTheRunsBranchIsAForks()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure", branch: "patch-1", headRepo: "outsider/repo")),
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "patch-1", headRepo: "outsider/repo")),
             getLogs: _ => throw new AssertFailedException("a fork's logs must not be fetched at all"));
         var repoHost = new StubCiFailureRepoHost(
             countRixCommits: _ => throw new AssertFailedException("a fork's branch must not be inspected at all"));
@@ -157,7 +157,7 @@ public class CiFailureDetectorTests
     public async Task DetectAsync_TreatsTheRepoAsItsOwn_WhenOnlyItsCasingDiffers()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure", headRepo: "Owner/Repo")));
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), headRepo: "Owner/Repo")));
 
         AssertDetected(await Detect(ci));
     }
@@ -165,7 +165,7 @@ public class CiFailureDetectorTests
     [TestMethod]
     public async Task DetectAsync_ReturnsLoopGuarded_WhenRixCommitsFillTheBranchTip()
     {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("failure")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())));
         var repoHost = new StubCiFailureRepoHost(countRixCommits: _ => Task.FromResult(3));
 
         var result = await Detect(ci, repoHost, maxRixCommits: 3);
@@ -185,7 +185,7 @@ public class CiFailureDetectorTests
     public async Task DetectAsync_ReturnsDetected_WhenTheRixCommitStreakIsShorterThanTheCap()
     {
         // One below the cap: the streak rix itself just added still leaves it a turn to take.
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("failure")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())));
         var repoHost = new StubCiFailureRepoHost(countRixCommits: _ => Task.FromResult(2));
 
         AssertDetected(await Detect(ci, repoHost, maxRixCommits: 3));
@@ -195,7 +195,7 @@ public class CiFailureDetectorTests
     public async Task DetectAsync_CountsTheStreakOnTheFailingRunsOwnBranch()
     {
         BranchName? counted = null;
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("failure", branch: "feature/x")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "feature/x")));
         var repoHost = new StubCiFailureRepoHost(countRixCommits: branch =>
         {
             counted = branch;
@@ -210,7 +210,7 @@ public class CiFailureDetectorTests
     [TestMethod]
     public async Task DetectAsync_ReturnsError_WhenTheCommitCountFails()
     {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("failure")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())));
         var repoHost = new StubCiFailureRepoHost(countRixCommits: _ => throw new RepoHostException("commit listing failed"));
 
         var error = AssertError(await Detect(ci, repoHost));
