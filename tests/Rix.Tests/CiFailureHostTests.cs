@@ -18,7 +18,7 @@ public class CiFailureHostTests
     private const int TailChars = 10_000;
 
     private static GitHubReadHost BuildHost(Func<HttpRequestMessage, HttpResponseMessage> handler, string repo = "owner/repo")
-    => new(TestConfig.Repo(repo), new GitReadToken("read-tok"), SuccessGitRunner, new DelegatingHandlerStub(handler));
+    => new(new RepoIdentifier(repo), new GitReadToken("read-tok"), SuccessGitRunner, new DelegatingHandlerStub(handler));
 
     private static HttpResponseMessage Json(string body)
     => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };

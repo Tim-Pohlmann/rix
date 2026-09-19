@@ -28,19 +28,11 @@ rules:
           - pattern: ((ProcessSuccess)$X)
           - pattern: ((InstallFailed)$X)
           - pattern: ((Installed)$X)
-          - pattern: ((ValidPr)$X)
-          - pattern: ((InvalidPr)$X)
-          - pattern: ((JobConfigValid)$X)
-          - pattern: ((JobConfigInvalid)$X)
-          - pattern: ((SubmitConfigValid)$X)
-          - pattern: ((SubmitConfigInvalid)$X)
           - pattern: ((JobSuccess)$X)
           - pattern: ((JobFailure)$X)
           - pattern: ((SetupFailure)$X)
           - pattern: ((SubmitSuccess)$X)
           - pattern: ((SubmitFailure)$X)
-          - pattern: ((ParseSuccess<$T>)$X)
-          - pattern: ((ParseError<$T>)$X)
 
   - id: curl-unpinned-tls
     languages: [bash]

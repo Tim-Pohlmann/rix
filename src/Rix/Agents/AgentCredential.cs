@@ -4,8 +4,9 @@ namespace Rix.Agents;
 
 /// <summary>
 /// Resolves the environment variable name an <c>--agent-api-key</c> should be exported as for the
-/// child agent CLI process, and validates it. Used by <see cref="Job.JobConfig.Create"/> so the
-/// resolved (name, value) pair can be attached to the run's <see cref="AgentInvocation.EnvironmentOverrides"/>
+/// child agent CLI process, and validates it. Resolved by the CLI when building a
+/// <see cref="Job.JobConfig"/> so the (name, value) pair can be attached to the run's
+/// <see cref="AgentInvocation.EnvironmentOverrides"/>
 /// — the child process gets the credential without it ever needing to exist under that name in
 /// rix's own process environment.
 /// </summary>
@@ -24,12 +25,26 @@ internal static partial class AgentCredential
     private static partial Regex CredentialShapedName();
 
     /// <summary>
+    /// The rule that decides whether there is an env var name at all: a name is only resolved once
+    /// there is an <paramref name="apiKey"/> to export under it, so no key means no name and no
+    /// complaint about one — e.g. opencode's free default model needs neither. Lives here rather
+    /// than at each call site so the CLI and anything else building an <see cref="AgentConfig"/>
+    /// can't disagree about when the name is required.
+    /// </summary>
+    internal static string? ResolveEnvNameOrNull(AgentKind agent, string? apiKey, string? apiKeyEnv)
+    => apiKey switch
+    {
+        null => null,
+        _ => ResolveEnvName(agent, apiKeyEnv),
+    };
+
+    /// <summary>
     /// Resolves the env var name <paramref name="apiKeyEnv"/> (the caller's <c>--agent-api-key-env</c>,
     /// or <c>null</c>/blank to pick a default for <paramref name="agent"/>) and validates its shape.
-    /// Only called when an api key is actually present — <see cref="Job.JobConfig.Create"/> skips
-    /// this entirely otherwise, since e.g. opencode's free default model needs no key.
+    /// Throws <see cref="InvalidInputException"/> when neither yields a usable name. Only reached
+    /// via <see cref="ResolveEnvNameOrNull"/>, i.e. when an api key is actually present.
     /// </summary>
-    internal static ParseResult<string> ResolveEnvName(AgentKind agent, string? apiKeyEnv)
+    internal static string ResolveEnvName(AgentKind agent, string? apiKeyEnv)
     {
         if (string.IsNullOrWhiteSpace(apiKeyEnv))
             return DefaultEnvName(agent);
@@ -42,17 +57,18 @@ internal static partial class AgentCredential
     /// must say which env var to use. Every kind is listed explicitly rather than one of them
     /// serving as the fallback, so a new agent has to state its own default here instead of
     /// silently inheriting opencode's.</summary>
-    private static ParseResult<string> DefaultEnvName(AgentKind agent) => agent switch
+    private static string DefaultEnvName(AgentKind agent) => agent switch
     {
-        AgentKind.Claude => new ParseSuccess<string>("ANTHROPIC_API_KEY"),
-        AgentKind.OpenCode => new ParseSuccess<string>("OPENCODE_API_KEY"),
-        AgentKind.Pi => new ParseError<string>("is required when agent=pi and agent-api-key is set"),
+        AgentKind.Claude => "ANTHROPIC_API_KEY",
+        AgentKind.OpenCode => "OPENCODE_API_KEY",
+        AgentKind.Pi => throw new InvalidInputException("pi has no default credential env var, so one must be given whenever an agent api key is set"),
         _ => throw new NotSupportedException($"No default credential env var for agent: {agent}"),
     };
 
-    private static ParseResult<string> Validate(string envName) => CredentialShapedName().IsMatch(envName) switch
+    private static string Validate(string envName)
     {
-        true => new ParseSuccess<string>(envName),
-        false => new ParseError<string>($"'{envName}' must be a credential-shaped environment variable name, e.g. *_API_KEY or *_TOKEN, and not one of rix's own runtime variables"),
-    };
+        if (!CredentialShapedName().IsMatch(envName))
+            throw new InvalidInputException($"'{envName}' must be a credential-shaped environment variable name, e.g. *_API_KEY or *_TOKEN, and not one of rix's own runtime variables");
+        return envName;
+    }
 }

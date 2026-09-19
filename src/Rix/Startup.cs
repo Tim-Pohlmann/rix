@@ -7,7 +7,6 @@ using Rix.Process;
 using Rix.Repository;
 using Rix.Submit;
 using System.CommandLine;
-using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -92,7 +91,7 @@ internal static class Startup
             rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, cts.Token)));
             rootCommand.AddCommand(CiFailureCommand.Build(config => ExecuteCiFailureAsync(config, cts.Token)));
             rootCommand.AddCommand(InitializeCommand.Build(config => ExecuteInitializeAsync(config, cts.Token)));
-            return await new CommandLineBuilder(rootCommand).UseDefaults().Build().InvokeAsync(args);
+            return await CliPipeline.Build(rootCommand).InvokeAsync(args);
         }
         finally
         {
