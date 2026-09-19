@@ -7,14 +7,30 @@ internal record SubmitConfig
     internal DirectoryPath InputDir { get; }
     internal DirectoryPath WorkDir { get; }
 
+    /// <summary>The branches a pending push may deliver to. Empty — the default — rejects every
+    /// push, so an operator opts in by naming the branches this submit may touch. Deliberately
+    /// duplicates the list <c>rix job</c> gave its <c>/push</c> endpoint rather than reading it back
+    /// out of <c>result.json</c>: that file sits in the agent's own workspace and the agent can
+    /// rewrite it, so a list taken from it would be the attacker's list. Supplied by the caller that
+    /// holds the write credential instead.</summary>
+    internal IReadOnlyList<BranchName> AllowedPushBranches { get; }
+
     /// <summary>Private so a <see cref="SubmitConfig"/> can only be produced by <see cref="Create"/>,
     /// which guarantees every field is validated — the type can never exist in an invalid state.</summary>
-    private SubmitConfig(RepoIdentifier repo, GitToken writeToken, DirectoryPath inputDir, DirectoryPath workDir)
+    private SubmitConfig
+    (
+        RepoIdentifier repo,
+        GitToken writeToken,
+        DirectoryPath inputDir,
+        DirectoryPath workDir,
+        IReadOnlyList<BranchName> allowedPushBranches
+    )
     {
         Repo = repo;
         WriteToken = writeToken;
         InputDir = inputDir;
         WorkDir = workDir;
+        AllowedPushBranches = allowedPushBranches;
     }
 
     /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
@@ -25,7 +41,8 @@ internal record SubmitConfig
         string repo,
         string writeToken,
         string? inputDir,
-        string? workDir
+        string? workDir,
+        string? allowedPushBranches = null
     )
     {
         var errors = new List<string>();
@@ -61,7 +78,10 @@ internal record SubmitConfig
             repo: parsedRepo!,
             writeToken: new GitToken(writeToken),
             inputDir: parsedInputDir!,
-            workDir: parsedWorkDir!
+            workDir: parsedWorkDir!,
+            // Unparseable input is impossible: every branch name is acceptable, and a blank value
+            // means the empty list, which is the safe end of the range rather than an error.
+            allowedPushBranches: BranchName.ParseAllowList(allowedPushBranches)
         );
         return new SubmitConfigValid(config);
     }

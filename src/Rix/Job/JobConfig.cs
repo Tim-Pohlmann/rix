@@ -135,7 +135,7 @@ internal record JobConfig
             ? null
             : AgentCredential.ResolveEnvName(resolvedAgent, inputs.AgentApiKeyEnv).Collect(errors, "--agent-api-key-env");
 
-        var resolvedPushBranches = allowedPushBranches ?? ParseAllowedPushBranches(inputs.AllowedPushBranches);
+        var resolvedPushBranches = allowedPushBranches ?? BranchName.ParseAllowList(inputs.AllowedPushBranches);
 
         if (errors.Count > 0)
             return null;
@@ -188,23 +188,6 @@ internal record JobConfig
         );
     }
 
-    /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
-    /// branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
-    /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
-    /// must opt in to letting the agent push at all. Unlike the <c>rix/*</c>-restricted branches the
-    /// agent creates via <c>/pr</c>, any branch name is acceptable here, since these already exist on
-    /// the remote before the job ever runs. Duplicates are dropped.</summary>
-    private static List<BranchName> ParseAllowedPushBranches(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return [];
-
-        return raw
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(entry => new BranchName(entry))
-            .Distinct()
-            .ToList();
-    }
 }
 
 /// <summary>How the coding agent should be run: which agent (<see cref="AgentKind"/>), the task

@@ -49,9 +49,10 @@ internal static class TestConfig
         string repo = "owner/repo",
         string writeToken = "tok",
         string? inputDir = null,
-        string? workDir = null
+        string? workDir = null,
+        string? allowedPushBranches = null
     )
-    => SubmitConfig.Create(repo, writeToken, inputDir ?? Path.GetTempPath(), workDir ?? Path.GetTempPath()) switch
+    => SubmitConfig.Create(repo, writeToken, inputDir ?? Path.GetTempPath(), workDir ?? Path.GetTempPath(), allowedPushBranches) switch
     {
         SubmitConfigValid v => v.Config,
         SubmitConfigInvalid i => throw new AssertFailedException($"invalid test config: {string.Join("; ", i.Errors)}"),
