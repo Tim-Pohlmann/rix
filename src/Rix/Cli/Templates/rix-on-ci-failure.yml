@@ -7,7 +7,7 @@ jobs:
   rix:
     # Cheap short-circuit; on-ci-failure.yml re-checks the conclusion via the API regardless.
     if: github.event.workflow_run.conclusion == 'failure'
-    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main
+    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@__RIX_REF__
     with:
       # repo defaults to the calling repo.
       run-id: ${{ github.event.workflow_run.id }}
