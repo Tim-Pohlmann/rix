@@ -77,20 +77,23 @@ public class CiFailureDetectorTests
         Assert.IsFalse(detected.Prompt.Contains("This is PR"));
     }
 
+    /// <summary>Capping is the host's job, applied while streaming so a multi-MB log is never fully
+    /// in memory. Trimming what comes back a second time here would only ever cut into an excerpt
+    /// the host already sized to fit — leaving a headless first block — so the budget is handed
+    /// down and the result embedded as-is.</summary>
     [TestMethod]
-    public async Task DetectAsync_TruncatesLogsToTail_WhenTooLong()
+    public async Task DetectAsync_PassesItsLogBudgetToTheHost_AndEmbedsTheExcerptAsIs()
     {
-        var hugeLog = new string('x', 25_000) + "TAIL-MARKER";
+        var excerpt = "===== build =====\nTAIL-MARKER";
         var host = new StubCiFailureHost(
             getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
-            getLogs: _ => Task.FromResult(hugeLog));
+            getLogs: _ => Task.FromResult(excerpt));
 
         var result = await CiFailureDetector.DetectAsync(Repo, Run, host, CancellationToken.None);
 
         var detected = AssertDetected(result);
-        StringAssert.Contains(detected.Prompt, "TAIL-MARKER");
-        Assert.IsTrue(detected.Prompt.Length < hugeLog.Length + 500, "log excerpt must be capped, not passed through whole");
-        Assert.IsNotNull(host.TailCharsPerJob, "the same cap must reach the host, so a huge log is never fully held in memory");
+        StringAssert.Contains(detected.Prompt, excerpt);
+        Assert.IsTrue(host.TotalTailChars > 0, "a cap must reach the host, so a huge log is never fully held in memory");
     }
 
     [TestMethod]
