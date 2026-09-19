@@ -6,16 +6,10 @@ using Rix.Repository;
 
 namespace Rix.Tests;
 
-internal sealed class StubCiFailureRepoHost(
+internal sealed class StubCiHost(
     Func<RunId, Task<WorkflowRun>>? getRun = null,
-    Func<RunId, Task<string>>? getLogs = null,
-    Func<BranchName, Task<int?>>? findPr = null,
-    Func<BranchName, Task<int>>? countRixCommits = null) : ICiFailureRepoHost
+    Func<RunId, Task<string>>? getLogs = null) : ICiHost
 {
-    /// <summary>The cap the loop guard was asked to count against, so a test can assert the
-    /// configured value reaches the host instead of a constant fixed in the detector.</summary>
-    internal MaxRixCommits? MaxRixCommits { get; private set; }
-
     /// <summary>The log budget the caller asked for, so a test can assert the cap is actually
     /// pushed down to the host rather than only applied afterwards.</summary>
     internal int? TotalTailChars { get; private set; }
@@ -28,6 +22,15 @@ internal sealed class StubCiFailureRepoHost(
         TotalTailChars = totalTailChars;
         return getLogs switch { { } check => check(runId), _ => Task.FromResult("") };
     }
+}
+
+internal sealed class StubCiFailureRepoHost(
+    Func<BranchName, Task<int?>>? findPr = null,
+    Func<BranchName, Task<int>>? countRixCommits = null) : ICiFailureRepoHost
+{
+    /// <summary>The cap the loop guard was asked to count against, so a test can assert the
+    /// configured value reaches the host instead of a constant fixed in the detector.</summary>
+    internal MaxRixCommits? MaxRixCommits { get; private set; }
 
     public Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken)
     => findPr switch { { } check => check(branch), _ => Task.FromResult<int?>(null) };

@@ -3,7 +3,7 @@ using Rix.Repository;
 namespace Rix.Tests;
 
 /// <summary>Covers the excerpt's shaping rules on their own, without the HTTP round trip that
-/// <see cref="CiFailureRepoHostTests"/> puts in front of them - these are decisions about what fits in
+/// <see cref="GitHubActionsCiHostTests"/> puts in front of them - these are decisions about what fits in
 /// a prompt, so they are stated here in terms of logs and budgets rather than canned responses.</summary>
 [TestClass]
 public class JobLogExcerptTests

@@ -24,17 +24,20 @@ internal static class CiFailureDetector
     (
         RepoIdentifier repo,
         RunId runId,
-        ICiFailureRepoHost host,
+        ICiHost ci,
+        ICiFailureRepoHost repoHost,
         MaxRixCommits maxRixCommits,
         CancellationToken cancellationToken
     )
     {
-        // Every host call here fails the same way — a RepoHostException whose message already
-        // names the operation that failed — so one catch at the boundary replaces a try/catch per
-        // call, and a CiFailureError carries that message through unchanged.
+        // Both hosts fail the same way — an exception whose message already names the operation
+        // that failed — so one catch at the boundary replaces a try/catch per call, and a
+        // CiFailureError carries that message through unchanged. Two types rather than one because
+        // the CI provider and the repo host are separately chosen and can fail separately; nothing
+        // here branches on which, so they are caught together.
         try
         {
-            var run = await host.GetRunAsync(runId, cancellationToken);
+            var run = await ci.GetRunAsync(runId, cancellationToken);
             if (run.Conclusion != "failure")
                 return new CiFailureSkipped(run.Conclusion);
 
@@ -51,21 +54,21 @@ internal static class CiFailureDetector
             // by far the most expensive call here. A single extra round-trip ahead of a run that then
             // spends minutes on a coding agent is the cheaper half of that trade.
             var branch = new BranchName(run.HeadBranch);
-            var rixCommits = await host.CountLeadingRixCommitsAsync(branch, maxRixCommits, cancellationToken);
+            var rixCommits = await repoHost.CountLeadingRixCommitsAsync(branch, maxRixCommits, cancellationToken);
             if (rixCommits >= maxRixCommits.Value)
                 return new CiFailureLoopGuarded(run.HeadBranch, rixCommits);
 
             // Independent of each other - only the already-fetched run is needed by both - so they
             // run concurrently rather than paying two sequential network round-trips.
-            var logsTask = host.GetFailedJobLogsAsync(runId, LogTailChars, cancellationToken);
-            var prTask = host.FindOpenPullRequestNumberAsync(branch, cancellationToken);
+            var logsTask = ci.GetFailedJobLogsAsync(runId, LogTailChars, cancellationToken);
+            var prTask = repoHost.FindOpenPullRequestNumberAsync(branch, cancellationToken);
             await Task.WhenAll(logsTask, prTask);
             var logs = logsTask.Result;
             var prNumber = prTask.Result;
             var prompt = BuildPrompt(repo, run, prNumber, logs);
             return new CiFailureDetected(prompt, run.HtmlUrl, run.HeadBranch, prNumber);
         }
-        catch (RepoHostException ex)
+        catch (Exception ex) when (ex is CiHostException or RepoHostException)
         {
             return new CiFailureError(ex.Message);
         }
