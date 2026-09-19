@@ -1,0 +1,17 @@
+name: rix
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: Task for the agent
+        required: true
+jobs:
+  rix:
+    uses: Tim-Pohlmann/rix/.github/workflows/job.yml@main
+    with:
+      repo: ${{ github.repository }}
+      prompt: ${{ inputs.prompt }}
+      # agent: claude   # optional; defaults to 'opencode'
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
