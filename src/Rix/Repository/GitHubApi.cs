@@ -7,8 +7,11 @@ namespace Rix.Repository;
 
 /// <summary>The REST half of talking to GitHub: one authenticated client scoped to one repo, plus
 /// the request/status-check/parse sequence every endpoint would otherwise repeat. Split from the
-/// repo hosts so the read and write paths share a connection pool and an error shape by construction
-/// rather than by one host holding a reference to another's <see cref="HttpClient"/>.</summary>
+/// hosts built on it — the repo hosts and <see cref="GitHubActionsCiHost"/> — so they share a
+/// connection pool and an error shape by construction rather than by one host holding a reference to
+/// another's <see cref="HttpClient"/>. Being usable by both sides is a fact about GitHub running its
+/// own CI, not about the seams: it reports in <see cref="RepoHostException"/>'s terms, and the CI
+/// host restates those as its own.</summary>
 internal sealed class GitHubApi
 {
     private readonly HttpClient _http;

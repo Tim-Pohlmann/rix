@@ -107,8 +107,8 @@ runs:
         set -e
 
         # One jq call over the already-in-memory $result, rather than a separate subprocess per
-        # field - status/conclusion/error are all read from it below.
-        IFS=$'\t' read -r status conclusion error branch rix_commits head_repo < <(jq -r '[.status, (.conclusion // ""), (.error // ""), (.branch // ""), (.rixCommits // ""), (.headRepo // "")] | @tsv' <<<"$result")
+        # field - status/outcome/error are all read from it below.
+        IFS=$'\t' read -r status outcome error branch rix_commits head_repo < <(jq -r '[.status, (.outcome // ""), (.error // ""), (.branch // ""), (.rixCommits // ""), (.headRepo // "")] | @tsv' <<<"$result")
         # Default to false so every branch below (including an unrecognized status) leaves
         # has-result in a defined state; only the success branch needs to override it.
         echo "has-result=false" >> "$GITHUB_OUTPUT"
@@ -119,7 +119,7 @@ runs:
             echo "has-result=true" >> "$GITHUB_OUTPUT"
             ;;
           skipped)
-            echo "Run $RIX_RUN_ID concluded '$conclusion', not 'failure' — skipping."
+            echo "Run $RIX_RUN_ID ended '$outcome', not 'failed' — skipping."
             ;;
           untrustedRun)
             # Not an error either: the run belongs to a fork's PR, so its code and logs are written

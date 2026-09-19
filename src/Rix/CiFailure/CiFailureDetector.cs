@@ -38,35 +38,33 @@ internal static class CiFailureDetector
         try
         {
             var run = await ci.GetRunAsync(runId, cancellationToken);
-            if (run.Conclusion != "failure")
-                return new CiFailureSkipped(run.Conclusion);
+            if (run.Outcome is not CiFailed)
+                return new CiFailureSkipped(run.Outcome.Name);
 
             // The trust boundary, applied before a single byte of the run reaches a prompt: getting
             // a branch into this repo takes write access to it, so a run whose head is this repo was
-            // put there by someone who has it, and a run whose head is a fork was not. Compared
-            // case-insensitively because GitHub treats owner and repo names that way, so the same
-            // repo can be named in either case and still be the same repo.
-            if (!run.HeadRepo.Equals(repo.Value, StringComparison.OrdinalIgnoreCase))
-                return new CiFailureUntrustedRun(run.HeadRepo, run.HeadBranch);
+            // put there by someone who has it, and a run whose head is a fork was not. What makes
+            // two repo identities the same one is RepoIdentifier's own rule, not this comparison's.
+            if (run.HeadRepo != repo)
+                return new CiFailureUntrustedRun(run.HeadRepo.Value, run.HeadBranch.Value);
 
             // Answered before anything else is fetched, rather than concurrently with it: it is the
             // one question whose answer makes all the remaining work pointless, and the log fetch is
             // by far the most expensive call here. A single extra round-trip ahead of a run that then
             // spends minutes on a coding agent is the cheaper half of that trade.
-            var branch = new BranchName(run.HeadBranch);
-            var rixCommits = await repoHost.CountLeadingRixCommitsAsync(branch, maxRixCommits, cancellationToken);
+            var rixCommits = await repoHost.CountLeadingRixCommitsAsync(run.HeadBranch, maxRixCommits, cancellationToken);
             if (rixCommits >= maxRixCommits.Value)
-                return new CiFailureLoopGuarded(run.HeadBranch, rixCommits);
+                return new CiFailureLoopGuarded(run.HeadBranch.Value, rixCommits);
 
             // Independent of each other - only the already-fetched run is needed by both - so they
             // run concurrently rather than paying two sequential network round-trips.
             var logsTask = ci.GetFailedJobLogsAsync(runId, LogTailChars, cancellationToken);
-            var prTask = repoHost.FindOpenPullRequestNumberAsync(branch, cancellationToken);
+            var prTask = repoHost.FindOpenPullRequestNumberAsync(run.HeadBranch, cancellationToken);
             await Task.WhenAll(logsTask, prTask);
             var logs = logsTask.Result;
             var prNumber = prTask.Result;
             var prompt = BuildPrompt(repo, run, prNumber, logs);
-            return new CiFailureDetected(prompt, run.HtmlUrl, run.HeadBranch, prNumber);
+            return new CiFailureDetected(prompt, run.Url, run.HeadBranch.Value, prNumber);
         }
         catch (Exception ex) when (ex is CiHostException or RepoHostException)
         {
@@ -74,7 +72,7 @@ internal static class CiFailureDetector
         }
     }
 
-    private static string BuildPrompt(RepoIdentifier repo, WorkflowRun run, int? prNumber, string logs)
+    private static string BuildPrompt(RepoIdentifier repo, CiRun run, int? prNumber, string logs)
     {
         var prLine = prNumber switch
         {
@@ -83,9 +81,9 @@ internal static class CiFailureDetector
         };
 
         return $"""
-        CI failed on branch '{run.HeadBranch}' (run: {run.HtmlUrl}).
+        CI failed on branch '{run.HeadBranch.Value}' (run: {run.Url}).
         {prLine}
-        Failing run title: {run.DisplayTitle}
+        Failing run title: {run.Title}
 
         Investigate the failure and fix it. Failing step log (tail):
         ```

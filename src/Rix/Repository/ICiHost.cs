@@ -11,7 +11,7 @@ namespace Rix.Repository;
 /// in, stops at its implementation.</summary>
 internal interface ICiHost
 {
-    Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken);
+    Task<CiRun> GetRunAsync(RunId runId, CancellationToken cancellationToken);
 
     /// <summary>Builds an excerpt of the run's failed jobs' logs, each job's tail under a heading
     /// naming it, in at most <paramref name="totalTailChars"/> characters however many jobs failed.
@@ -24,15 +24,65 @@ internal interface ICiHost
 }
 
 /// <summary>The facts about one CI run needed to describe why it failed, and to decide whether it
-/// may be answered at all. <paramref name="Conclusion"/> is <c>null</c> while the run is still
-/// queued/in-progress. <paramref name="HeadRepo"/> is the <c>owner/name</c> of the repo the run's
-/// branch lives in, which is the fork rather than the watched repo when the run belongs to a fork's
-/// pull request.</summary>
-internal sealed record WorkflowRun
+/// may be answered at all. Typed rather than a bag of strings, so the rules for comparing a repo
+/// identity live on <see cref="RepoIdentifier"/> and the rules for what counts as a failure live on
+/// <see cref="CiOutcome"/>, instead of being restated by everything that reads a run.</summary>
+/// <param name="HeadRepo">The repo the run's branch lives in, which is the fork rather than the
+/// watched repo when the run belongs to a fork's pull request.</param>
+internal sealed record CiRun
 (
-    string? Conclusion,
-    string DisplayTitle,
-    string HtmlUrl,
-    string HeadBranch,
-    string HeadRepo
+    CiOutcome Outcome,
+    string Title,
+    string Url,
+    BranchName HeadBranch,
+    RepoIdentifier HeadRepo
 );
+
+/// <summary>How a CI run ended. A closed set of the outcomes every CI system has, plus
+/// <see cref="CiOtherOutcome"/> for whatever else a provider reports, so reading one is a match that
+/// can't silently miss a case the way comparing a raw status word can — a provider spelling failure
+/// differently would have shown up as "not a failure" and been skipped in silence.
+///
+/// <see cref="Name"/> is carried per case rather than derived by the reader because the only thing
+/// anyone does with a non-failure outcome is say what it was, and a provider's own word for it
+/// (<c>timed_out</c>, <c>startup_failure</c>) is more use in that sentence than "other" would
+/// be.</summary>
+internal abstract record CiOutcome
+{
+    private protected CiOutcome() { }
+
+    /// <summary>The one word this outcome is reported as, where rix explains why it did nothing.</summary>
+    internal abstract string Name { get; }
+}
+
+/// <summary>The run failed — the one outcome <c>rix ci-failure</c> acts on.</summary>
+internal sealed record CiFailed : CiOutcome
+{
+    internal override string Name => "failed";
+}
+
+internal sealed record CiSucceeded : CiOutcome
+{
+    internal override string Name => "succeeded";
+}
+
+internal sealed record CiCancelled : CiOutcome
+{
+    internal override string Name => "cancelled";
+}
+
+/// <summary>The run hasn't finished, so it has no outcome yet. Distinct from
+/// <see cref="CiOtherOutcome"/>: there is no word to report, because the provider hasn't said
+/// anything yet rather than having said something unfamiliar.</summary>
+internal sealed record CiPending : CiOutcome
+{
+    internal override string Name => "pending";
+}
+
+/// <summary>Any outcome outside the shared set, carrying the provider's own word for it — the run
+/// timed out, was skipped, needs an action, went stale. None of them is a failure rix answers, and
+/// all of them are worth naming exactly when saying so.</summary>
+internal sealed record CiOtherOutcome(string Raw) : CiOutcome
+{
+    internal override string Name => Raw;
+}

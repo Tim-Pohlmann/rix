@@ -30,13 +30,15 @@ internal sealed class GitHubActionsCiHost : ICiHost
     internal GitHubActionsCiHost(RepoIdentifier repo, GitReadToken token, HttpMessageHandler? handler = null)
         : this(new GitHubApi(repo, token, handler)) { }
 
-    /// <summary>Fetches a run's conclusion, title, URL, head branch and head repo — the facts
+    /// <summary>Fetches a run's outcome, title, URL, head branch and head repo — the facts
     /// needed to decide whether it failed, whether it may be answered at all, and to describe the
     /// failure. <c>conclusion</c> is the one field GitHub itself sends as <c>null</c> (while the run
     /// is still queued/in-progress), so it's the one field this doesn't require; a run whose head
     /// repo is missing (GitHub omits it once a fork has been deleted) is rejected here rather than
-    /// defaulted, since the caller decides by comparing it and has no safe value to compare.</summary>
-    public async Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
+    /// defaulted, since the caller decides by comparing it and has no safe value to compare. A head
+    /// repo GitHub sends in a shape no repo could have is rejected the same way, so a malformed
+    /// response can't reach the trust comparison as something that merely fails to match.</summary>
+    public async Task<CiRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
     {
         var operation = $"get workflow run {runId.Value}";
         try
@@ -44,11 +46,50 @@ internal sealed class GitHubActionsCiHost : ICiHost
             var run = await _api.GetJsonAsync($"actions/runs/{runId.Value}", GitHubActionsApiJsonContext.Default.WorkflowRunApiResponse, operation, cancellationToken);
             if (run.DisplayTitle is null || run.HtmlUrl is null || run.HeadBranch is null || run.HeadRepository?.FullName is null)
                 throw new CiHostException($"{operation} response was missing a required field");
-            return new WorkflowRun(run.Conclusion, run.DisplayTitle, run.HtmlUrl, run.HeadBranch, run.HeadRepository.FullName);
+
+            return new CiRun
+            (
+                ToOutcome(run.Conclusion),
+                run.DisplayTitle,
+                run.HtmlUrl,
+                new BranchName(run.HeadBranch),
+                ToRepo(run.HeadRepository.FullName, operation)
+            );
         }
         catch (RepoHostException ex)
         {
             throw AsCiFailure(ex);
+        }
+    }
+
+    /// <summary>Maps GitHub Actions' <c>conclusion</c> onto the shared set. Every word GitHub does
+    /// not share with other CI systems keeps its own spelling through
+    /// <see cref="CiOtherOutcome"/> rather than being flattened, so the notice explaining why rix
+    /// did nothing still says <c>timed_out</c> when that is what happened. <c>null</c> is GitHub's
+    /// way of saying the run is still queued or running.</summary>
+    private static CiOutcome ToOutcome(string? conclusion) => conclusion switch
+    {
+        "failure" => new CiFailed(),
+        "success" => new CiSucceeded(),
+        "cancelled" => new CiCancelled(),
+        null => new CiPending(),
+        { } other => new CiOtherOutcome(other),
+    };
+
+    /// <summary>Lifts <c>head_repository.full_name</c> into the type that owns what a repo identity
+    /// is, so the caller compares two <see cref="RepoIdentifier"/>s rather than two strings. Its
+    /// constructor rejects anything not shaped like a repo with an
+    /// <see cref="InvalidInputException"/>, which is the wrong kind of error out here — nobody
+    /// <em>input</em> this, GitHub sent it — so it is restated as a malformed response.</summary>
+    private static RepoIdentifier ToRepo(string fullName, string operation)
+    {
+        try
+        {
+            return new RepoIdentifier(fullName);
+        }
+        catch (InvalidInputException ex)
+        {
+            throw new CiHostException($"{operation} response had an unusable head repository: {ex.Message}", ex);
         }
     }
 

@@ -29,7 +29,7 @@ public class CiFailureRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsNotRun_AndNeverClones_WhenRunDidNotFail()
     {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("success")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
         var cloneCalled = false;
         var jobHost = new StubJobRepoHost(clone: () => { cloneCalled = true; return Task.CompletedTask; });
 
@@ -57,7 +57,7 @@ public class CiFailureRunnerTests
     public async Task RunAsync_RunsJob_WithDetectedPrompt_WhenRunFailed()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())),
             getLogs: _ => Task.FromResult("boom: it broke"));
 
         string? capturedPrompt = null;
@@ -88,7 +88,7 @@ public class CiFailureRunnerTests
     [TestMethod]
     public async Task ExecuteCiFailureAsync_Returns0_AndWritesNoResultJson_WhenRunDidNotFail()
     {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("success")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
 
         // The job half is stubbed but never reached: the run didn't fail, so no agent runs.
         var exitCode = await Startup.ExecuteCiFailureAsync(
@@ -101,7 +101,7 @@ public class CiFailureRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsNotRun_AndNeverClones_WhenRixCommitsAlreadyFillTheBranchTip()
     {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("failure")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())));
         var repoHost = new StubCiFailureRepoHost(countRixCommits: _ => Task.FromResult(CiFailureConfig.DefaultMaxRixCommits));
         var cloneCalled = false;
         var jobHost = new StubJobRepoHost(clone: () => { cloneCalled = true; return Task.CompletedTask; });
@@ -118,7 +118,7 @@ public class CiFailureRunnerTests
     public async Task RunAsync_ReturnsNotRun_AndNeverClones_WhenTheFailureIsAForks()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure", headRepo: "outsider/repo")));
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), headRepo: "outsider/repo")));
         var cloneCalled = false;
         var jobHost = new StubJobRepoHost(clone: () => { cloneCalled = true; return Task.CompletedTask; });
 
@@ -136,7 +136,7 @@ public class CiFailureRunnerTests
     public async Task ExecuteCiFailureAsync_Returns0_AndWritesNoResultJson_WhenTheFailureIsAForks()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure", headRepo: "outsider/repo")));
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), headRepo: "outsider/repo")));
 
         var exitCode = await Startup.ExecuteCiFailureAsync(
             MakeConfig(), CancellationToken.None, Context(ci, new StubJobRepoHost()));
@@ -149,7 +149,7 @@ public class CiFailureRunnerTests
     public async Task RunAsync_PassesTheConfiguredCap_ToTheLoopGuard()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())),
             getLogs: _ => Task.FromResult("boom"));
         var repoHost = new StubCiFailureRepoHost(countRixCommits: _ => Task.FromResult(1));
 
@@ -163,7 +163,7 @@ public class CiFailureRunnerTests
     [TestMethod]
     public async Task ExecuteCiFailureAsync_Returns0_AndWritesNoResultJson_WhenGuardedAgainstALoop()
     {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample("failure")));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())));
         var repoHost = new StubCiFailureRepoHost(countRixCommits: _ => Task.FromResult(CiFailureConfig.DefaultMaxRixCommits));
 
         // Exit 0, like any other reason not to act: the branch being rix's own work is a decision,
@@ -191,7 +191,7 @@ public class CiFailureRunnerTests
     public async Task ExecuteCiFailureAsync_Returns0_AndWritesResultJson_WhenRunFailedAndJobSucceeded()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())),
             getLogs: _ => Task.FromResult("boom: it broke"));
 
         var exitCode = await Startup.ExecuteCiFailureAsync(
@@ -207,7 +207,7 @@ public class CiFailureRunnerTests
     public async Task RunAsync_AllowsPushOnly_ToTheFailingRunsOwnBranch()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure", branch: "rix/fix")),
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "rix/fix")),
             getLogs: _ => Task.FromResult("boom: it broke"));
 
         var systemPrompt = await CaptureSystemPromptAsync(ci);
@@ -220,7 +220,7 @@ public class CiFailureRunnerTests
     public async Task RunAsync_AllowsPush_ToTheFailingRunsOwnBranch_EvenWhenNotARixBranch()
     {
         var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample("failure", branch: "feature/human-work")),
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "feature/human-work")),
             getLogs: _ => Task.FromResult("boom: it broke"));
 
         var systemPrompt = await CaptureSystemPromptAsync(ci);
