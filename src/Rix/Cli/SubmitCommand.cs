@@ -41,6 +41,9 @@ internal static class SubmitCommand
         command.AddOption(WriteTokenOption);
         command.AddOption(InputDirOption);
         command.AddOption(WorkDirOption);
+        // The same Option instance job registers, so neither command can drift into a different
+        // flag name or a different environment variable for the same list.
+        command.AddOption(JobOptions.AllowedPushBranchesOption);
 
         command.SetHandler
         (
@@ -52,7 +55,8 @@ internal static class SubmitCommand
                     repo:       parsed.Str(RepoOption,        "RIX_REPO"),
                     writeToken: parsed.Str(WriteTokenOption,  "RIX_WRITE_TOKEN"),
                     inputDir:   parsed.Str(InputDirOption,    "RIX_INPUT_DIR"),
-                    workDir:    parsed.Str(WorkDirOption,     "RIX_WORK_DIR")
+                    workDir:    parsed.Str(WorkDirOption,     "RIX_WORK_DIR"),
+                    allowedPushBranches: parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES")
                 );
 
                 switch (result)

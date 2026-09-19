@@ -94,11 +94,15 @@ internal static class JobOptions
     )
     { IsRequired = false };
 
+    /// <summary>Shared with <c>submit</c> rather than redeclared there, so the flag the agent is
+    /// bounded by and the flag the write credential is bounded by can never name different
+    /// branches. Both commands read it from the same <c>RIX_ALLOWED_PUSH_BRANCHES</c>.</summary>
     internal static readonly Option<string> AllowedPushBranchesOption = new
     (
         name: "--allowed-push-branches",
-        description: "Comma-separated list of branches the /push API endpoint may deliver to " +
-            "(default: none — /push is disabled until this is set)"
+        description: "Comma-separated list of branches rix may push onto. Defaults to none, which " +
+            "refuses every push onto an already-existing branch. Enforced twice: by `job`, which " +
+            "turns down the agent's /push request, and again by `submit`, which does the pushing"
     )
     { IsRequired = false };
 

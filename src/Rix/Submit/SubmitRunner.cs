@@ -12,6 +12,11 @@ namespace Rix.Submit;
 /// PR's branch already exists on the remote so an in-flight or previously merged branch is never
 /// silently overwritten; a push onto an existing branch is left to git's own non-fast-forward
 /// guard to protect.
+///
+/// Treats <c>result.json</c> as untrusted input rather than as its own earlier output: the agent
+/// that produced it runs unsandboxed in the same workspace and can rewrite it before this command
+/// ever opens it. Everything it names is therefore re-checked here, where the write credential
+/// actually is — see <see cref="SubmitPushAsync"/> for the branch the check turns on.
 /// </summary>
 internal static class SubmitRunner
 {
@@ -136,6 +141,16 @@ internal static class SubmitRunner
         CancellationToken cancellationToken
     )
     {
+        // Checked again here even though rix job's /push endpoint already refused anything outside
+        // this list. That check bound only what the agent asked for: the agent is an ordinary
+        // process on the same runner as the result.json carrying its answer here, so it can name
+        // any branch it likes in the file afterwards. This is the copy of the check that stands
+        // next to the write credential, and so the one that decides what is actually pushed. The
+        // rix/* rule a pending PR must satisfy needs no such repetition — RixBranchName re-applies
+        // it when result.json is deserialized, because it rides the type rather than the config.
+        if (!config.AllowedPushBranches.Contains(push.Branch))
+            return new SubmitOneFailed(new SubmitFailure($"branch is not allowed to be pushed to: {push.Branch.Value}"));
+
         var bundlePath = Path.Combine(config.InputDir.Value, push.BundleFile);
         if (!File.Exists(bundlePath))
             return new SubmitOneFailed(new SubmitFailure($"bundle file not found: {push.BundleFile}"));

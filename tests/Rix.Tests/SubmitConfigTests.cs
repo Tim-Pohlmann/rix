@@ -6,15 +6,18 @@ namespace Rix.Tests;
 public class SubmitConfigTests
 {
     private static readonly string ExistingDir = Path.GetTempPath();
+    private static readonly string[] ExpectedTrimmedBranches = ["main", "release/1"];
+    private static readonly string[] ExpectedUnusualBranches = ["--not-a-flag", "feature/ünïcode"];
 
     private static SubmitConfigResult Create
     (
         string repo = "owner/repo",
         string writeToken = "write-tok",
         string? inputDir = null,
-        string? workDir = null
+        string? workDir = null,
+        string? allowedPushBranches = null
     )
-    => SubmitConfig.Create(repo, writeToken, inputDir ?? ExistingDir, workDir);
+    => SubmitConfig.Create(repo, writeToken, inputDir ?? ExistingDir, workDir, allowedPushBranches);
 
     private static SubmitConfig Valid(SubmitConfigResult result) => result switch
     {
@@ -28,6 +31,31 @@ public class SubmitConfigTests
         SubmitConfigInvalid i => i.Errors,
         _ => throw new AssertFailedException("expected an invalid config"),
     };
+
+    [TestMethod]
+    public void Create_AllowsNoPushBranches_WhenTheListIsUnset()
+    {
+        Assert.AreEqual(0, Valid(Create(allowedPushBranches: null)).AllowedPushBranches.Count);
+        Assert.AreEqual(0, Valid(Create(allowedPushBranches: "   ")).AllowedPushBranches.Count);
+    }
+
+    [TestMethod]
+    public void Create_SplitsAllowedPushBranches_TrimmingAndDroppingDuplicates()
+    {
+        var config = Valid(Create(allowedPushBranches: " main , release/1 ,main, "));
+
+        CollectionAssert.AreEqual(ExpectedTrimmedBranches, config.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
+
+    /// <summary>An unusable entry is not an error: every string is a possible branch name, so the
+    /// list can only ever be over- or under-inclusive, and the safe direction is taken silently.</summary>
+    [TestMethod]
+    public void Create_KeepsAnyBranchName_InAllowedPushBranches()
+    {
+        var config = Valid(Create(allowedPushBranches: "--not-a-flag,feature/ünïcode"));
+
+        CollectionAssert.AreEqual(ExpectedUnusualBranches, config.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
 
     [TestMethod]
     public void Create_ReturnsValid_ForValidInputs()
