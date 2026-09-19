@@ -47,16 +47,18 @@ internal static class Startup
         _ => throw new NotSupportedException($"Unsupported agent: {agent}"),
     };
 
-    /// <summary>The production <see cref="CiFailureContext"/>: the ci-failure check and the job's
-    /// clone are two roles against the same repo under the same credential, so they are two repo
-    /// hosts over one shared <see cref="GitHubApi"/> transport rather than two independently connected
-    /// ones. Built only when no context was supplied, so a test that brings its own stubs opens no
-    /// connection at all.</summary>
+    /// <summary>The production <see cref="CiFailureContext"/>: reading the run, judging its branch
+    /// and cloning for the job are three roles against the same GitHub account under the same
+    /// credential, so they are three hosts over one shared <see cref="GitHubApi"/> transport rather
+    /// than three independently connected ones. This is where GitHub-hosting-its-own-CI is asserted
+    /// — the seams themselves don't require it, and pointing <see cref="CiFailureContext.Ci"/> at
+    /// another CI provider is a change to this method alone. Built only when no context was
+    /// supplied, so a test that brings its own stubs opens no connection at all.</summary>
     internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
         var host = new GitHubJobRepoHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
-        return new CiFailureContext(new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host));
+        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host));
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the
