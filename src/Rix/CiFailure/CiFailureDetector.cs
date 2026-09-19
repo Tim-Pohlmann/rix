@@ -18,57 +18,32 @@ internal static class CiFailureDetector
 
     internal static async Task<ICiFailureResult> DetectAsync(RepoIdentifier repo, RunId runId, IGitHubCiFailureHost host, CancellationToken cancellationToken)
     {
-        WorkflowRun run;
+        // Every host call here fails the same way — a RepositoryHostException whose message already
+        // names the operation that failed — so one catch at the boundary replaces a try/catch per
+        // call, and a CiFailureError carries that message through unchanged.
         try
         {
-            run = await FetchAsync(ct => host.GetRunAsync(runId, ct), $"could not fetch run {runId.Value}", cancellationToken);
-        }
-        catch (HttpRequestException ex)
-        {
-            return new CiFailureError(ex.Message);
-        }
+            var run = await host.GetRunAsync(runId, cancellationToken);
+            if (run.Conclusion != "failure")
+                return new CiFailureSkipped(run.Conclusion);
 
-        if (run.Conclusion != "failure")
-            return new CiFailureSkipped(run.Conclusion);
-
-        // Independent of each other - only the already-fetched run is needed by both - so they run
-        // concurrently rather than paying two sequential network round-trips.
-        var logsTask = FetchAsync(ct => host.GetFailedJobLogsAsync(runId, LogTailChars, ct), $"could not fetch failing job logs for run {runId.Value}", cancellationToken);
-        var prTask = FetchAsync(ct => host.FindOpenPullRequestNumberAsync(new BranchName(run.HeadBranch), ct), $"could not look up open PR for branch {run.HeadBranch}", cancellationToken);
-
-        try
-        {
+            // Independent of each other - only the already-fetched run is needed by both - so they
+            // run concurrently rather than paying two sequential network round-trips.
+            var logsTask = host.GetFailedJobLogsAsync(runId, LogTailChars, cancellationToken);
+            var prTask = host.FindOpenPullRequestNumberAsync(new BranchName(run.HeadBranch), cancellationToken);
             await Task.WhenAll(logsTask, prTask);
+            var logs = logsTask.Result;
+            var prNumber = prTask.Result;
+
+            if (logs.Length > LogTailChars)
+                logs = logs[^LogTailChars..];
+
+            var prompt = BuildPrompt(repo, run, prNumber, logs);
+            return new CiFailureDetected(prompt, run.HtmlUrl, run.HeadBranch, prNumber);
         }
-        catch (HttpRequestException ex)
+        catch (RepositoryHostException ex)
         {
             return new CiFailureError(ex.Message);
-        }
-        var logs = logsTask.Result;
-        var prNumber = prTask.Result;
-
-        if (logs.Length > LogTailChars)
-            logs = logs[^LogTailChars..];
-
-        var prompt = BuildPrompt(repo, run, prNumber, logs);
-        return new CiFailureDetected(prompt, run.HtmlUrl, run.HeadBranch, prNumber);
-    }
-
-    /// <summary>Runs <paramref name="call"/> with <paramref name="cancellationToken"/> forwarded,
-    /// rethrowing any <see cref="HttpRequestException"/> with its message prefixed by
-    /// <paramref name="what"/> — collapses what would otherwise be a separate try/catch per API
-    /// call into one shared helper, while keeping each call's own failure message. Every HTTP call
-    /// this class makes goes through here, so catching that type at the call sites catches exactly
-    /// the failures described this way.</summary>
-    private static async Task<T> FetchAsync<T>(Func<CancellationToken, Task<T>> call, string what, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await call(cancellationToken);
-        }
-        catch (HttpRequestException ex)
-        {
-            throw new HttpRequestException($"{what}: {ex.Message}", ex);
         }
     }
 

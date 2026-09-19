@@ -35,7 +35,7 @@ public class CiFailureDetectorTests
     public async Task DetectAsync_ReturnsError_WhenGetRunFails()
     {
         var host = new StubCiFailureHost(
-            getRun: _ => throw new HttpRequestException("boom"));
+            getRun: _ => throw new RepositoryHostException("boom"));
 
         var result = await CiFailureDetector.DetectAsync(Repo, Run, host, CancellationToken.None);
 
@@ -98,7 +98,7 @@ public class CiFailureDetectorTests
     {
         var host = new StubCiFailureHost(
             getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
-            getLogs: _ => throw new HttpRequestException("log fetch failed"));
+            getLogs: _ => throw new RepositoryHostException("log fetch failed"));
 
         var result = await CiFailureDetector.DetectAsync(Repo, Run, host, CancellationToken.None);
 
@@ -110,7 +110,7 @@ public class CiFailureDetectorTests
     {
         var host = new StubCiFailureHost(
             getRun: _ => Task.FromResult(TestRuns.Sample("failure")),
-            findPr: _ => throw new HttpRequestException("pr lookup failed"));
+            findPr: _ => throw new RepositoryHostException("pr lookup failed"));
 
         var result = await CiFailureDetector.DetectAsync(Repo, Run, host, CancellationToken.None);
 

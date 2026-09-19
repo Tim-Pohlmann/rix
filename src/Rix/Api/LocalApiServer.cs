@@ -67,10 +67,15 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         var app = builder.Build();
 
-        // The one place a malformed request field becomes a response: the handlers construct their
+        // The one place a request that can't be answered becomes a response, instead of each
+        // handler repeating the mapping or letting the exception leak out as an unhandled 500.
+        // A malformed field is the caller's mistake, so it is a 400: the handlers construct their
         // value objects straight from the request, and the first field that can't be (blank, or
-        // e.g. a /pr branch outside rix/*) throws an InvalidInputException that surfaces here as a
-        // 400 naming that field.
+        // e.g. a /pr branch outside rix/*) throws an InvalidInputException naming it. A failed call
+        // to the GitHub API or git (the BranchExists* checks in those same handlers) means the
+        // request simply couldn't be judged, which is not the caller's fault, so it is a 502.
+        // Both guard on HasStarted: once a handler has begun writing, the status line is already
+        // on the wire and overwriting it would throw a second, less useful exception.
         app.Use
         (
             async (context, next) =>
@@ -79,9 +84,18 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 {
                     await next(context);
                 }
-                catch (InvalidInputException ex)
+                catch (InvalidInputException ex) when (!context.Response.HasStarted)
                 {
                     await Results.BadRequest(new ErrorResponse(ex.Message)).ExecuteAsync(context);
+                }
+                catch (RepositoryHostException ex) when (!context.Response.HasStarted)
+                {
+                    await Results.Json
+                    (
+                        new ErrorResponse($"repository host error: {ex.Message}"),
+                        statusCode: StatusCodes.Status502BadGateway
+                    )
+                    .ExecuteAsync(context);
                 }
             }
         );

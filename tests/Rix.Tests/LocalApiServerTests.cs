@@ -1,4 +1,5 @@
 using Rix.Api;
+using Rix.Repository;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -276,6 +277,56 @@ public class LocalApiServerTests
         var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
         StringAssert.Contains(result["error"], "rix/ghost");
         StringAssert.Contains(result["error"], "working directory");
+    }
+
+    [TestMethod]
+    public async Task PostPr_Returns502_WhenRepositoryHostThrows()
+    {
+        // The remote-branch check calls the GitHub API; when that transport fails the request
+        // can't be judged either way, so the middleware maps the one exception those checks throw
+        // to a 502 rather than letting it leak out of the handler as an unhandled 500.
+        var host = new StubRepositoryHost(
+            branchExists: _ => throw new RepositoryHostException("check branch rix/my-fix on remote failed: 503"));
+        await using var server = await LocalApiServer.StartAsync(host, Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/my-fix",
+            title = "Title",
+            body = "body",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.BadGateway, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "repository host error");
+        StringAssert.Contains(result["error"], "503");
+        Assert.AreEqual(0, server.GetQueuedPrRequests().Count);
+    }
+
+    [TestMethod]
+    public async Task PostPush_Returns502_WhenRepositoryHostThrows()
+    {
+        var host = new StubRepositoryHost(
+            branchExists: _ => throw new RepositoryHostException("check branch rix/my-fix on remote failed: 503"));
+        await using var server = await LocalApiServer.StartAsync(
+            host, Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new BranchName("rix/my-fix")]);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
+        {
+            branch = "rix/my-fix",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.BadGateway, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "repository host error");
+        Assert.AreEqual(0, server.GetQueuedPushRequests().Count);
     }
 
     [TestMethod]
