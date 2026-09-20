@@ -10,12 +10,12 @@ public class InitializeRunnerTests
 
     private InitializeContext Context(WriteFileAsync? writeFile = null) => new
     (
-        WriteFile: writeFile ?? ((path, content, _) =>
+        writeFile ?? ((path, content, _) =>
         {
             _writes.Add((path, content));
             return Task.CompletedTask;
         }),
-        LogLine: _logs.Add
+        _logs.Add
     );
 
     private static Task<IInitializeResult> Run(InitializeConfig config, InitializeContext context)

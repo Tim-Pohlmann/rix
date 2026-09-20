@@ -45,12 +45,12 @@ internal sealed record CiFailureConfig
     internal JobConfig ToJobConfig(string prompt, BranchName allowedPushBranch)
     => new
     (
-        Repo: Repo,
-        ReadToken: ReadToken,
-        TimeoutMinutes: TimeoutMinutes,
-        WorkDir: WorkDir,
-        OutputDir: OutputDir,
-        Agent: new AgentConfig(Agent, prompt, MaxTokens, Model, Credential),
-        AllowedPushBranches: [allowedPushBranch]
+        Repo,
+        ReadToken,
+        TimeoutMinutes,
+        WorkDir,
+        OutputDir,
+        new AgentConfig(Agent, prompt, MaxTokens, Model, Credential),
+        [allowedPushBranch]
     );
 }

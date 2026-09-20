@@ -35,13 +35,13 @@ internal static class JobCommand
 
                 var config = new JobConfig
                 (
-                    Repo: repo,
-                    ReadToken: readToken,
-                    TimeoutMinutes: timeout,
-                    WorkDir: workDir,
-                    OutputDir: outputDir,
-                    Agent: new AgentConfig(agent, prompt, maxTokens, model, credential),
-                    AllowedPushBranches: allowedPushBranches
+                    repo,
+                    readToken,
+                    timeout,
+                    workDir,
+                    outputDir,
+                    new AgentConfig(agent, prompt, maxTokens, model, credential),
+                    allowedPushBranches
                 );
                 ctx.ExitCode = await handler(config);
             }
