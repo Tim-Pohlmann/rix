@@ -45,6 +45,28 @@ public class InputTests
     }
 
     [TestMethod]
+    public void LazyOptional_NamesTheDefaultItFailedToBuild()
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>
+        (
+            () => Input.Optional<string>("--work-dir", null, raw => raw, () => throw new InvalidInputException("directory does not exist: /tmp"))
+        );
+
+        Assert.AreEqual("--work-dir default: directory does not exist: /tmp", ex.Message);
+    }
+
+    [TestMethod]
+    public void LazyOptional_BuildsTheFallbackOnlyWhenNothingWasSupplied()
+    {
+        var built = 0;
+
+        Assert.AreEqual("given", Input.Optional("--work-dir", "given", raw => raw, () => { built++; return "default"; }));
+        Assert.AreEqual(0, built);
+        Assert.AreEqual("default", Input.Optional("--work-dir", null, raw => raw, () => { built++; return "default"; }));
+        Assert.AreEqual(1, built);
+    }
+
+    [TestMethod]
     public void OptionalText_NormalisesBlankToNull()
     {
         Assert.IsNull(Input.OptionalText(null));
