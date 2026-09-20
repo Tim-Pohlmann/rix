@@ -29,11 +29,13 @@ internal static class Input
 
     /// <summary>Like <see cref="Optional{T}(string, string?, Func{string, T}, T)"/>, but the
     /// fallback is only built when it's needed — for defaults that cost something to construct,
-    /// e.g. a <see cref="DirectoryPath"/> that stats the directory.</summary>
+    /// e.g. a <see cref="DirectoryPath"/> that stats the directory. Building it late means it can
+    /// fail late too, so it is named as well: without that, an unusable default surfaces as a bare
+    /// "directory does not exist: /tmp" with nothing tying it to the flag it stood in for.</summary>
     internal static T Optional<T>(string name, string? raw, Func<string, T> construct, Func<T> fallback)
     {
         if (string.IsNullOrWhiteSpace(raw))
-            return fallback();
+            return Named($"{name} default", fallback);
         return Named(name, () => construct(raw));
     }
 
