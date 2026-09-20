@@ -171,7 +171,7 @@ public class TypesTests
     [DataRow(-1)]
     public void MaxTokens_RejectsAnythingButAPositiveBudget(int value)
     {
-        var error = Assert.ThrowsExactly<InvalidInputException>(() => new MaxTokens(value));
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new MaxTokens(value).ToString());
         Assert.AreEqual($"must be a positive integer, got '{value}'", error.Message);
     }
 
@@ -180,7 +180,7 @@ public class TypesTests
     [DataRow(-1)]
     public void TimeoutMinutes_RejectsARunThatIsOverBeforeItStarts(int value)
     {
-        var error = Assert.ThrowsExactly<InvalidInputException>(() => new TimeoutMinutes(value));
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new TimeoutMinutes(value).ToString());
         Assert.AreEqual($"must be a positive integer, got '{value}'", error.Message);
     }
 
@@ -189,7 +189,7 @@ public class TypesTests
     [DataRow(-1L)]
     public void RunId_RejectsIdsNoRunCouldHave(long value)
     {
-        var error = Assert.ThrowsExactly<InvalidInputException>(() => new RunId(value));
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new RunId(value).ToString());
         Assert.AreEqual($"must be a positive integer, got '{value}'", error.Message);
     }
 
