@@ -65,17 +65,17 @@ internal static class CiFailureCommand
 
                 var config = new CiFailureConfig
                 (
-                    RunId: runId,
-                    Repo: repo,
-                    ReadToken: readToken,
-                    TimeoutMinutes: timeout,
-                    WorkDir: workDir,
-                    OutputDir: outputDir,
-                    Agent: agent,
-                    MaxTokens: maxTokens,
-                    MaxRixCommits: maxRixCommits,
-                    Model: model,
-                    Credential: credential
+                    runId,
+                    repo,
+                    readToken,
+                    timeout,
+                    workDir,
+                    outputDir,
+                    agent,
+                    maxTokens,
+                    maxRixCommits,
+                    model,
+                    credential
                 );
                 ctx.ExitCode = await handler(config);
             }

@@ -31,9 +31,11 @@ internal static class Startup
     internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host)
     => new
     (
-        RepoHost: host,
-        RunProcess: ProcessWrapper.RunAsync,
-        Agent: SelectAgent(agent),
+        host,
+        ProcessWrapper.RunAsync,
+        SelectAgent(agent),
+        // Named because LogLine and TranscriptLine are the same delegate type: transposing them
+        // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
         TranscriptLine: _ => { }
     );
@@ -66,9 +68,9 @@ internal static class Startup
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        RepoHost: new GitHubSubmitRepoHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
-        RunProcess: ProcessWrapper.RunAsync,
-        LogLine: Console.Error.WriteLine
+        new GitHubSubmitRepoHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
+        ProcessWrapper.RunAsync,
+        Console.Error.WriteLine
     );
 
     /// <summary>
@@ -277,8 +279,8 @@ internal static class Startup
     private static InitializeContext DefaultInitializeContext()
     => new
     (
-        WriteFile: FileWriter.WriteAsync,
-        LogLine: Console.Error.WriteLine
+        FileWriter.WriteAsync,
+        Console.Error.WriteLine
     );
 
     /// <summary>

@@ -33,13 +33,13 @@ internal static class TestConfig
         var credential = AgentCredential.Resolve(agent, agentApiKey, agentApiKeyEnv);
         return new JobConfig
         (
-            Repo: new RepoIdentifier(repo),
-            ReadToken: new GitReadToken(readToken),
-            TimeoutMinutes: new TimeoutMinutes(timeoutMinutes),
-            WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
-            OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
-            Agent: new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, credential),
-            AllowedPushBranches: allowedPushBranches ?? []
+            new RepoIdentifier(repo),
+            new GitReadToken(readToken),
+            new TimeoutMinutes(timeoutMinutes),
+            new DirectoryPath(workDir ?? Path.GetTempPath()),
+            new DirectoryPath(outputDir ?? Path.GetTempPath()),
+            new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, credential),
+            allowedPushBranches ?? []
         );
     }
 
@@ -52,10 +52,10 @@ internal static class TestConfig
     )
     => new
     (
-        Repo: new RepoIdentifier(repo),
-        WriteToken: new GitToken(writeToken),
-        InputDir: new DirectoryPath(inputDir ?? Path.GetTempPath()),
-        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath())
+        new RepoIdentifier(repo),
+        new GitToken(writeToken),
+        new DirectoryPath(inputDir ?? Path.GetTempPath()),
+        new DirectoryPath(workDir ?? Path.GetTempPath())
     );
 
     internal static CiFailureConfig ValidCiFailure
@@ -70,15 +70,15 @@ internal static class TestConfig
     )
     => new
     (
-        RunId: new RunId(runId),
-        Repo: new RepoIdentifier(repo),
-        ReadToken: new GitReadToken(readToken),
-        TimeoutMinutes: new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes),
-        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
-        OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
-        Agent: agent,
-        MaxTokens: new MaxTokens(JobConfig.DefaultMaxTokens),
-        MaxRixCommits: new MaxRixCommits(maxRixCommits)
+        new RunId(runId),
+        new RepoIdentifier(repo),
+        new GitReadToken(readToken),
+        new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes),
+        new DirectoryPath(workDir ?? Path.GetTempPath()),
+        new DirectoryPath(outputDir ?? Path.GetTempPath()),
+        agent,
+        new MaxTokens(JobConfig.DefaultMaxTokens),
+        new MaxRixCommits(maxRixCommits)
     );
 
     internal static InitializeConfig ValidInitialize(string? dir = null, string? workflowRef = null)

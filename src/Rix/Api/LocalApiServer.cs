@@ -137,10 +137,10 @@ internal sealed class LocalApiServer : IAsyncDisposable
     {
         var queuedPr = new QueuedPr
         (
-            Branch: Input.Required("branch", req.Branch, value => new RixBranchName(value)),
-            BaseBranch: Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value)),
-            Title: Input.Required("title", req.Title, value => new PrTitle(value)),
-            Body: Input.Required("body", req.Body, value => new PrBody(value))
+            Input.Required("branch", req.Branch, value => new RixBranchName(value)),
+            Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value)),
+            Input.Required("title", req.Title, value => new PrTitle(value)),
+            Input.Required("body", req.Body, value => new PrBody(value))
         );
 
         if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
@@ -172,6 +172,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
     {
         // Unlike /pr, the branch here already exists on the remote (checked below), so it isn't a
         // name the agent is inventing - any branch name is acceptable, not just rix/*.
+        // Named because both are BranchName: transposing them compiles, and would check the push
+        // allow-list against the base branch instead of the one being pushed.
         var queuedPush = new QueuedPush
         (
             Branch: Input.Required("branch", req.Branch, value => new BranchName(value)),

@@ -67,8 +67,8 @@ internal static class JobRunner
             return new JobFailure
             (
                 $"agent failed: {detail}",
-                CostUsd: 0m,
-                Duration: stopwatch.Elapsed
+                0m,
+                stopwatch.Elapsed
             );
         }
 
