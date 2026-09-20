@@ -28,9 +28,9 @@ internal static class TestConfig
         IReadOnlyList<BranchName>? allowedPushBranches = null
     )
     {
-        // The same call the CLI makes, so a change to when the name is required reaches the
-        // fixtures too instead of leaving them asserting a rule the CLI no longer follows.
-        var apiKeyEnv = AgentCredential.ResolveEnvNameOrNull(agent, agentApiKey, agentApiKeyEnv);
+        // The same call the CLI makes, so a change to when the credential is required reaches
+        // the fixtures too instead of leaving them asserting a rule the CLI no longer follows.
+        var credential = AgentCredential.Resolve(agent, agentApiKey, agentApiKeyEnv);
         return new JobConfig
         (
             Repo: new RepoIdentifier(repo),
@@ -38,7 +38,7 @@ internal static class TestConfig
             TimeoutMinutes: new TimeoutMinutes(timeoutMinutes),
             WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
             OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
-            Agent: new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, agentApiKey, apiKeyEnv),
+            Agent: new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, credential),
             AllowedPushBranches: allowedPushBranches ?? []
         );
     }

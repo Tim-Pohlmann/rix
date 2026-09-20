@@ -33,16 +33,15 @@ internal record JobConfig
 /// does not interpret or validate it, since which providers/models an agent CLI accepts is entirely
 /// that CLI's concern. Groups the inputs the <c>--agent</c>, <c>--prompt</c>, <c>--max-tokens</c>,
 /// and <c>--model</c> flags configure.
-/// <paramref name="ApiKey"/> and <paramref name="ApiKeyEnv"/> (already resolved and validated by
-/// <see cref="AgentCredential.ResolveEnvName"/>) are <see cref="JobRunner"/>'s instructions for
-/// which single env var to add to the agent invocation's <see cref="AgentInvocation.EnvironmentOverrides"/>
-/// — both null when no key was supplied, otherwise both set; never one without the other.</summary>
+/// <paramref name="Credential"/> (already resolved and validated by
+/// <see cref="AgentCredential.Resolve"/>) is <see cref="JobRunner"/>'s instruction for which single
+/// env var to add to the agent invocation's <see cref="AgentInvocation.EnvironmentOverrides"/> —
+/// null when no key was supplied, and carrying both halves whenever it is not.</summary>
 internal sealed record AgentConfig
 (
     AgentKind Kind,
     string Prompt,
     MaxTokens MaxTokens,
     string? Model = null,
-    string? ApiKey = null,
-    string? ApiKeyEnv = null
+    AgentCredential? Credential = null
 );

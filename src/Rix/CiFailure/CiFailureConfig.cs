@@ -23,8 +23,7 @@ internal sealed record CiFailureConfig
     MaxTokens MaxTokens,
     MaxRixCommits MaxRixCommits,
     string? Model = null,
-    string? ApiKey = null,
-    string? ApiKeyEnv = null
+    AgentCredential? Credential = null
 )
 {
     /// <summary>How many of rix's own commits may already sit at a failing branch's tip before
@@ -51,7 +50,7 @@ internal sealed record CiFailureConfig
         TimeoutMinutes: TimeoutMinutes,
         WorkDir: WorkDir,
         OutputDir: OutputDir,
-        Agent: new AgentConfig(Agent, prompt, MaxTokens, Model, ApiKey, ApiKeyEnv),
+        Agent: new AgentConfig(Agent, prompt, MaxTokens, Model, Credential),
         AllowedPushBranches: [allowedPushBranch]
     );
 }

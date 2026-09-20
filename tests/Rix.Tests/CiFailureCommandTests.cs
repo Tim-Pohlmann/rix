@@ -1,3 +1,4 @@
+using Rix.Agents;
 using Rix.Cli;
 using Rix.CiFailure;
 using Rix.Job;
@@ -124,8 +125,7 @@ public class CiFailureCommandTests
 
         Assert.IsNotNull(captured);
         var agent = Job(captured).Agent;
-        Assert.AreEqual("secret", agent.ApiKey);
-        Assert.AreEqual("ANTHROPIC_API_KEY", agent.ApiKeyEnv);
+        Assert.AreEqual(new AgentCredential("ANTHROPIC_API_KEY", "secret"), agent.Credential);
     }
 
     [TestMethod]

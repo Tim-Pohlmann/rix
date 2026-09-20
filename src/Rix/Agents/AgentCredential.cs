@@ -3,15 +3,47 @@ using System.Text.RegularExpressions;
 namespace Rix.Agents;
 
 /// <summary>
-/// Resolves the environment variable name an <c>--agent-api-key</c> should be exported as for the
-/// child agent CLI process, and validates it. Resolved by the CLI when building a
-/// <see cref="Job.JobConfig"/> so the (name, value) pair can be attached to the run's
-/// <see cref="AgentInvocation.EnvironmentOverrides"/>
-/// — the child process gets the credential without it ever needing to exist under that name in
-/// rix's own process environment.
+/// The credential for the child agent CLI process: the raw <c>--agent-api-key</c> and the
+/// environment variable name it should be exported under, kept together because neither is any use
+/// without the other. Resolved by the CLI when building a <see cref="Job.JobConfig"/> and attached
+/// to the run's <see cref="AgentInvocation.EnvironmentOverrides"/> — the child process gets the
+/// credential without it ever needing to exist under that name in rix's own process environment.
+///
+/// One nullable value rather than two: a name without a key exports nothing, and a key without a
+/// name has nowhere to go, so the pair is the unit that is either wholly present or wholly absent.
+/// Holding them as two <c>string?</c>s made that a rule the consumer had to restate — and could
+/// only restate with a null-forgiving <c>!</c>, since the type said the invalid halves were
+/// reachable.
 /// </summary>
-internal static partial class AgentCredential
+internal sealed partial record AgentCredential(string EnvName, string Key)
 {
+    /// <summary>
+    /// Resolves the env var name <paramref name="apiKey"/> should be exported under, validating its
+    /// shape: <paramref name="apiKeyEnv"/> is the caller's <c>--agent-api-key-env</c>, and
+    /// <c>null</c>/blank picks a default for <paramref name="agent"/>. Throws
+    /// <see cref="InvalidInputException"/> when neither yields a usable name.
+    ///
+    /// A name is only resolved once there is a key to export under it, so no key means no
+    /// credential and no complaint about the name — e.g. opencode's free default model needs
+    /// neither. That rule lives here rather than at each call site so the CLI and anything else
+    /// building an <see cref="AgentConfig"/> can't disagree about when the name is required.
+    /// </summary>
+    internal static AgentCredential? Resolve(AgentKind agent, string? apiKey, string? apiKeyEnv)
+    {
+        if (apiKey is null)
+            return null;
+
+        if (string.IsNullOrWhiteSpace(apiKeyEnv))
+            return new AgentCredential(DefaultEnvName(agent), apiKey);
+
+        return new AgentCredential(Validate(apiKeyEnv.Trim()), apiKey);
+    }
+
+    /// <summary>Redacts <see cref="Key"/>, which a record's generated <c>ToString</c> would
+    /// otherwise print in full wherever a config carrying this is interpolated into a log line.
+    /// The name is not secret and is the half worth seeing when diagnosing a wrong-provider run.</summary>
+    public override string ToString() => $"{nameof(AgentCredential)} {{ {nameof(EnvName)} = {EnvName}, {nameof(Key)} = <redacted> }}";
+
     /// <summary>
     /// Restricts env var names to credential-shaped suffixes covering opencode's supported
     /// providers (ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, GOOGLE_APPLICATION_CREDENTIALS,
@@ -23,34 +55,6 @@ internal static partial class AgentCredential
     /// </summary>
     [GeneratedRegex(@"^(?!RIX_|AGENT_API_KEY|GITHUB_)[A-Z][A-Z0-9_]*_(API_KEY|TOKEN|KEY_ID|ACCESS_KEY|CREDENTIALS|PROFILE|ACCOUNT|PROJECT|PAT|ARN|RESOURCE_NAME)$")]
     private static partial Regex CredentialShapedName();
-
-    /// <summary>
-    /// The rule that decides whether there is an env var name at all: a name is only resolved once
-    /// there is an <paramref name="apiKey"/> to export under it, so no key means no name and no
-    /// complaint about one — e.g. opencode's free default model needs neither. Lives here rather
-    /// than at each call site so the CLI and anything else building an <see cref="AgentConfig"/>
-    /// can't disagree about when the name is required.
-    /// </summary>
-    internal static string? ResolveEnvNameOrNull(AgentKind agent, string? apiKey, string? apiKeyEnv)
-    => apiKey switch
-    {
-        null => null,
-        _ => ResolveEnvName(agent, apiKeyEnv),
-    };
-
-    /// <summary>
-    /// Resolves the env var name <paramref name="apiKeyEnv"/> (the caller's <c>--agent-api-key-env</c>,
-    /// or <c>null</c>/blank to pick a default for <paramref name="agent"/>) and validates its shape.
-    /// Throws <see cref="InvalidInputException"/> when neither yields a usable name. Only reached
-    /// via <see cref="ResolveEnvNameOrNull"/>, i.e. when an api key is actually present.
-    /// </summary>
-    internal static string ResolveEnvName(AgentKind agent, string? apiKeyEnv)
-    {
-        if (string.IsNullOrWhiteSpace(apiKeyEnv))
-            return DefaultEnvName(agent);
-
-        return Validate(apiKeyEnv.Trim());
-    }
 
     /// <summary>claude and opencode expect different credentials by default; pi is multi-provider
     /// with no single default credential, unlike opencode's own free-model provider - the caller

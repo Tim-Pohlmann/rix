@@ -134,11 +134,12 @@ internal static class JobOptions
     internal static string? ReadAgentApiKey(ParseResult parsed)
     => parsed.OptionalText(AgentApiKeyOption, "AGENT_API_KEY");
 
-    /// <summary>Whether the name is needed at all, and what it defaults to, both depend on values
-    /// read from other flags, so <paramref name="agent"/> and <paramref name="apiKey"/> are passed
-    /// in rather than re-read here. <see cref="AgentCredential.ResolveEnvNameOrNull"/> owns both
-    /// rules; this only supplies the raw flag text and the flag name any complaint is reported
-    /// under.</summary>
-    internal static string? ReadAgentApiKeyEnv(ParseResult parsed, AgentKind agent, string? apiKey)
-    => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.ResolveEnvNameOrNull(agent, apiKey, raw));
+    /// <summary>Whether a credential is needed at all, and what env var name it defaults to, both
+    /// depend on values read from other flags, so <paramref name="agent"/> and the key from
+    /// <see cref="ReadAgentApiKey"/> are passed in rather than re-read here.
+    /// <see cref="AgentCredential.Resolve"/> owns both rules; this only supplies the raw flag text
+    /// and the flag name any complaint is reported under. Returns the key paired with its name, so
+    /// no caller has to carry the two separately and keep them consistent.</summary>
+    internal static AgentCredential? ReadAgentCredential(ParseResult parsed, AgentKind agent, string? apiKey)
+    => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.Resolve(agent, apiKey, raw));
 }

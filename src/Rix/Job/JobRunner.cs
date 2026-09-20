@@ -117,7 +117,7 @@ internal static class JobRunner
         }
     }
 
-    /// <summary>Adds the resolved agent credential (see <see cref="AgentCredential.ResolveEnvName"/>)
+    /// <summary>Adds the resolved agent credential (see <see cref="AgentCredential.Resolve"/>)
     /// to the agent's own environment overrides, under whichever single env var name it was resolved
     /// to. This is the only place the credential is exported under that resolved provider-specific
     /// name — rix's own process environment never carries it under that name, even though rix's
@@ -128,10 +128,10 @@ internal static class JobRunner
         IReadOnlyDictionary<string, string> environmentOverrides, AgentConfig agent
     )
     {
-        if (agent.ApiKey is not { } apiKey)
+        if (agent.Credential is not { } credential)
             return environmentOverrides;
 
-        return new Dictionary<string, string>(environmentOverrides) { [agent.ApiKeyEnv!] = apiKey };
+        return new Dictionary<string, string>(environmentOverrides) { [credential.EnvName] = credential.Key };
     }
 
     /// <summary>
