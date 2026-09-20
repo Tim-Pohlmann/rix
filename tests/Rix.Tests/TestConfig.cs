@@ -30,7 +30,7 @@ internal static class TestConfig
     {
         // The same call the CLI makes, so a change to when the name is required reaches the
         // fixtures too instead of leaving them asserting a rule the CLI no longer follows.
-        var apiKeyEnv = AgentCredential.ResolveEnvNameOrNull(agent, agentApiKey, agentApiKeyEnv);
+        var apiKeyEnv = AgentCredential.ResolveEnvName(agent, agentApiKey, agentApiKeyEnv);
         return new JobConfig
         (
             Repo: new RepoIdentifier(repo),

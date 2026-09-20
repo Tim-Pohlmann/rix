@@ -136,9 +136,9 @@ internal static class JobOptions
 
     /// <summary>Whether the name is needed at all, and what it defaults to, both depend on values
     /// read from other flags, so <paramref name="agent"/> and <paramref name="apiKey"/> are passed
-    /// in rather than re-read here. <see cref="AgentCredential.ResolveEnvNameOrNull"/> owns both
+    /// in rather than re-read here. <see cref="AgentCredential.ResolveEnvName"/> owns both
     /// rules; this only supplies the raw flag text and the flag name any complaint is reported
     /// under.</summary>
     internal static string? ReadAgentApiKeyEnv(ParseResult parsed, AgentKind agent, string? apiKey)
-    => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.ResolveEnvNameOrNull(agent, apiKey, raw));
+    => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.ResolveEnvName(agent, apiKey, raw));
 }
