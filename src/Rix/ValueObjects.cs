@@ -11,15 +11,47 @@ internal record GitReadToken(string Value);
 /// <summary>A write-capable GitHub access token (push, open PRs). Being a <see cref="GitReadToken"/>,
 /// it also satisfies read-only consumers without a separate credential.</summary>
 internal sealed record GitToken(string Value) : GitReadToken(Value);
-internal readonly record struct MaxTokens(int Value);
-internal readonly record struct TimeoutMinutes(int Value);
+/// <summary>The agent's token budget for a single run.
+/// <para>A record class rather than a <c>readonly record struct</c>, as every quantity below is,
+/// because the constructor is the whole point of the type: it is where "a budget is a positive
+/// number" is stated, and a struct would undo that by handing out <c>default</c> — a zero-token
+/// budget the constructor never saw and had no chance to reject — to anyone who asks, including
+/// an uninitialised array element or field. A class has no such back door, so a value of this type
+/// existing really does mean its rule held.</para></summary>
+internal sealed record MaxTokens
+{
+    internal int Value { get; }
+
+    internal MaxTokens(int value)
+    {
+        if (value <= 0)
+            throw new InvalidInputException($"must be a positive integer, got '{value}'");
+        Value = value;
+    }
+}
+
+/// <summary>How long a single agent run may take before it is killed. A class for the reason given
+/// on <see cref="MaxTokens"/>; zero or negative would mean a run that is over before it starts.</summary>
+internal sealed record TimeoutMinutes
+{
+    internal int Value { get; }
+
+    internal TimeoutMinutes(int value)
+    {
+        if (value <= 0)
+            throw new InvalidInputException($"must be a positive integer, got '{value}'");
+        Value = value;
+    }
+}
 
 /// <summary>How many rix-authored commits may sit at the tip of a branch before
 /// <c>rix ci-failure</c> stops reacting to that branch's failures — the bound on rix answering its
 /// own output forever. At least one, since zero would refuse every branch rix has ever touched,
 /// and at most <see cref="MaxValue"/>: the streak is read in a single request, so a cap beyond one
-/// page could not be told apart from no cap at all.</summary>
-internal readonly record struct MaxRixCommits
+/// page could not be told apart from no cap at all. A class for the reason given on
+/// <see cref="MaxTokens"/>, which this type needed most of all: as a struct its <c>default</c> was
+/// a zero cap, the one value its constructor explicitly rejects.</summary>
+internal sealed record MaxRixCommits
 {
     /// <summary>GitHub's largest <c>per_page</c> for the commits endpoint.</summary>
     internal const int MaxValue = 100;
@@ -36,8 +68,19 @@ internal readonly record struct MaxRixCommits
 
 /// <summary>The CI system's identifier for a single run. A distinct type rather than a bare
 /// <c>long</c> so it can't be transposed with the other numbers threaded through the same calls (a
-/// PR number, a job count).</summary>
-internal readonly record struct RunId(long Value);
+/// PR number, a job count). A class for the reason given on <see cref="MaxTokens"/>; run ids are
+/// issued from one upwards, so zero identifies no run.</summary>
+internal sealed record RunId
+{
+    internal long Value { get; }
+
+    internal RunId(long value)
+    {
+        if (value <= 0)
+            throw new InvalidInputException($"must be a positive integer, got '{value}'");
+        Value = value;
+    }
+}
 
 /// <summary>A validated <c>owner/name</c> repository identifier. The constructor is the single
 /// source of the format rule: it throws <see cref="InvalidInputException"/> for anything else, so

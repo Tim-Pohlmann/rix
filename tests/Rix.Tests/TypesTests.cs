@@ -167,6 +167,41 @@ public class TypesTests
     }
 
     [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public void MaxTokens_RejectsAnythingButAPositiveBudget(int value)
+    {
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new MaxTokens(value));
+        Assert.AreEqual($"must be a positive integer, got '{value}'", error.Message);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public void TimeoutMinutes_RejectsARunThatIsOverBeforeItStarts(int value)
+    {
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new TimeoutMinutes(value));
+        Assert.AreEqual($"must be a positive integer, got '{value}'", error.Message);
+    }
+
+    [TestMethod]
+    [DataRow(0L)]
+    [DataRow(-1L)]
+    public void RunId_RejectsIdsNoRunCouldHave(long value)
+    {
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new RunId(value));
+        Assert.AreEqual($"must be a positive integer, got '{value}'", error.Message);
+    }
+
+    [TestMethod]
+    public void PositiveQuantities_KeepTheValueTheyWereGiven()
+    {
+        Assert.AreEqual(1, new MaxTokens(1).Value);
+        Assert.AreEqual(90, new TimeoutMinutes(90).Value);
+        Assert.AreEqual(9_000_000_000L, new RunId(9_000_000_000L).Value);
+    }
+
+    [TestMethod]
     [DataRow(1)]
     [DataRow(MaxRixCommits.MaxValue)]
     public void MaxRixCommits_AcceptsBothEndsOfItsRange(int value)
