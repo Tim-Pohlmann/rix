@@ -20,12 +20,15 @@ public class AgentCredentialTests
     public void Resolve_DefaultsToOpenCodeApiKey_ForOpenCode()
     => Assert.AreEqual("OPENCODE_API_KEY", EnvNameOf(AgentKind.OpenCode, null));
 
+    /// <summary>Asserts the whole message, not a substring of it. "pi" appears in almost any
+    /// wording this could take, so a Contains check passes just as happily for a message that has
+    /// quietly been rephrased into something the flag prefix no longer reads well with.</summary>
     [TestMethod]
     public void Resolve_RequiresExplicitEnv_ForPi()
     {
         var ex = Assert.ThrowsExactly<InvalidInputException>(() => EnvNameOf(AgentKind.Pi, null));
 
-        StringAssert.Contains(ex.Message, "pi");
+        Assert.AreEqual("is required when agent=pi and agent-api-key is set", ex.Message);
     }
 
     [TestMethod]
