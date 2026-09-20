@@ -38,8 +38,8 @@ internal static class JobCommand
                     repo,
                     readToken,
                     timeout,
-                    workDir,
-                    outputDir,
+                    WorkDir: workDir,
+                    OutputDir: outputDir,
                     new AgentConfig(agent, prompt, maxTokens, model, credential),
                     allowedPushBranches
                 );

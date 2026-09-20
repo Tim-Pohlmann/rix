@@ -17,6 +17,9 @@ internal sealed record CiFailureConfig
     RepoIdentifier Repo,
     GitReadToken ReadToken,
     TimeoutMinutes TimeoutMinutes,
+    // Reordering these two relative to each other compiles at every call site and silently swaps
+    // the clone's location with the results' - they share a type, so nothing catches it. That is
+    // why call sites pass them by name while the rest of the list stays positional.
     DirectoryPath WorkDir,
     DirectoryPath OutputDir,
     AgentKind Agent,
@@ -48,8 +51,8 @@ internal sealed record CiFailureConfig
         Repo,
         ReadToken,
         TimeoutMinutes,
-        WorkDir,
-        OutputDir,
+        WorkDir: WorkDir,
+        OutputDir: OutputDir,
         new AgentConfig(Agent, prompt, MaxTokens, Model, Credential),
         [allowedPushBranch]
     );

@@ -36,8 +36,8 @@ internal static class TestConfig
             new RepoIdentifier(repo),
             new GitReadToken(readToken),
             new TimeoutMinutes(timeoutMinutes),
-            new DirectoryPath(workDir ?? Path.GetTempPath()),
-            new DirectoryPath(outputDir ?? Path.GetTempPath()),
+            WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
+            OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
             new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, credential),
             allowedPushBranches ?? []
         );
@@ -54,8 +54,8 @@ internal static class TestConfig
     (
         new RepoIdentifier(repo),
         new GitToken(writeToken),
-        new DirectoryPath(inputDir ?? Path.GetTempPath()),
-        new DirectoryPath(workDir ?? Path.GetTempPath())
+        InputDir: new DirectoryPath(inputDir ?? Path.GetTempPath()),
+        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath())
     );
 
     internal static CiFailureConfig ValidCiFailure
@@ -74,8 +74,8 @@ internal static class TestConfig
         new RepoIdentifier(repo),
         new GitReadToken(readToken),
         new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes),
-        new DirectoryPath(workDir ?? Path.GetTempPath()),
-        new DirectoryPath(outputDir ?? Path.GetTempPath()),
+        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
+        OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
         agent,
         new MaxTokens(JobConfig.DefaultMaxTokens),
         new MaxRixCommits(maxRixCommits)

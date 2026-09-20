@@ -37,8 +37,8 @@ internal static class SubmitCommand
                 (
                     CommonOptions.ReadRepo(parsed),
                     parsed.Required(WriteTokenOption, "RIX_WRITE_TOKEN", value => new GitToken(value)),
-                    parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path)),
-                    CommonOptions.ReadWorkDir(parsed)
+                    InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path)),
+                    WorkDir: CommonOptions.ReadWorkDir(parsed)
                 );
                 ctx.ExitCode = await handler(config);
             }
