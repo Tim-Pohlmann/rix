@@ -81,10 +81,11 @@ internal sealed class GitHubReadHost : IRepositoryReadHost
     {
         // 404 is this endpoint's way of saying "no such branch", so the status is read here rather
         // than handed to GetJsonAsync, which treats every non-success status as a fault.
-        using var response = await _api.GetAsync($"branches/{Uri.EscapeDataString(branch.Value)}", HttpCompletionOption.ResponseContentRead, cancellationToken);
+        var operation = $"check branch {branch.Value} on remote";
+        using var response = await _api.GetAsync($"branches/{Uri.EscapeDataString(branch.Value)}", HttpCompletionOption.ResponseContentRead, operation, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return false;
-        GitHubApi.EnsureSuccess(response, $"check branch {branch.Value} on remote");
+        GitHubApi.EnsureSuccess(response, operation);
         return true;
     }
 }
