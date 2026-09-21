@@ -7,8 +7,15 @@ description: >-
 
 inputs:
   rix-version:
-    description: "Rix release tag to download, or 'latest'"
+    description: >-
+      Rix release tag to download, or 'latest'. Defaults to the release this copy of the repo
+      belongs to, so a caller pinning a workflow ref gets that ref's own binary rather than
+      whatever was published most recently — the two would otherwise drift apart silently the
+      moment a newer release changed the CLI surface these actions drive. Rewritten by
+      .github/scripts/set-version.sh in the same commit that sets the csproj version, and checked
+      against it by CI, so it can't be left behind.
     required: false
+    default: v0.5.0
   rix-bin:
     description: >-
       Path to an already-built rix binary to use instead of downloading a release (e.g. CI

@@ -1,6 +1,7 @@
 using Rix.Agents;
 using Rix.Api;
 using Rix.Process;
+using Rix.Repository;
 using System.Diagnostics;
 using System.Text.Json.Serialization;
 
@@ -38,19 +39,33 @@ internal static class JobRunner
 
         try
         {
-            await context.Host.CloneAsync(cloneDir.Path, ct);
+            await context.RepoHost.CloneAsync(cloneDir.Path, ct);
             // Set the commit identity before the agent starts, so it can commit without guessing
             // author metadata.
-            await context.Host.ConfigureGitAsync(cloneDir.Path, ct);
+            await context.RepoHost.ConfigureGitAsync(cloneDir.Path, ct);
         }
-        catch (InvalidOperationException ex)
+        catch (RepoHostException ex)
         {
             return new SetupFailure(ex.Message);
         }
 
+        // Lay the operator-supplied home context over the runner's user home before the agent
+        // starts, so its config/context files are in place when the agent first reads them.
+        if (config.FactoryContext is { } factoryContext)
+        {
+            try
+            {
+                await context.FactoryContextLoader.LoadAsync(factoryContext.Repo, factoryContext.ContextPath, ct);
+            }
+            catch (RepoHostException ex)
+            {
+                return new SetupFailure($"factory context load failed: {ex.Message}");
+            }
+        }
+
         await using var apiServer = await LocalApiServer.StartAsync
         (
-            context.Host, cloneDir.Path, ct, context.LogLine.Invoke,
+            context.RepoHost, cloneDir.Path, ct, context.LogLine.Invoke,
             allowedPushBranches: config.AllowedPushBranches
         );
 
@@ -66,8 +81,8 @@ internal static class JobRunner
             return new JobFailure
             (
                 $"agent failed: {detail}",
-                CostUsd: 0m,
-                Duration: stopwatch.Elapsed
+                0m,
+                stopwatch.Elapsed
             );
         }
 
@@ -116,7 +131,7 @@ internal static class JobRunner
         }
     }
 
-    /// <summary>Adds the resolved agent credential (see <see cref="AgentCredential.ResolveEnvName"/>)
+    /// <summary>Adds the resolved agent credential (see <see cref="AgentCredential.Resolve"/>)
     /// to the agent's own environment overrides, under whichever single env var name it was resolved
     /// to. This is the only place the credential is exported under that resolved provider-specific
     /// name — rix's own process environment never carries it under that name, even though rix's
@@ -127,10 +142,10 @@ internal static class JobRunner
         IReadOnlyDictionary<string, string> environmentOverrides, AgentConfig agent
     )
     {
-        if (agent.ApiKey is not { } apiKey)
+        if (agent.Credential is not { } credential)
             return environmentOverrides;
 
-        return new Dictionary<string, string>(environmentOverrides) { [agent.ApiKeyEnv!] = apiKey };
+        return new Dictionary<string, string>(environmentOverrides) { [credential.EnvName] = credential.Key };
     }
 
     /// <summary>
@@ -190,7 +205,7 @@ internal static class JobRunner
     /// <summary>A queued branch to bundle, stripped down to what <see cref="BundleBranchAsync"/>
     /// needs: identity (<paramref name="Branch"/>/<paramref name="BaseBranch"/>) plus
     /// <paramref name="Kind"/> ("PR" or "push") for the skip log line.</summary>
-    private readonly record struct BundleRequest(RixBranchName Branch, BranchName BaseBranch, string Kind);
+    private readonly record struct BundleRequest(BranchName Branch, BranchName BaseBranch, string Kind);
 
     /// <summary>Dedups <paramref name="request"/>'s branch against <paramref name="seenBranches"/>
     /// (shared across the PR and push queues, so the same branch is never bundled twice in one run)
@@ -219,9 +234,9 @@ internal static class JobRunner
 
         try
         {
-            await context.Host.CreateBundleAsync(cloneDir, bundlePath, request.BaseBranch, request.Branch, ct);
+            await context.RepoHost.CreateBundleAsync(cloneDir, bundlePath, request.BaseBranch, request.Branch, ct);
         }
-        catch (InvalidOperationException)
+        catch (RepoHostException)
         {
             return new BundleFailed();
         }
@@ -248,7 +263,7 @@ internal static class JobRunner
     private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs, IReadOnlyList<PendingPush> PendingPushes) : DeliveryOutcome;
     private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
-    private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<RixBranchName> allowedPushBranches)
+    private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<BranchName> allowedPushBranches)
     {
         var specUri = new Uri(apiBaseUrl, "/openapi.json");
         return $$"""
@@ -271,7 +286,7 @@ internal static class JobRunner
     /// what /push will accept from the prompt instead of only from rejected requests. /push denies
     /// every branch unless the operator explicitly allowed some, so the empty case still needs a
     /// sentence — silence there would read as "unrestricted" to the agent.</summary>
-    private static string AllowedPushBranchesPrompt(IReadOnlyList<RixBranchName> allowedPushBranches)
+    private static string AllowedPushBranchesPrompt(IReadOnlyList<BranchName> allowedPushBranches)
     => allowedPushBranches.Count switch
     {
         0 => "This job has not allowed any push branches, so /push will reject every request; use /pr for all changes.",
