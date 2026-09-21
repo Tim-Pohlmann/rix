@@ -57,7 +57,7 @@ jobs:
         # still parses these actions' arguments) rather than loudly, hence a check here.
         run: |
           csproj="v$(grep -oPm1 '(?<=<Version>)[^<]+' src/Rix/Rix.csproj)"
-          pin="$(grep -oPm1 '(?<=^    default: ).+' .github/actions/download-rix/action.yml)"
+          pin="$(grep -oPm1 "(?<=inputs\.rix-version \|\| ')[^']+" .github/actions/download-rix/action.yml)"
           if [[ "$csproj" != "$pin" ]]; then
             echo "download-rix rix-version default ($pin) does not match src/Rix/Rix.csproj ($csproj)" >&2
             exit 1
