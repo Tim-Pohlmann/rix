@@ -54,12 +54,12 @@ internal static class CiFailureCommand
                 var model = JobOptions.ReadModel(parsed);
                 var apiKey = JobOptions.ReadAgentApiKey(parsed);
                 var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
-                var runId = parsed.Required(RunIdOption, "RIX_RUN_ID", raw => new RunId(Input.Positive<long>(raw)));
+                var runId = parsed.Required(RunIdOption, "RIX_RUN_ID", raw => new RunId(Input.WholeNumber<long>(raw)));
                 var maxRixCommits = parsed.Optional
                 (
                     MaxRixCommitsOption,
                     "RIX_MAX_RIX_COMMITS",
-                    raw => new MaxRixCommits(Input.Positive<int>(raw)),
+                    raw => new MaxRixCommits(Input.WholeNumber<int>(raw)),
                     new MaxRixCommits(CiFailureConfig.DefaultMaxRixCommits)
                 );
 
