@@ -132,7 +132,12 @@ runs:
           loopGuarded)
             # Not an error: rix has already had its turns on this branch and is standing down so a
             # human can look. Their next commit to the branch clears the streak on its own.
-            echo "::notice::The last $rix_commits commits on '$branch' are rix's own — not answering this failure. Push a commit to the branch (or raise max-rix-commits) to re-enable rix on it."
+            #
+            # Escaped like the ::error:: arms below, for the same reason: $branch is a ref name
+            # from the target repo, and git allows '%' in one, so a branch called '...%0A::error::'
+            # would otherwise end this notice early and run a workflow command of its author's
+            # choosing - in the job that holds the write token.
+            echo "::notice::$(escape_workflow_command "The last $rix_commits commits on '$branch' are rix's own — not answering this failure. Push a commit to the branch (or raise max-rix-commits) to re-enable rix on it.")"
             ;;
           failure | setupFailure)
             # The agent ran but the job itself failed - exit_code is already non-zero here, which
