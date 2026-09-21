@@ -15,13 +15,16 @@ internal sealed record WorkflowRef
     // Deliberately narrower than what git itself accepts: every ref anyone would reasonably pin to
     // (v1, v1.2.3, main, release/2.x, a SHA) fits, and nothing that needs YAML quoting does.
     // Requiring each slash-separated component to start alphanumeric rules out three of git's own
-    // rejections at once — an empty component, a trailing slash, a leading dot — and the lookaheads
-    // add the two remaining shapes it refuses, '..' anywhere and a component ending '.lock'.
+    // rejections at once — an empty component, a trailing slash, a leading dot — and the lookarounds
+    // add the three remaining shapes it refuses: '..' anywhere, a component ending '.lock', and a
+    // refname ending in a dot. That last one is a lookbehind on the whole ref rather than a rule per
+    // component because that is how git scopes it — 'release./2.x' is odd but check-ref-format takes
+    // it, so rejecting it here would make this stricter than the guarantee below claims.
     // Anchored with \z, not $: $ also matches immediately before a trailing newline, so '--ref
     // main\n' would otherwise validate and carry the newline into the uses: line.
     private static readonly Regex Pattern = new
     (
-        @"^(?!.*\.\.)(?!.*\.lock(/|\z))[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*\z",
+        @"^(?!.*\.\.)(?!.*\.lock(/|\z))[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*(?<!\.)\z",
         RegexOptions.Compiled,
         TimeSpan.FromSeconds(1)
     );
