@@ -51,7 +51,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
           bash .github/scripts/set-version.sh "$semver"
-          git add src/Rix/Rix.csproj
+          # -u, not an explicit path list: set-version.sh edits the csproj *and* the download-rix
+          # pin, and a list here would silently fall behind the next file it learns to touch -
+          # leaving the bump PR carrying a version with no matching pin, which CI then rejects.
+          git add -u
           if git diff --cached --quiet; then
             echo "Version already set to $semver, no changes needed."
             exit 0

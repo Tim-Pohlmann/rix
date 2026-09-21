@@ -144,7 +144,7 @@ jobs:
       - name: Checksum
         run: |
           asset="rix-${{ steps.ver.outputs.value }}-${{ matrix.rid }}.${{ matrix.archive_ext }}"
-          # Sidecar consumed by .github/scripts/download-rix.sh to verify the archive before
+          # Sidecar consumed by .github/actions/download-rix/download-rix.sh to verify the archive before
           # extraction. sha256sum's format is "<hex>  <filename>".
           sha256sum "$asset" > "$asset.sha256"
 
