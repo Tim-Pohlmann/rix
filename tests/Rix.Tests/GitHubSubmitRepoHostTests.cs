@@ -5,15 +5,15 @@ using System.Net;
 namespace Rix.Tests;
 
 [TestClass]
-public class GitHubHostTests
+public class GitHubSubmitRepoHostTests
 {
     private static readonly RunProcessAsync SuccessGitRunner =
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
 
     private static readonly string[] ExpectedBundleArgs =
-        ["bundle", "create", "/tmp/out/fix.bundle", "main..rix/fix"];
+        ["bundle", "create", "/tmp/out/fix.bundle", "--end-of-options", "main..rix/fix"];
 
-    private static readonly string[] ExpectedPushArgs = ["push", "origin", "rix/fix"];
+    private static readonly string[] ExpectedPushArgs = ["push", "origin", "--end-of-options", "rix/fix"];
 
     private static readonly string[] ExpectedBranchExistsLocallyArgs =
         ["rev-parse", "--verify", "--quiet", "refs/heads/rix/fix"];
@@ -23,14 +23,14 @@ public class GitHubHostTests
     private static readonly string[] ExpectedConfigureUserEmailArgs =
         ["config", "user.email", "rix@noreply.invalid"];
 
-    private static GitHubReadHost BuildHost(
+    private static GitHubJobRepoHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string readToken = "read-tok",
         RunProcessAsync? gitRunner = null)
     => new
     (
-        TestConfig.Repo(repo),
+        new RepoIdentifier(repo),
         new GitReadToken(readToken),
         gitRunner ?? SuccessGitRunner,
         new DelegatingHandlerStub(handler)
@@ -54,7 +54,7 @@ public class GitHubHostTests
     public async Task BranchExistsOnRemoteAsync_Throws_ForNon404Error()
     {
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(
+        await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.BranchExistsOnRemoteAsync(new BranchName("rix/branch"), CancellationToken.None));
     }
 
@@ -82,7 +82,7 @@ public class GitHubHostTests
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+        await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None));
     }
 
@@ -215,7 +215,7 @@ public class GitHubHostTests
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.PushBranchAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "push");
     }
@@ -227,7 +227,7 @@ public class GitHubHostTests
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.CreateBundleAsync("/tmp/clone", "/tmp/out/fix.bundle",
                 new BranchName("main"), new BranchName("rix/fix"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "bundle");
@@ -263,7 +263,7 @@ public class GitHubHostTests
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.ConfigureGitAsync("/tmp/clone", CancellationToken.None));
         StringAssert.Contains(ex.Message, "config");
     }
@@ -275,7 +275,7 @@ public class GitHubHostTests
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.CloneAsync("/tmp/target", CancellationToken.None));
         StringAssert.Contains(ex.Message, "clone");
     }
@@ -315,7 +315,7 @@ public class GitHubHostTests
     {
         var host = BuildWriteHost(_ => new HttpResponseMessage(HttpStatusCode.UnprocessableEntity));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(
+        await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
     }
 
@@ -327,7 +327,7 @@ public class GitHubHostTests
             Content = new StringContent("not json"),
         });
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(
+        await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
     }
 
@@ -338,25 +338,16 @@ public class GitHubHostTests
         new PrTitle(title), new PrBody(body), "rix_2Ffix.bundle"
     );
 
-    private static GitHubHost BuildWriteHost(
+    private static GitHubSubmitRepoHost BuildWriteHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string writeToken = "write-tok",
         RunProcessAsync? gitRunner = null)
     => new
     (
-        TestConfig.Repo(repo),
+        new RepoIdentifier(repo),
         new GitToken(writeToken),
         gitRunner ?? SuccessGitRunner,
         new DelegatingHandlerStub(handler)
     );
-
-    private sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpResponseMessage> handler)
-        : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        => Task.FromResult(handler(request));
-    }
 }

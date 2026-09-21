@@ -1,6 +1,7 @@
 using Rix.Agents;
 using Rix.Api;
 using Rix.Process;
+using Rix.Repository;
 using System.Diagnostics;
 using System.Text.Json.Serialization;
 
@@ -38,12 +39,12 @@ internal static class JobRunner
 
         try
         {
-            await context.Host.CloneAsync(cloneDir.Path, ct);
+            await context.RepoHost.CloneAsync(cloneDir.Path, ct);
             // Set the commit identity before the agent starts, so it can commit without guessing
             // author metadata.
-            await context.Host.ConfigureGitAsync(cloneDir.Path, ct);
+            await context.RepoHost.ConfigureGitAsync(cloneDir.Path, ct);
         }
-        catch (InvalidOperationException ex)
+        catch (RepoHostException ex)
         {
             return new SetupFailure(ex.Message);
         }
@@ -56,7 +57,7 @@ internal static class JobRunner
             {
                 await context.FactoryContextLoader.LoadAsync(factoryContext.Repo, factoryContext.ContextPath, ct);
             }
-            catch (InvalidOperationException ex)
+            catch (RepoHostException ex)
             {
                 return new SetupFailure($"factory context load failed: {ex.Message}");
             }
@@ -64,7 +65,7 @@ internal static class JobRunner
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
-            context.Host, cloneDir.Path, ct, context.LogLine.Invoke,
+            context.RepoHost, cloneDir.Path, ct, context.LogLine.Invoke,
             allowedPushBranches: config.AllowedPushBranches
         );
 
@@ -80,8 +81,8 @@ internal static class JobRunner
             return new JobFailure
             (
                 $"agent failed: {detail}",
-                CostUsd: 0m,
-                Duration: stopwatch.Elapsed
+                0m,
+                stopwatch.Elapsed
             );
         }
 
@@ -117,7 +118,7 @@ internal static class JobRunner
             invocation.FileName,
             invocation.Arguments,
             cloneDir,
-            invocation.EnvironmentOverrides,
+            WithApiKey(invocation.EnvironmentOverrides, config.Agent),
             ForwardLine,
             ct
         );
@@ -128,6 +129,23 @@ internal static class JobRunner
             if (context.Agent.ParseTranscriptLine(line) is { } transcriptLine)
                 context.TranscriptLine(transcriptLine);
         }
+    }
+
+    /// <summary>Adds the resolved agent credential (see <see cref="AgentCredential.Resolve"/>)
+    /// to the agent's own environment overrides, under whichever single env var name it was resolved
+    /// to. This is the only place the credential is exported under that resolved provider-specific
+    /// name — rix's own process environment never carries it under that name, even though rix's
+    /// process does receive the raw key itself (via --agent-api-key or AGENT_API_KEY) in order to
+    /// resolve it in the first place.</summary>
+    private static IReadOnlyDictionary<string, string> WithApiKey
+    (
+        IReadOnlyDictionary<string, string> environmentOverrides, AgentConfig agent
+    )
+    {
+        if (agent.Credential is not { } credential)
+            return environmentOverrides;
+
+        return new Dictionary<string, string>(environmentOverrides) { [credential.EnvName] = credential.Key };
     }
 
     /// <summary>
@@ -187,7 +205,7 @@ internal static class JobRunner
     /// <summary>A queued branch to bundle, stripped down to what <see cref="BundleBranchAsync"/>
     /// needs: identity (<paramref name="Branch"/>/<paramref name="BaseBranch"/>) plus
     /// <paramref name="Kind"/> ("PR" or "push") for the skip log line.</summary>
-    private readonly record struct BundleRequest(RixBranchName Branch, BranchName BaseBranch, string Kind);
+    private readonly record struct BundleRequest(BranchName Branch, BranchName BaseBranch, string Kind);
 
     /// <summary>Dedups <paramref name="request"/>'s branch against <paramref name="seenBranches"/>
     /// (shared across the PR and push queues, so the same branch is never bundled twice in one run)
@@ -216,9 +234,9 @@ internal static class JobRunner
 
         try
         {
-            await context.Host.CreateBundleAsync(cloneDir, bundlePath, request.BaseBranch, request.Branch, ct);
+            await context.RepoHost.CreateBundleAsync(cloneDir, bundlePath, request.BaseBranch, request.Branch, ct);
         }
-        catch (InvalidOperationException)
+        catch (RepoHostException)
         {
             return new BundleFailed();
         }
@@ -245,7 +263,7 @@ internal static class JobRunner
     private sealed record Delivered(IReadOnlyList<PendingPr> PendingPrs, IReadOnlyList<PendingPush> PendingPushes) : DeliveryOutcome;
     private sealed record DeliveryFailed(string Branch) : DeliveryOutcome;
 
-    private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<RixBranchName> allowedPushBranches)
+    private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<BranchName> allowedPushBranches)
     {
         var prUri = new Uri(apiBaseUrl, "/pr");
         var pushUri = new Uri(apiBaseUrl, "/push");
@@ -260,20 +278,16 @@ internal static class JobRunner
         - DELETE {{prUri}}     — cancel a queued pull request (body: {"branch":"rix/<branch>"})
         - POST   {{pushUri}}   — push new commits onto a branch that already exists on the remote
         - GET    {{pushUri}}   — list your queued pushes
-        - DELETE {{pushUri}}   — cancel a queued push (body: {"branch":"rix/<branch>"})
+        - DELETE {{pushUri}}   — cancel a queued push (body: {"branch":"<branch>"})
 
-        Split your work in multiple PRs if applicable. For each:
+        For new work, split it into multiple PRs if applicable. For each:
         1. Create a branch named rix/<short-description> for your work
         2. When done, call POST {{prUri}} with JSON body:
            {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
 
-        You can list what you have already queued with GET, and cancel a queued request with DELETE
-        on the same path before the job ends (handy when you change your mind about a branch).
-
-        To add commits to a branch that already exists on the remote (e.g. resuming a previous run),
-        commit them locally on that branch, then call POST {{pushUri}} with JSON
-        body:
-           {"branch":"rix/<existing-branch>","baseBranch":"<base branch>"}
+        To instead push commits onto a branch that already exists on the remote — e.g. updating an existing PR — commit them locally on that branch,
+        then call POST {{pushUri}} with JSON body:
+           {"branch":"<existing-branch>","baseBranch":"<base branch>"}
 
         {{AllowedPushBranchesPrompt(allowedPushBranches)}}
         """;
@@ -283,7 +297,7 @@ internal static class JobRunner
     /// what /push will accept from the prompt instead of only from rejected requests. /push denies
     /// every branch unless the operator explicitly allowed some, so the empty case still needs a
     /// sentence — silence there would read as "unrestricted" to the agent.</summary>
-    private static string AllowedPushBranchesPrompt(IReadOnlyList<RixBranchName> allowedPushBranches)
+    private static string AllowedPushBranchesPrompt(IReadOnlyList<BranchName> allowedPushBranches)
     => allowedPushBranches.Count switch
     {
         0 => "This job has not allowed any push branches, so /push will reject every request; use /pr for all changes.",

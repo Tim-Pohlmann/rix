@@ -1,4 +1,5 @@
 using Rix.Api;
+using Rix.Repository;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -14,7 +15,7 @@ public class LocalApiServerTests
     private static readonly string[] BaseThenStacked = ["rix/base", "rix/stacked"];
     private static readonly string[] ReorderedCbA = ["rix/c", "rix/b", "rix/a"];
 
-    private static StubRepositoryHost FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
+    private static StubJobRepoHost FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
 
     private static Task<HttpResponseMessage> DeleteAsJsonAsync(HttpClient client, Uri uri, object body)
     {
@@ -259,7 +260,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPr_Returns400_WhenBranchNotFoundLocally()
     {
-        var host = new StubRepositoryHost(branchExistsLocally: _ => Task.FromResult(false));
+        var host = new StubJobRepoHost(branchExistsLocally: _ => Task.FromResult(false));
         await using var server = await LocalApiServer.StartAsync(host, Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
@@ -279,11 +280,61 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
+    public async Task PostPr_Returns502_WhenRepositoryHostThrows()
+    {
+        // The remote-branch check calls the GitHub API; when that transport fails the request
+        // can't be judged either way, so the middleware maps the one exception those checks throw
+        // to a 502 rather than letting it leak out of the handler as an unhandled 500.
+        var host = new StubJobRepoHost(
+            branchExists: _ => throw new RepoHostException("check branch rix/my-fix on remote failed: 503"));
+        await using var server = await LocalApiServer.StartAsync(host, Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/my-fix",
+            title = "Title",
+            body = "body",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.BadGateway, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "repository host error");
+        StringAssert.Contains(result["error"], "503");
+        Assert.AreEqual(0, server.GetQueuedPrRequests().Count);
+    }
+
+    [TestMethod]
+    public async Task PostPush_Returns502_WhenRepositoryHostThrows()
+    {
+        var host = new StubJobRepoHost(
+            branchExists: _ => throw new RepoHostException("check branch rix/my-fix on remote failed: 503"));
+        await using var server = await LocalApiServer.StartAsync(
+            host, Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new BranchName("rix/my-fix")]);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
+        {
+            branch = "rix/my-fix",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.BadGateway, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "repository host error");
+        Assert.AreEqual(0, server.GetQueuedPushRequests().Count);
+    }
+
+    [TestMethod]
     public async Task PostPush_Returns200WithQueuedStatus()
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/my-fix")]);
+            allowedPushBranches: [new BranchName("rix/my-fix")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -303,7 +354,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/feat")]);
+            allowedPushBranches: [new BranchName("rix/feat")]);
         using var client = new HttpClient();
 
         await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -313,27 +364,31 @@ public class LocalApiServerTests
         });
 
         Assert.AreEqual(1, server.GetQueuedPushRequests().Count);
-        Assert.AreEqual(new RixBranchName("rix/feat"), server.GetQueuedPushRequests()[0].Branch);
+        Assert.AreEqual(new BranchName("rix/feat"), server.GetQueuedPushRequests()[0].Branch);
         Assert.AreEqual(new BranchName("main"), server.GetQueuedPushRequests()[0].BaseBranch);
     }
 
     [TestMethod]
-    public async Task PostPush_Returns400_ForNonRixBranch()
+    public async Task PostPush_Accepts_NonRixBranch_WhenAllowed()
     {
-        await using var server = await LocalApiServer.StartAsync(FakeHost(true), Path.GetTempPath(), CancellationToken.None);
+        // Unlike /pr (which names a branch the agent invents), /push targets a branch that
+        // already exists on the remote - including a human's own, non-rix/* branch - so only
+        // the allow-list restricts it, never the rix/* naming pattern.
+        await using var server = await LocalApiServer.StartAsync(
+            FakeHost(true), Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new BranchName("feature/human-work")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
         {
-            branch = "main",
+            branch = "feature/human-work",
             baseBranch = "main",
         });
 
-        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
-        var json = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
-        StringAssert.Contains(result["error"], "rix/*");
-        StringAssert.StartsWith(result["error"], "branch:");
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(1, server.GetQueuedPushRequests().Count);
+        Assert.AreEqual(new BranchName("feature/human-work"), server.GetQueuedPushRequests()[0].Branch);
+        Assert.AreEqual(new BranchName("main"), server.GetQueuedPushRequests()[0].BaseBranch);
     }
 
     [DataTestMethod]
@@ -360,7 +415,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(false), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/ghost")]);
+            allowedPushBranches: [new BranchName("rix/ghost")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -381,7 +436,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/feat")]);
+            allowedPushBranches: [new BranchName("rix/feat")]);
         using var client = new HttpClient();
 
         var body = new { branch = "rix/feat", baseBranch = "main" };
@@ -399,12 +454,12 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPush_Returns400_WhenBranchNotFoundLocally()
     {
-        var host = new StubRepositoryHost(
+        var host = new StubJobRepoHost(
             branchExists: _ => Task.FromResult(true),
             branchExistsLocally: _ => Task.FromResult(false));
         await using var server = await LocalApiServer.StartAsync(
             host, Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/ghost")]);
+            allowedPushBranches: [new BranchName("rix/ghost")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -465,7 +520,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/feat")]);
+            allowedPushBranches: [new BranchName("rix/feat")]);
         using var client = new HttpClient();
 
         await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -508,7 +563,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/other")]);
+            allowedPushBranches: [new BranchName("rix/other")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -530,7 +585,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/other")]);
+            allowedPushBranches: [new BranchName("rix/other")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -548,7 +603,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/my-fix")]);
+            allowedPushBranches: [new BranchName("rix/my-fix")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -566,7 +621,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/My-Fix")]);
+            allowedPushBranches: [new BranchName("rix/My-Fix")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -583,7 +638,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(false), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/other")]);
+            allowedPushBranches: [new BranchName("rix/other")]);
         using var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
@@ -639,19 +694,19 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
-    public async Task DeletePr_Returns400_ForNonRixBranch()
+    public async Task DeletePr_Returns404_ForNonRixBranch_SinceNoneWasEverQueued()
     {
+        // DELETE /pr reads the branch as a plain BranchName, not a RixBranchName: the delete handler
+        // is shared with /push, which must accept any branch name. /pr's own rix/* invariant still
+        // holds in practice, since POST /pr only ever lets a rix/*-named branch into the queue, so a
+        // non-rix branch simply can't be found rather than being rejected as malformed.
         await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/pr"),
             new { branch = "main" });
 
-        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
-        var json = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
-        StringAssert.Contains(result["error"], "rix/*");
-        StringAssert.StartsWith(result["error"], "branch:");
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [TestMethod]
@@ -702,7 +757,7 @@ public class LocalApiServerTests
     {
         await using var server = await LocalApiServer.StartAsync(
             FakeHost(true), Path.GetTempPath(), CancellationToken.None,
-            allowedPushBranches: [new RixBranchName("rix/feat")]);
+            allowedPushBranches: [new BranchName("rix/feat")]);
         using var client = new HttpClient();
 
         await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
@@ -738,18 +793,14 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
-    public async Task DeletePush_Returns400_ForNonRixBranch()
+    public async Task DeletePush_Returns404_ForNonRixBranch_WhenNotQueued()
     {
         await using var server = await LocalApiServer.StartAsync(FakeHost(true), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
         var response = await DeleteAsJsonAsync(client, new Uri(server.BaseUrl, "/push"),
-            new { branch = "main" });
+            new { branch = "feature/human-work" });
 
-        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
-        var json = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
-        StringAssert.Contains(result["error"], "rix/*");
-        StringAssert.StartsWith(result["error"], "branch:");
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
     }
 }

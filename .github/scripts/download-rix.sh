@@ -8,7 +8,6 @@
 # (platform mapping, the Windows rix.exe name, a missing RID) is exactly what those tests cover.
 #
 # Env:
-#   RIX_REPO_SLUG  owner/name of the repo publishing rix releases (required)
 #   VERSION        release tag, or "latest"/empty (default: latest)
 #   GH_TOKEN       token for the releases REST API (optional; only raises rate limits)
 # Test hooks (override auto-detection / the network call):
@@ -91,7 +90,7 @@ rix_verify_checksum() {
 }
 
 rix_main() {
-  : "${RIX_REPO_SLUG:?RIX_REPO_SLUG is required}"
+  local repo_slug="Tim-Pohlmann/rix"
   local version="${VERSION:-latest}"
   local target rid ext api json asset_url archive bin
 
@@ -100,9 +99,9 @@ rix_main() {
   ext="${target#* }"
 
   if [[ "$version" == "latest" || -z "$version" ]]; then
-    api="https://api.github.com/repos/$RIX_REPO_SLUG/releases/latest"
+    api="https://api.github.com/repos/$repo_slug/releases/latest"
   else
-    api="https://api.github.com/repos/$RIX_REPO_SLUG/releases/tags/$version"
+    api="https://api.github.com/repos/$repo_slug/releases/tags/$version"
   fi
 
   if [[ -n "${RIX_RELEASE_JSON:-}" ]]; then
@@ -115,7 +114,7 @@ rix_main() {
 
   asset_url="$(printf '%s' "$json" | rix_asset_url "$rid" "$ext")"
   if [[ -z "$asset_url" ]]; then
-    echo "No rix-*-$rid.$ext asset in release '$version' of $RIX_REPO_SLUG" >&2
+    echo "No rix-*-$rid.$ext asset in release '$version' of $repo_slug" >&2
     return 1
   fi
 

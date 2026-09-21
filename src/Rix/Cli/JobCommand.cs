@@ -5,149 +5,65 @@ namespace Rix.Cli;
 
 internal static class JobCommand
 {
-    private static readonly Option<string> RepoOption = new
-    (
-        name: "--repo",
-        description: "Full GitHub repo identifier (owner/repo)"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> PromptOption = new
-    (
-        name: "--prompt",
-        description: "Task prompt passed to the coding agent"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> ReadTokenOption = new
-    (
-        name: "--read-token",
-        description: "GitHub PAT with read-only repo access"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> MaxTokensOption = new
-    (
-        name: "--max-tokens",
-        description: $"Coding agent token budget cap (default: {JobConfig.DefaultMaxTokens})"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> TimeoutOption = new
-    (
-        name: "--timeout",
-        description: $"Wall-clock timeout in minutes (default: {JobConfig.DefaultTimeoutMinutes})"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> WorkDirOption = new
-    (
-        name: "--work-dir",
-        description: "Base directory for the temp clone (default: system temp)"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> OutputDirOption = new
-    (
-        name: "--output-dir",
-        description: "Directory where result.json and git bundles are written"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> AgentOption = new
-    (
-        name: "--agent",
-        description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> ModelOption = new
-    (
-        name: "--model",
-        description: "Model identifier passed to the agent CLI (e.g. 'openai/gpt-4o' for opencode). " +
-            "Provider-specific; forwarded verbatim. Omit to use the agent CLI's own default model."
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> AllowedPushBranchesOption = new
-    (
-        name: "--allowed-push-branches",
-        description: "Comma-separated list of rix/* branches the /push API endpoint may deliver to " +
-            "(default: none — /push is disabled until this is set)"
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> FactoryRepoOption = new
-    (
-        name: "--factory-repo",
-        description: "Optional repo (owner/name) to fetch agent home-context files from before the run. " +
-            "Read with --read-token, which must also grant read access to this repo."
-    )
-    { IsRequired = false };
-
-    private static readonly Option<string> FactoryContextPathOption = new
-    (
-        name: "--factory-context-path",
-        description: "Directory inside --factory-repo whose contents are copied into the runner's user " +
-            $"home, skipping files that already exist (default: {JobConfig.DefaultFactoryContextPath})"
-    )
-    { IsRequired = false };
-
     internal static Command Build(Func<JobConfig, Task<int>> handler)
     {
         var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
 
-        command.AddOption(RepoOption);
-        command.AddOption(PromptOption);
-        command.AddOption(ReadTokenOption);
-        command.AddOption(MaxTokensOption);
-        command.AddOption(TimeoutOption);
-        command.AddOption(WorkDirOption);
-        command.AddOption(OutputDirOption);
-        command.AddOption(AgentOption);
-        command.AddOption(ModelOption);
-        command.AddOption(AllowedPushBranchesOption);
-        command.AddOption(FactoryRepoOption);
-        command.AddOption(FactoryContextPathOption);
+        JobOptions.AddTo(command);
+        command.AddOption(JobOptions.PromptOption);
+        command.AddOption(JobOptions.AllowedPushBranchesOption);
+        command.AddOption(JobOptions.FactoryRepoOption);
+        command.AddOption(JobOptions.FactoryContextPathOption);
 
         command.SetHandler
         (
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var inputs = new JobInputs
-                (
-                    Repo:           parsed.Str(RepoOption,      "RIX_REPO"),
-                    Prompt:         parsed.Str(PromptOption,    "RIX_PROMPT"),
-                    ReadToken:      parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"),
-                    MaxTokens:      parsed.Str(MaxTokensOption, "RIX_MAX_TOKENS"),
-                    TimeoutMinutes: parsed.Str(TimeoutOption,   "RIX_TIMEOUT"),
-                    WorkDir:        parsed.Str(WorkDirOption,   "RIX_WORK_DIR"),
-                    OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
-                    Agent:          parsed.Str(AgentOption,     "RIX_AGENT"),
-                    Model:          parsed.Str(ModelOption,     "RIX_MODEL"),
-                    AllowedPushBranches: parsed.Str(AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"),
-                    FactoryRepo:        parsed.Str(FactoryRepoOption,        "RIX_FACTORY_REPO"),
-                    FactoryContextPath: parsed.Str(FactoryContextPathOption, "RIX_FACTORY_CONTEXT_PATH")
-                );
-                var result = JobConfig.Create(inputs);
+                // Read in the order problems should be reported: the first failing read is the
+                // one the user sees.
+                var repo = CommonOptions.ReadRepo(parsed);
+                var prompt = parsed.RequiredText(JobOptions.PromptOption, "RIX_PROMPT");
+                var readToken = JobOptions.ReadReadToken(parsed);
+                var agent = JobOptions.ReadAgent(parsed);
+                var maxTokens = JobOptions.ReadMaxTokens(parsed);
+                var timeout = JobOptions.ReadTimeout(parsed);
+                var workDir = CommonOptions.ReadWorkDir(parsed);
+                var outputDir = JobOptions.ReadOutputDir(parsed);
+                var model = JobOptions.ReadModel(parsed);
+                var apiKey = JobOptions.ReadAgentApiKey(parsed);
+                var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
+                var allowedPushBranches = ParseAllowedPushBranches(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
+                var factoryContext = JobOptions.ReadFactoryContext(parsed);
 
-                switch (result)
-                {
-                    case JobConfigValid valid:
-                        ctx.ExitCode = await handler(valid.Config);
-                        break;
-                    case JobConfigInvalid invalid:
-                        foreach (var error in invalid.Errors)
-                            Console.Error.WriteLine($"error: {error}");
-                        ctx.ExitCode = ExitCodes.SetupFailed;
-                        break;
-                    default:
-                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
-                }
+                var config = new JobConfig
+                (
+                    repo,
+                    readToken,
+                    timeout,
+                    WorkDir: workDir,
+                    OutputDir: outputDir,
+                    new AgentConfig(agent, prompt, maxTokens, model, credential),
+                    allowedPushBranches,
+                    factoryContext
+                );
+                ctx.ExitCode = await handler(config);
             }
         );
 
         return command;
     }
+
+    /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
+    /// branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
+    /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
+    /// must opt in to letting the agent push at all. Unlike the <c>rix/*</c>-restricted branches the
+    /// agent creates via <c>/pr</c>, any branch name is acceptable here, since these already exist on
+    /// the remote before the job ever runs. Duplicates are dropped.</summary>
+    private static List<BranchName> ParseAllowedPushBranches(string raw)
+    => raw
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(entry => new BranchName(entry))
+        .Distinct()
+        .ToList();
 }

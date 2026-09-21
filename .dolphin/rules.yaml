@@ -28,19 +28,11 @@ rules:
           - pattern: ((ProcessSuccess)$X)
           - pattern: ((InstallFailed)$X)
           - pattern: ((Installed)$X)
-          - pattern: ((ValidPr)$X)
-          - pattern: ((InvalidPr)$X)
-          - pattern: ((JobConfigValid)$X)
-          - pattern: ((JobConfigInvalid)$X)
-          - pattern: ((SubmitConfigValid)$X)
-          - pattern: ((SubmitConfigInvalid)$X)
           - pattern: ((JobSuccess)$X)
           - pattern: ((JobFailure)$X)
           - pattern: ((SetupFailure)$X)
           - pattern: ((SubmitSuccess)$X)
           - pattern: ((SubmitFailure)$X)
-          - pattern: ((ParseSuccess<$T>)$X)
-          - pattern: ((ParseError<$T>)$X)
 
   - id: curl-unpinned-tls
     languages: [bash]
@@ -63,9 +55,13 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Directory.CreateDirectory is reserved for TempDirectory itself (and for
-      materializing a copied file tree in GitHubFactoryContextLoader); use
-      TempDirectory.Create instead of calling it directly elsewhere.
+      Directory.CreateDirectory is reserved for dedicated wrapper types
+      (TempDirectory for temp dirs, FileWriter for real paths) and for
+      DirectoryMerge's file-tree materialization; don't call it directly
+      elsewhere.
+    paths:
+      exclude:
+        - src/Rix/FileWriter.cs
     patterns:
       - pattern: Directory.CreateDirectory($P)
       - pattern-not-inside: |
@@ -73,11 +69,11 @@ rules:
           {
             ...
           }
-      # Copying the factory-repo home context into $HOME must recreate the source
-      # tree's directories at the destination - that is file-tree materialization,
-      # not temp-dir hand-rolling, so this one method is exempt.
+      # DirectoryMerge recreates a source tree's directories (empty ones included) at
+      # the destination - that is file-tree materialization, not temp-dir hand-rolling,
+      # so it is exempt alongside TempDirectory itself.
       - pattern-not-inside: |
-          void CopySkippingExisting(...)
+          class DirectoryMerge
           {
             ...
           }
@@ -145,6 +141,14 @@ rules:
   # raw strings specifically - Dolphin's C# grammar (Opengrep) fails to parse that syntax at all, so
   # it can't be named as an exclusion pattern. Prefer wording the string so no parenthetical splits
   # across a line instead of fighting the rule.
+  #
+  # Comments: the main pattern's `(?![ \t]*(?:///|//|\*|/\*))` lookahead skips lines that *start* with
+  # a `//`/`///` line comment, a `*` block-comment continuation, or a `/*` block-comment opener. The
+  # `pattern-not-regex` guard additionally drops a trailing `//` comment after real code
+  # (`Foo(); // note (see RFC`); it anchors the `//` to a line start or a preceding space/tab so that
+  # a `//` inside a string (`"http://..."`, preceded by `:`) is not mistaken for a comment. Still not
+  # covered: a block-comment body line that neither starts with `*` nor sits on the `/*` line - keep
+  # block comments `*`-aligned (the repo's house style) so those are recognised.
   - id: open-paren-own-line
     languages: [csharp]
     severity: ERROR
@@ -152,7 +156,10 @@ rules:
       When `(` and `)` end up on different lines, isolate `(` on its own line
       instead of trailing it after the declaration/call/first argument. (If
       `(` and `)` are on the same line, this doesn't apply.)
-    pattern-regex: ^(?![ \t]*(?:///|//|\*))(?![ \t]*\([ \t]*$)[ \t]*(?:[^()\r\n]|\([^()\r\n]*\))*\([^()\r\n]*$
+    patterns:
+      - pattern-regex: ^(?![ \t]*(?:///|//|\*|/\*))(?![ \t]*\([ \t]*$)[ \t]*(?:[^()\r\n]|\([^()\r\n]*\))*\([^()\r\n]*$
+      # trailing `//` line comment before the dangling `(`
+      - pattern-not-regex: (?:^|[ \t])//[^\r\n]*\([^()\r\n]*$
 
   - id: close-paren-own-line
     languages: [csharp]
@@ -167,7 +174,10 @@ rules:
     # swallowed as ordinary content, leaving the line's own closing `)` misread as if it closed a
     # group opened on a previous line. Verified against Dolphin's own opengrep engine: catches
     # genuine multi-line trailing-close-paren violations while no longer flagging a same-line tuple.
-    pattern-regex: ^(?![ \t]*(?:///|//|\*))[ \t]*(?:[^()\s\r\n]|\([^()\r\n]*\))(?:[^()\r\n]|\([^()\r\n]*\))*\)+[ \t]*[;,]?[ \t]*$
+    patterns:
+      - pattern-regex: ^(?![ \t]*(?:///|//|\*|/\*))[ \t]*(?:[^()\s\r\n]|\([^()\r\n]*\))(?:[^()\r\n]|\([^()\r\n]*\))*\)+[ \t]*[;,]?[ \t]*$
+      # trailing `//` line comment before the dangling `)`
+      - pattern-not-regex: (?:^|[ \t])//[^\r\n]*\)[^()\r\n]*$
 
   - id: if-else-bool-assign
     languages: [csharp]

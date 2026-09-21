@@ -1,3 +1,4 @@
+using Rix.CiFailure;
 using Rix.Job;
 using System.Text.Json;
 
@@ -21,7 +22,105 @@ public class TypesTests
     [DataRow("")]
     public void RixBranchName_ThrowsOnInvalidValues(string value)
     {
-        Assert.ThrowsExactly<ArgumentException>(() => new RixBranchName(value));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new RixBranchName(value));
+        StringAssert.Contains(ex.Message, "rix/*");
+    }
+
+    [TestMethod]
+    [DataRow("noslash")]
+    [DataRow("owner/repo/extra")]
+    [DataRow("/repo")]
+    [DataRow("owner/")]
+    public void RepoIdentifier_RejectsInvalidFormat(string repo)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new RepoIdentifier(repo));
+        StringAssert.Contains(ex.Message, "repo identifier");
+    }
+
+    [TestMethod]
+    public void RepoIdentifier_AcceptsOwnerSlashRepo()
+    {
+        var repo = new RepoIdentifier("owner/repo");
+        Assert.AreEqual("owner/repo", repo.Value);
+        Assert.AreEqual("owner", repo.Owner);
+    }
+
+    /// <summary>Repository hosts treat owner and repo names case-insensitively, so two spellings of
+    /// one repo are one repo here too — the rule lives on the type rather than at the places that
+    /// compare two of them.</summary>
+    [TestMethod]
+    public void RepoIdentifier_IsEqual_WhenOnlyCasingDiffers()
+    {
+        Assert.AreEqual(new RepoIdentifier("owner/repo"), new RepoIdentifier("Owner/Repo"));
+        Assert.AreEqual(new RepoIdentifier("owner/repo").GetHashCode(), new RepoIdentifier("Owner/Repo").GetHashCode());
+        Assert.AreNotEqual(new RepoIdentifier("owner/repo"), new RepoIdentifier("outsider/repo"));
+    }
+
+    [TestMethod]
+    [DataRow("a\\b\\c", "a/b/c")]
+    [DataRow("./x/y", "x/y")]
+    [DataRow("x//y///z", "x/y/z")]
+    [DataRow(" .rix/agent-home ", ".rix/agent-home")]
+    public void RepoRelativePath_Normalises(string raw, string expected)
+    => Assert.AreEqual(expected, new RepoRelativePath(raw).Value);
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("   ")]
+    [DataRow("..")]
+    [DataRow("foo/../bar")]
+    [DataRow("/rooted")]
+    public void RepoRelativePath_RejectsInvalid(string raw)
+    => Assert.ThrowsExactly<InvalidInputException>(() => _ = new RepoRelativePath(raw));
+
+    [TestMethod]
+    public void DirectoryPath_NormalisesRelativeToAbsolute()
+    {
+        var path = new DirectoryPath(".");
+        Assert.IsTrue(Path.IsPathRooted(path.Value), $"expected an absolute path, got: {path.Value}");
+        Assert.AreEqual(Path.GetFullPath("."), path.Value);
+    }
+
+    [TestMethod]
+    public void DirectoryPath_RejectsNonExistent()
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new DirectoryPath("/nonexistent/path/xyz"));
+        Assert.AreEqual("directory does not exist: /nonexistent/path/xyz", ex.Message);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public void MaxTokens_RejectsAnythingButAPositiveBudget(int value)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new MaxTokens(value));
+        Assert.AreEqual($"must be a positive integer, got '{value}'", ex.Message);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public void TimeoutMinutes_RejectsARunThatIsOverBeforeItStarts(int value)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new TimeoutMinutes(value));
+        Assert.AreEqual($"must be a positive integer, got '{value}'", ex.Message);
+    }
+
+    [TestMethod]
+    [DataRow(0L)]
+    [DataRow(-1L)]
+    public void RunId_RejectsIdsNoRunCouldHave(long value)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new RunId(value));
+        Assert.AreEqual($"must be a positive integer, got '{value}'", ex.Message);
+    }
+
+    [TestMethod]
+    public void PositiveQuantities_KeepTheValueTheyWereGiven()
+    {
+        Assert.AreEqual(1, new MaxTokens(1).Value);
+        Assert.AreEqual(90, new TimeoutMinutes(90).Value);
+        Assert.AreEqual(9_000_000_000L, new RunId(9_000_000_000L).Value);
     }
 
     [TestMethod]
@@ -69,7 +168,7 @@ public class TypesTests
     [TestMethod]
     public void RixBranchName_DeserializeInvalidValue_ThrowsJsonException()
     {
-        // ArgumentException from RixBranchName ctor should be wrapped as JsonException
+        // InvalidInputException from RixBranchName ctor should be wrapped as JsonException
         Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<RixBranchName>("\"main\""));
     }
 
@@ -117,6 +216,67 @@ public class TypesTests
     public void PrBody_DeserializeNonString_ThrowsJsonException()
     {
         Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<PrBody>("42"));
+    }
+
+    [TestMethod]
+    [DataRow(1)]
+    [DataRow(MaxRixCommits.MaxValue)]
+    public void MaxRixCommits_AcceptsBothEndsOfItsRange(int value)
+    => Assert.AreEqual(value, new MaxRixCommits(value).Value);
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    [DataRow(MaxRixCommits.MaxValue + 1)]
+    public void MaxRixCommits_RejectsValuesOutsideIt(int value)
+    {
+        // The upper bound is GitHub's page size: a cap above it could not be distinguished from
+        // no cap at all, since the streak is read in a single request.
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new MaxRixCommits(value).ToString()).Message;
+        StringAssert.Contains(error, "must be between 1 and 100");
+    }
+
+    /// <summary>run-ci-failure/action.yml reads `.outcome` to say which non-failure ending the run
+    /// had, so the field name is as much a contract as the status discriminator is.</summary>
+    [TestMethod]
+    public void CiFailureSkipped_SerializesWithSkippedStatus_AndTheOutcomeWord()
+    {
+        var json = JsonSerializer.Serialize<ICiFailureResult>(new CiFailureSkipped("timed_out"), CiFailureJsonContext.Default.ICiFailureResult);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.AreEqual("skipped", root.GetProperty("status").GetString());
+        Assert.AreEqual("timed_out", root.GetProperty("outcome").GetString());
+    }
+
+    /// <summary>The discriminator the composite action switches on: run-ci-failure/action.yml reads
+    /// `.status` and treats anything it doesn't recognize as a broken result, so renaming this
+    /// silently turns a guarded run into a reported error.</summary>
+    [TestMethod]
+    public void CiFailureLoopGuarded_SerializesWithLoopGuardedStatus()
+    {
+        var json = JsonSerializer.Serialize<ICiFailureResult>(new CiFailureLoopGuarded("rix/fix", 5), CiFailureJsonContext.Default.ICiFailureResult);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.AreEqual("loopGuarded", root.GetProperty("status").GetString());
+        Assert.AreEqual("rix/fix", root.GetProperty("branch").GetString());
+        Assert.AreEqual(5, root.GetProperty("rixCommits").GetInt32());
+    }
+
+    /// <summary>Same contract as the loop guard's discriminator above: run-ci-failure/action.yml
+    /// reports an unrecognized status as a broken result, so a fork's failure turning up as an
+    /// error in the Actions tab is one rename away.</summary>
+    [TestMethod]
+    public void CiFailureUntrustedRun_SerializesWithUntrustedRunStatus()
+    {
+        var json = JsonSerializer.Serialize<ICiFailureResult>(new CiFailureUntrustedRun("outsider/repo", "patch-1"), CiFailureJsonContext.Default.ICiFailureResult);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.AreEqual("untrustedRun", root.GetProperty("status").GetString());
+        Assert.AreEqual("outsider/repo", root.GetProperty("headRepo").GetString());
+        Assert.AreEqual("patch-1", root.GetProperty("branch").GetString());
     }
 
     [TestMethod]

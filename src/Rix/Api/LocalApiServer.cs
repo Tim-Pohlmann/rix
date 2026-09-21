@@ -38,14 +38,16 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// branch is accepted from, since it's also the directory <c>rix</c> later bundles from.</param>
     /// <param name="allowedPushBranches">The only branches <c>/push</c> may deliver to; when
     /// <c>null</c> or empty, <c>/push</c> rejects every branch — an operator opts in by naming the
-    /// branches this run may touch.</param>
+    /// branches this run may touch. Any branch name is acceptable here (unlike <c>/pr</c>'s
+    /// <c>rix/*</c> requirement), since these already exist on the remote rather than being named
+    /// by the agent.</param>
     internal static async Task<LocalApiServer> StartAsync
     (
-        IRepositoryReadHost host,
+        IJobRepoHost host,
         string cloneDir,
         CancellationToken cancellationToken,
         Action<string>? logLine = null,
-        IReadOnlyList<RixBranchName>? allowedPushBranches = null
+        IReadOnlyList<BranchName>? allowedPushBranches = null
     )
     {
         var pendingPrRequests = new PrQueue();
@@ -65,6 +67,38 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
         var app = builder.Build();
 
+        // The one place a request that can't be answered becomes a response, instead of each
+        // handler repeating the mapping or letting the exception leak out as an unhandled 500.
+        // A malformed field is the caller's mistake, so it is a 400: the handlers construct their
+        // value objects straight from the request, and the first field that can't be (blank, or
+        // e.g. a /pr branch outside rix/*) throws an InvalidInputException naming it. A failed call
+        // to the GitHub API or git (the BranchExists* checks in those same handlers) means the
+        // request simply couldn't be judged, which is not the caller's fault, so it is a 502.
+        // Both guard on HasStarted: once a handler has begun writing, the status line is already
+        // on the wire and overwriting it would throw a second, less useful exception.
+        app.Use
+        (
+            async (context, next) =>
+            {
+                try
+                {
+                    await next(context);
+                }
+                catch (InvalidInputException ex) when (!context.Response.HasStarted)
+                {
+                    await Results.BadRequest(new ErrorResponse(ex.Message)).ExecuteAsync(context);
+                }
+                catch (RepoHostException ex) when (!context.Response.HasStarted)
+                {
+                    await Results.Json
+                    (
+                        new ErrorResponse($"repository host error: {ex.Message}"),
+                        statusCode: StatusCodes.Status502BadGateway
+                    )
+                    .ExecuteAsync(context);
+                }
+            }
+        );
         MapEndpoints(app, host, cloneDir, pendingPrRequests, pendingPushRequests, allowedPushBranches);
 
         await app.StartAsync(cancellationToken);
@@ -76,11 +110,11 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static void MapEndpoints
     (
         WebApplication app,
-        IRepositoryReadHost host,
+        IJobRepoHost host,
         string cloneDir,
         PrQueue pendingPrRequests,
         ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
-        IReadOnlyList<RixBranchName>? allowedPushBranches
+        IReadOnlyList<BranchName>? allowedPushBranches
     )
     {
         app.MapGet("/health", () => Results.Ok());
@@ -95,17 +129,19 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static async Task<IResult> HandlePrAsync
     (
         PrRequest req,
-        IRepositoryReadHost host,
+        IJobRepoHost host,
         string cloneDir,
         PrQueue pendingPrRequests,
         CancellationToken ct
     )
     {
-        var validation = req.Validate();
-        if (validation is InvalidPr(var reason))
-            return Results.BadRequest(new ErrorResponse(reason));
-        if (validation is not ValidPr(var queuedPr))
-            throw new NotSupportedException($"Unexpected PR validation {validation.GetType()}");
+        var queuedPr = new QueuedPr
+        (
+            Input.Required("branch", req.Branch, value => new RixBranchName(value)),
+            Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value)),
+            Input.Required("title", req.Title, value => new PrTitle(value)),
+            Input.Required("body", req.Body, value => new PrBody(value))
+        );
 
         if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
             return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
@@ -127,18 +163,22 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static async Task<IResult> HandlePushAsync
     (
         PushRequest req,
-        IRepositoryReadHost host,
+        IJobRepoHost host,
         string cloneDir,
         ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
-        IReadOnlyList<RixBranchName>? allowedPushBranches,
+        IReadOnlyList<BranchName>? allowedPushBranches,
         CancellationToken ct
     )
     {
-        var validation = req.Validate();
-        if (validation is InvalidPush(var reason))
-            return Results.BadRequest(new ErrorResponse(reason));
-        if (validation is not ValidPush(var queuedPush))
-            throw new NotSupportedException($"Unexpected push validation {validation.GetType()}");
+        // Unlike /pr, the branch here already exists on the remote (checked below), so it isn't a
+        // name the agent is inventing - any branch name is acceptable, not just rix/*.
+        // Named because both are BranchName: transposing them compiles, and would check the push
+        // allow-list against the base branch instead of the one being pushed.
+        var queuedPush = new QueuedPush
+        (
+            Branch: Input.Required("branch", req.Branch, value => new BranchName(value)),
+            BaseBranch: Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value))
+        );
 
         // The job's configuration names the only branches /push may deliver to (e.g. just the branch
         // this run is resuming); an empty/unset list means none are allowed. Enforced here, before
@@ -182,22 +222,16 @@ internal sealed class LocalApiServer : IAsyncDisposable
     }
 
     /// <summary>Cancels the queued request for <paramref name="req"/>'s branch by dispatching to
-    /// <paramref name="remove"/> once the branch is known well-formed — shared by /pr and /push,
-    /// which differ only in where the branch is actually removed from.</summary>
-    private static IResult HandleDelete(DeleteRequest req, Func<RixBranchName, IResult> remove)
-    {
-        var validation = req.Validate();
-        if (validation is InvalidDelete(var reason))
-            return Results.BadRequest(new ErrorResponse(reason));
-        if (validation is not ValidDelete(var branch))
-            throw new NotSupportedException($"Unexpected delete validation {validation.GetType()}");
+    /// <paramref name="remove"/> once the branch is known non-empty — shared by /pr and /push,
+    /// which differ only in where the branch is actually removed from. So the branch can't be
+    /// restricted to rix/* here: only /pr's own POST enforces that when it queues the branch in the
+    /// first place; deleting a queued push must accept whatever name was queued.</summary>
+    private static IResult HandleDelete(DeleteRequest req, Func<BranchName, IResult> remove)
+    => remove(Input.Required("branch", req.Branch, value => new BranchName(value)));
 
-        return remove(branch);
-    }
-
-    // A well-formed branch with nothing queued is a 404 so the agent learns its cancel was a no-op
+    // A branch name with nothing queued is a 404 so the agent learns its cancel was a no-op
     // rather than assuming it took.
-    private static IResult RemoveFromDictionary(ConcurrentDictionary<string, QueuedPush> pendingRequests, RixBranchName branch)
+    private static IResult RemoveFromDictionary(ConcurrentDictionary<string, QueuedPush> pendingRequests, BranchName branch)
     {
         if (pendingRequests.TryRemove(branch.Value, out _))
             return Results.Ok(new QueuedResponse("deleted"));
