@@ -39,7 +39,12 @@ internal static class ParseResultExtensions
         => Input.OptionalText(parseResult.Str(option, env));
     }
 
-    /// <summary>The flag as the user typed it (<c>--repo</c>); <see cref="Option.Name"/> would
-    /// drop the dashes. Every rix option is declared with exactly one alias.</summary>
-    private static string Flag(Option option) => option.Aliases.Single();
+    /// <summary>The flag as the user typed it (<c>--repo</c>); <see cref="Option.Name"/> holds the
+    /// same text with the dashes stripped, so putting them back is all this takes. Derived rather
+    /// than read off <see cref="Option.Aliases"/>, which is a set whose enumeration order is
+    /// undefined: an option with a short alias too would then have its errors reported under
+    /// whichever of the two the set happened to yield, and reported differently from one run to the
+    /// next. Deriving leaves options free to declare as many aliases as they want, and
+    /// <c>CliOptionsTests</c> checks the result really is one the option accepts.</summary>
+    internal static string Flag(Option option) => $"--{option.Name}";
 }
