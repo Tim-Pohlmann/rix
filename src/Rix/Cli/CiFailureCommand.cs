@@ -1,18 +1,27 @@
 using Rix.CiFailure;
-using Rix.Job;
 using System.CommandLine;
 
 namespace Rix.Cli;
 
 internal static class CiFailureCommand
 {
-    /// <summary>The one option this command adds on top of <see cref="JobOptions"/>, kept private
+    /// <summary>The two options this command adds on top of <see cref="JobOptions"/>, kept private
     /// for the same reason <c>job</c> keeps <c>--prompt</c> to itself: no other command takes
-    /// it.</summary>
+    /// them.</summary>
     private static readonly Option<string> RunIdOption = new
     (
         name: "--run-id",
         description: "ID of the (possibly failed) workflow run to inspect"
+    )
+    { IsRequired = false };
+
+    private static readonly Option<string> MaxRixCommitsOption = new
+    (
+        name: "--max-rix-commits",
+        description: "How many of rix's own commits may already sit at the failing branch's tip before " +
+            "the failure is left alone instead of answered. Stops rix from answering its own output " +
+            "indefinitely; any commit by someone else at the tip clears the count. Defaults to " +
+            $"{CiFailureConfig.DefaultMaxRixCommits}, at most {MaxRixCommits.MaxValue}."
     )
     { IsRequired = false };
 
@@ -26,32 +35,49 @@ internal static class CiFailureCommand
 
         JobOptions.AddTo(command);
         command.AddOption(RunIdOption);
+        command.AddOption(MaxRixCommitsOption);
 
         command.SetHandler
         (
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var inputs = new CiFailureInputs
+                // Same order as `job` for the shared options, so both commands report the same
+                // first problem for the same mistake; this command's own two come last.
+                var repo = CommonOptions.ReadRepo(parsed);
+                var readToken = JobOptions.ReadReadToken(parsed);
+                var agent = JobOptions.ReadAgent(parsed);
+                var maxTokens = JobOptions.ReadMaxTokens(parsed);
+                var timeout = JobOptions.ReadTimeout(parsed);
+                var workDir = CommonOptions.ReadWorkDir(parsed);
+                var outputDir = JobOptions.ReadOutputDir(parsed);
+                var model = JobOptions.ReadModel(parsed);
+                var apiKey = JobOptions.ReadAgentApiKey(parsed);
+                var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
+                var runId = parsed.Required(RunIdOption, "RIX_RUN_ID", raw => new RunId(Input.WholeNumber<long>(raw)));
+                var maxRixCommits = parsed.Optional
                 (
-                    RunId: parsed.Str(RunIdOption, "RIX_RUN_ID"),
-                    Job: JobOptions.ReadInputs(parsed)
+                    MaxRixCommitsOption,
+                    "RIX_MAX_RIX_COMMITS",
+                    raw => new MaxRixCommits(Input.WholeNumber<int>(raw)),
+                    new MaxRixCommits(CiFailureConfig.DefaultMaxRixCommits)
                 );
-                var result = CiFailureConfig.Create(inputs);
 
-                switch (result)
-                {
-                    case CiFailureConfigValid valid:
-                        ctx.ExitCode = await handler(valid.Config);
-                        break;
-                    case CiFailureConfigInvalid invalid:
-                        foreach (var error in invalid.Errors)
-                            Console.Error.WriteLine($"error: {error}");
-                        ctx.ExitCode = ExitCodes.SetupFailed;
-                        break;
-                    default:
-                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
-                }
+                var config = new CiFailureConfig
+                (
+                    runId,
+                    repo,
+                    readToken,
+                    timeout,
+                    WorkDir: workDir,
+                    OutputDir: outputDir,
+                    agent,
+                    maxTokens,
+                    maxRixCommits,
+                    model,
+                    credential
+                );
+                ctx.ExitCode = await handler(config);
             }
         );
 

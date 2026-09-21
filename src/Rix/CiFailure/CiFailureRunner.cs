@@ -18,7 +18,7 @@ internal static class CiFailureRunner
         CancellationToken cancellationToken
     )
     {
-        var detection = await CiFailureDetector.DetectAsync(config.Repo, config.RunId, context.CiFailureHost, cancellationToken);
+        var detection = await CiFailureDetector.DetectAsync(config.Repo, config.RunId, context.Ci, context.RepoHost, config.MaxRixCommits, cancellationToken);
         if (detection is not CiFailureDetected detected)
             return new CiFailureNotRun(detection);
 
@@ -28,7 +28,7 @@ internal static class CiFailureRunner
         // already exists on the remote regardless of whether it happens to be rix/*-named (e.g. CI
         // failed on a human's own branch, not a previous rix run), so it's always allowed.
         var job = config.ToJobConfig(detected.Prompt, new BranchName(detected.Branch));
-        var jobResult = await JobRunner.RunAsync(job, context.JobFor(job), cancellationToken);
+        var jobResult = await JobRunner.RunAsync(job, context.Job, cancellationToken);
         return new CiFailureRan(job, jobResult);
     }
 }
@@ -39,9 +39,11 @@ internal abstract record CiFailureOutcome
     private protected CiFailureOutcome() { }
 }
 
-/// <summary>The run either hadn't failed (<see cref="CiFailureSkipped"/>) or couldn't be checked
-/// (<see cref="CiFailureError"/>) — never <see cref="CiFailureDetected"/>, which always leads to
-/// <see cref="CiFailureRan"/> instead.</summary>
+/// <summary>The run either hadn't failed (<see cref="CiFailureSkipped"/>), had failed on a fork's
+/// branch that rix may not answer (<see cref="CiFailureUntrustedRun"/>), had failed on a branch rix
+/// has already been fixing on its own (<see cref="CiFailureLoopGuarded"/>), or couldn't be checked
+/// (<see cref="CiFailureError"/>) — never <see cref="CiFailureDetected"/>, which always
+/// leads to <see cref="CiFailureRan"/> instead.</summary>
 internal sealed record CiFailureNotRun(ICiFailureResult Reason) : CiFailureOutcome;
 
 /// <summary>The agent ran. Carries the <see cref="JobConfig"/> it ran under, which only exists once

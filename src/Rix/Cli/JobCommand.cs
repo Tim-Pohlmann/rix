@@ -12,32 +12,42 @@ internal static class JobCommand
         JobOptions.AddTo(command);
         command.AddOption(JobOptions.PromptOption);
         command.AddOption(JobOptions.AllowedPushBranchesOption);
+        command.AddOption(JobOptions.FactoryRepoOption);
+        command.AddOption(JobOptions.FactoryContextPathOption);
 
         command.SetHandler
         (
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var inputs = JobOptions.ReadInputs(parsed) with
-                {
-                    Prompt = parsed.Str(JobOptions.PromptOption, "RIX_PROMPT"),
-                    AllowedPushBranches = parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"),
-                };
-                var result = JobConfig.Create(inputs);
+                // Read in the order problems should be reported: the first failing read is the
+                // one the user sees.
+                var repo = CommonOptions.ReadRepo(parsed);
+                var prompt = parsed.RequiredText(JobOptions.PromptOption, "RIX_PROMPT");
+                var readToken = JobOptions.ReadReadToken(parsed);
+                var agent = JobOptions.ReadAgent(parsed);
+                var maxTokens = JobOptions.ReadMaxTokens(parsed);
+                var timeout = JobOptions.ReadTimeout(parsed);
+                var workDir = CommonOptions.ReadWorkDir(parsed);
+                var outputDir = JobOptions.ReadOutputDir(parsed);
+                var model = JobOptions.ReadModel(parsed);
+                var apiKey = JobOptions.ReadAgentApiKey(parsed);
+                var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
+                var allowedPushBranches = BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
+                var factoryContext = JobOptions.ReadFactoryContext(parsed);
 
-                switch (result)
-                {
-                    case JobConfigValid valid:
-                        ctx.ExitCode = await handler(valid.Config);
-                        break;
-                    case JobConfigInvalid invalid:
-                        foreach (var error in invalid.Errors)
-                            Console.Error.WriteLine($"error: {error}");
-                        ctx.ExitCode = ExitCodes.SetupFailed;
-                        break;
-                    default:
-                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
-                }
+                var config = new JobConfig
+                (
+                    repo,
+                    readToken,
+                    timeout,
+                    WorkDir: workDir,
+                    OutputDir: outputDir,
+                    new AgentConfig(agent, prompt, maxTokens, model, credential),
+                    allowedPushBranches,
+                    factoryContext
+                );
+                ctx.ExitCode = await handler(config);
             }
         );
 

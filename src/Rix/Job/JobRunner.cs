@@ -1,6 +1,7 @@
 using Rix.Agents;
 using Rix.Api;
 using Rix.Process;
+using Rix.Repository;
 using System.Diagnostics;
 using System.Text.Json.Serialization;
 
@@ -38,19 +39,33 @@ internal static class JobRunner
 
         try
         {
-            await context.Host.CloneAsync(cloneDir.Path, ct);
+            await context.RepoHost.CloneAsync(cloneDir.Path, ct);
             // Set the commit identity before the agent starts, so it can commit without guessing
             // author metadata.
-            await context.Host.ConfigureGitAsync(cloneDir.Path, ct);
+            await context.RepoHost.ConfigureGitAsync(cloneDir.Path, ct);
         }
-        catch (InvalidOperationException ex)
+        catch (RepoHostException ex)
         {
             return new SetupFailure(ex.Message);
         }
 
+        // Lay the operator-supplied home context over the runner's user home before the agent
+        // starts, so its config/context files are in place when the agent first reads them.
+        if (config.FactoryContext is { } factoryContext)
+        {
+            try
+            {
+                await context.FactoryContextLoader.LoadAsync(factoryContext.Repo, factoryContext.ContextPath, ct);
+            }
+            catch (RepoHostException ex)
+            {
+                return new SetupFailure($"factory context load failed: {ex.Message}");
+            }
+        }
+
         await using var apiServer = await LocalApiServer.StartAsync
         (
-            context.Host, cloneDir.Path, ct, context.LogLine.Invoke,
+            context.RepoHost, cloneDir.Path, ct, context.LogLine.Invoke,
             allowedPushBranches: config.AllowedPushBranches
         );
 
@@ -66,8 +81,8 @@ internal static class JobRunner
             return new JobFailure
             (
                 $"agent failed: {detail}",
-                CostUsd: 0m,
-                Duration: stopwatch.Elapsed
+                0m,
+                stopwatch.Elapsed
             );
         }
 
@@ -116,7 +131,7 @@ internal static class JobRunner
         }
     }
 
-    /// <summary>Adds the resolved agent credential (see <see cref="AgentCredential.ResolveEnvName"/>)
+    /// <summary>Adds the resolved agent credential (see <see cref="AgentCredential.Resolve"/>)
     /// to the agent's own environment overrides, under whichever single env var name it was resolved
     /// to. This is the only place the credential is exported under that resolved provider-specific
     /// name — rix's own process environment never carries it under that name, even though rix's
@@ -127,10 +142,10 @@ internal static class JobRunner
         IReadOnlyDictionary<string, string> environmentOverrides, AgentConfig agent
     )
     {
-        if (agent.ApiKey is not { } apiKey)
+        if (agent.Credential is not { } credential)
             return environmentOverrides;
 
-        return new Dictionary<string, string>(environmentOverrides) { [agent.ApiKeyEnv!] = apiKey };
+        return new Dictionary<string, string>(environmentOverrides) { [credential.EnvName] = credential.Key };
     }
 
     /// <summary>
@@ -219,9 +234,9 @@ internal static class JobRunner
 
         try
         {
-            await context.Host.CreateBundleAsync(cloneDir, bundlePath, request.BaseBranch, request.Branch, ct);
+            await context.RepoHost.CreateBundleAsync(cloneDir, bundlePath, request.BaseBranch, request.Branch, ct);
         }
-        catch (InvalidOperationException)
+        catch (RepoHostException)
         {
             return new BundleFailed();
         }
@@ -250,29 +265,18 @@ internal static class JobRunner
 
     private static string BuildSystemPrompt(Uri apiBaseUrl, IReadOnlyList<BranchName> allowedPushBranches)
     {
-        var prUri = new Uri(apiBaseUrl, "/pr");
-        var pushUri = new Uri(apiBaseUrl, "/push");
+        var specUri = new Uri(apiBaseUrl, "/openapi.json");
         return $$"""
         You are `rix job`, an autonomous coding agent and part of the `rix` autonomous software factory.
 
-        A local API is available at {{apiBaseUrl}}.
+        A local API is available at {{apiBaseUrl}}
+        Its full OpenAPI 3 specification — every endpoint, request body, and usage note — is served at
+        {{specUri}}. Fetch that document first and treat it as the source of truth for how to call the API.
 
-        Endpoints:
-        - POST   {{prUri}}     — create a pull request when satisfied with your changes
-        - GET    {{prUri}}     — list your queued pull requests
-        - DELETE {{prUri}}     — cancel a queued pull request (body: {"branch":"rix/<branch>"})
-        - POST   {{pushUri}}   — push new commits onto a branch that already exists on the remote
-        - GET    {{pushUri}}   — list your queued pushes
-        - DELETE {{pushUri}}   — cancel a queued push (body: {"branch":"<branch>"})
-
-        For new work, split it into multiple PRs if applicable. For each:
-        1. Create a branch named rix/<short-description> for your work
-        2. When done, call POST {{prUri}} with JSON body:
-           {"branch":"rix/<short-description>","baseBranch":"<base branch>","title":"<PR title>","body":"<PR description>"}
-
-        To instead push commits onto a branch that already exists on the remote — e.g. updating an existing PR — commit them locally on that branch,
-        then call POST {{pushUri}} with JSON body:
-           {"branch":"<existing-branch>","baseBranch":"<base branch>"}
+        In short: do your work on one or more branches named rix/<short-description>, commit locally on
+        each, then queue it — POST /pr to open a pull request, or POST /push to add commits to a branch
+        that already exists on the remote. Split unrelated changes into separate PRs. You can list (GET)
+        or cancel (DELETE) a queued request any time before the job ends.
 
         {{AllowedPushBranchesPrompt(allowedPushBranches)}}
         """;

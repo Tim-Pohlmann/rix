@@ -1,12 +1,12 @@
 using Rix.Agents;
 using Rix.CiFailure;
 using Rix.Cli;
+using Rix.Initialize;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
 using Rix.Submit;
 using System.CommandLine;
-using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -15,26 +15,56 @@ namespace Rix;
 
 internal static class Startup
 {
-    /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
+    /// <summary>The production <see cref="JobContext"/>: real GitHub repo host, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
     /// from <paramref name="config"/>. <see cref="JobContext.TranscriptLine"/> is a no-op here;
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultContext(config, new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
+    => DefaultContext
+    (
+        config.Agent.Kind,
+        new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
+        config.ReadToken,
+        config.WorkDir
+    );
 
-    /// <summary>Overload for callers (e.g. <see cref="ExecuteCiFailureAsync"/>) that already
-    /// have a host instance to reuse — e.g. one also serving as the <see cref="IGitHubCiFailureHost"/>
-    /// for the same run, rather than opening a second, redundant connection.</summary>
-    internal static JobContext DefaultContext(JobConfig config, IRepositoryReadHost host)
+    /// <summary>Overload for callers that already have a repo host to reuse rather than a second,
+    /// redundant connection — and that know which agent to run before they have a
+    /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
+    /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
+    /// agent it will run is configured up front. The read token and work dir come in separately for
+    /// the same reason: the factory context is fetched from a second repo, so it needs a credential
+    /// and somewhere to clone into whether or not a <see cref="JobConfig"/> exists yet.</summary>
+    internal static JobContext DefaultContext
+    (
+        AgentKind agent, IJobRepoHost host, GitReadToken readToken, DirectoryPath workDir
+    )
     => new
     (
-        Host: host,
-        RunProcess: ProcessWrapper.RunAsync,
-        Agent: SelectAgent(config.Agent.Kind),
+        host,
+        ProcessWrapper.RunAsync,
+        SelectAgent(agent),
+        // Named because LogLine and TranscriptLine are the same delegate type: transposing them
+        // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
-        TranscriptLine: _ => { }
+        TranscriptLine: _ => { },
+        FactoryContextLoader: new GitHubFactoryContextLoader
+        (
+            readToken, ProcessWrapper.RunAsync, workDir.Value, RunnerHomeDirectory()
+        )
     );
+
+    /// <summary>The runner user's home directory, where the coding agent CLIs read their config and
+    /// where <see cref="GitHubFactoryContextLoader"/> lays the factory context. Falls back to
+    /// <c>$HOME</c> if <see cref="Environment.SpecialFolder.UserProfile"/> resolves empty.</summary>
+    private static string RunnerHomeDirectory()
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(profile))
+            return Environment.GetEnvironmentVariable("HOME") ?? profile;
+        return profile;
+    }
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
@@ -45,25 +75,28 @@ internal static class Startup
         _ => throw new NotSupportedException($"Unsupported agent: {agent}"),
     };
 
-    /// <summary>The production <see cref="CiFailureContext"/>: one <see cref="GitHubReadHost"/>
-    /// backs both halves, since it implements the ci-failure check and the job's clone alike —
-    /// two roles against the same repo under the same credential, rather than two independently
-    /// connected hosts. Built only when no context was supplied, so a test that brings its own
-    /// stubs opens no connection at all.</summary>
-    private static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
+    /// <summary>The production <see cref="CiFailureContext"/>: reading the run, judging its branch
+    /// and cloning for the job are three roles against the same GitHub account under the same
+    /// credential, so they are three hosts over one shared <see cref="GitHubApi"/> transport rather
+    /// than three independently connected ones. This is where GitHub-hosting-its-own-CI is asserted
+    /// — the seams themselves don't require it, and pointing <see cref="CiFailureContext.Ci"/> at
+    /// another CI provider is a change to this method alone. Built only when no context was
+    /// supplied, so a test that brings its own stubs opens no connection at all.</summary>
+    internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
-        var host = new GitHubReadHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync);
-        return new CiFailureContext(host, job => DefaultContext(job, host));
+        var api = new GitHubApi(config.Repo, config.ReadToken);
+        var host = new GitHubJobRepoHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
+        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host, config.ReadToken, config.WorkDir));
     }
 
-    /// <summary>The production <see cref="SubmitContext"/>: a GitHub host authenticated with the
+    /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the
     /// write token, the default process runner, and a stderr log sink.</summary>
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        Host: new GitHubHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
-        RunProcess: ProcessWrapper.RunAsync,
-        LogLine: Console.Error.WriteLine
+        new GitHubSubmitRepoHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
+        ProcessWrapper.RunAsync,
+        Console.Error.WriteLine
     );
 
     /// <summary>
@@ -90,7 +123,8 @@ internal static class Startup
             rootCommand.AddCommand(JobCommand.Build(config => ExecuteJobAsync(config, cts.Token)));
             rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, cts.Token)));
             rootCommand.AddCommand(CiFailureCommand.Build(config => ExecuteCiFailureAsync(config, cts.Token)));
-            return await new CommandLineBuilder(rootCommand).UseDefaults().Build().InvokeAsync(args);
+            rootCommand.AddCommand(InitializeCommand.Build(config => ExecuteInitializeAsync(config, cts.Token)));
+            return await CliPipeline.Build(rootCommand).InvokeAsync(args);
         }
         finally
         {
@@ -228,9 +262,10 @@ internal static class Startup
     }
 
     /// <summary>Writes the outcome of a check that never reached the agent: the result JSON to
-    /// stdout, mapped to an exit code. <see cref="CiFailureSkipped"/> exits successfully (there was
-    /// simply nothing to do); only <see cref="CiFailureError"/> — a problem talking to the API, not
-    /// the run itself failing — is treated as a job failure. <see cref="CiFailureDetected"/> never
+    /// stdout, mapped to an exit code. <see cref="CiFailureSkipped"/> and
+    /// <see cref="CiFailureUntrustedRun"/> exit successfully (there was simply nothing to do, or
+    /// nothing rix is allowed to do); only <see cref="CiFailureError"/> — a problem talking to the
+    /// API, not the run itself failing — is treated as a job failure. <see cref="CiFailureDetected"/> never
     /// arrives here: it always leads to <see cref="WriteJobResultAsync"/> instead.</summary>
     private static int WriteCiFailureResult(ICiFailureResult result)
     {
@@ -238,7 +273,7 @@ internal static class Startup
         Console.WriteLine(json);
         return result switch
         {
-            CiFailureDetected or CiFailureSkipped => ExitCodes.Success,
+            CiFailureDetected or CiFailureSkipped or CiFailureLoopGuarded or CiFailureUntrustedRun => ExitCodes.Success,
             CiFailureError => ExitCodes.JobFailed,
             _ => throw new NotSupportedException($"Unexpected ci-failure result type: {result.GetType()}"),
         };
@@ -253,9 +288,8 @@ internal static class Startup
     internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, CiFailureContext? context = null)
     {
         var transcriptLines = new List<string>();
-        // Never reassigned, so the teed copy below wraps the original factory rather than itself.
         var collaborators = context ?? DefaultCiFailureContext(config);
-        var teed = collaborators with { JobFor = job => Teeing(collaborators.JobFor(job), transcriptLines) };
+        var teed = collaborators with { Job = Teeing(collaborators.Job, transcriptLines) };
 
         var outcome = await CiFailureRunner.RunAsync(config, teed, cancellationToken);
         return outcome switch
@@ -265,4 +299,47 @@ internal static class Startup
             _ => throw new NotSupportedException($"Unexpected ci-failure outcome: {outcome.GetType()}"),
         };
     }
+
+    /// <summary>The production <see cref="InitializeContext"/>: writes each template to disk via
+    /// <see cref="FileWriter"/> (creating any missing parent directory), and logs to stderr.</summary>
+    private static InitializeContext DefaultInitializeContext()
+    => new
+    (
+        FileWriter.WriteAsync,
+        Console.Error.WriteLine
+    );
+
+    /// <summary>
+    /// Imperative shell around <see cref="InitializeRunner.RunAsync"/>: writes the caller
+    /// workflows, then prints the manual follow-up steps (secrets, the CI workflow name, commit)
+    /// on success, or the error on failure, and maps the result to an exit code.
+    /// </summary>
+    internal static async Task<int> ExecuteInitializeAsync(InitializeConfig config, CancellationToken cancellationToken, InitializeContext? context = null)
+    {
+        context ??= DefaultInitializeContext();
+        var result = await InitializeRunner.RunAsync(config, context, cancellationToken);
+        switch (result)
+        {
+            case InitializeSuccess:
+                await Console.Error.WriteLineAsync(NextStepsGuidance);
+                return ExitCodes.Success;
+            case InitializeFailure failure:
+                await Console.Error.WriteLineAsync($"error: {failure.Message}");
+                return ExitCodes.SetupFailed;
+            default:
+                throw new NotSupportedException($"Unexpected initialize result type: {result.GetType()}");
+        }
+    }
+
+    /// <summary>The steps <c>rix initialize</c> can't do itself: it only writes files, so setting
+    /// secrets, naming the watched CI workflow, and committing are left to the user.</summary>
+    private const string NextStepsGuidance = """
+
+        Next steps:
+          1. Add repo secrets (Settings -> Secrets and variables -> Actions):
+               RIX_READ_TOKEN   PAT, contents:read  (+ actions:read for the CI-failure workflow)
+               RIX_WRITE_TOKEN  PAT, contents:write + pull-requests:write
+          2. In rix-on-ci-failure.yml, set workflows: ["CI"] to your CI workflow's name.
+          3. Commit and push the two workflow files.
+        """;
 }

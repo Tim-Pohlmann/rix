@@ -1,4 +1,5 @@
 using Rix.Api;
+using Rix.Repository;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -14,7 +15,7 @@ public class LocalApiServerTests
     private static readonly string[] BaseThenStacked = ["rix/base", "rix/stacked"];
     private static readonly string[] ReorderedCbA = ["rix/c", "rix/b", "rix/a"];
 
-    private static StubRepositoryHost FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
+    private static StubJobRepoHost FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
 
     private static Task<HttpResponseMessage> DeleteAsJsonAsync(HttpClient client, Uri uri, object body)
     {
@@ -33,6 +34,56 @@ public class LocalApiServerTests
 
         var response = await client.GetAsync(new Uri(server.BaseUrl, "/health"));
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task GetOpenApi_ServesSpecDescribingThePrAndPushEndpoints()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await client.GetAsync(new Uri(server.BaseUrl, "/openapi.json"));
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = doc.RootElement;
+
+        StringAssert.StartsWith(root.GetProperty("openapi").GetString(), "3.");
+        var paths = root.GetProperty("paths");
+        Assert.IsTrue(paths.TryGetProperty("/pr", out var pr), "spec must document /pr");
+        Assert.IsTrue(pr.TryGetProperty("post", out _), "spec must document POST /pr");
+        Assert.IsTrue(paths.TryGetProperty("/push", out _), "spec must document /push");
+
+        // The POST /pr request body schema is derived from PrRequest, so its fields must show up.
+        var rawText = root.GetRawText();
+        foreach (var field in new[] { "branch", "title", "body", "baseBranch" })
+            StringAssert.Contains(rawText, $"\"{field}\"");
+    }
+
+    [TestMethod]
+    public async Task GetOpenApi_FoldsThePushAllowListIntoTheSpec()
+    {
+        await using var server = await LocalApiServer.StartAsync(
+            FakeHost(true), Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new RixBranchName("rix/continue-x")]);
+        using var client = new HttpClient();
+
+        var response = await client.GetAsync(new Uri(server.BaseUrl, "/openapi.json"));
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var specText = await response.Content.ReadAsStringAsync();
+        StringAssert.Contains(specText, "rix/continue-x");
+    }
+
+    [TestMethod]
+    public async Task GetOpenApi_SaysPushIsDisabled_WhenNoAllowListConfigured()
+    {
+        await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var specText = await (await client.GetAsync(new Uri(server.BaseUrl, "/openapi.json"))).Content.ReadAsStringAsync();
+
+        StringAssert.Contains(specText, "rejects every request");
     }
 
     [TestMethod]
@@ -259,7 +310,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPr_Returns400_WhenBranchNotFoundLocally()
     {
-        var host = new StubRepositoryHost(branchExistsLocally: _ => Task.FromResult(false));
+        var host = new StubJobRepoHost(branchExistsLocally: _ => Task.FromResult(false));
         await using var server = await LocalApiServer.StartAsync(host, Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 
@@ -276,6 +327,56 @@ public class LocalApiServerTests
         var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
         StringAssert.Contains(result["error"], "rix/ghost");
         StringAssert.Contains(result["error"], "working directory");
+    }
+
+    [TestMethod]
+    public async Task PostPr_Returns502_WhenRepositoryHostThrows()
+    {
+        // The remote-branch check calls the GitHub API; when that transport fails the request
+        // can't be judged either way, so the middleware maps the one exception those checks throw
+        // to a 502 rather than letting it leak out of the handler as an unhandled 500.
+        var host = new StubJobRepoHost(
+            branchExists: _ => throw new RepoHostException("check branch rix/my-fix on remote failed: 503"));
+        await using var server = await LocalApiServer.StartAsync(host, Path.GetTempPath(), CancellationToken.None);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/pr"), new
+        {
+            branch = "rix/my-fix",
+            title = "Title",
+            body = "body",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.BadGateway, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "repository host error");
+        StringAssert.Contains(result["error"], "503");
+        Assert.AreEqual(0, server.GetQueuedPrRequests().Count);
+    }
+
+    [TestMethod]
+    public async Task PostPush_Returns502_WhenRepositoryHostThrows()
+    {
+        var host = new StubJobRepoHost(
+            branchExists: _ => throw new RepoHostException("check branch rix/my-fix on remote failed: 503"));
+        await using var server = await LocalApiServer.StartAsync(
+            host, Path.GetTempPath(), CancellationToken.None,
+            allowedPushBranches: [new BranchName("rix/my-fix")]);
+        using var client = new HttpClient();
+
+        var response = await client.PostAsJsonAsync(new Uri(server.BaseUrl, "/push"), new
+        {
+            branch = "rix/my-fix",
+            baseBranch = "main",
+        });
+
+        Assert.AreEqual(HttpStatusCode.BadGateway, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOpts)!;
+        StringAssert.Contains(result["error"], "repository host error");
+        Assert.AreEqual(0, server.GetQueuedPushRequests().Count);
     }
 
     [TestMethod]
@@ -403,7 +504,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPush_Returns400_WhenBranchNotFoundLocally()
     {
-        var host = new StubRepositoryHost(
+        var host = new StubJobRepoHost(
             branchExists: _ => Task.FromResult(true),
             branchExistsLocally: _ => Task.FromResult(false));
         await using var server = await LocalApiServer.StartAsync(
@@ -645,10 +746,10 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task DeletePr_Returns404_ForNonRixBranch_SinceNoneWasEverQueued()
     {
-        // DeleteValidation no longer enforces rix/* itself (see DeleteRequestExtensions) - it's
-        // shared with /push, which must accept any branch name. /pr's own rix/* invariant still
-        // holds in practice, since PrValidation only ever lets a rix/*-named branch into the
-        // queue, so a non-rix branch simply can't be found rather than being rejected as malformed.
+        // DELETE /pr reads the branch as a plain BranchName, not a RixBranchName: the delete handler
+        // is shared with /push, which must accept any branch name. /pr's own rix/* invariant still
+        // holds in practice, since POST /pr only ever lets a rix/*-named branch into the queue, so a
+        // non-rix branch simply can't be found rather than being rejected as malformed.
         await using var server = await LocalApiServer.StartAsync(FakeHost(false), Path.GetTempPath(), CancellationToken.None);
         using var client = new HttpClient();
 

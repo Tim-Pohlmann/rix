@@ -11,9 +11,10 @@ namespace Rix.Job;
 /// </summary>
 internal sealed record JobContext
 (
-    IRepositoryReadHost Host,
+    IJobRepoHost RepoHost,
     RunProcessAsync RunProcess,
     ICodingAgent Agent,
     LogLine LogLine,
-    LogLine TranscriptLine
+    LogLine TranscriptLine,
+    IFactoryContextLoader FactoryContextLoader
 );

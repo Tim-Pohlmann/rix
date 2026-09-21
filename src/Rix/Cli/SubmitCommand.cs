@@ -5,13 +5,6 @@ namespace Rix.Cli;
 
 internal static class SubmitCommand
 {
-    private static readonly Option<string> RepoOption = new
-    (
-        name: "--repo",
-        description: "Full GitHub repo identifier (owner/repo)"
-    )
-    { IsRequired = false };
-
     private static readonly Option<string> WriteTokenOption = new
     (
         name: "--write-token",
@@ -26,21 +19,14 @@ internal static class SubmitCommand
     )
     { IsRequired = false };
 
-    private static readonly Option<string> WorkDirOption = new
-    (
-        name: "--work-dir",
-        description: "Base directory for the temp clone (default: system temp)"
-    )
-    { IsRequired = false };
-
     internal static Command Build(Func<SubmitConfig, Task<int>> handler)
     {
         var command = new Command("submit", "Push the branches from a `rix job` result and open their pull requests");
 
-        command.AddOption(RepoOption);
+        command.AddOption(CommonOptions.RepoOption);
         command.AddOption(WriteTokenOption);
         command.AddOption(InputDirOption);
-        command.AddOption(WorkDirOption);
+        command.AddOption(CommonOptions.WorkDirOption);
         // The same Option instance job registers, so neither command can drift into a different
         // flag name or a different environment variable for the same list.
         command.AddOption(JobOptions.AllowedPushBranchesOption);
@@ -50,28 +36,18 @@ internal static class SubmitCommand
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var result = SubmitConfig.Create
+                var config = new SubmitConfig
                 (
-                    repo:       parsed.Str(RepoOption,        "RIX_REPO"),
-                    writeToken: parsed.Str(WriteTokenOption,  "RIX_WRITE_TOKEN"),
-                    inputDir:   parsed.Str(InputDirOption,    "RIX_INPUT_DIR"),
-                    workDir:    parsed.Str(WorkDirOption,     "RIX_WORK_DIR"),
-                    allowedPushBranches: parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES")
+                    CommonOptions.ReadRepo(parsed),
+                    parsed.Required(WriteTokenOption, "RIX_WRITE_TOKEN", value => new GitToken(value)),
+                    InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path)),
+                    WorkDir: CommonOptions.ReadWorkDir(parsed),
+                    // Unparseable input is impossible: every branch name is acceptable, and a blank
+                    // value means the empty list, which is the safe end of the range rather than an
+                    // error.
+                    BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"))
                 );
-
-                switch (result)
-                {
-                    case SubmitConfigValid valid:
-                        ctx.ExitCode = await handler(valid.Config);
-                        break;
-                    case SubmitConfigInvalid invalid:
-                        foreach (var error in invalid.Errors)
-                            Console.Error.WriteLine($"error: {error}");
-                        ctx.ExitCode = ExitCodes.SetupFailed;
-                        break;
-                    default:
-                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
-                }
+                ctx.ExitCode = await handler(config);
             }
         );
 

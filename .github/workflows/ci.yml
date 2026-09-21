@@ -50,6 +50,19 @@ jobs:
           sudo apt-get install -y bats
           bats tests/scripts
 
+      - name: Check the workflow binary pin matches the version
+        # The release is cut from whatever commit main is at, so that commit's workflows must name
+        # that same release's binary. set-version.sh writes both, so this only fails when the two
+        # are edited apart by hand - which fails quietly at runtime (an older CLI surface that
+        # still parses these actions' arguments) rather than loudly, hence a check here.
+        run: |
+          csproj="v$(grep -oPm1 '(?<=<Version>)[^<]+' src/Rix/Rix.csproj)"
+          pin="$(grep -oPm1 '(?<=^    default: ).+' .github/actions/download-rix/action.yml)"
+          if [[ "$csproj" != "$pin" ]]; then
+            echo "download-rix rix-version default ($pin) does not match src/Rix/Rix.csproj ($csproj)" >&2
+            exit 1
+          fi
+
   build-rix:
     name: Build rix (for agent-plumbing tests)
     runs-on: ubuntu-latest

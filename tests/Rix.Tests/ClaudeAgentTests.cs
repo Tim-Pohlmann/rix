@@ -130,7 +130,7 @@ public class ClaudeAgentTests
     [TestMethod]
     public void BuildInvocation_ProducesClaudePrintInvocation()
     {
-        var config = TestConfig.Valid(agent: "claude", maxTokens: "1234");
+        var config = TestConfig.Valid(agent: AgentKind.Claude, maxTokens: 1234);
 
         var invocation = Agent.BuildInvocation(config, "SYSTEM");
 
@@ -145,7 +145,7 @@ public class ClaudeAgentTests
     {
         // The real claude CLI rejects --print combined with --output-format=stream-json unless
         // --verbose is also present ("requires --verbose"); this guards against dropping it.
-        var config = TestConfig.Valid(agent: "claude");
+        var config = TestConfig.Valid(agent: AgentKind.Claude);
 
         var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
 
@@ -155,7 +155,7 @@ public class ClaudeAgentTests
     [TestMethod]
     public void BuildInvocation_IncludesModelFlag_WhenModelSet()
     {
-        var config = TestConfig.Valid(agent: "claude", model: "claude-opus-4");
+        var config = TestConfig.Valid(agent: AgentKind.Claude, model: "claude-opus-4");
 
         var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
 
@@ -167,7 +167,7 @@ public class ClaudeAgentTests
     [TestMethod]
     public void BuildInvocation_OmitsModelFlag_WhenModelNotSet()
     {
-        var config = TestConfig.Valid(agent: "claude");
+        var config = TestConfig.Valid(agent: AgentKind.Claude);
 
         var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
 

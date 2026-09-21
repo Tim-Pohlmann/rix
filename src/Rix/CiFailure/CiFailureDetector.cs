@@ -6,73 +6,73 @@ namespace Rix.CiFailure;
 /// Given a specific workflow run, verifies it actually failed and, if so, builds a prompt
 /// describing the failure (PR number, run URL, failing step logs) for a coding agent to act on.
 /// Replaces what used to be bash + <c>gh</c> CLI in <c>on-ci-failure.yml</c>, so the "turn a
-/// failure into a prompt" logic lives in one tested place instead of a workflow script. Deciding
-/// what to do with the outcome is <see cref="CiFailureRunner"/>'s job, not this one's.
+/// failure into a prompt" logic lives in one tested place instead of a workflow script. Also the
+/// one place that decides a failure is not worth answering at all — a run that didn't fail, one
+/// rix isn't allowed to answer because it came from a fork, or one whose branch rix has already
+/// been fixing on its own for too long. Deciding what to do with the
+/// outcome is <see cref="CiFailureRunner"/>'s job, not this one's.
 /// </summary>
 internal static class CiFailureDetector
 {
     /// <summary>Caps the log excerpt so a flooding failure can't blow the model's context budget.
-    /// Handed to the host as a per-job cap too, so the same budget bounds what is held in memory
-    /// while the logs are being read, not just what ends up in the prompt.</summary>
+    /// The host applies it while streaming the logs, so it bounds what is held in memory as well as
+    /// what ends up in the prompt, and it covers the excerpt as a whole rather than each failed job
+    /// — nothing here re-trims what comes back.</summary>
     private const int LogTailChars = 20_000;
 
-    internal static async Task<ICiFailureResult> DetectAsync(RepoIdentifier repo, RunId runId, IGitHubCiFailureHost host, CancellationToken cancellationToken)
+    internal static async Task<ICiFailureResult> DetectAsync
+    (
+        RepoIdentifier repo,
+        RunId runId,
+        ICiHost ci,
+        ICiFailureRepoHost repoHost,
+        MaxRixCommits maxRixCommits,
+        CancellationToken cancellationToken
+    )
     {
-        WorkflowRun run;
+        // Both hosts fail the same way — an exception whose message already names the operation
+        // that failed — so one catch at the boundary replaces a try/catch per call, and a
+        // CiFailureError carries that message through unchanged. Two types rather than one because
+        // the CI provider and the repo host are separately chosen and can fail separately; nothing
+        // here branches on which, so they are caught together.
         try
         {
-            run = await FetchAsync(ct => host.GetRunAsync(runId, ct), $"could not fetch run {runId.Value}", cancellationToken);
-        }
-        catch (HttpRequestException ex)
-        {
-            return new CiFailureError(ex.Message);
-        }
+            var run = await ci.GetRunAsync(runId, cancellationToken);
+            if (run.Outcome is not CiFailed)
+                return new CiFailureSkipped(run.Outcome.Name);
 
-        if (run.Conclusion != "failure")
-            return new CiFailureSkipped(run.Conclusion);
+            // The trust boundary, applied before a single byte of the run reaches a prompt: getting
+            // a branch into this repo takes write access to it, so a run whose head is this repo was
+            // put there by someone who has it, and a run whose head is a fork was not. What makes
+            // two repo identities the same one is RepoIdentifier's own rule, not this comparison's.
+            if (run.HeadRepo != repo)
+                return new CiFailureUntrustedRun(run.HeadRepo.Value, run.HeadBranch.Value);
 
-        // Independent of each other - only the already-fetched run is needed by both - so they run
-        // concurrently rather than paying two sequential network round-trips.
-        var logsTask = FetchAsync(ct => host.GetFailedJobLogsAsync(runId, LogTailChars, ct), $"could not fetch failing job logs for run {runId.Value}", cancellationToken);
-        var prTask = FetchAsync(ct => host.FindOpenPullRequestNumberAsync(new BranchName(run.HeadBranch), ct), $"could not look up open PR for branch {run.HeadBranch}", cancellationToken);
+            // Answered before anything else is fetched, rather than concurrently with it: it is the
+            // one question whose answer makes all the remaining work pointless, and the log fetch is
+            // by far the most expensive call here. A single extra round-trip ahead of a run that then
+            // spends minutes on a coding agent is the cheaper half of that trade.
+            var rixCommits = await repoHost.CountLeadingRixCommitsAsync(run.HeadBranch, maxRixCommits, cancellationToken);
+            if (rixCommits >= maxRixCommits.Value)
+                return new CiFailureLoopGuarded(run.HeadBranch.Value, rixCommits);
 
-        try
-        {
+            // Independent of each other - only the already-fetched run is needed by both - so they
+            // run concurrently rather than paying two sequential network round-trips.
+            var logsTask = ci.GetFailedJobLogsAsync(runId, LogTailChars, cancellationToken);
+            var prTask = repoHost.FindOpenPullRequestNumberAsync(run.HeadBranch, cancellationToken);
             await Task.WhenAll(logsTask, prTask);
+            var logs = logsTask.Result;
+            var prNumber = prTask.Result;
+            var prompt = BuildPrompt(repo, run, prNumber, logs);
+            return new CiFailureDetected(prompt, run.Url, run.HeadBranch.Value, prNumber);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is CiHostException or RepoHostException)
         {
             return new CiFailureError(ex.Message);
         }
-        var logs = logsTask.Result;
-        var prNumber = prTask.Result;
-
-        if (logs.Length > LogTailChars)
-            logs = logs[^LogTailChars..];
-
-        var prompt = BuildPrompt(repo, run, prNumber, logs);
-        return new CiFailureDetected(prompt, run.HtmlUrl, run.HeadBranch, prNumber);
     }
 
-    /// <summary>Runs <paramref name="call"/> with <paramref name="cancellationToken"/> forwarded,
-    /// rethrowing any <see cref="HttpRequestException"/> with its message prefixed by
-    /// <paramref name="what"/> — collapses what would otherwise be a separate try/catch per API
-    /// call into one shared helper, while keeping each call's own failure message. Every HTTP call
-    /// this class makes goes through here, so catching that type at the call sites catches exactly
-    /// the failures described this way.</summary>
-    private static async Task<T> FetchAsync<T>(Func<CancellationToken, Task<T>> call, string what, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await call(cancellationToken);
-        }
-        catch (HttpRequestException ex)
-        {
-            throw new HttpRequestException($"{what}: {ex.Message}", ex);
-        }
-    }
-
-    private static string BuildPrompt(RepoIdentifier repo, WorkflowRun run, int? prNumber, string logs)
+    private static string BuildPrompt(RepoIdentifier repo, CiRun run, int? prNumber, string logs)
     {
         var prLine = prNumber switch
         {
@@ -81,9 +81,9 @@ internal static class CiFailureDetector
         };
 
         return $"""
-        CI failed on branch '{run.HeadBranch}' (run: {run.HtmlUrl}).
+        CI failed on branch '{run.HeadBranch.Value}' (run: {run.Url}).
         {prLine}
-        Failing run title: {run.DisplayTitle}
+        Failing run title: {run.Title}
 
         Investigate the failure and fix it. Failing step log (tail):
         ```

@@ -59,7 +59,7 @@ public class JobRunnerTests
     {
         var result = await Startup.ExecuteJobAsync(
             MakeConfig(), CancellationToken.None,
-            Context(new StubRepositoryHost(), FakeRunner(),
+            Context(new StubJobRepoHost(), FakeRunner(),
                 _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))));
 
         Assert.AreEqual(2, result);
@@ -100,7 +100,7 @@ public class JobRunnerTests
     {
         await Startup.ExecuteJobAsync(
             MakeConfig(), CancellationToken.None,
-            Context(new StubRepositoryHost(), FakeRunner(),
+            Context(new StubJobRepoHost(), FakeRunner(),
                 _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
@@ -211,7 +211,7 @@ public class JobRunnerTests
         };
 
         var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), runner, _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         CollectionAssert.AreEqual(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, statusCodes);
@@ -255,8 +255,8 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsSetupFailure_WhenGitConfigFails()
     {
-        var host = new StubRepositoryHost(
-            configureGit: () => throw new InvalidOperationException("git config failed: exited with code 128"));
+        var host = new StubJobRepoHost(
+            configureGit: () => throw new RepoHostException("git config failed: exited with code 128"));
 
         var result = await JobRunner.RunAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
@@ -277,7 +277,7 @@ public class JobRunnerTests
         };
 
         await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), tracker, _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), tracker, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         Assert.IsNotNull(capturedCloneDir);
@@ -296,7 +296,7 @@ public class JobRunnerTests
         };
 
         await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), tracker, _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), tracker, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         Assert.IsNotNull(capturedCloneDir);
@@ -324,7 +324,7 @@ public class JobRunnerTests
         };
 
         await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         Assert.IsNotNull(claudeCallback);
@@ -342,7 +342,7 @@ public class JobRunnerTests
         };
 
         await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), runner,
+            Context(new StubJobRepoHost(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed()),
                 logLine: log.Add),
             CancellationToken.None);
@@ -363,7 +363,7 @@ public class JobRunnerTests
         };
 
         await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), runner,
+            Context(new StubJobRepoHost(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed()),
                 transcriptLine: transcript.Add),
             CancellationToken.None);
@@ -384,7 +384,7 @@ public class JobRunnerTests
         };
 
         await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), runner,
+            Context(new StubJobRepoHost(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed()),
                 transcriptLine: transcript.Add),
             CancellationToken.None);
@@ -411,7 +411,7 @@ public class JobRunnerTests
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
 
         await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
-            Context(new StubRepositoryHost(), runner,
+            Context(new StubJobRepoHost(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
@@ -426,7 +426,7 @@ public class JobRunnerTests
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => "thinking...", false => null }));
 
         await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
-            Context(new StubRepositoryHost(), runner,
+            Context(new StubJobRepoHost(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
@@ -448,8 +448,8 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        var hostWithFailingBundle = new StubRepositoryHost(
-            createBundle: _ => throw new InvalidOperationException("git bundle failed: exited with code 128"));
+        var hostWithFailingBundle = new StubJobRepoHost(
+            createBundle: _ => throw new RepoHostException("git bundle failed: exited with code 128"));
 
         var result = await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             Context(hostWithFailingBundle, runner,
@@ -467,7 +467,7 @@ public class JobRunnerTests
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
 
         await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
-            Context(new StubRepositoryHost(), runner,
+            Context(new StubJobRepoHost(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
@@ -478,7 +478,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ResultJson_ContainsPendingPushRequests()
     {
-        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        var host = new StubJobRepoHost(branchExists: _ => Task.FromResult(true));
         RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
@@ -493,7 +493,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: "rix/my-fix"), CancellationToken.None,
+        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: ["rix/my-fix"]), CancellationToken.None,
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
@@ -505,7 +505,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_CreatesBundleFile_ForPush()
     {
-        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        var host = new StubJobRepoHost(branchExists: _ => Task.FromResult(true));
         RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
@@ -520,7 +520,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/my-fix"),
+        await JobRunner.RunAsync(MakeConfig(allowedPushBranches: ["rix/my-fix"]),
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -531,7 +531,7 @@ public class JobRunnerTests
     public async Task RunAsync_RejectsSecondPushForAlreadyQueuedBranch()
     {
         var statusCodes = new List<HttpStatusCode>();
-        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        var host = new StubJobRepoHost(branchExists: _ => Task.FromResult(true));
         RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
@@ -549,7 +549,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        var result = await JobRunner.RunAsync(MakeConfig(allowedPushBranches: "rix/dup"),
+        var result = await JobRunner.RunAsync(MakeConfig(allowedPushBranches: ["rix/dup"]),
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -562,7 +562,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_SystemPrompt_ListsAllowedPushBranches_WhenRestricted()
     {
-        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig(allowedPushBranches: "rix/continue-a,rix/continue-b"));
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig(allowedPushBranches: ["rix/continue-a", "rix/continue-b"]));
 
         Assert.IsNotNull(systemPrompt);
         StringAssert.Contains(systemPrompt, "rix/continue-a");
@@ -582,7 +582,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_RejectsPush_ToDisallowedBranch()
     {
-        var host = new StubRepositoryHost(branchExists: _ => Task.FromResult(true));
+        var host = new StubJobRepoHost(branchExists: _ => Task.FromResult(true));
         RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
@@ -598,7 +598,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: "rix/allowed"),
+        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: ["rix/allowed"]),
             CancellationToken.None,
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
 
@@ -617,38 +617,25 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_SystemPrompt_DescribesGetAndDeleteEndpoints()
+    public async Task RunAsync_SystemPrompt_PointsAtOpenApiSpec_AndMentionsGetAndDelete()
     {
-        string? systemPrompt = null;
-
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude")
-            {
-                var argList = a.ToList();
-                var idx = argList.IndexOf("--append-system-prompt");
-                if (idx >= 0 && idx + 1 < argList.Count)
-                    systemPrompt = argList[idx + 1];
-            }
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
-            CancellationToken.None);
+        // The per-endpoint contract (paths, request bodies, GET/DELETE semantics) now lives in the
+        // served OpenAPI document rather than being spelled out in the prompt — the prompt only has
+        // to point the agent at it and give the high-level workflow.
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig());
 
         Assert.IsNotNull(systemPrompt);
-        StringAssert.Contains(systemPrompt, "list your queued pull requests");
-        StringAssert.Contains(systemPrompt, "cancel a queued pull request");
-        StringAssert.Contains(systemPrompt, "list your queued pushes");
-        StringAssert.Contains(systemPrompt, "cancel a queued push");
+        StringAssert.Contains(systemPrompt, "/openapi.json");
+        StringAssert.Contains(systemPrompt, "OpenAPI");
+        StringAssert.Contains(systemPrompt, "GET");
+        StringAssert.Contains(systemPrompt, "DELETE");
     }
 
     [TestMethod]
     public async Task RunAsync_ReturnsJobSuccess_WithoutWritingResultJson()
     {
         var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         Assert.IsInstanceOfType<JobSuccess>(result);
@@ -660,7 +647,7 @@ public class JobRunnerTests
     public async Task RunAsync_ReturnsJobSuccess_WithoutWritingTranscriptMd()
     {
         var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         Assert.IsInstanceOfType<JobSuccess>(result);
@@ -680,7 +667,7 @@ public class JobRunnerTests
         };
 
         await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
-            Context(new StubRepositoryHost(), runner,
+            Context(new StubJobRepoHost(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())));
 
         var transcript = await File.ReadAllTextAsync(Path.Combine(_outputDir, "transcript.md"));
@@ -698,7 +685,7 @@ public class JobRunnerTests
         };
 
         await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
-            Context(new StubRepositoryHost(), runner,
+            Context(new StubJobRepoHost(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())));
 
         Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "transcript.md")),
@@ -712,7 +699,7 @@ public class JobRunnerTests
             Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1", Diagnostic: "Invalid API key"));
 
         var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), runner, _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         var failure = (JobFailure)result;
@@ -723,7 +710,7 @@ public class JobRunnerTests
     public async Task RunAsync_JobFailureError_OmitsDiagnosticSuffix_WhenAbsent()
     {
         var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), FakeRunner(claudeExitCode: 1), _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), FakeRunner(claudeExitCode: 1), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         var failure = (JobFailure)result;
@@ -734,7 +721,7 @@ public class JobRunnerTests
     public async Task RunAsync_ReturnsSetupFailure_WhenInstallerFails()
     {
         var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("nope"))),
+            Context(new StubJobRepoHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("nope"))),
             CancellationToken.None);
 
         Assert.IsInstanceOfType<SetupFailure>(result);
@@ -743,7 +730,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsSetupFailure_WhenCloneFails()
     {
-        var host = new StubRepositoryHost(clone: () => throw new InvalidOperationException("git clone failed: exit code 128"));
+        var host = new StubJobRepoHost(clone: () => throw new RepoHostException("git clone failed: exit code 128"));
 
         var result = await JobRunner.RunAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
@@ -763,7 +750,7 @@ public class JobRunnerTests
         };
 
         await JobRunner.RunAsync(MakeConfig(agentApiKey: "secret", agentApiKeyEnv: "ANTHROPIC_API_KEY"),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         Assert.IsNotNull(capturedEnv);
@@ -781,34 +768,107 @@ public class JobRunnerTests
         };
 
         await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         Assert.IsNotNull(capturedEnv);
         Assert.IsFalse(capturedEnv.ContainsKey("ANTHROPIC_API_KEY"));
     }
 
+    [TestMethod]
+    public async Task RunAsync_LoadsFactoryContext_BeforeAgentRuns_WhenConfigured()
+    {
+        var events = new List<string>();
+        var loader = new StubFactoryContextLoader((_, _) => { events.Add("factory"); return Task.CompletedTask; });
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") events.Add("agent");
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(
+            MakeConfig(factoryContext: FactoryContext("acme/factory", "config/home")),
+            Context(new StubJobRepoHost(), runner, _ => Task.FromResult<InstallResult>(new Installed()),
+                factoryContextLoader: loader),
+            CancellationToken.None);
+
+        Assert.AreEqual(1, loader.LoadCount);
+        Assert.AreEqual("acme/factory", loader.LoadedRepo?.Value);
+        Assert.AreEqual("config/home", loader.LoadedContextPath?.Value);
+        string[] expectedOrder = ["factory", "agent"];
+        CollectionAssert.AreEqual(expectedOrder, events);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DoesNotLoadFactoryContext_WhenNotConfigured()
+    {
+        var loader = new StubFactoryContextLoader();
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubJobRepoHost(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()),
+                factoryContextLoader: loader),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, loader.LoadCount);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsSetupFailure_AndSkipsAgent_WhenFactoryContextLoadFails()
+    {
+        var agentRan = false;
+        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        {
+            if (f == "claude") agentRan = true;
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+        var loader = new StubFactoryContextLoader(
+            (_, _) => throw new RepoHostException("git clone failed: exited with code 128"));
+
+        var result = await JobRunner.RunAsync(
+            MakeConfig(factoryContext: FactoryContext("acme/factory")),
+            Context(new StubJobRepoHost(), runner, _ => Task.FromResult<InstallResult>(new Installed()),
+                factoryContextLoader: loader),
+            CancellationToken.None);
+
+        var failure = result switch
+        {
+            SetupFailure f => f,
+            var other => throw new AssertFailedException($"expected a setup failure, got {other}"),
+        };
+        StringAssert.Contains(failure.Error, "factory context load failed");
+        Assert.IsFalse(agentRan, "the agent must not run when the factory context could not be loaded");
+    }
+
     // ---- helpers ----
 
     private static JobContext Context(
-        IRepositoryReadHost host,
+        IJobRepoHost host,
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
         LogLine? logLine = null,
-        LogLine? transcriptLine = null)
-    => new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }));
+        LogLine? transcriptLine = null,
+        IFactoryContextLoader? factoryContextLoader = null)
+    => new(host, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }),
+        factoryContextLoader ?? new StubFactoryContextLoader());
 
     private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null)
     => Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
-        Context(new StubRepositoryHost(),
+        Context(new StubJobRepoHost(),
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
             _ => Task.FromResult<InstallResult>(new Installed())));
 
-    private JobConfig MakeConfig(string? allowedPushBranches = null, string? agentApiKey = null, string? agentApiKeyEnv = null)
+    private JobConfig MakeConfig(
+        string[]? allowedPushBranches = null,
+        string? agentApiKey = null,
+        string? agentApiKeyEnv = null,
+        FactoryContextConfig? factoryContext = null)
     => TestConfig.Valid(
         prompt: "Do something", workDir: _workDir, outputDir: _outputDir,
-        allowedPushBranches: allowedPushBranches,
-        agentApiKey: agentApiKey, agentApiKeyEnv: agentApiKeyEnv);
+        allowedPushBranches: (allowedPushBranches ?? []).Select(b => new BranchName(b)).ToList(),
+        agentApiKey: agentApiKey, agentApiKeyEnv: agentApiKeyEnv, factoryContext: factoryContext);
+
+    private static FactoryContextConfig FactoryContext(string repo, string contextPath = JobConfig.DefaultFactoryContextPath)
+    => new(new RepoIdentifier(repo), new RepoRelativePath(contextPath));
 
     private static RunProcessAsync FakeRunner(
         int claudeExitCode = 0,
@@ -838,7 +898,7 @@ public class JobRunnerTests
         };
 
         await JobRunner.RunAsync(config,
-            Context(new StubRepositoryHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
+            Context(new StubJobRepoHost(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         return systemPrompt;
@@ -885,7 +945,7 @@ public class JobRunnerTests
 
     private record QueuedPrSpec(string Branch, string BaseBranch, string Title, string Body);
 
-    private sealed class TrackingRepositoryHost : IRepositoryReadHost
+    private sealed class TrackingRepositoryHost : IJobRepoHost
     {
         public bool CloneCalled { get; private set; }
         public bool ConfigureGitCalled { get; private set; }

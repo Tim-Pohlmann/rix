@@ -119,7 +119,7 @@ public class PiAgentTests
     [TestMethod]
     public void BuildInvocation_ProducesPiJsonModeInvocation()
     {
-        var config = TestConfig.Valid(agent: "pi", maxTokens: "1234");
+        var config = TestConfig.Valid(agent: AgentKind.Pi, maxTokens: 1234);
 
         var invocation = Agent.BuildInvocation(config, "SYSTEM");
 
@@ -137,7 +137,7 @@ public class PiAgentTests
     [TestMethod]
     public void BuildInvocation_OmitsModelFlag_ByDefault()
     {
-        var config = TestConfig.Valid(agent: "pi");
+        var config = TestConfig.Valid(agent: AgentKind.Pi);
 
         var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
 
@@ -147,7 +147,7 @@ public class PiAgentTests
     [TestMethod]
     public void BuildInvocation_IncludesModelFlag_WhenModelOverridden()
     {
-        var config = TestConfig.Valid(agent: "pi", model: "openai/gpt-4o");
+        var config = TestConfig.Valid(agent: AgentKind.Pi, model: "openai/gpt-4o");
 
         var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
 

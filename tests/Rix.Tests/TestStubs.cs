@@ -6,26 +6,40 @@ using Rix.Repository;
 
 namespace Rix.Tests;
 
-internal sealed class StubCiFailureHost(
-    Func<RunId, Task<WorkflowRun>>? getRun = null,
-    Func<RunId, Task<string>>? getLogs = null,
-    Func<BranchName, Task<int?>>? findPr = null) : IGitHubCiFailureHost
+internal sealed class StubCiHost(
+    Func<RunId, Task<CiRun>>? getRun = null,
+    Func<RunId, Task<string>>? getLogs = null) : ICiHost
 {
-    /// <summary>The per-job log budget the caller asked for, so a test can assert the cap is
-    /// actually pushed down to the host rather than only applied afterwards.</summary>
-    internal int? TailCharsPerJob { get; private set; }
+    /// <summary>The log budget the caller asked for, so a test can assert the cap is actually
+    /// pushed down to the host rather than only applied afterwards.</summary>
+    internal int? TotalTailChars { get; private set; }
 
-    public Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
+    public Task<CiRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
     => getRun switch { { } check => check(runId), _ => throw new InvalidOperationException("getRun not stubbed") };
 
-    public Task<string> GetFailedJobLogsAsync(RunId runId, int tailCharsPerJob, CancellationToken cancellationToken)
+    public Task<string> GetFailedJobLogsAsync(RunId runId, int totalTailChars, CancellationToken cancellationToken)
     {
-        TailCharsPerJob = tailCharsPerJob;
+        TotalTailChars = totalTailChars;
         return getLogs switch { { } check => check(runId), _ => Task.FromResult("") };
     }
+}
+
+internal sealed class StubCiFailureRepoHost(
+    Func<BranchName, Task<int?>>? findPr = null,
+    Func<BranchName, Task<int>>? countRixCommits = null) : ICiFailureRepoHost
+{
+    /// <summary>The cap the loop guard was asked to count against, so a test can assert the
+    /// configured value reaches the host instead of a constant fixed in the detector.</summary>
+    internal MaxRixCommits? MaxRixCommits { get; private set; }
 
     public Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken)
     => findPr switch { { } check => check(branch), _ => Task.FromResult<int?>(null) };
+
+    public Task<int> CountLeadingRixCommitsAsync(BranchName branch, MaxRixCommits max, CancellationToken cancellationToken)
+    {
+        MaxRixCommits = max;
+        return countRixCommits switch { { } count => count(branch), _ => Task.FromResult(0) };
+    }
 }
 
 /// <summary>An <see cref="HttpMessageHandler"/> that answers every request from
@@ -37,25 +51,26 @@ internal sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpRespons
     => Task.FromResult(handler(request));
 }
 
-/// <summary>The workflow run most ci-failure tests describe: one that ran, on a branch, with a
-/// title and URL. Only <paramref name="conclusion"/> and <paramref name="branch"/> vary between
-/// scenarios, so the rest is fixed here rather than restated per test.</summary>
+/// <summary>The CI run most ci-failure tests describe: one that ran, on a branch of the repo
+/// itself, with a title and URL. Only <paramref name="outcome"/>, <paramref name="branch"/> and
+/// <paramref name="headRepo"/> vary between scenarios, so the rest is fixed here rather than
+/// restated per test.</summary>
 internal static class TestRuns
 {
-    internal static WorkflowRun Sample(string? conclusion, string branch = "rix/fix")
-    => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", branch);
+    internal static CiRun Sample(CiOutcome outcome, string branch = "rix/fix", string headRepo = "owner/repo")
+    => new(outcome, "Fix thing", "https://github.com/owner/repo/actions/runs/1", new BranchName(branch), new RepoIdentifier(headRepo));
 }
 
-internal sealed class StubRepositoryHost(
+internal sealed class StubJobRepoHost(
     Func<BranchName, Task<bool>>? branchExists = null,
     Func<string, Task>? createBundle = null,
     Func<Task>? clone = null,
     Func<BranchName, Task<bool>>? branchExistsLocally = null,
-    Func<Task>? configureGit = null) : IRepositoryReadHost
+    Func<Task>? configureGit = null) : IJobRepoHost
 {
     /// <summary>Succeeds by default; override via the <c>clone</c> constructor parameter to
-    /// simulate a git clone failure (e.g. throwing <see cref="InvalidOperationException"/>, as the
-    /// real <see cref="GitHubReadHost.CloneAsync"/> does).</summary>
+    /// simulate a git clone failure (e.g. throwing <see cref="RepoHostException"/>, as the
+    /// real <see cref="GitHubJobRepoHost.CloneAsync"/> does).</summary>
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
     => clone switch { { } check => check(), _ => Task.CompletedTask };
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
@@ -84,10 +99,10 @@ internal sealed class StubRepositoryHost(
     };
 }
 
-internal sealed class StubSubmitHost(
+internal sealed class StubSubmitRepoHost(
     Func<BranchName, Task<bool>>? branchExists = null,
     Func<PendingPr, Task<string>>? createPullRequest = null,
-    Func<BranchName, Task>? pushBranch = null) : IRepositoryHost
+    Func<BranchName, Task>? pushBranch = null) : ISubmitRepoHost
 {
     public List<PendingPr> CreatedPrs { get; } = [];
     public List<BranchName> PushedBranches { get; } = [];
@@ -131,6 +146,27 @@ internal sealed class StubSubmitHost(
             { } check => check(pullRequest),
             _ => Task.FromResult($"https://github.com/owner/repo/pull/{CreatedPrs.Count}"),
         };
+    }
+}
+
+/// <summary>Records the <see cref="LoadAsync"/> call so tests can assert the factory context was
+/// requested with the configured repo and path; by default it is a no-op (the runner home is left
+/// alone). Pass <c>onLoad</c> to simulate a fetch failure by throwing
+/// <see cref="Rix.Repository.RepoHostException"/>, as the real
+/// <see cref="Rix.Repository.GitHubFactoryContextLoader"/> does.</summary>
+internal sealed class StubFactoryContextLoader(Func<RepoIdentifier, RepoRelativePath, Task>? onLoad = null)
+    : IFactoryContextLoader
+{
+    public int LoadCount { get; private set; }
+    public RepoIdentifier? LoadedRepo { get; private set; }
+    public RepoRelativePath? LoadedContextPath { get; private set; }
+
+    public Task LoadAsync(RepoIdentifier repo, RepoRelativePath contextPath, CancellationToken cancellationToken)
+    {
+        LoadCount++;
+        LoadedRepo = repo;
+        LoadedContextPath = contextPath;
+        return onLoad switch { { } run => run(repo, contextPath), _ => Task.CompletedTask };
     }
 }
 

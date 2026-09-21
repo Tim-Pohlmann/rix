@@ -29,9 +29,9 @@ internal sealed class ClaudeAgent : ICodingAgent
 
         return new
         (
-            FileName: "claude",
-            Arguments: args,
-            EnvironmentOverrides: new Dictionary<string, string>
+            "claude",
+            args,
+            new Dictionary<string, string>
             {
                 ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = config.Agent.MaxTokens.Value.ToString(),
             }
