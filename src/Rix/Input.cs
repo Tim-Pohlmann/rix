@@ -29,11 +29,13 @@ internal static class Input
 
     /// <summary>Like <see cref="Optional{T}(string, string?, Func{string, T}, T)"/>, but the
     /// fallback is only built when it's needed — for defaults that cost something to construct,
-    /// e.g. a <see cref="DirectoryPath"/> that stats the directory.</summary>
+    /// e.g. a <see cref="DirectoryPath"/> that stats the directory. Building it late means it can
+    /// fail late too, so it is named as well: without that, an unusable default surfaces as a bare
+    /// "directory does not exist: /tmp" with nothing tying it to the flag it stood in for.</summary>
     internal static T Optional<T>(string name, string? raw, Func<string, T> construct, Func<T> fallback)
     {
         if (string.IsNullOrWhiteSpace(raw))
-            return fallback();
+            return Named($"{name} default", fallback);
         return Named(name, () => construct(raw));
     }
 
@@ -66,12 +68,15 @@ internal static class Input
         }
     }
 
-    /// <summary>Parses a numeric flag such as <c>--max-tokens</c> or <c>--run-id</c>, which only
-    /// ever make sense as a positive whole number.</summary>
-    internal static T Positive<T>(string raw) where T : INumber<T>
+    /// <summary>Turns a numeric flag's text into a number, and stops there: whether that number is
+    /// one the caller may use is the receiving value object's rule, stated once in its constructor
+    /// rather than repeated by every flag that feeds it. Keeping the range here would put a second
+    /// copy of each type's rule at the boundary, and make this the one place in the codebase where
+    /// a value object's invariant is enforced by its caller.</summary>
+    internal static T WholeNumber<T>(string raw) where T : INumber<T>
     {
-        if (!T.TryParse(raw, null, out var parsed) || parsed <= T.Zero)
-            throw new InvalidInputException($"must be a positive integer, got '{raw}'");
+        if (!T.TryParse(raw, null, out var parsed))
+            throw new InvalidInputException($"must be a whole number, got '{raw}'");
         return parsed;
     }
 }
