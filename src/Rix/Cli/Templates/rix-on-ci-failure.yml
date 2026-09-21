@@ -5,8 +5,11 @@ on:
     types: [completed]
 # One rix run per branch at a time: when CI fails again while rix is still working on the
 # previous failure, the second run waits instead of starting a second agent from the same tip.
+# The head repository is part of the key because a fork PR's run lands here too and its branch
+# may be named like one of yours: GitHub keeps only one pending run per group and cancels the
+# one it replaces, so sharing a group would let a fork's failure drop a queued real response.
 concurrency:
-  group: rix-on-ci-failure-${{ github.event.workflow_run.head_branch }}
+  group: rix-on-ci-failure-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 jobs:
   rix:

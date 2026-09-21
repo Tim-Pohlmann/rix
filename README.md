@@ -174,8 +174,11 @@ on:
     types: [completed]
 # One rix run per branch at a time: when CI fails again while rix is still working on the
 # previous failure, the second run waits instead of starting a second agent from the same tip.
+# The head repository is part of the key because a fork PR's run lands here too and its branch
+# may be named like one of yours: GitHub keeps only one pending run per group and cancels the
+# one it replaces, so sharing a group would let a fork's failure drop a queued real response.
 concurrency:
-  group: rix-on-ci-failure-${{ github.event.workflow_run.head_branch }}
+  group: rix-on-ci-failure-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 jobs:
   rix:
@@ -233,7 +236,8 @@ jobs:
             -f event_type=rix-ci-failure \
             -f "client_payload[repo]=${{ github.repository }}" \
             -f "client_payload[run_id]=${{ github.event.workflow_run.id }}" \
-            -f "client_payload[branch]=${{ github.event.workflow_run.head_branch }}"
+            -f "client_payload[branch]=${{ github.event.workflow_run.head_branch }}" \
+            -f "client_payload[head_repo]=${{ github.event.workflow_run.head_repository.full_name }}"
 ```
 
 `RIX_FACTORY_DISPATCH_TOKEN` needs `contents:write` on the factory repo (required by the
@@ -247,11 +251,12 @@ on:
     types: [rix-ci-failure]
 
 # The factory's equivalent of the simple pattern's group: `repository_dispatch` carries no branch
-# of its own, so it keys on the two payload fields instead. Those are unauthenticated (see the
-# caveat below), which costs nothing here - a payload can only choose which of its own dispatches
-# queue behind each other, and the loop guard, not this, is what actually bounds rix.
+# of its own, so it keys on the payload fields instead, `head_repo` among them for the same
+# fork-collision reason as above. Those are unauthenticated (see the caveat below), which costs
+# nothing here - a payload can only choose which of its own dispatches queue behind each other,
+# and the loop guard, not this, is what actually bounds rix.
 concurrency:
-  group: rix-on-ci-failure-${{ github.event.client_payload.repo }}-${{ github.event.client_payload.branch }}
+  group: rix-on-ci-failure-${{ github.event.client_payload.repo }}-${{ github.event.client_payload.head_repo }}-${{ github.event.client_payload.branch }}
   cancel-in-progress: false
 
 jobs:
@@ -319,12 +324,15 @@ it, and both apply to either pattern above:
   attempt is the normal case — the first attempt failing is exactly why there is a second.
   Note it bounds *commits*, not attempts: one agent run can produce more than one commit, so the
   effective number of attempts is at most this.
-- **The `concurrency` group**, keyed on the failing branch, so a branch that fails twice in
-  quick succession queues the second run rather than starting a second agent from the same tip.
-  `cancel-in-progress: false` because a run already talking to the agent has work worth
-  finishing. Both callers above carry one; the factory keys its group on the dispatch payload's
-  `repo` and `branch` rather than on `workflow_run`, since a `repository_dispatch` knows neither
-  on its own.
+- **The `concurrency` group**, keyed on the failing branch and the repository that branch lives
+  in, so a branch that fails twice in quick succession queues the second run rather than
+  starting a second agent from the same tip. `cancel-in-progress: false` because a run already
+  talking to the agent has work worth finishing. The head repository belongs in the key because
+  a fork's branch can share a name with one of yours, and GitHub keeps only one *pending* run
+  per group - it cancels the one a newcomer displaces, which `cancel-in-progress: false` does
+  not cover. Both callers above carry a group; the factory keys its on the dispatch payload's
+  `repo`, `head_repo` and `branch` rather than on `workflow_run`, since a `repository_dispatch`
+  knows none of them on its own.
 
 ```yaml
     with:
