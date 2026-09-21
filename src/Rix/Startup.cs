@@ -45,6 +45,18 @@ internal static class Startup
         _ => throw new NotSupportedException($"Unsupported agent: {agent}"),
     };
 
+    /// <summary>The production <see cref="CiFailureContext"/>: the ci-failure check and the job's
+    /// clone are two roles against the same repo under the same credential, so they are two hosts
+    /// over one shared <see cref="GitHubApi"/> transport rather than two independently connected
+    /// ones. Built only when no context was supplied, so a test that brings its own stubs opens no
+    /// connection at all.</summary>
+    private static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
+    {
+        var api = new GitHubApi(config.Repo, config.ReadToken);
+        var host = new GitHubReadHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
+        return new CiFailureContext(new GitHubCiFailureHost(api), job => DefaultContext(job, host));
+    }
+
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub host authenticated with the
     /// write token, the default process runner, and a stderr log sink.</summary>
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
@@ -238,26 +250,16 @@ internal static class Startup
     /// Imperative shell around <see cref="CiFailureRunner.RunAsync"/>: checks whether the run
     /// failed and, only if it did, runs the agent — reusing <see cref="WriteCiFailureResult"/> and
     /// <see cref="WriteJobResultAsync"/> so each outcome is reported identically to its <c>rix
-    /// job</c> counterpart. The ci-failure check and the job's clone are two roles against the same
-    /// repo under the same credential, so they are two hosts over one shared transport rather than
-    /// two independently connected ones.
+    /// job</c> counterpart.
     /// </summary>
-    internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, IGitHubCiFailureHost? ciFailureHost = null, JobContext? jobContext = null)
+    internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, CiFailureContext? context = null)
     {
-        // The two optional arguments let a test stub only the host its scenario actually exercises
-        // - e.g. a run that never fails needs no jobContext, since the agent then never runs -
-        // instead of forcing every test to fabricate both.
-        var api = new GitHubApi(config.Repo, config.ReadToken);
-        var host = new GitHubReadHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
-        ciFailureHost ??= new GitHubCiFailureHost(api);
-
         var transcriptLines = new List<string>();
+        // Never reassigned, so the teed copy below wraps the original factory rather than itself.
+        var collaborators = context ?? DefaultCiFailureContext(config);
+        var teed = collaborators with { JobFor = job => Teeing(collaborators.JobFor(job), transcriptLines) };
 
-        // Deferred until CiFailureRunner has a JobConfig to hand back: that config needs the prompt
-        // describing the failure, which doesn't exist until the run is known to have failed.
-        JobContext ContextFor(JobConfig job) => Teeing(jobContext ?? DefaultContext(job, host), transcriptLines);
-
-        var outcome = await CiFailureRunner.RunAsync(config, ciFailureHost, ContextFor, cancellationToken);
+        var outcome = await CiFailureRunner.RunAsync(config, teed, cancellationToken);
         return outcome switch
         {
             CiFailureNotRun(var reason) => WriteCiFailureResult(reason),
