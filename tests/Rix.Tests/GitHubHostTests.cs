@@ -327,8 +327,29 @@ public class GitHubHostTests
             Content = new StringContent("not json"),
         });
 
-        await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
             () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "create pull request for rix/fix");
+    }
+
+    [TestMethod]
+    public async Task BranchExistsOnRemoteAsync_WrapsTransportFailure()
+    {
+        var host = BuildHost(_ => throw new HttpRequestException("connection refused"));
+
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+            () => host.BranchExistsOnRemoteAsync(new BranchName("rix/fix"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "check branch rix/fix on remote");
+    }
+
+    [TestMethod]
+    public async Task CreatePullRequestAsync_WrapsTransportFailure()
+    {
+        var host = BuildWriteHost(_ => throw new HttpRequestException("connection refused"));
+
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+            () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "create pull request for rix/fix");
     }
 
     private static PendingPr SamplePr(string title, string body)
