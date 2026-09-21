@@ -8,8 +8,8 @@ namespace Rix.Tests;
 [TestClass]
 public class JobLogExcerptTests
 {
-    private static readonly FailedJob Build = new(1, "build");
-    private static readonly FailedJob Test = new(2, "test");
+    private static readonly CiJob Build = new(1, "build");
+    private static readonly CiJob Test = new(2, "test");
 
     [TestMethod]
     public void TailCharsPerJob_SplitsTheBudgetEvenly_AcrossTheIncludedJobs()

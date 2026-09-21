@@ -67,10 +67,10 @@ internal sealed class GitHubCiFailureRepoHost : ICiFailureRepoHost
     /// read sequentially rather than concurrently because how many there are isn't known until a
     /// short page ends the walk. A job GitHub reports without a name falls back to its ID, which is
     /// still enough to tell one block of the excerpt from another.</summary>
-    private async Task<List<FailedJob>> ListFailedJobsAsync(RunId runId, CancellationToken cancellationToken)
+    private async Task<List<CiJob>> ListFailedJobsAsync(RunId runId, CancellationToken cancellationToken)
     {
         var operation = $"list jobs for run {runId.Value}";
-        var failedJobs = new List<FailedJob>();
+        var failedJobs = new List<CiJob>();
         var page = 1;
         while (true)
         {
@@ -88,7 +88,7 @@ internal sealed class GitHubCiFailureRepoHost : ICiFailureRepoHost
             (
                 jobs.Jobs
                     .Where(job => job.Conclusion == "failure")
-                    .Select(job => new FailedJob(job.Id, job.Name ?? $"job {job.Id}"))
+                    .Select(job => new CiJob(job.Id, job.Name ?? $"job {job.Id}"))
             );
             if (jobs.Jobs.Count < JobsPageSize)
                 return failedJobs;
@@ -106,10 +106,25 @@ internal sealed class GitHubCiFailureRepoHost : ICiFailureRepoHost
     /// first and make the cap purely cosmetic.</summary>
     private async Task<string> GetJobLogAsync(long jobId, int tailChars, CancellationToken cancellationToken)
     {
-        using var logResponse = await _api.GetAsync($"actions/jobs/{jobId}/logs", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        GitHubApi.EnsureSuccess(logResponse, $"get logs for job {jobId}");
+        var operation = $"get logs for job {jobId}";
+        using var logResponse = await _api.GetAsync($"actions/jobs/{jobId}/logs", HttpCompletionOption.ResponseHeadersRead, operation, cancellationToken);
+        GitHubApi.EnsureSuccess(logResponse, operation);
+        return await GitHubApi.TransportAsync
+        (
+            () => ReadLogTailAsync(logResponse, tailChars, cancellationToken), operation, cancellationToken
+        );
+    }
 
-        using var reader = new StreamReader(await logResponse.Content.ReadAsStreamAsync(cancellationToken));
+    /// <summary>Streams the response body, keeping only its last <paramref name="tailChars"/>
+    /// characters. Split out of <see cref="GetJobLogAsync"/> so the entire read — opening the stream
+    /// and every chunk after it — sits inside one <see cref="GitHubApi.TransportAsync"/> call, rather
+    /// than paying for a wrapper per chunk.</summary>
+    private static async Task<string> ReadLogTailAsync
+    (
+        HttpResponseMessage response, int tailChars, CancellationToken cancellationToken
+    )
+    {
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cancellationToken));
         var tail = new StringBuilder();
         var buffer = new char[LogChunkChars];
         while (true)
