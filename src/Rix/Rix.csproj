@@ -22,4 +22,10 @@
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
   </ItemGroup>
 
+  <!-- Caller-workflow templates `rix initialize` writes into a target repo. Embedded so a
+       released single-file binary carries them itself, with no network fetch at init time. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Cli/Templates/*.yml" />
+  </ItemGroup>
+
 </Project>

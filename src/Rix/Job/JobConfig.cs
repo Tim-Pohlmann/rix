@@ -2,24 +2,33 @@ using Rix.Agents;
 
 namespace Rix.Job;
 
+/// <summary>Everything <c>rix job</c> needs, already strongly typed: every field is a value object
+/// that validated itself on construction, so a <see cref="JobConfig"/> can't exist in an invalid
+/// state and nothing downstream re-checks it. Turning raw CLI/environment text into these values
+/// is the CLI layer's job (see <see cref="Cli.JobOptions"/>), which reads each option straight
+/// into the value the constructor takes.</summary>
+/// <param name="AllowedPushBranches">The only branches <c>/push</c> may deliver to. Empty means
+/// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch. Any
+/// branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates via
+/// <c>/pr</c>), since these already exist on the remote before the job ever runs.</param>
+/// <param name="FactoryContext">Optional factory-repo home context: when set, a directory from
+/// another repo is copied into the runner's user home before the agent starts. <c>null</c> (the
+/// default) means no <c>--factory-repo</c> was given and the runner home is left untouched.</param>
 internal record JobConfig
+(
+    RepoIdentifier Repo,
+    GitReadToken ReadToken,
+    TimeoutMinutes TimeoutMinutes,
+    // Reordering these two relative to each other compiles at every call site and silently swaps
+    // the clone's location with the results' - they share a type, so nothing catches it. That is
+    // why call sites pass them by name while the rest of the list stays positional.
+    DirectoryPath WorkDir,
+    DirectoryPath OutputDir,
+    AgentConfig Agent,
+    IReadOnlyList<BranchName> AllowedPushBranches,
+    FactoryContextConfig? FactoryContext = null
+)
 {
-    internal required RepoIdentifier Repo { get; init; }
-    internal required GitReadToken ReadToken { get; init; }
-    internal required TimeoutMinutes TimeoutMinutes { get; init; }
-    internal required DirectoryPath WorkDir { get; init; }
-    internal required DirectoryPath OutputDir { get; init; }
-    internal required AgentConfig Agent { get; init; }
-
-    /// <summary>The only branches <c>/push</c> may deliver to. Empty (the default) means
-    /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch.</summary>
-    internal required IReadOnlyList<RixBranchName> AllowedPushBranches { get; init; }
-
-    /// <summary>Optional factory-repo home context: when set, a directory from another repo is
-    /// copied into the runner's user home before the agent starts. <c>null</c> (the default) means
-    /// no <c>--factory-repo</c> was given and the runner home is left untouched.</summary>
-    internal required FactoryContextConfig? FactoryContext { get; init; }
-
     internal const int DefaultMaxTokens = 50_000;
     internal const int DefaultTimeoutMinutes = 30;
     internal const AgentKind DefaultAgent = AgentKind.OpenCode;
@@ -27,150 +36,6 @@ internal record JobConfig
     /// <summary>Directory inside the factory repo whose contents are copied into the runner home
     /// when <c>--factory-context-path</c> is omitted but <c>--factory-repo</c> is set.</summary>
     internal const string DefaultFactoryContextPath = ".rix/agent-home";
-
-    /// <summary>Private and parameterless so a <see cref="JobConfig"/> can only be produced by
-    /// <see cref="Create"/>'s object initializer — every <c>required</c> field is validated there, so
-    /// the type can never exist in an invalid state.</summary>
-    private JobConfig() { }
-
-    /// <summary>Validates and transforms raw CLI/environment inputs into a strongly-typed
-    /// <see cref="JobConfig"/>. Every field is checked and parsed up front and all errors are
-    /// collected, so a <see cref="JobConfigValid"/> is produced only when the whole configuration is
-    /// well-formed — business logic downstream never sees an invalid value.</summary>
-    internal static JobConfigResult Create(JobInputs inputs)
-    {
-        var (repo, prompt, readToken) = (inputs.Repo, inputs.Prompt, inputs.ReadToken);
-        var errors = new List<string>();
-
-        RepoIdentifier? parsedRepo = null;
-        if (string.IsNullOrWhiteSpace(repo))
-            errors.Add("--repo is required");
-        else
-            parsedRepo = RepoIdentifier.Parse(repo).Collect(errors, "--repo");
-
-        if (string.IsNullOrWhiteSpace(prompt))
-            errors.Add("--prompt is required");
-
-        if (string.IsNullOrWhiteSpace(readToken))
-            errors.Add("--read-token is required");
-
-        var resolvedMaxTokens = ParsePositiveInt(inputs.MaxTokens, DefaultMaxTokens, "--max-tokens", errors);
-        var resolvedTimeout = ParsePositiveInt(inputs.TimeoutMinutes, DefaultTimeoutMinutes, "--timeout", errors);
-
-        var resolvedWorkDir = string.IsNullOrWhiteSpace(inputs.WorkDir) switch
-        {
-            true => Path.GetTempPath(),
-            false => inputs.WorkDir,
-        };
-        var parsedWorkDir = DirectoryPath.Parse(resolvedWorkDir).Collect(errors, "--work-dir");
-
-        DirectoryPath? parsedOutputDir = null;
-        if (string.IsNullOrWhiteSpace(inputs.OutputDir))
-            errors.Add("--output-dir is required");
-        else
-            parsedOutputDir = DirectoryPath.Parse(inputs.OutputDir).Collect(errors, "--output-dir");
-
-        var resolvedAgent = string.IsNullOrWhiteSpace(inputs.Agent) switch
-        {
-            true => DefaultAgent,
-            false => AgentKindParser.Parse(inputs.Agent).Match
-            (
-                onSuccess: kind => kind,
-                onError: error => { errors.Add($"--agent: {error}"); return DefaultAgent; }
-            ),
-        };
-
-        var resolvedModel = string.IsNullOrWhiteSpace(inputs.Model) ? null : inputs.Model;
-
-        var allowedPushBranches = ParseAllowedPushBranches(inputs.AllowedPushBranches, errors);
-
-        var factoryContext = ParseFactoryContext(inputs.FactoryRepo, inputs.FactoryContextPath, errors);
-
-        if (errors.Count > 0)
-            return new JobConfigInvalid([.. errors]);
-
-        // Non-null here: any blank or unparseable input would have added an error above.
-        var config = new JobConfig
-        {
-            Repo = parsedRepo!,
-            ReadToken = new GitReadToken(readToken),
-            TimeoutMinutes = new TimeoutMinutes(resolvedTimeout),
-            WorkDir = parsedWorkDir!,
-            OutputDir = parsedOutputDir!,
-            Agent = new AgentConfig(resolvedAgent, prompt, new MaxTokens(resolvedMaxTokens), resolvedModel),
-            AllowedPushBranches = allowedPushBranches,
-            FactoryContext = factoryContext,
-        };
-        return new JobConfigValid(config);
-    }
-
-    /// <summary>Turns the raw <c>--factory-repo</c>/<c>--factory-context-path</c> pair into an
-    /// optional <see cref="FactoryContextConfig"/>. Blank repo means the feature is off, so the
-    /// result is <c>null</c> — but a context path given without a repo is a caller mistake and is
-    /// reported rather than silently ignored. When a repo is given, a blank path resolves to
-    /// <see cref="DefaultFactoryContextPath"/>; a malformed repo or path is collected via
-    /// <see cref="ParseResultExtensions.Collect{T}"/> so the caller's typo surfaces.</summary>
-    private static FactoryContextConfig? ParseFactoryContext(string? rawRepo, string? rawPath, List<string> errors)
-    {
-        if (string.IsNullOrWhiteSpace(rawRepo))
-        {
-            if (!string.IsNullOrWhiteSpace(rawPath))
-                errors.Add("--factory-context-path requires --factory-repo");
-            return null;
-        }
-
-        var repo = RepoIdentifier.Parse(rawRepo).Collect(errors, "--factory-repo");
-        var rawContextPath = rawPath;
-        if (string.IsNullOrWhiteSpace(rawContextPath))
-            rawContextPath = DefaultFactoryContextPath;
-        var contextPath = RepoRelativePath.Parse(rawContextPath).Collect(errors, "--factory-context-path");
-
-        if (repo is null || contextPath is null)
-            return null;
-        return new FactoryContextConfig(repo, contextPath);
-    }
-
-    /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
-    /// <c>rix/*</c> branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
-    /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
-    /// must opt in to letting the agent push at all. Each non-blank entry must be a well-formed
-    /// <c>rix/*</c> branch name, and any malformed entry is collected as an error via
-    /// <see cref="ParseResultExtensions.Collect{T}"/> so the caller's typo is reported instead of
-    /// silently dropping the restriction. Duplicates are dropped.</summary>
-    private static List<RixBranchName> ParseAllowedPushBranches(string? raw, List<string> errors)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return [];
-
-        return raw
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(entry => RixBranchName.Parse(entry).Collect(errors, "--allowed-push-branches"))
-            .OfType<RixBranchName>()
-            .Distinct()
-            .ToList();
-    }
-
-    /// <summary>Parses a raw <c>--max-tokens</c>/<c>--timeout</c>-style value: blank resolves to
-    /// <paramref name="defaultValue"/> (the flag was never set), and anything else must parse as a
-    /// positive integer or <paramref name="errors"/> gets a message naming exactly what was wrong -
-    /// unparseable text or a non-positive number - rather than silently falling back to the default,
-    /// which would hide a caller's typo instead of reporting it.</summary>
-    private static int ParsePositiveInt(string? raw, int defaultValue, string flag, List<string> errors)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return defaultValue;
-        if (!int.TryParse(raw, out var value))
-        {
-            errors.Add($"{flag} must be an integer, got '{raw}'");
-            return defaultValue;
-        }
-        if (value <= 0)
-        {
-            errors.Add($"{flag} must be a positive integer");
-            return defaultValue;
-        }
-        return value;
-    }
 }
 
 /// <summary>How the coding agent should be run: which agent (<see cref="AgentKind"/>), the task
@@ -178,42 +43,22 @@ internal record JobConfig
 /// identifier forwarded verbatim to the agent CLI (e.g. <c>openai/gpt-4o</c> for opencode) — rix
 /// does not interpret or validate it, since which providers/models an agent CLI accepts is entirely
 /// that CLI's concern. Groups the inputs the <c>--agent</c>, <c>--prompt</c>, <c>--max-tokens</c>,
-/// and <c>--model</c> flags configure.</summary>
-internal sealed record AgentConfig(AgentKind Kind, string Prompt, MaxTokens MaxTokens, string? Model = null);
-
-/// <summary>Where the run's user-home context comes from: a <paramref name="Repo"/> to fetch and the
-/// repo-relative <paramref name="ContextPath"/> directory inside it whose contents are copied into
-/// the runner's home before the agent starts. Groups the inputs the <c>--factory-repo</c> and
-/// <c>--factory-context-path</c> flags configure.</summary>
-internal sealed record FactoryContextConfig(RepoIdentifier Repo, RepoRelativePath ContextPath);
-
-/// <summary>The raw, unvalidated CLI/environment inputs to <see cref="JobConfig.Create"/>: required
-/// values first, then the optional ones (which default to <c>null</c> so callers set only what they
-/// care about). <see cref="JobConfig.Create"/> is the boundary that turns these primitives into the
-/// always-valid, strongly-typed <see cref="JobConfig"/>.</summary>
-internal record JobInputs
+/// and <c>--model</c> flags configure.
+/// <paramref name="Credential"/> (already resolved and validated by
+/// <see cref="AgentCredential.Resolve"/>) is <see cref="JobRunner"/>'s instruction for which single
+/// env var to add to the agent invocation's <see cref="AgentInvocation.EnvironmentOverrides"/> —
+/// null when no key was supplied, and carrying both halves whenever it is not.</summary>
+internal sealed record AgentConfig
 (
-    string Repo,
+    AgentKind Kind,
     string Prompt,
-    string ReadToken,
-    string? MaxTokens = null,
-    string? TimeoutMinutes = null,
-    string? WorkDir = null,
-    string? OutputDir = null,
-    string? Agent = null,
+    MaxTokens MaxTokens,
     string? Model = null,
-    string? AllowedPushBranches = null,
-    string? FactoryRepo = null,
-    string? FactoryContextPath = null
+    AgentCredential? Credential = null
 );
 
-/// <summary>The result of <see cref="JobConfig.Create"/>: a validated config or the list of
-/// reasons it was rejected. Pattern-matched by callers; never cast.</summary>
-internal abstract record JobConfigResult
-{
-    private protected JobConfigResult() { }
-}
-
-internal sealed record JobConfigValid(JobConfig Config) : JobConfigResult;
-
-internal sealed record JobConfigInvalid(IReadOnlyList<string> Errors) : JobConfigResult;
+/// <summary>Where the run's user-home context comes from: a <paramref name="Repo"/> to fetch and
+/// the repo-relative <paramref name="ContextPath"/> directory inside it whose contents are copied
+/// into the runner's home before the agent starts. Groups the inputs the <c>--factory-repo</c> and
+/// <c>--factory-context-path</c> flags configure.</summary>
+internal sealed record FactoryContextConfig(RepoIdentifier Repo, RepoRelativePath ContextPath);

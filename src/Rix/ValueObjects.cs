@@ -11,57 +11,134 @@ internal record GitReadToken(string Value);
 /// <summary>A write-capable GitHub access token (push, open PRs). Being a <see cref="GitReadToken"/>,
 /// it also satisfies read-only consumers without a separate credential.</summary>
 internal sealed record GitToken(string Value) : GitReadToken(Value);
-internal readonly record struct MaxTokens(int Value);
-internal readonly record struct TimeoutMinutes(int Value);
+/// <summary>The agent's token budget for a single run.
+/// <para>A record class rather than a <c>readonly record struct</c> because the constructor is the
+/// whole point of the type: it is where "a budget is a positive number" is stated, and a struct
+/// would undo that by handing out <c>default</c> — a zero-token budget the constructor never saw
+/// and had no chance to reject — to anyone who asks, including an uninitialised array element or
+/// field. A class has no such back door, so a value of this type existing really does mean its
+/// rule held, which is what <see cref="InvalidInputException"/> claims of every type here.</para></summary>
+internal sealed record MaxTokens
+{
+    internal int Value { get; }
 
-/// <summary>A validated GitHub <c>owner/name</c> identifier. There is no public constructor: an
-/// instance can only be obtained through <see cref="Parse"/>, so any <c>RepoIdentifier</c> that
-/// exists is guaranteed well-formed. Raw, not-yet-validated input is carried as a plain
-/// <c>string</c> until <see cref="Rix.Job.JobConfig.Create"/> parses it.</summary>
+    internal MaxTokens(int value)
+    {
+        if (value <= 0)
+            throw new InvalidInputException($"must be a positive integer, got '{value}'");
+        Value = value;
+    }
+}
+
+/// <summary>How long a single agent run may take before it is killed. A class for the reason given
+/// on <see cref="MaxTokens"/>; zero or negative would mean a run that is over before it starts.</summary>
+internal sealed record TimeoutMinutes
+{
+    internal int Value { get; }
+
+    internal TimeoutMinutes(int value)
+    {
+        if (value <= 0)
+            throw new InvalidInputException($"must be a positive integer, got '{value}'");
+        Value = value;
+    }
+}
+
+/// <summary>How many rix-authored commits may sit at the tip of a branch before
+/// <c>rix ci-failure</c> stops reacting to that branch's failures — the bound on rix answering its
+/// own output forever. At least one, since zero would refuse every branch rix has ever touched,
+/// and at most <see cref="MaxValue"/>: the streak is read in a single request, so a cap beyond one
+/// page could not be told apart from no cap at all. A class for the reason given on
+/// <see cref="MaxTokens"/>, which this type needs most of all: as a struct its own <c>default</c>
+/// was a zero cap - the one value the constructor below explicitly rejects - so the guarantee it
+/// appeared to make did not hold.</summary>
+internal sealed record MaxRixCommits
+{
+    /// <summary>GitHub's largest <c>per_page</c> for the commits endpoint.</summary>
+    internal const int MaxValue = 100;
+
+    internal int Value { get; }
+
+    internal MaxRixCommits(int value)
+    {
+        if (value < 1 || value > MaxValue)
+            throw new InvalidInputException($"must be between 1 and {MaxValue}, got '{value}'");
+        Value = value;
+    }
+}
+
+/// <summary>The CI system's identifier for a single run. A distinct type rather than a bare
+/// <c>long</c> so it can't be transposed with the other numbers threaded through the same calls (a
+/// PR number, a job count). A class for the reason given on <see cref="MaxTokens"/>; run ids are
+/// issued from one upwards, so zero identifies no run.</summary>
+internal sealed record RunId
+{
+    internal long Value { get; }
+
+    internal RunId(long value)
+    {
+        if (value <= 0)
+            throw new InvalidInputException($"must be a positive integer, got '{value}'");
+        Value = value;
+    }
+}
+
+/// <summary>A validated <c>owner/name</c> repository identifier. The constructor is the single
+/// source of the format rule: it throws <see cref="InvalidInputException"/> for anything else, so
+/// any <c>RepoIdentifier</c> that exists is guaranteed well-formed. Equality is the other rule it
+/// owns, and the reason to compare two of these rather than two strings.</summary>
 internal sealed record RepoIdentifier
 {
     internal string Value { get; }
 
-    private RepoIdentifier(string value) => Value = value;
+    /// <summary>The <c>owner</c> segment, needed to scope a pull-request lookup to same-repo
+    /// branches: GitHub's <c>/pulls?head=</c> filter matches <c>owner:branch</c>, not branch name
+    /// alone. Split off once here, where the separator has already been located, rather than
+    /// re-scanning <see cref="Value"/> on every read.</summary>
+    internal string Owner { get; }
 
-    /// <summary>The single source of truth for the owner/name format rule. Returns a
-    /// <see cref="ParseError{T}"/> for malformed input instead of constructing an invalid instance,
-    /// so callers can aggregate it with other validation errors.</summary>
-    internal static ParseResult<RepoIdentifier> Parse(string value)
+    internal RepoIdentifier(string value)
     {
         var slash = value.IndexOf('/');
         if (slash <= 0 || slash == value.Length - 1 || value.IndexOf('/', slash + 1) >= 0)
-            return new ParseError<RepoIdentifier>($"'{value}' is not a valid repo identifier; expected owner/name format.");
-        return new ParseSuccess<RepoIdentifier>(new RepoIdentifier(value));
+            throw new InvalidInputException($"'{value}' is not a valid repo identifier; expected owner/name format.");
+        Value = value;
+        Owner = value[..slash];
     }
+
+    /// <summary>Case-insensitive, because repository hosts treat owner and repo names that way: the
+    /// same repo can be named in either casing and still be the same repo, and turning rix off for a
+    /// whole repo over a capital letter would be the worse failure. Stated here rather than at the
+    /// comparisons, so nowhere has to remember it.</summary>
+    public bool Equals(RepoIdentifier? other)
+    => other is not null && Value.Equals(other.Value, StringComparison.OrdinalIgnoreCase);
+
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
 
     public override string ToString() => Value;
 }
 
-/// <summary>A repo-relative directory path: forward-slash separated, never rooted, never containing a
-/// <c>..</c> segment. There is no public constructor — an instance can only be obtained through
-/// <see cref="Parse"/>, so any <c>RepoRelativePath</c> that exists is safe to <see cref="System.IO.Path.Combine(string, string)"/>
-/// onto a trusted base directory and to hand to <c>git sparse-checkout set</c>. Raw input is carried
-/// as a plain <c>string</c> until a command's <c>Create</c> parses it.</summary>
+/// <summary>A repo-relative directory path: forward-slash separated, never rooted, never
+/// containing a <c>..</c> segment — the constructor throws <see cref="InvalidInputException"/>
+/// otherwise. Any <c>RepoRelativePath</c> that exists is therefore safe to
+/// <see cref="System.IO.Path.Combine(string, string)"/> onto a trusted base directory and to hand
+/// to <c>git sparse-checkout set</c>.</summary>
 internal sealed record RepoRelativePath
 {
     internal string Value { get; }
 
-    private RepoRelativePath(string value) => Value = value;
-
     /// <summary>The single source of truth for the format rule. Normalises separators to <c>/</c>,
     /// strips a leading <c>./</c>, collapses repeated slashes and trims leading/trailing ones, then
-    /// rejects anything rooted or containing a <c>..</c> segment (path traversal) with a
-    /// <see cref="ParseError{T}"/> callers can aggregate instead of catching an exception.</summary>
-    internal static ParseResult<RepoRelativePath> Parse(string path)
+    /// rejects anything rooted or containing a <c>..</c> segment (path traversal).</summary>
+    internal RepoRelativePath(string path)
     {
         var trimmed = (path ?? string.Empty).Trim();
         if (trimmed.Length == 0)
-            return new ParseError<RepoRelativePath>("path must not be empty");
+            throw new InvalidInputException("must not be empty");
 
         var normalised = trimmed.Replace('\\', '/');
         if (Path.IsPathRooted(normalised))
-            return new ParseError<RepoRelativePath>($"path must be repo-relative, not rooted: {path}");
+            throw new InvalidInputException($"must be repo-relative, not rooted: '{path}'");
 
         var segments = normalised
             .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -69,36 +146,30 @@ internal sealed record RepoRelativePath
             .ToArray();
 
         if (segments.Length == 0)
-            return new ParseError<RepoRelativePath>($"'{path}' does not name a directory inside the repo");
+            throw new InvalidInputException($"does not name a directory inside the repo: '{path}'");
         if (Array.IndexOf(segments, "..") >= 0)
-            return new ParseError<RepoRelativePath>($"path must not contain a '..' segment: {path}");
+            throw new InvalidInputException($"must not contain a '..' segment: '{path}'");
 
-        return new ParseSuccess<RepoRelativePath>(new RepoRelativePath(string.Join('/', segments)));
+        Value = string.Join('/', segments);
     }
 
     public override string ToString() => Value;
 }
 
-/// <summary>A directory path that is guaranteed to exist as of <see cref="Parse"/>-time and is
-/// stored as an absolute path. There is no public constructor: an instance can only be obtained
-/// through <see cref="Parse"/>, so any <c>DirectoryPath</c> that exists references a directory that
-/// existed when it was validated. Normalising to absolute at the boundary means paths derived from
-/// it (e.g. via <see cref="System.IO.Path.Combine(string, string)"/>) stay rooted, so a subprocess
-/// run from a different working directory resolves them where the caller intended.</summary>
+/// <summary>A directory path that existed when the instance was constructed, stored as an
+/// absolute path — the constructor throws <see cref="InvalidInputException"/> otherwise.
+/// Normalising to absolute at the boundary means paths derived from it (e.g. via
+/// <see cref="System.IO.Path.Combine(string, string)"/>) stay rooted, so a subprocess run from a
+/// different working directory resolves them where the caller intended.</summary>
 internal sealed record DirectoryPath
 {
     internal string Value { get; }
 
-    private DirectoryPath(string value) => Value = value;
-
-    /// <summary>Returns a <see cref="ParseError{T}"/> when the path does not point at an existing
-    /// directory, so callers can aggregate it with other validation errors. On success the path is
-    /// normalised to absolute via <see cref="System.IO.Path.GetFullPath(string)"/>.</summary>
-    internal static ParseResult<DirectoryPath> Parse(string path)
+    internal DirectoryPath(string path)
     {
-        if (Directory.Exists(path))
-            return new ParseSuccess<DirectoryPath>(new DirectoryPath(Path.GetFullPath(path)));
-        return new ParseError<DirectoryPath>($"directory does not exist: {path}");
+        if (!Directory.Exists(path))
+            throw new InvalidInputException($"directory does not exist: {path}");
+        Value = Path.GetFullPath(path);
     }
 
     public override string ToString() => Value;

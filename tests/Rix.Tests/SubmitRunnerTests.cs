@@ -1,4 +1,5 @@
 using Rix.Process;
+using Rix.Repository;
 using Rix.Submit;
 
 namespace Rix.Tests;
@@ -28,7 +29,7 @@ public class SubmitRunnerTests
     [TestMethod]
     public async Task RunAsync_Fails_WhenResultJsonMissing()
     {
-        var result = await Run(new StubSubmitHost());
+        var result = await Run(new StubSubmitRepoHost());
 
         AssertFailure(result, "result.json not found");
     }
@@ -38,7 +39,7 @@ public class SubmitRunnerTests
     {
         WriteResultJson("""{"status":"failure","error":"boom","costUsd":0,"durationSeconds":1}""");
 
-        var result = await Run(new StubSubmitHost());
+        var result = await Run(new StubSubmitRepoHost());
 
         AssertFailure(result, "does not describe a successful job");
     }
@@ -47,7 +48,7 @@ public class SubmitRunnerTests
     public async Task RunAsync_Succeeds_WithNoPullRequests()
     {
         WriteResultJson("""{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}""");
-        var host = new StubSubmitHost();
+        var host = new StubSubmitRepoHost();
 
         var result = await Run(host);
 
@@ -61,7 +62,7 @@ public class SubmitRunnerTests
     public async Task RunAsync_PushesCommitsToExistingBranch_WhenOnlyPushQueued()
     {
         WriteOnePendingPush();
-        var host = new StubSubmitHost();
+        var host = new StubSubmitRepoHost();
         var commands = new List<string>();
 
         var result = await Run(host, GitRunner(commands));
@@ -79,7 +80,7 @@ public class SubmitRunnerTests
         // The branch already existing on the remote is the whole point of a push, so the submit
         // guard that fails a PR for that reason must not apply here.
         WriteOnePendingPush();
-        var host = new StubSubmitHost(branchExists: _ => Task.FromResult(true));
+        var host = new StubSubmitRepoHost(branchExists: _ => Task.FromResult(true));
 
         var result = await Run(host);
 
@@ -92,7 +93,7 @@ public class SubmitRunnerTests
     {
         WriteResultJson(OnePrAndOnePushJson());
         File.WriteAllText(Path.Combine(_inputDir, "rix_2Fmy-fix.bundle"), "fake-bundle");
-        var host = new StubSubmitHost();
+        var host = new StubSubmitRepoHost();
 
         var result = await Run(host);
 
@@ -108,7 +109,7 @@ public class SubmitRunnerTests
     {
         WriteResultJson(OnePendingPushJson(bundleFile: "missing.bundle"));
 
-        var result = await Run(new StubSubmitHost());
+        var result = await Run(new StubSubmitRepoHost());
 
         AssertFailure(result, "bundle file not found");
     }
@@ -117,8 +118,8 @@ public class SubmitRunnerTests
     public async Task RunAsync_Fails_WhenPushGitPushFails()
     {
         WriteOnePendingPush();
-        var host = new StubSubmitHost(
-            pushBranch: _ => throw new InvalidOperationException("exited with code 1"));
+        var host = new StubSubmitRepoHost(
+            pushBranch: _ => throw new RepoHostException("git push failed: exited with code 1"));
 
         var result = await Run(host);
 
@@ -129,7 +130,7 @@ public class SubmitRunnerTests
     public async Task RunAsync_PushesAndOpensPr_ForEachPending()
     {
         WriteOnePendingPr();
-        var host = new StubSubmitHost();
+        var host = new StubSubmitRepoHost();
         var commands = new List<string>();
 
         var result = await Run(host, GitRunner(commands));
@@ -149,7 +150,7 @@ public class SubmitRunnerTests
     public async Task RunAsync_Fails_AndDoesNotPushOrOpenPr_WhenBranchAlreadyExists()
     {
         WriteOnePendingPr();
-        var host = new StubSubmitHost(branchExists: _ => Task.FromResult(true));
+        var host = new StubSubmitRepoHost(branchExists: _ => Task.FromResult(true));
         var commands = new List<string>();
 
         var result = await Run(host, GitRunner(commands));
@@ -164,7 +165,7 @@ public class SubmitRunnerTests
     {
         WriteResultJson(OnePendingPrJson(bundleFile: "missing.bundle"));
 
-        var result = await Run(new StubSubmitHost());
+        var result = await Run(new StubSubmitRepoHost());
 
         AssertFailure(result, "bundle file not found");
     }
@@ -173,8 +174,8 @@ public class SubmitRunnerTests
     public async Task RunAsync_Fails_WhenGitPushFails()
     {
         WriteOnePendingPr();
-        var host = new StubSubmitHost(
-            pushBranch: _ => throw new InvalidOperationException("exited with code 1"));
+        var host = new StubSubmitRepoHost(
+            pushBranch: _ => throw new RepoHostException("git push failed: exited with code 1"));
 
         var result = await Run(host);
 
@@ -184,7 +185,7 @@ public class SubmitRunnerTests
 
     // ---- helpers ----
 
-    private Task<ISubmitResult> Run(StubSubmitHost host, RunProcessAsync? runner = null)
+    private Task<ISubmitResult> Run(StubSubmitRepoHost host, RunProcessAsync? runner = null)
     => SubmitRunner.RunAsync
     (
         TestConfig.ValidSubmit(inputDir: _inputDir, workDir: _workDir),

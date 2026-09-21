@@ -50,7 +50,7 @@ internal sealed class GitHubFactoryContextLoader : IFactoryContextLoader
 
         var source = Path.Combine(checkout.Path, contextPath.Value);
         if (!Directory.Exists(source))
-            throw new InvalidOperationException($"factory context path not found in {repo.Value}: {contextPath.Value}");
+            throw new RepoHostException($"factory context path not found in {repo.Value}: {contextPath.Value}");
 
         DirectoryMerge.CopySkippingExisting(source, _homeDirectory);
     }
