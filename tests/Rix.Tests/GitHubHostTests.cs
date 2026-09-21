@@ -327,8 +327,9 @@ public class GitHubHostTests
             Content = new StringContent("not json"),
         });
 
-        await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
             () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "create pull request for rix/fix");
     }
 
     [TestMethod]

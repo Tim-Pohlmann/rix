@@ -238,6 +238,31 @@ public class CiFailureHostTests
         StringAssert.Contains(ex.Message, "get logs for job 3");
     }
 
+    /// <summary>A DTO type names a shape, not the request that asked for it, and the run, jobs and
+    /// PR-lookup endpoints all report a bad body through the same helper — so without the operation
+    /// the message can't say which call failed.</summary>
+    [TestMethod]
+    public async Task GetRunAsync_NamesTheOperation_WhenTheBodyIsEmpty()
+    {
+        var host = BuildHost(_ => Json("null"));
+
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+            () => host.GetRunAsync(new RunId(7), CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "get workflow run 7");
+    }
+
+    [TestMethod]
+    public async Task GetRunAsync_NamesTheOperation_WhenTheBodyIsNotJson()
+    {
+        var host = BuildHost(_ => Json("not json"));
+
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+            () => host.GetRunAsync(new RunId(7), CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "get workflow run 7");
+    }
+
     /// <summary>Cancellation is the caller shutting down, not the host failing, so it has to stay an
     /// <see cref="OperationCanceledException"/> — wrapping it would make a clean shutdown look like a
     /// GitHub outage.</summary>

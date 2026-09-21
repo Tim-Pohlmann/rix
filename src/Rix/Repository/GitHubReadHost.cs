@@ -325,7 +325,10 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     }
 
     /// <summary>Shared by <see cref="GitHubHost.CreatePullRequestAsync"/> for its write-side response
-    /// too, so both read and write paths wrap a malformed/empty JSON body the same way.</summary>
+    /// too, so both read and write paths wrap a malformed/empty JSON body the same way. Every failure
+    /// out of here leads with <paramref name="operation"/> like the rest of the boundary's do: the
+    /// DTO type alone names a shape, not the request that asked for it, and several endpoints parse
+    /// the same shape.</summary>
     internal static async Task<T> ReadJsonAsync<T>
     (
         HttpResponseMessage response, JsonTypeInfo<T> typeInfo, string operation,
@@ -340,12 +343,12 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
                 operation, cancellationToken
             );
             if (value is null)
-                throw new RepositoryHostException($"{typeof(T).Name} response body was empty");
+                throw new RepositoryHostException($"{operation} failed: {typeof(T).Name} response body was empty");
             return value;
         }
         catch (JsonException ex)
         {
-            throw new RepositoryHostException($"could not parse {typeof(T).Name} response", ex);
+            throw new RepositoryHostException($"{operation} failed: could not parse {typeof(T).Name} response", ex);
         }
     }
 
