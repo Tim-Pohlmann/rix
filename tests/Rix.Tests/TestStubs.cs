@@ -51,6 +51,39 @@ internal sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpRespons
     => Task.FromResult(handler(request));
 }
 
+/// <summary>A response body that fails once it is already being read, for the case a bad status
+/// can't stand in for: the request went out, headers came back, and the connection dropped
+/// mid-stream.</summary>
+internal sealed class FailingStream : Stream
+{
+    public override bool CanRead => true;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => false;
+
+    public override long Length => throw new NotSupportedException();
+
+    public override long Position
+    {
+        get => 0;
+        set => throw new NotSupportedException();
+    }
+
+    public override void Flush()
+    {
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    => throw new IOException("connection reset by peer");
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
 /// <summary>The workflow run most ci-failure tests describe: one that ran, on a branch of the repo
 /// itself, with a title and URL. Only <paramref name="conclusion"/>, <paramref name="branch"/> and
 /// <paramref name="headRepo"/> vary between scenarios, so the rest is fixed here rather than
