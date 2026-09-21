@@ -60,12 +60,16 @@ internal sealed partial record AgentCredential(string EnvName, string Key)
     /// with no single default credential, unlike opencode's own free-model provider - the caller
     /// must say which env var to use. Every kind is listed explicitly rather than one of them
     /// serving as the fallback, so a new agent has to state its own default here instead of
-    /// silently inheriting opencode's.</summary>
+    /// silently inheriting opencode's.
+    /// <para>The pi message is phrased to continue the flag name <see cref="Input.Named{T}"/>
+    /// prefixes it with, so the whole line reads "--agent-api-key-env: is required when agent=pi
+    /// and agent-api-key is set" - a sentence about the flag the user has to add, not a statement
+    /// about pi that happens to be filed under a flag.</para></summary>
     private static string DefaultEnvName(AgentKind agent) => agent switch
     {
         AgentKind.Claude => "ANTHROPIC_API_KEY",
         AgentKind.OpenCode => "OPENCODE_API_KEY",
-        AgentKind.Pi => throw new InvalidInputException("pi has no default credential env var, so one must be given whenever an agent api key is set"),
+        AgentKind.Pi => throw new InvalidInputException("is required when agent=pi and agent-api-key is set"),
         _ => throw new NotSupportedException($"No default credential env var for agent: {agent}"),
     };
 
