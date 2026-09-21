@@ -29,8 +29,7 @@ public class CiFailureConfigTests
             MaxTokens: new MaxTokens(4321),
             MaxRixCommits: new MaxRixCommits(3),
             Model: "vendor/the-model",
-            ApiKey: "the-api-key",
-            ApiKeyEnv: "THE_API_KEY"
+            Credential: new AgentCredential("THE_API_KEY", "the-api-key")
         );
 
         var job = config.ToJobConfig("the prompt", new BranchName("rix/the-branch"));
@@ -43,8 +42,7 @@ public class CiFailureConfigTests
         Assert.AreEqual(AgentKind.Pi, job.Agent.Kind);
         Assert.AreEqual(4321, job.Agent.MaxTokens.Value);
         Assert.AreEqual("vendor/the-model", job.Agent.Model);
-        Assert.AreEqual("the-api-key", job.Agent.ApiKey);
-        Assert.AreEqual("THE_API_KEY", job.Agent.ApiKeyEnv);
+        Assert.AreEqual(new AgentCredential("THE_API_KEY", "the-api-key"), job.Agent.Credential);
         Assert.AreEqual("the prompt", job.Agent.Prompt);
         Assert.AreEqual("rix/the-branch", job.AllowedPushBranches.Single().Value);
     }
