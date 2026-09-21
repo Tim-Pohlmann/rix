@@ -43,7 +43,7 @@ internal static class CiFailureCommand
                 var model = JobOptions.ReadModel(parsed);
                 var apiKey = JobOptions.ReadAgentApiKey(parsed);
                 var apiKeyEnv = JobOptions.ReadAgentApiKeyEnv(parsed, agent, apiKey);
-                var runId = parsed.Required(RunIdOption, "RIX_RUN_ID", raw => new RunId(Input.Positive<long>(raw)));
+                var runId = parsed.Required(RunIdOption, "RIX_RUN_ID", raw => new RunId(Input.WholeNumber<long>(raw)));
 
                 var config = new CiFailureConfig
                 (
