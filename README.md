@@ -252,7 +252,8 @@ on:
     types: [rix-ci-failure]
 jobs:
   rix:
-    # Validate before trusting client_payload — see caveat below.
+    # Bounds which repos the factory will act on, but does not say who asked — see the
+    # trust caveat below.
     if: contains(fromJSON(vars.RIX_FACTORY_ALLOWED_REPOS), github.event.client_payload.repo)
     uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v0
     with:
@@ -274,6 +275,31 @@ not just its own. Since the factory's `read-token`/`write-token` span every proj
 serves, an unvalidated payload lets one onboarded repo trigger rix runs (and PR writes) against
 another. Gate the factory job on an explicit allowlist of onboarded repos (as shown above with
 `RIX_FACTORY_ALLOWED_REPOS`) rather than trusting `client_payload.repo` directly.
+
+**Onboarding a repo is mutual trust:** the allowlist bounds *which* repos the factory will act
+on, but nothing in a `repository_dispatch` says *who asked*. All project repos share one
+`RIX_FACTORY_DISPATCH_TOKEN`, so an onboarded repo can name any other onboarded repo in
+`client_payload[repo]` along with a real failing run ID from it, and every check downstream
+passes — the run exists, it failed, and its head repo matches. rix then spends the factory's
+cross-repo write token on that other repo. What an attacker gets is the trigger, not the
+content: rix still answers a genuine CI failure and still opens an ordinary `rix/*` PR. But the
+timing and the target are theirs to pick, and the reachable set is exactly the repos worth
+reaching. Read the allowlist as a blast-radius bound, not as authentication.
+
+Two things that don't close this, despite looking like they should: `github.event.sender`
+names the account or App that called the dispatch API, not the repo it was called from, so with
+one shared token every project looks identical; and a per-project `event_type` is just more
+payload — the same token can send any of them.
+
+So either **run one factory per trust domain**, keeping the onboarded set small enough that its
+members may as well trust each other (usually what an org reaching for a factory wants anyway),
+or, when the set spans trust boundaries, **make each project prove who it is**: have it send an
+HMAC of `repo`/`run_id` under a per-project secret, and have the factory recompute it using the
+secret it holds *for the repo the payload claims to be*. That lookup is what the allowlist is
+missing — claiming to be another repo then requires that repo's secret. The cost is that the
+factory now stores one secret per project, which is most of the per-repo key management
+centralizing was meant to avoid; that trade is the reason to prefer the first option when the
+trust domain allows it.
 
 ### Keeping rix from answering its own failures
 
