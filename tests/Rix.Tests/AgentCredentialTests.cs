@@ -5,42 +5,36 @@ namespace Rix.Tests;
 [TestClass]
 public class AgentCredentialTests
 {
-    private static string Unwrap(ParseResult<string> result) => result switch
-    {
-        ParseSuccess<string> s => s.Value,
-        ParseError<string> e => throw new AssertFailedException($"expected success, got error: {e.Error}"),
-        _ => throw new AssertFailedException("unexpected ParseResult case"),
-    };
-
-    private static string UnwrapError(ParseResult<string> result) => result switch
-    {
-        ParseError<string> e => e.Error,
-        var other => throw new AssertFailedException($"expected error, got: {other}"),
-    };
+    /// <summary>Stands in for any <c>--agent-api-key</c>: the resolver only cares whether a key is
+    /// there, never what it says, so every case that is about the name passes the same one.</summary>
+    private const string ApiKey = "sk-test";
 
     [TestMethod]
     public void ResolveEnvName_DefaultsToAnthropicApiKey_ForClaude()
-    => Assert.AreEqual("ANTHROPIC_API_KEY", Unwrap(AgentCredential.ResolveEnvName(AgentKind.Claude, null)));
+    => Assert.AreEqual("ANTHROPIC_API_KEY", AgentCredential.ResolveEnvName(AgentKind.Claude, ApiKey, null));
 
     [TestMethod]
     public void ResolveEnvName_DefaultsToOpenCodeApiKey_ForOpenCode()
-    => Assert.AreEqual("OPENCODE_API_KEY", Unwrap(AgentCredential.ResolveEnvName(AgentKind.OpenCode, null)));
+    => Assert.AreEqual("OPENCODE_API_KEY", AgentCredential.ResolveEnvName(AgentKind.OpenCode, ApiKey, null));
 
+    /// <summary>Asserts the whole message, not a substring of it. "pi" appears in almost any
+    /// wording this could take, so a Contains check passes just as happily for a message that has
+    /// quietly been rephrased into something the flag prefix no longer reads well with.</summary>
     [TestMethod]
     public void ResolveEnvName_RequiresExplicitEnv_ForPi()
     {
-        var error = UnwrapError(AgentCredential.ResolveEnvName(AgentKind.Pi, null));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => AgentCredential.ResolveEnvName(AgentKind.Pi, ApiKey, null));
 
-        StringAssert.Contains(error, "pi");
+        Assert.AreEqual("is required when agent=pi and agent-api-key is set", ex.Message);
     }
 
     [TestMethod]
     public void ResolveEnvName_TrimsAndUsesExplicitOverride()
-    => Assert.AreEqual("OPENAI_API_KEY", Unwrap(AgentCredential.ResolveEnvName(AgentKind.OpenCode, " OPENAI_API_KEY ")));
+    => Assert.AreEqual("OPENAI_API_KEY", AgentCredential.ResolveEnvName(AgentKind.OpenCode, ApiKey, " OPENAI_API_KEY "));
 
     [TestMethod]
     public void ResolveEnvName_UsesExplicitOverride_ForPi()
-    => Assert.AreEqual("OPENAI_API_KEY", Unwrap(AgentCredential.ResolveEnvName(AgentKind.Pi, "OPENAI_API_KEY")));
+    => Assert.AreEqual("OPENAI_API_KEY", AgentCredential.ResolveEnvName(AgentKind.Pi, ApiKey, "OPENAI_API_KEY"));
 
     [TestMethod]
     [DataRow("AWS_ACCESS_KEY_ID")]
@@ -48,14 +42,14 @@ public class AgentCredentialTests
     [DataRow("SNOWFLAKE_CORTEX_TOKEN")]
     [DataRow("AZURE_CLIENT_ID_KEY_ID")]
     public void ResolveEnvName_AcceptsCredentialShapedNames(string envName)
-    => Assert.AreEqual(envName, Unwrap(AgentCredential.ResolveEnvName(AgentKind.OpenCode, envName)));
+    => Assert.AreEqual(envName, AgentCredential.ResolveEnvName(AgentKind.OpenCode, ApiKey, envName));
 
     [TestMethod]
     public void ResolveEnvName_RejectsNameWithoutCredentialShapedSuffix()
     {
-        var error = UnwrapError(AgentCredential.ResolveEnvName(AgentKind.OpenCode, "MY_SECRET"));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => AgentCredential.ResolveEnvName(AgentKind.OpenCode, ApiKey, "MY_SECRET"));
 
-        StringAssert.Contains(error, "MY_SECRET");
+        StringAssert.Contains(ex.Message, "MY_SECRET");
     }
 
     [TestMethod]
@@ -63,9 +57,22 @@ public class AgentCredentialTests
     [DataRow("AGENT_API_KEY_EXTRA")]
     [DataRow("GITHUB_TOKEN")]
     public void ResolveEnvName_RejectsRixAndGitHubRuntimeVariables(string envName)
-    => Assert.IsInstanceOfType<ParseError<string>>(AgentCredential.ResolveEnvName(AgentKind.OpenCode, envName));
+    => Assert.ThrowsExactly<InvalidInputException>(() => AgentCredential.ResolveEnvName(AgentKind.OpenCode, ApiKey, envName));
 
     [TestMethod]
     public void ResolveEnvName_TreatsBlankOverride_AsOmitted()
-    => Assert.AreEqual("ANTHROPIC_API_KEY", Unwrap(AgentCredential.ResolveEnvName(AgentKind.Claude, "   ")));
+    => Assert.AreEqual("ANTHROPIC_API_KEY", AgentCredential.ResolveEnvName(AgentKind.Claude, ApiKey, "   "));
+
+    /// <summary>pi is the agent with no default env var, so resolving to null here rather than
+    /// throwing shows the missing-key check runs before the default is looked up at all.</summary>
+    [TestMethod]
+    public void ResolveEnvName_ResolvesNoName_WhenThereIsNoKeyToExport()
+    => Assert.IsNull(AgentCredential.ResolveEnvName(AgentKind.Pi, null, null));
+
+    /// <summary>The name that <see cref="ResolveEnvName_RejectsNameWithoutCredentialShapedSuffix"/>
+    /// rejects, accepted in silence once there is no key: without a key the name is never exported,
+    /// so there is nothing to complain about.</summary>
+    [TestMethod]
+    public void ResolveEnvName_SkipsValidatingTheName_WhenThereIsNoKeyToExport()
+    => Assert.IsNull(AgentCredential.ResolveEnvName(AgentKind.OpenCode, null, "MY_SECRET"));
 }

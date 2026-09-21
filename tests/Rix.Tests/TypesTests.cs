@@ -21,7 +21,77 @@ public class TypesTests
     [DataRow("")]
     public void RixBranchName_ThrowsOnInvalidValues(string value)
     {
-        Assert.ThrowsExactly<ArgumentException>(() => new RixBranchName(value));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new RixBranchName(value));
+        StringAssert.Contains(ex.Message, "rix/*");
+    }
+
+    [TestMethod]
+    [DataRow("noslash")]
+    [DataRow("owner/repo/extra")]
+    [DataRow("/repo")]
+    [DataRow("owner/")]
+    public void RepoIdentifier_RejectsInvalidFormat(string repo)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new RepoIdentifier(repo));
+        StringAssert.Contains(ex.Message, "repo identifier");
+    }
+
+    [TestMethod]
+    public void RepoIdentifier_AcceptsOwnerSlashRepo()
+    {
+        var repo = new RepoIdentifier("owner/repo");
+        Assert.AreEqual("owner/repo", repo.Value);
+        Assert.AreEqual("owner", repo.Owner);
+    }
+
+    [TestMethod]
+    public void DirectoryPath_NormalisesRelativeToAbsolute()
+    {
+        var path = new DirectoryPath(".");
+        Assert.IsTrue(Path.IsPathRooted(path.Value), $"expected an absolute path, got: {path.Value}");
+        Assert.AreEqual(Path.GetFullPath("."), path.Value);
+    }
+
+    [TestMethod]
+    public void DirectoryPath_RejectsNonExistent()
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new DirectoryPath("/nonexistent/path/xyz"));
+        Assert.AreEqual("directory does not exist: /nonexistent/path/xyz", ex.Message);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public void MaxTokens_RejectsAnythingButAPositiveBudget(int value)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new MaxTokens(value));
+        Assert.AreEqual($"must be a positive integer, got '{value}'", ex.Message);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public void TimeoutMinutes_RejectsARunThatIsOverBeforeItStarts(int value)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new TimeoutMinutes(value));
+        Assert.AreEqual($"must be a positive integer, got '{value}'", ex.Message);
+    }
+
+    [TestMethod]
+    [DataRow(0L)]
+    [DataRow(-1L)]
+    public void RunId_RejectsIdsNoRunCouldHave(long value)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new RunId(value));
+        Assert.AreEqual($"must be a positive integer, got '{value}'", ex.Message);
+    }
+
+    [TestMethod]
+    public void PositiveQuantities_KeepTheValueTheyWereGiven()
+    {
+        Assert.AreEqual(1, new MaxTokens(1).Value);
+        Assert.AreEqual(90, new TimeoutMinutes(90).Value);
+        Assert.AreEqual(9_000_000_000L, new RunId(9_000_000_000L).Value);
     }
 
     [TestMethod]
@@ -69,7 +139,7 @@ public class TypesTests
     [TestMethod]
     public void RixBranchName_DeserializeInvalidValue_ThrowsJsonException()
     {
-        // ArgumentException from RixBranchName ctor should be wrapped as JsonException
+        // InvalidInputException from RixBranchName ctor should be wrapped as JsonException
         Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<RixBranchName>("\"main\""));
     }
 

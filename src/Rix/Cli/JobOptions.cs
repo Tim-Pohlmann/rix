@@ -1,24 +1,24 @@
+using Rix.Agents;
 using Rix.Job;
 using System.CommandLine;
-// Aliased because rix has its own ParseResult<T> (the value-object parse outcome) in scope here.
-using CliParseResult = System.CommandLine.Parsing.ParseResult;
+using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
-/// <summary>The CLI options every <see cref="JobInputs"/> field is read from, shared by <c>job</c>
-/// and <c>ci-failure</c>, which both run the coding agent and so take the same execution
-/// parameters. <see cref="PromptOption"/> and <see cref="AllowedPushBranchesOption"/> are the
-/// exception: <c>ci-failure</c> derives both from the failure it detects rather than accepting them
-/// as inputs, so <see cref="AddTo"/> and <see cref="ReadInputs"/> leave those two to <c>job</c>.</summary>
+/// <summary>The CLI options shared by <c>job</c> and <c>ci-failure</c>, which both run the coding
+/// agent and so take the same execution parameters, plus one reader per option that turns its
+/// flag-or-environment text into the value the command's config takes — the first missing or
+/// malformed value throws <see cref="InvalidInputException"/> naming the flag, which
+/// <see cref="CliPipeline"/> reports. Each command assembles its own config from these at the
+/// call site, in the order it wants problems reported. <see cref="PromptOption"/> and
+/// <see cref="AllowedPushBranchesOption"/> are the exception: <c>ci-failure</c> derives both from
+/// the failure it detects rather than accepting them as inputs, so <see cref="AddTo"/> leaves
+/// those two to <c>job</c>. <c>--repo</c> and <c>--work-dir</c> live in <see cref="CommonOptions"/>
+/// instead, since <c>submit</c> takes them too without taking anything else here;
+/// <see cref="AddTo"/> still registers them, so a command accepting the agent-running set keeps
+/// getting the whole flag surface from one call.</summary>
 internal static class JobOptions
 {
-    internal static readonly Option<string> RepoOption = new
-    (
-        name: "--repo",
-        description: "Full GitHub repo identifier (owner/repo)"
-    )
-    { IsRequired = false };
-
     internal static readonly Option<string> ReadTokenOption = new
     (
         name: "--read-token",
@@ -44,13 +44,6 @@ internal static class JobOptions
     (
         name: "--timeout",
         description: $"Wall-clock timeout in minutes (default: {JobConfig.DefaultTimeoutMinutes})"
-    )
-    { IsRequired = false };
-
-    internal static readonly Option<string> WorkDirOption = new
-    (
-        name: "--work-dir",
-        description: "Base directory for the temp clone (default: system temp)"
     )
     { IsRequired = false };
 
@@ -102,15 +95,15 @@ internal static class JobOptions
     )
     { IsRequired = false };
 
-    /// <summary>Registers every option <see cref="ReadInputs"/> reads, so the two can't drift: a
-    /// new job option is added here once and both commands accept it.</summary>
+    /// <summary>Registers every shared option, so a new one is added here once and both commands
+    /// accept it — each command's handler then reads it via the matching reader below.</summary>
     internal static void AddTo(Command command)
     {
-        command.AddOption(RepoOption);
+        command.AddOption(CommonOptions.RepoOption);
         command.AddOption(ReadTokenOption);
         command.AddOption(MaxTokensOption);
         command.AddOption(TimeoutOption);
-        command.AddOption(WorkDirOption);
+        command.AddOption(CommonOptions.WorkDirOption);
         command.AddOption(OutputDirOption);
         command.AddOption(AgentOption);
         command.AddOption(ModelOption);
@@ -118,21 +111,50 @@ internal static class JobOptions
         command.AddOption(AgentApiKeyEnvOption);
     }
 
-    /// <summary>Reads the options <see cref="AddTo"/> registered, each falling back to its
-    /// environment variable. Leaves <see cref="JobInputs.Prompt"/> and
-    /// <see cref="JobInputs.AllowedPushBranches"/> unset for the caller to supply — <c>job</c> from
-    /// its own two options, <c>ci-failure</c> from the failure it detects.</summary>
-    internal static JobInputs ReadInputs(CliParseResult parsed) => new
+    internal static GitReadToken ReadReadToken(ParseResult parsed)
+    => parsed.Required(ReadTokenOption, "RIX_READ_TOKEN", value => new GitReadToken(value));
+
+    internal static AgentKind ReadAgent(ParseResult parsed)
+    => parsed.Optional(AgentOption, "RIX_AGENT", AgentKindParser.Parse, JobConfig.DefaultAgent);
+
+    /// <summary>Constructing inside the reader's callback, rather than around it, is what puts the
+    /// constructor's complaint under the flag: <see cref="Input.Named{T}"/> only prefixes what runs
+    /// within it, so <c>new MaxTokens(...)</c> on the outside would answer <c>--max-tokens 0</c>
+    /// with a bare "must be a positive integer, got '0'". Same for the reader below.</summary>
+    internal static MaxTokens ReadMaxTokens(ParseResult parsed)
+    => parsed.Optional
     (
-        Repo:           parsed.Str(RepoOption,      "RIX_REPO"),
-        ReadToken:      parsed.Str(ReadTokenOption, "RIX_READ_TOKEN"),
-        MaxTokens:      parsed.Str(MaxTokensOption, "RIX_MAX_TOKENS"),
-        TimeoutMinutes: parsed.Str(TimeoutOption,   "RIX_TIMEOUT"),
-        WorkDir:        parsed.Str(WorkDirOption,   "RIX_WORK_DIR"),
-        OutputDir:      parsed.Str(OutputDirOption, "RIX_OUTPUT_DIR"),
-        Agent:          parsed.Str(AgentOption,     "RIX_AGENT"),
-        Model:          parsed.Str(ModelOption,     "RIX_MODEL"),
-        AgentApiKey:    parsed.Str(AgentApiKeyOption,    "AGENT_API_KEY"),
-        AgentApiKeyEnv: parsed.Str(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV")
+        MaxTokensOption,
+        "RIX_MAX_TOKENS",
+        raw => new MaxTokens(Input.WholeNumber<int>(raw)),
+        new MaxTokens(JobConfig.DefaultMaxTokens)
     );
+
+    internal static TimeoutMinutes ReadTimeout(ParseResult parsed)
+    => parsed.Optional
+    (
+        TimeoutOption,
+        "RIX_TIMEOUT",
+        raw => new TimeoutMinutes(Input.WholeNumber<int>(raw)),
+        new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes)
+    );
+
+    internal static DirectoryPath ReadOutputDir(ParseResult parsed)
+    => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path));
+
+    internal static string? ReadModel(ParseResult parsed)
+    => parsed.OptionalText(ModelOption, "RIX_MODEL");
+
+    /// <summary>No key is required when <c>--model</c> is left unset - opencode then picks its own
+    /// free model - so this is simply <c>null</c> when nothing was supplied.</summary>
+    internal static string? ReadAgentApiKey(ParseResult parsed)
+    => parsed.OptionalText(AgentApiKeyOption, "AGENT_API_KEY");
+
+    /// <summary>Whether the name is needed at all, and what it defaults to, both depend on values
+    /// read from other flags, so <paramref name="agent"/> and <paramref name="apiKey"/> are passed
+    /// in rather than re-read here. <see cref="AgentCredential.ResolveEnvName"/> owns both
+    /// rules; this only supplies the raw flag text and the flag name any complaint is reported
+    /// under.</summary>
+    internal static string? ReadAgentApiKeyEnv(ParseResult parsed, AgentKind agent, string? apiKey)
+    => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.ResolveEnvName(agent, apiKey, raw));
 }

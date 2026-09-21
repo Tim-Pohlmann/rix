@@ -18,29 +18,48 @@ internal static class JobCommand
             async ctx =>
             {
                 var parsed = ctx.ParseResult;
-                var inputs = JobOptions.ReadInputs(parsed) with
-                {
-                    Prompt = parsed.Str(JobOptions.PromptOption, "RIX_PROMPT"),
-                    AllowedPushBranches = parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"),
-                };
-                var result = JobConfig.Create(inputs);
+                // Read in the order problems should be reported: the first failing read is the
+                // one the user sees.
+                var repo = CommonOptions.ReadRepo(parsed);
+                var prompt = parsed.RequiredText(JobOptions.PromptOption, "RIX_PROMPT");
+                var readToken = JobOptions.ReadReadToken(parsed);
+                var agent = JobOptions.ReadAgent(parsed);
+                var maxTokens = JobOptions.ReadMaxTokens(parsed);
+                var timeout = JobOptions.ReadTimeout(parsed);
+                var workDir = CommonOptions.ReadWorkDir(parsed);
+                var outputDir = JobOptions.ReadOutputDir(parsed);
+                var model = JobOptions.ReadModel(parsed);
+                var apiKey = JobOptions.ReadAgentApiKey(parsed);
+                var apiKeyEnv = JobOptions.ReadAgentApiKeyEnv(parsed, agent, apiKey);
+                var allowedPushBranches = ParseAllowedPushBranches(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
 
-                switch (result)
-                {
-                    case JobConfigValid valid:
-                        ctx.ExitCode = await handler(valid.Config);
-                        break;
-                    case JobConfigInvalid invalid:
-                        foreach (var error in invalid.Errors)
-                            Console.Error.WriteLine($"error: {error}");
-                        ctx.ExitCode = ExitCodes.SetupFailed;
-                        break;
-                    default:
-                        throw new NotSupportedException($"Unexpected config result: {result.GetType()}");
-                }
+                var config = new JobConfig
+                (
+                    Repo: repo,
+                    ReadToken: readToken,
+                    TimeoutMinutes: timeout,
+                    WorkDir: workDir,
+                    OutputDir: outputDir,
+                    Agent: new AgentConfig(agent, prompt, maxTokens, model, apiKey, apiKeyEnv),
+                    AllowedPushBranches: allowedPushBranches
+                );
+                ctx.ExitCode = await handler(config);
             }
         );
 
         return command;
     }
+
+    /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
+    /// branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
+    /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
+    /// must opt in to letting the agent push at all. Unlike the <c>rix/*</c>-restricted branches the
+    /// agent creates via <c>/pr</c>, any branch name is acceptable here, since these already exist on
+    /// the remote before the job ever runs. Duplicates are dropped.</summary>
+    private static List<BranchName> ParseAllowedPushBranches(string raw)
+    => raw
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(entry => new BranchName(entry))
+        .Distinct()
+        .ToList();
 }
