@@ -23,10 +23,30 @@ public class WorkflowRefTests
     [DataRow("'main'")]
     [DataRow("-main")]
     [DataRow("main\nrun: rm -rf /")]
+    // A newline with nothing after it, which the interior-newline row above does not cover: .NET's
+    // $ matches immediately before a final newline, so this rode through validation and into the
+    // uses: line until the pattern was anchored with \z.
+    [DataRow("main\n")]
     public void Constructor_RejectsAnythingThatWouldNotSurviveYaml(string value)
     {
         var error = Assert.ThrowsExactly<InvalidInputException>(() => new WorkflowRef(value).ToString()).Message;
-        StringAssert.Contains(error, "not a valid git ref");
+        StringAssert.Contains(error, "not a valid workflow ref");
+    }
+
+    /// <summary>Shapes that survive YAML intact but that git itself refuses, so pinning to one
+    /// would write a workflow whose <c>uses:</c> line cannot resolve — a failure that surfaces in
+    /// the target repo's Actions tab, a commit and a push away from the mistake.</summary>
+    [TestMethod]
+    [DataRow("release..x")]
+    [DataRow("release/")]
+    [DataRow("release/.hidden")]
+    [DataRow("release//2.x")]
+    [DataRow("v1.lock")]
+    [DataRow("release/2.x.lock")]
+    public void Constructor_RejectsRefsGitWouldReject(string value)
+    {
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new WorkflowRef(value).ToString()).Message;
+        StringAssert.Contains(error, "not a valid workflow ref");
     }
 
     [TestMethod]

@@ -7,12 +7,24 @@ namespace Rix.Initialize;
 /// after the <c>@</c> in their <c>uses:</c> lines — a tag, branch, or commit SHA. Validated because
 /// it is interpolated into a YAML file the caller then commits: anything with whitespace or a quote
 /// in it would produce a workflow GitHub rejects at parse time, and the error would surface in the
-/// target repo's Actions tab rather than here.</summary>
+/// target repo's Actions tab rather than here. Shapes git itself refuses are rejected for the same
+/// reason — they cost a round trip through the target repo to discover — though no check here can
+/// promise the ref resolves, since a well-formed tag that was never cut looks identical.</summary>
 internal sealed record WorkflowRef
 {
     // Deliberately narrower than what git itself accepts: every ref anyone would reasonably pin to
     // (v1, v1.2.3, main, release/2.x, a SHA) fits, and nothing that needs YAML quoting does.
-    private static readonly Regex Pattern = new(@"^[A-Za-z0-9][A-Za-z0-9._/-]*$", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+    // Requiring each slash-separated component to start alphanumeric rules out three of git's own
+    // rejections at once — an empty component, a trailing slash, a leading dot — and the lookaheads
+    // add the two remaining shapes it refuses, '..' anywhere and a component ending '.lock'.
+    // Anchored with \z, not $: $ also matches immediately before a trailing newline, so '--ref
+    // main\n' would otherwise validate and carry the newline into the uses: line.
+    private static readonly Regex Pattern = new
+    (
+        @"^(?!.*\.\.)(?!.*\.lock(/|\z))[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*\z",
+        RegexOptions.Compiled,
+        TimeSpan.FromSeconds(1)
+    );
 
     /// <summary>The ref <c>rix initialize</c> pins to unless the caller says otherwise: the floating
     /// major-version tag of this very binary's release (<c>v0</c> for any 0.x build), which the
@@ -28,7 +40,7 @@ internal sealed record WorkflowRef
     internal WorkflowRef(string value)
     {
         if (!Pattern.IsMatch(value))
-            throw new InvalidInputException($"'{value}' is not a valid git ref; expected a tag, branch, or commit SHA.");
+            throw new InvalidInputException($"'{value}' is not a valid workflow ref; expected a tag, branch, or commit SHA.");
         Value = value;
     }
 
