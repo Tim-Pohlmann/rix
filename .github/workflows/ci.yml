@@ -50,6 +50,19 @@ jobs:
           sudo apt-get install -y bats
           bats tests/scripts
 
+      - name: Check the workflow binary pin matches the version
+        # The release is cut from whatever commit main is at, so that commit's workflows must name
+        # that same release's binary. set-version.sh writes both, so this only fails when the two
+        # are edited apart by hand - which fails quietly at runtime (an older CLI surface that
+        # still parses these actions' arguments) rather than loudly, hence a check here.
+        run: |
+          csproj="v$(grep -oPm1 '(?<=<Version>)[^<]+' src/Rix/Rix.csproj)"
+          pin="$(grep -oPm1 "(?<=inputs\.rix-version \|\| ')[^']+" .github/actions/download-rix/action.yml)"
+          if [[ "$csproj" != "$pin" ]]; then
+            echo "download-rix rix-version default ($pin) does not match src/Rix/Rix.csproj ($csproj)" >&2
+            exit 1
+          fi
+
   build-rix:
     name: Build rix (for agent-plumbing tests)
     runs-on: ubuntu-latest
@@ -192,6 +205,71 @@ jobs:
         # so a failing assertion here comes with the agent's actual raw output instead of just the
         # failed jq/status check.
         run: bats --print-output-on-failure tests/e2e
+
+  download-rix:
+    name: Download rix (release path)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    # The only job that exercises download-rix's actual download. agent-plumbing and rix-job-e2e
+    # both hand the actions a locally built binary via rix-bin - which is exactly what
+    # download-rix's steps are gated against - so its version resolution, checksum verification
+    # and extraction otherwise run nowhere in CI. That gap is why an empty rix-version silently
+    # resolving to "latest" survived: the one action that was broken is the one CI never ran.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Check whether the pinned release is published yet
+        id: pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pin="$(grep -oPm1 "(?<=inputs\.rix-version \|\| ')[^']+" .github/actions/download-rix/action.yml)"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+          # A version-bump PR names a release that Release only cuts after that PR has merged, so
+          # between the two the pin legitimately points at nothing. Skip there rather than fail
+          # every bump PR - the explicit-version step below still covers the download itself.
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$pin" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Pinned release $pin is not published yet - skipped the default-version download."
+          fi
+
+      # No `with:` at all - the path every caller takes, and the one that used to reach for
+      # whatever release was newest instead of this action's own.
+      - name: Download the pinned release (rix-version omitted)
+        if: steps.pin.outputs.published == 'true'
+        uses: ./.github/actions/download-rix
+
+      - name: Assert the pinned binary landed
+        if: steps.pin.outputs.published == 'true'
+        env:
+          PIN: ${{ steps.pin.outputs.pin }}
+        run: |
+          [[ -n "${RIX_BIN:-}" ]] || { echo "download-rix exported no RIX_BIN" >&2; exit 1; }
+          [[ -x "$RIX_BIN" ]] || { echo "RIX_BIN=$RIX_BIN is not executable" >&2; exit 1; }
+          echo "Pinned ($PIN) download OK: $RIX_BIN"
+
+      - name: Clear the first download
+        run: rm -rf rix-bin rix-archive.*
+
+      # Covers the download, checksum and extraction unconditionally, including on the bump PRs
+      # where the step above skips.
+      - name: Download an explicitly requested release
+        uses: ./.github/actions/download-rix
+        with:
+          rix-version: latest
+
+      - name: Assert the explicitly requested binary landed
+        run: |
+          [[ -n "${RIX_BIN:-}" ]] || { echo "download-rix exported no RIX_BIN" >&2; exit 1; }
+          [[ -x "$RIX_BIN" ]] || { echo "RIX_BIN=$RIX_BIN is not executable" >&2; exit 1; }
+          echo "Explicit download OK: $RIX_BIN"
 
   test:
     name: Test (${{ matrix.os }})

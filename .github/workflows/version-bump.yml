@@ -1,17 +1,15 @@
 name: Version Bump
 
+# Run this *before* Release, not after it: the commit this produces carries both the csproj
+# version and the binary pin the reusable workflows download (see set-version.sh), and Release
+# tags that commit. Bumping afterwards instead would leave the default branch permanently naming
+# a version that has no release yet, breaking anyone tracking it.
 on:
   workflow_dispatch:
     inputs:
       version:
         description: 'Version (e.g. v1.2.3). Leave empty to auto-bump current minor version.'
         required: false
-  workflow_call:
-    inputs:
-      version:
-        type: string
-        required: false
-        default: ''
 
 jobs:
   version-bump:
@@ -53,7 +51,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
           bash .github/scripts/set-version.sh "$semver"
-          git add src/Rix/Rix.csproj
+          # -u, not an explicit path list: set-version.sh edits the csproj *and* the download-rix
+          # pin, and a list here would silently fall behind the next file it learns to touch -
+          # leaving the bump PR carrying a version with no matching pin, which CI then rejects.
+          git add -u
           if git diff --cached --quiet; then
             echo "Version already set to $semver, no changes needed."
             exit 0

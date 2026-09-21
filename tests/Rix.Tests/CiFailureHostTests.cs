@@ -42,7 +42,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("""{"conclusion":"failure"}"""));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
     }
 
     [TestMethod]
@@ -61,16 +61,16 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
     }
 
     [TestMethod]
-    public async Task GetFailedJobLogsAsync_ConcatenatesOnlyFailedJobLogs()
+    public async Task GetFailedJobLogsAsync_HeadsEachFailedJobsLog_WithItsName()
     {
         var host = BuildHost(request =>
         {
             if (request.RequestUri!.AbsolutePath.EndsWith("/jobs"))
-                return Json("""{"jobs":[{"id":1,"conclusion":"failure"},{"id":2,"conclusion":"success"},{"id":3,"conclusion":"failure"}]}""");
+                return Json("""{"jobs":[{"id":1,"name":"build","conclusion":"failure"},{"id":2,"name":"lint","conclusion":"success"},{"id":3,"name":"test","conclusion":"failure"}]}""");
             if (request.RequestUri.AbsolutePath.EndsWith("/jobs/1/logs"))
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("log one") };
             if (request.RequestUri.AbsolutePath.EndsWith("/jobs/3/logs"))
@@ -80,7 +80,23 @@ public class CiFailureHostTests
 
         var logs = await host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None);
 
-        Assert.AreEqual("log one\nlog three", logs);
+        // Without the headings the two logs read as one, and nothing says which job either came from.
+        Assert.AreEqual("===== build =====\nlog one\n===== test =====\nlog three", logs);
+    }
+
+    [TestMethod]
+    public async Task GetFailedJobLogsAsync_FallsBackToTheJobId_WhenGitHubSendsNoName()
+    {
+        var host = BuildHost(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/jobs"))
+                return Json("""{"jobs":[{"id":7,"conclusion":"failure"}]}""");
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("log seven") };
+        });
+
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None);
+
+        Assert.AreEqual("===== job 7 =====\nlog seven", logs);
     }
 
     [TestMethod]
@@ -93,20 +109,45 @@ public class CiFailureHostTests
         Assert.AreEqual("", logs);
     }
 
+    /// <summary>The budget covers the excerpt, not each job: two failing jobs get half of it each,
+    /// so what the caller asked to fit into a prompt is what it gets however many jobs failed.</summary>
     [TestMethod]
-    public async Task GetFailedJobLogsAsync_KeepsOnlyTheTailOfEachJobLog()
+    public async Task GetFailedJobLogsAsync_SplitsTheBudgetAcrossFailedJobs()
     {
         var host = BuildHost(request =>
         {
             if (request.RequestUri!.AbsolutePath.EndsWith("/jobs"))
-                return Json("""{"jobs":[{"id":1,"conclusion":"failure"},{"id":2,"conclusion":"failure"}]}""");
+                return Json("""{"jobs":[{"id":1,"name":"one","conclusion":"failure"},{"id":2,"name":"two","conclusion":"failure"}]}""");
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(new string('x', 500) + "END") };
         });
 
-        var logs = await host.GetFailedJobLogsAsync(new RunId(1), tailCharsPerJob: 10, CancellationToken.None);
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), totalTailChars: 20, CancellationToken.None);
 
-        // Each job contributes its last 10 chars only, so nothing scales with the full log size.
-        Assert.AreEqual("xxxxxxxEND\nxxxxxxxEND", logs);
+        Assert.AreEqual("===== one =====\nxxxxxxxEND\n===== two =====\nxxxxxxxEND", logs);
+    }
+
+    /// <summary>Past a handful of jobs each share of the budget is too short to show anything useful,
+    /// and a matrix failing in many configurations is usually failing for one reason — so the rest are
+    /// named as a count instead of being fetched and squeezed in.</summary>
+    [TestMethod]
+    public async Task GetFailedJobLogsAsync_CapsTheJobCount_AndSaysHowManyItLeftOut()
+    {
+        var jobs = string.Join(",", Enumerable.Range(1, 8).Select(id => $$"""{"id":{{id}},"name":"job-{{id}}","conclusion":"failure"}"""));
+        var fetched = new List<string>();
+        var host = BuildHost(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/jobs"))
+                return Json($$"""{"jobs":[{{jobs}}]}""");
+            fetched.Add(request.RequestUri.AbsolutePath);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("log") };
+        });
+
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None);
+
+        StringAssert.Contains(logs, "===== job-5 =====");
+        Assert.IsFalse(logs.Contains("===== job-6 ====="), "jobs past the cap must not appear");
+        StringAssert.EndsWith(logs, "===== 3 further failed job(s) omitted =====");
+        Assert.AreEqual(5, fetched.Count, "logs past the cap must not even be fetched");
     }
 
     /// <summary>The jobs endpoint is paginated, and a matrix build can exceed one page. The job that
@@ -123,13 +164,13 @@ public class CiFailureHostTests
             if (request.RequestUri.Query.Contains("&page=1"))
                 return Json($$"""{"jobs":[{{firstPage}}]}""");
             if (request.RequestUri.Query.Contains("&page=2"))
-                return Json("""{"jobs":[{"id":101,"conclusion":"failure"}]}""");
+                return Json("""{"jobs":[{"id":101,"name":"last","conclusion":"failure"}]}""");
             throw new InvalidOperationException($"unexpected request: {request.RequestUri}");
         });
 
         var logs = await host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None);
 
-        Assert.AreEqual("log from the last page", logs);
+        Assert.AreEqual("===== last =====\nlog from the last page", logs);
     }
 
     /// <summary>A log far larger than one stream read, so the retained tail has to be carried across
@@ -142,12 +183,12 @@ public class CiFailureHostTests
         {
             if (request.RequestUri!.AbsolutePath.EndsWith("/logs"))
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(hugeLog) };
-            return Json("""{"jobs":[{"id":1,"conclusion":"failure"}]}""");
+            return Json("""{"jobs":[{"id":1,"name":"build","conclusion":"failure"}]}""");
         });
 
-        var logs = await host.GetFailedJobLogsAsync(new RunId(1), tailCharsPerJob: 20, CancellationToken.None);
+        var logs = await host.GetFailedJobLogsAsync(new RunId(1), totalTailChars: 20, CancellationToken.None);
 
-        Assert.AreEqual(new string('x', 10) + "END-OF-LOG", logs);
+        Assert.AreEqual("===== build =====\n" + new string('x', 10) + "END-OF-LOG", logs);
     }
 
     [TestMethod]
@@ -155,7 +196,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("{}"));
 
-        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None));
     }
 
     [TestMethod]
@@ -188,5 +229,91 @@ public class CiFailureHostTests
 
         Assert.IsNotNull(capturedUri);
         StringAssert.Contains(Uri.UnescapeDataString(capturedUri!.Query), "head=owner:rix/fix");
+    }
+
+    /// <summary>A host that can't be reached fails before any response exists to inspect, so the
+    /// status check can't be what classifies it. Left unwrapped it would escape the ci-failure
+    /// boundary as <see cref="HttpRequestException"/> and surface as an unhandled 500 rather than a
+    /// reported host failure.</summary>
+    [TestMethod]
+    public async Task GetRunAsync_WrapsTransportFailure_AndNamesTheOperation()
+    {
+        var host = BuildHost(_ => throw new HttpRequestException("no such host is known"));
+
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+            () => host.GetRunAsync(new RunId(7), CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "get workflow run 7");
+        StringAssert.Contains(ex.Message, "no such host is known");
+    }
+
+    [TestMethod]
+    public async Task GetRunAsync_WrapsFailure_WhenTheBodyDropsMidRead()
+    {
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new FailingStream()),
+        });
+
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+            () => host.GetRunAsync(new RunId(7), CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "get workflow run 7");
+    }
+
+    /// <summary>The log body is the one response read as a stream after the headers, so a connection
+    /// dropped mid-log is its own path — the status was already 200 by then.</summary>
+    [TestMethod]
+    public async Task GetFailedJobLogsAsync_WrapsFailure_WhenTheLogStreamDrops()
+    {
+        var host = BuildHost(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/jobs"))
+                return Json("""{"jobs":[{"id":3,"conclusion":"failure"}]}""");
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new FailingStream()) };
+        });
+
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+            () => host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "get logs for job 3");
+    }
+
+    /// <summary>A DTO type names a shape, not the request that asked for it, and the run, jobs and
+    /// PR-lookup endpoints all report a bad body through the same helper — so without the operation
+    /// the message can't say which call failed.</summary>
+    [TestMethod]
+    public async Task GetRunAsync_NamesTheOperation_WhenTheBodyIsEmpty()
+    {
+        var host = BuildHost(_ => Json("null"));
+
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+            () => host.GetRunAsync(new RunId(7), CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "get workflow run 7");
+    }
+
+    [TestMethod]
+    public async Task GetRunAsync_NamesTheOperation_WhenTheBodyIsNotJson()
+    {
+        var host = BuildHost(_ => Json("not json"));
+
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+            () => host.GetRunAsync(new RunId(7), CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "get workflow run 7");
+    }
+
+    /// <summary>Cancellation is the caller shutting down, not the host failing, so it has to stay an
+    /// <see cref="OperationCanceledException"/> — wrapping it would make a clean shutdown look like a
+    /// GitHub outage.</summary>
+    [TestMethod]
+    public async Task GetRunAsync_LetsCancellationThrough_Unwrapped()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var host = BuildHost(_ => throw new OperationCanceledException());
+
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => host.GetRunAsync(new RunId(7), cts.Token));
     }
 }

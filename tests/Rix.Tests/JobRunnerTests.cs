@@ -256,7 +256,7 @@ public class JobRunnerTests
     public async Task RunAsync_ReturnsSetupFailure_WhenGitConfigFails()
     {
         var host = new StubRepositoryHost(
-            configureGit: () => throw new InvalidOperationException("git config failed: exited with code 128"));
+            configureGit: () => throw new RepositoryHostException("git config failed: exited with code 128"));
 
         var result = await JobRunner.RunAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
@@ -449,7 +449,7 @@ public class JobRunnerTests
         };
 
         var hostWithFailingBundle = new StubRepositoryHost(
-            createBundle: _ => throw new InvalidOperationException("git bundle failed: exited with code 128"));
+            createBundle: _ => throw new RepositoryHostException("git bundle failed: exited with code 128"));
 
         var result = await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
             Context(hostWithFailingBundle, runner,
@@ -743,7 +743,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsSetupFailure_WhenCloneFails()
     {
-        var host = new StubRepositoryHost(clone: () => throw new InvalidOperationException("git clone failed: exit code 128"));
+        var host = new StubRepositoryHost(clone: () => throw new RepositoryHostException("git clone failed: exit code 128"));
 
         var result = await JobRunner.RunAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
