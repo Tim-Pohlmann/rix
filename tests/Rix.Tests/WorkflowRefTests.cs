@@ -14,6 +14,10 @@ public class WorkflowRefTests
     [DataRow("main")]
     [DataRow("release/2.x")]
     [DataRow("10f8ca55a5edface0e59d9bc19e60664ad917024")]
+    // Nobody would pin to this, but git's trailing-dot rule is about the refname as a whole, so a
+    // dot at the end of an interior component is legal. Kept as a row to pin down that the
+    // rejection below is the one git makes and not a per-component rule that only looks similar.
+    [DataRow("release./2.x")]
     public void Constructor_AcceptsTagsBranchesAndShas(string value)
     => Assert.AreEqual(value, new WorkflowRef(value).Value);
 
@@ -43,6 +47,8 @@ public class WorkflowRefTests
     [DataRow("release//2.x")]
     [DataRow("v1.lock")]
     [DataRow("release/2.x.lock")]
+    [DataRow("main.")]
+    [DataRow("release/2.x.")]
     public void Constructor_RejectsRefsGitWouldReject(string value)
     {
         var error = Assert.ThrowsExactly<InvalidInputException>(() => new WorkflowRef(value).ToString()).Message;
