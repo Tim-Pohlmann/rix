@@ -195,10 +195,10 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     /// read sequentially rather than concurrently because how many there are isn't known until a
     /// short page ends the walk. A job GitHub reports without a name falls back to its ID, which is
     /// still enough to tell one block of the excerpt from another.</summary>
-    private async Task<List<FailedJob>> ListFailedJobsAsync(RunId runId, CancellationToken cancellationToken)
+    private async Task<List<CiJob>> ListFailedJobsAsync(RunId runId, CancellationToken cancellationToken)
     {
         var operation = $"list jobs for run {runId.Value}";
-        var failedJobs = new List<FailedJob>();
+        var failedJobs = new List<CiJob>();
         var page = 1;
         while (true)
         {
@@ -216,7 +216,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
             (
                 jobs.Jobs
                     .Where(job => job.Conclusion == "failure")
-                    .Select(job => new FailedJob(job.Id, job.Name ?? $"job {job.Id}"))
+                    .Select(job => new CiJob(job.Id, job.Name ?? $"job {job.Id}"))
             );
             if (jobs.Jobs.Count < JobsPageSize)
                 return failedJobs;
@@ -403,6 +403,15 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     }
 }
 
+/// <summary>One job of a CI run, reduced to what building an excerpt needs: the ID to fetch its log
+/// by and a name to head its block with. The domain shape the excerpt is assembled in, as
+/// <see cref="WorkflowRun"/> is for a run — which is why it holds a name GitHub may not have sent,
+/// already resolved, where <see cref="WorkflowJobApiResponse"/> holds the nullable wire field.
+/// Whether a job failed is not part of it: that is the question the caller asks of
+/// <see cref="WorkflowJobApiResponse.Conclusion"/> to decide what to build an excerpt from, and a
+/// type that restated the answer could only ever repeat its caller's filter.</summary>
+internal sealed record CiJob(long Id, string Name);
+
 /// <summary>The JSON body of a GitHub "get a workflow run" REST response.</summary>
 internal sealed record WorkflowRunApiResponse
 (
@@ -424,10 +433,6 @@ internal sealed record WorkflowJobApiResponse
     [property: JsonPropertyName("name")] string? Name,
     [property: JsonPropertyName("conclusion")] string? Conclusion
 );
-
-/// <summary>One job of a run that failed, reduced to what the excerpt needs: the ID to fetch its log
-/// by and the name to head its block with.</summary>
-internal sealed record FailedJob(long Id, string Name);
 
 /// <summary>The one field <c>rix ci-failure</c> reads from a "list pull requests" REST response.</summary>
 internal sealed record PullRequestApiResponse
