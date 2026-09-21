@@ -6,7 +6,14 @@ namespace Rix.Tests;
 public class WorkflowTemplatesTests
 {
     private static readonly string[] ExpectedRelativePaths =
-        [".github/workflows/rix.yml", ".github/workflows/rix-on-ci-failure.yml"];
+        [".github/workflows/rix-on-ci-failure.yml", ".github/workflows/rix.yml"];
+
+    /// <summary>Looks a template up by the path it lands on rather than by position, so a template
+    /// added to <c>Cli/Templates/</c> shifts the discovered order without breaking every assertion
+    /// about the two that were already there. Resolved against <see cref="Ref"/>, because what the
+    /// assertions are about is the text a caller is actually handed.</summary>
+    private static string ContentOf(string fileName)
+    => WorkflowTemplates.For(Ref).Single(t => t.RelativePath == $".github/workflows/{fileName}").Content;
 
     private static readonly WorkflowRef Ref = new("v9");
 
@@ -21,7 +28,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_RixCaller_TargetsJobReusableWorkflow_AtTheGivenRef()
     {
-        var (_, content) = WorkflowTemplates.For(Ref)[0];
+        var content = ContentOf("rix.yml");
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/job.yml@v9");
         StringAssert.Contains(content, "workflow_dispatch:");
     }
@@ -29,7 +36,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_CiFailureCaller_TargetsOnCiFailureReusableWorkflow_AtTheGivenRef()
     {
-        var (_, content) = WorkflowTemplates.For(Ref)[1];
+        var content = ContentOf("rix-on-ci-failure.yml");
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v9");
         StringAssert.Contains(content, "workflow_run:");
     }
