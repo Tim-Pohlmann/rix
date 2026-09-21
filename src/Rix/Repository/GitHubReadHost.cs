@@ -135,10 +135,15 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
 
     public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     {
-        using var response = await Http.GetAsync(Url($"branches/{Uri.EscapeDataString(branch.Value)}"), cancellationToken);
+        var operation = $"check branch {branch.Value} on remote";
+        using var response = await TransportAsync
+        (
+            () => Http.GetAsync(Url($"branches/{Uri.EscapeDataString(branch.Value)}"), cancellationToken),
+            operation, cancellationToken
+        );
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return false;
-        EnsureSuccess(response, $"check branch {branch.Value} on remote");
+        EnsureSuccess(response, operation);
         return true;
     }
 
@@ -190,10 +195,10 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     /// read sequentially rather than concurrently because how many there are isn't known until a
     /// short page ends the walk. A job GitHub reports without a name falls back to its ID, which is
     /// still enough to tell one block of the excerpt from another.</summary>
-    private async Task<List<FailedJob>> ListFailedJobsAsync(RunId runId, CancellationToken cancellationToken)
+    private async Task<List<CiJob>> ListFailedJobsAsync(RunId runId, CancellationToken cancellationToken)
     {
         var operation = $"list jobs for run {runId.Value}";
-        var failedJobs = new List<FailedJob>();
+        var failedJobs = new List<CiJob>();
         var page = 1;
         while (true)
         {
@@ -211,7 +216,7 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
             (
                 jobs.Jobs
                     .Where(job => job.Conclusion == "failure")
-                    .Select(job => new FailedJob(job.Id, job.Name ?? $"job {job.Id}"))
+                    .Select(job => new CiJob(job.Id, job.Name ?? $"job {job.Id}"))
             );
             if (jobs.Jobs.Count < JobsPageSize)
                 return failedJobs;
@@ -229,10 +234,32 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     /// first and make the cap purely cosmetic.</summary>
     private async Task<string> GetJobLogAsync(long jobId, int tailChars, CancellationToken cancellationToken)
     {
-        using var logResponse = await Http.GetAsync(Url($"actions/jobs/{jobId}/logs"), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        EnsureSuccess(logResponse, $"get logs for job {jobId}");
+        var operation = $"get logs for job {jobId}";
+        using var logResponse = await TransportAsync
+        (
+            () => Http.GetAsync
+            (
+                Url($"actions/jobs/{jobId}/logs"), HttpCompletionOption.ResponseHeadersRead, cancellationToken
+            ),
+            operation, cancellationToken
+        );
+        EnsureSuccess(logResponse, operation);
+        return await TransportAsync
+        (
+            () => ReadLogTailAsync(logResponse, tailChars, cancellationToken), operation, cancellationToken
+        );
+    }
 
-        using var reader = new StreamReader(await logResponse.Content.ReadAsStreamAsync(cancellationToken));
+    /// <summary>Streams the response body, keeping only its last <paramref name="tailChars"/>
+    /// characters. Split out of <see cref="GetJobLogAsync"/> so the entire read — opening the stream
+    /// and every chunk after it — sits inside one <see cref="TransportAsync"/> call, rather than
+    /// paying for a wrapper per chunk.</summary>
+    private static async Task<string> ReadLogTailAsync
+    (
+        HttpResponseMessage response, int tailChars, CancellationToken cancellationToken
+    )
+    {
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cancellationToken));
         var tail = new StringBuilder();
         var buffer = new char[LogChunkChars];
         while (true)
@@ -289,14 +316,50 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     /// <see cref="RepositoryHostException"/> a failed status produces.</summary>
     private async Task<T> GetJsonAsync<T>(string path, JsonTypeInfo<T> typeInfo, string operation, CancellationToken cancellationToken)
     {
-        using var response = await Http.GetAsync(Url(path), cancellationToken);
+        using var response = await TransportAsync
+        (
+            () => Http.GetAsync(Url(path), cancellationToken), operation, cancellationToken
+        );
         EnsureSuccess(response, operation);
-        return await ReadJsonAsync(response, typeInfo, cancellationToken);
+        return await ReadJsonAsync(response, typeInfo, operation, cancellationToken);
+    }
+
+    /// <summary>Runs one HTTP exchange, turning a transport failure — DNS, a refused connection, TLS,
+    /// a socket dropped part-way through a body — into a <see cref="RepositoryHostException"/> naming
+    /// the operation. <see cref="EnsureSuccess"/> can only classify a response that already arrived,
+    /// so an unreachable host fails before it ever runs; routing every send and every body read
+    /// through here is what stops those cases escaping as a raw
+    /// <see cref="HttpRequestException"/>. Cancellation through
+    /// <paramref name="cancellationToken"/> is left alone — that is the caller shutting down, not the
+    /// host failing — while <see cref="HttpClient"/>'s own timeout, which raises the same exception
+    /// type without the token being cancelled, is a host failure like any other.</summary>
+    internal static async Task<T> TransportAsync<T>
+    (
+        Func<Task<T>> exchange, string operation, CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            return await exchange();
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new RepositoryHostException($"{operation} timed out: {ex.Message}", ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new RepositoryHostException($"{operation} failed: {ex.Message}", ex);
+        }
+        catch (IOException ex)
+        {
+            throw new RepositoryHostException($"{operation} failed: {ex.Message}", ex);
+        }
     }
 
     /// <summary>Turns any non-2xx response into a <see cref="RepositoryHostException"/> naming the
     /// operation, so every REST call reports an error status the same way instead of leaking
-    /// <see cref="HttpRequestException"/> from a bare <c>EnsureSuccessStatusCode</c>. Shared with
+    /// <see cref="HttpRequestException"/> from a bare <c>EnsureSuccessStatusCode</c>. Only covers the
+    /// status line; reaching the host at all is <see cref="TransportAsync"/>'s job. Shared with
     /// <see cref="GitHubHost"/> for its write-side calls.</summary>
     internal static void EnsureSuccess(HttpResponseMessage response, string operation)
     {
@@ -311,19 +374,30 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     }
 
     /// <summary>Shared by <see cref="GitHubHost.CreatePullRequestAsync"/> for its write-side response
-    /// too, so both read and write paths wrap a malformed/empty JSON body the same way.</summary>
-    internal static async Task<T> ReadJsonAsync<T>(HttpResponseMessage response, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken)
+    /// too, so both read and write paths wrap a malformed/empty JSON body the same way. Every failure
+    /// out of here leads with <paramref name="operation"/> like the rest of the boundary's do: the
+    /// DTO type alone names a shape, not the request that asked for it, and several endpoints parse
+    /// the same shape.</summary>
+    internal static async Task<T> ReadJsonAsync<T>
+    (
+        HttpResponseMessage response, JsonTypeInfo<T> typeInfo, string operation,
+        CancellationToken cancellationToken
+    )
     {
         try
         {
-            var value = await response.Content.ReadFromJsonAsync(typeInfo, cancellationToken);
+            var value = await TransportAsync
+            (
+                () => response.Content.ReadFromJsonAsync(typeInfo, cancellationToken),
+                operation, cancellationToken
+            );
             if (value is null)
-                throw new RepositoryHostException($"{typeof(T).Name} response body was empty");
+                throw new RepositoryHostException($"{operation} failed: {typeof(T).Name} response body was empty");
             return value;
         }
         catch (JsonException ex)
         {
-            throw new RepositoryHostException($"could not parse {typeof(T).Name} response", ex);
+            throw new RepositoryHostException($"{operation} failed: could not parse {typeof(T).Name} response", ex);
         }
     }
 
@@ -349,6 +423,15 @@ internal sealed class GitHubReadHost : IRepositoryReadHost, IGitHubCiFailureHost
     }
 }
 
+/// <summary>One job of a CI run, reduced to what building an excerpt needs: the ID to fetch its log
+/// by and a name to head its block with. The domain shape the excerpt is assembled in, as
+/// <see cref="WorkflowRun"/> is for a run — which is why it holds a name GitHub may not have sent,
+/// already resolved, where <see cref="WorkflowJobApiResponse"/> holds the nullable wire field.
+/// Whether a job failed is not part of it: that is the question the caller asks of
+/// <see cref="WorkflowJobApiResponse.Conclusion"/> to decide what to build an excerpt from, and a
+/// type that restated the answer could only ever repeat its caller's filter.</summary>
+internal sealed record CiJob(long Id, string Name);
+
 /// <summary>The JSON body of a GitHub "get a workflow run" REST response.</summary>
 internal sealed record WorkflowRunApiResponse
 (
@@ -370,10 +453,6 @@ internal sealed record WorkflowJobApiResponse
     [property: JsonPropertyName("name")] string? Name,
     [property: JsonPropertyName("conclusion")] string? Conclusion
 );
-
-/// <summary>One job of a run that failed, reduced to what the excerpt needs: the ID to fetch its log
-/// by and the name to head its block with.</summary>
-internal sealed record FailedJob(long Id, string Name);
 
 /// <summary>The JSON body of one entry of a GitHub "list commits" REST response, kept down to the
 /// nesting the loop guard actually reads: <c>commit.author.email</c>.</summary>
