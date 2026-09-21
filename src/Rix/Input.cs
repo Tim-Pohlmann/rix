@@ -68,12 +68,15 @@ internal static class Input
         }
     }
 
-    /// <summary>Parses a numeric flag such as <c>--max-tokens</c> or <c>--run-id</c>, which only
-    /// ever make sense as a positive whole number.</summary>
-    internal static T Positive<T>(string raw) where T : INumber<T>
+    /// <summary>Turns a numeric flag's text into a number, and stops there: whether that number is
+    /// one the caller may use is the receiving value object's rule, stated once in its constructor
+    /// rather than repeated by every flag that feeds it. Keeping the range here would put a second
+    /// copy of each type's rule at the boundary, and make this the one place in the codebase where
+    /// a value object's invariant is enforced by its caller.</summary>
+    internal static T WholeNumber<T>(string raw) where T : INumber<T>
     {
-        if (!T.TryParse(raw, null, out var parsed) || parsed <= T.Zero)
-            throw new InvalidInputException($"must be a positive integer, got '{raw}'");
+        if (!T.TryParse(raw, null, out var parsed))
+            throw new InvalidInputException($"must be a whole number, got '{raw}'");
         return parsed;
     }
 }

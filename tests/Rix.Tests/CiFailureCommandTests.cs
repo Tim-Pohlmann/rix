@@ -148,7 +148,7 @@ public class CiFailureCommandTests
     [DataRow("noslash", "r", "1", "error: --repo: 'noslash' is not a valid repo identifier")]
     [DataRow("o/r", "", "1", "error: --read-token is required")]
     [DataRow("o/r", "r", "", "error: --run-id is required")]
-    [DataRow("o/r", "r", "abc", "error: --run-id: must be a positive integer, got 'abc'")]
+    [DataRow("o/r", "r", "abc", "error: --run-id: must be a whole number, got 'abc'")]
     [DataRow("o/r", "r", "0", "error: --run-id: must be a positive integer, got '0'")]
     public async Task Command_Returns2_AndReportsTheFlag_WhenInputInvalid(string repo, string readToken, string runId, string expectedError)
     {
@@ -181,7 +181,7 @@ public class CiFailureCommandTests
              "--output-dir", Path.GetTempPath(), "--max-tokens", "abc"]);
 
         Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
-        StringAssert.Contains(stderr.Text, "error: --max-tokens: must be a positive integer, got 'abc'");
+        StringAssert.Contains(stderr.Text, "error: --max-tokens: must be a whole number, got 'abc'");
     }
 
     [TestMethod]
