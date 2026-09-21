@@ -173,9 +173,10 @@ public class JobOptionsTests
     [TestMethod]
     public void ReadAgentApiKeyEnv_RejectsPiAgent_WithoutOverride()
     {
+        // The composed line, because that is what the user is shown and the half either side of
+        // the colon is chosen to read as one sentence with the other.
         var error = ErrorOf(() => JobOptions.ReadAgentApiKeyEnv(Parse(), AgentKind.Pi, "secret"));
-        StringAssert.StartsWith(error, "--agent-api-key-env: ");
-        StringAssert.Contains(error, "pi");
+        Assert.AreEqual("--agent-api-key-env: is required when agent=pi and agent-api-key is set", error);
     }
 
     [TestMethod]
