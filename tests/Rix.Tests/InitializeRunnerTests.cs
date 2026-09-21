@@ -79,7 +79,10 @@ public class InitializeRunnerTests
             InitializeFailure f => f,
             _ => throw new AssertFailedException($"expected failure, got {result.GetType().Name}"),
         };
-        StringAssert.Contains(failure.Message, "rix.yml");
+        // Names whichever template the runner reached first rather than a literal, so the
+        // assertion keeps testing "the message says which file failed" if the discovered
+        // order of WorkflowTemplates.All changes.
+        StringAssert.Contains(failure.Message, WorkflowTemplates.All[0].RelativePath);
         StringAssert.Contains(failure.Message, "disk full");
     }
 }

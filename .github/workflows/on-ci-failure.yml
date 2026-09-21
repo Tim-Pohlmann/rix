@@ -143,10 +143,10 @@ jobs:
     name: Create PRs
     needs: run
     if: needs.run.outputs.has-result == 'true'
-    # Fixed, cheap runner: unlike `run`, this job only calls submit-rix-job (a GitHub API/git-push
-    # operation) and needs none of whatever specialized environment inputs.runner provides for
-    # running the agent.
-    runs-on: ubuntu-latest
+    # Same label as `run`: inputs.runner is documented as covering both jobs, and rix-bin below is
+    # a path on the runner's filesystem, so submit can only find the binary that `run` used if it
+    # lands on the same kind of machine.
+    runs-on: ${{ inputs.runner }}
     steps:
       # See the comment on the equivalent step in the `run` job above - same reasoning applies
       # here for submit-rix-job.
@@ -171,3 +171,4 @@ jobs:
           write-token: ${{ secrets.write-token }}
           input-dir: out
           rix-version: ${{ inputs.rix-version }}
+          rix-bin: ${{ inputs.rix-bin }}
