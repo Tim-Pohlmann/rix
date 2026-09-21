@@ -108,7 +108,15 @@ runs:
 
         # One jq call over the already-in-memory $result, rather than a separate subprocess per
         # field - status/conclusion/error are all read from it below.
-        IFS=$'\t' read -r status conclusion error branch rix_commits head_repo < <(jq -r '[.status, (.conclusion // ""), (.error // ""), (.branch // ""), (.rixCommits // ""), (.headRepo // "")] | @tsv' <<<"$result")
+        #
+        # read splits on IFS, but a tab counts as IFS *whitespace*, so a run of tabs collapses into
+        # one separator and an empty field shifts every later field left. An API error - status
+        # with no conclusion - would land its message in $conclusion and leave $error blank,
+        # exactly when the ::error:: annotation below is the only diagnostic there is. Translate
+        # the separators to a non-whitespace one, which read keeps one for one. @tsv has already
+        # escaped any tab inside a field value, so only true separators are converted.
+        IFS=$'\037' read -r status conclusion error branch rix_commits head_repo \
+          < <(jq -r '[.status, (.conclusion // ""), (.error // ""), (.branch // ""), (.rixCommits // ""), (.headRepo // "")] | @tsv' <<<"$result" | tr '\t' '\037')
         # Default to false so every branch below (including an unrecognized status) leaves
         # has-result in a defined state; only the success branch needs to override it.
         echo "has-result=false" >> "$GITHUB_OUTPUT"
@@ -144,6 +152,12 @@ runs:
             # tests/scripts/ci-failure-status.bats fails on - so in practice this means rix
             # printed something that isn't a result at all.
             echo "::error::$(escape_workflow_command "rix ci-failure did not produce a usable result: $result")"
+            # An unrecognized status means this action and the binary disagree about the result
+            # vocabulary - a version skew, since every status rix knows has an arm above. rix may
+            # well have exited 0 (it succeeded on its own terms), so don't inherit that: failing
+            # here is the difference between a visibly broken job and a green one that quietly
+            # submitted nothing.
+            exit_code=1
             ;;
         esac
 
