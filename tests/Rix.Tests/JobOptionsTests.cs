@@ -63,11 +63,14 @@ public class JobOptionsTests
     public void ReadMaxTokens_OverridesDefault()
     => Assert.AreEqual(1000, JobOptions.ReadMaxTokens(Parse("--max-tokens", "1000")).Value);
 
+    /// <summary>Both halves of the check reach the user under the flag, though they are raised in
+    /// different places: "not a number" by the reader's parse, "not a usable one" by the
+    /// <see cref="MaxTokens"/> constructor it hands the number to.</summary>
     [TestMethod]
-    [DataRow("0")]
-    [DataRow("abc")]
-    public void ReadMaxTokens_RejectsNonPositiveInteger(string raw)
-    => Assert.AreEqual($"--max-tokens: must be a positive integer, got '{raw}'", ErrorOf(() => JobOptions.ReadMaxTokens(Parse("--max-tokens", raw))));
+    [DataRow("abc", "must be a whole number, got 'abc'")]
+    [DataRow("0", "must be a positive integer, got '0'")]
+    public void ReadMaxTokens_RejectsNonPositiveInteger(string raw, string expected)
+    => Assert.AreEqual($"--max-tokens: {expected}", ErrorOf(() => JobOptions.ReadMaxTokens(Parse("--max-tokens", raw))));
 
     [TestMethod]
     public void ReadTimeout_AppliesDefault()
@@ -78,10 +81,10 @@ public class JobOptionsTests
     => Assert.AreEqual(5, JobOptions.ReadTimeout(Parse("--timeout", "5")).Value);
 
     [TestMethod]
-    [DataRow("-1")]
-    [DataRow("abc")]
-    public void ReadTimeout_RejectsNonPositiveInteger(string raw)
-    => Assert.AreEqual($"--timeout: must be a positive integer, got '{raw}'", ErrorOf(() => JobOptions.ReadTimeout(Parse("--timeout", raw))));
+    [DataRow("abc", "must be a whole number, got 'abc'")]
+    [DataRow("-1", "must be a positive integer, got '-1'")]
+    public void ReadTimeout_RejectsNonPositiveInteger(string raw, string expected)
+    => Assert.AreEqual($"--timeout: {expected}", ErrorOf(() => JobOptions.ReadTimeout(Parse("--timeout", raw))));
 
     [TestMethod]
     public void ReadWorkDir_DefaultsToTemp_WhenBlank()
@@ -173,9 +176,10 @@ public class JobOptionsTests
     [TestMethod]
     public void ReadAgentApiKeyEnv_RejectsPiAgent_WithoutOverride()
     {
+        // The composed line, because that is what the user is shown and the half either side of
+        // the colon is chosen to read as one sentence with the other.
         var error = ErrorOf(() => JobOptions.ReadAgentApiKeyEnv(Parse(), AgentKind.Pi, "secret"));
-        StringAssert.StartsWith(error, "--agent-api-key-env: ");
-        StringAssert.Contains(error, "pi");
+        Assert.AreEqual("--agent-api-key-env: is required when agent=pi and agent-api-key is set", error);
     }
 
     [TestMethod]
