@@ -1,10 +1,14 @@
 namespace Rix.Repository;
 
-/// <summary>The read-only repository operations <c>rix job</c> needs against a target it only clones
-/// and inspects: clone, check whether a branch exists, and bundle a branch's commits. Carries no
-/// write capability, so the job path can run with a read-only credential. <see cref="IRepositoryHost"/>
-/// extends this with the write operations.</summary>
-internal interface IRepositoryReadHost
+/// <summary>The repository operations <c>rix job</c> needs against a target it only clones and
+/// inspects: clone, check whether a branch exists, and bundle a branch's commits. Carries no write
+/// capability, so the job path can run with a read-only credential. <see cref="ISubmitHost"/>
+/// extends this with the write operations.
+///
+/// Named, like every host here, for the subcommand that needs it rather than for how much of the
+/// repo it may touch — so each subcommand has a config, a context and a host that read as one set,
+/// and "which command is this for" doesn't compete with "read or write" in the same name.</summary>
+internal interface IJobHost
 {
     Task CloneAsync(string targetDirectory, CancellationToken cancellationToken);
     Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken);

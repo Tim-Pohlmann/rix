@@ -23,7 +23,7 @@ internal static class CiFailureDetector
     (
         RepoIdentifier repo,
         RunId runId,
-        IGitHubCiFailureHost host,
+        ICiFailureHost host,
         MaxRixCommits maxRixCommits,
         CancellationToken cancellationToken
     )

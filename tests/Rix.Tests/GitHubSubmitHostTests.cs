@@ -5,7 +5,7 @@ using System.Net;
 namespace Rix.Tests;
 
 [TestClass]
-public class GitHubHostTests
+public class GitHubSubmitHostTests
 {
     private static readonly RunProcessAsync SuccessGitRunner =
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -23,7 +23,7 @@ public class GitHubHostTests
     private static readonly string[] ExpectedConfigureUserEmailArgs =
         ["config", "user.email", "rix@noreply.invalid"];
 
-    private static GitHubReadHost BuildHost(
+    private static GitHubJobHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string readToken = "read-tok",
@@ -359,7 +359,7 @@ public class GitHubHostTests
         new PrTitle(title), new PrBody(body), "rix_2Ffix.bundle"
     );
 
-    private static GitHubHost BuildWriteHost(
+    private static GitHubSubmitHost BuildWriteHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string writeToken = "write-tok",

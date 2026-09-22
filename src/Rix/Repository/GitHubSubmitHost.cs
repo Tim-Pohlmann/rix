@@ -1,36 +1,43 @@
 using Rix.Process;
-using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
 namespace Rix.Repository;
 
-/// <summary>Full GitHub host: composes a <see cref="GitHubReadHost"/> for the read operations and
-/// layers the write operations (push, open PR) on top of its shared transport. Requires a
-/// write-capable <see cref="GitToken"/>.</summary>
-internal sealed class GitHubHost : IRepositoryHost
+/// <summary>The full GitHub host behind <c>rix submit</c>: delegates every read operation to a
+/// <see cref="GitHubJobHost"/> and layers the write operations (push, open PR) on top of the same
+/// <see cref="GitCli"/> and
+/// <see cref="GitHubApi"/> that host was built from — so both paths share one connection pool and
+/// one credential injection by construction. Requires a write-capable <see cref="GitToken"/>.</summary>
+internal sealed class GitHubSubmitHost : ISubmitHost
 {
-    private readonly GitHubReadHost _read;
+    private readonly GitHubJobHost _job;
+    private readonly GitCli _git;
+    private readonly GitHubApi _api;
 
-    internal GitHubHost
+    internal GitHubSubmitHost
     (
         RepoIdentifier repo,
         GitToken token,
         RunProcessAsync runProcess,
         HttpMessageHandler? handler = null
     )
-    => _read = new GitHubReadHost(repo, token, runProcess, handler);
+    {
+        _git = new GitCli(token, runProcess);
+        _api = new GitHubApi(repo, token, handler);
+        _job = new GitHubJobHost(_git, _api);
+    }
 
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
-    => _read.CloneAsync(targetDirectory, cancellationToken);
+    => _job.CloneAsync(targetDirectory, cancellationToken);
 
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
-    => _read.BranchExistsOnRemoteAsync(branch, cancellationToken);
+    => _job.BranchExistsOnRemoteAsync(branch, cancellationToken);
 
     public Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
-    => _read.BranchExistsLocallyAsync(repoDirectory, branch, cancellationToken);
+    => _job.BranchExistsLocallyAsync(repoDirectory, branch, cancellationToken);
 
     public Task ConfigureGitAsync(string repoDirectory, CancellationToken cancellationToken)
-    => _read.ConfigureGitAsync(repoDirectory, cancellationToken);
+    => _job.ConfigureGitAsync(repoDirectory, cancellationToken);
 
     public Task CreateBundleAsync
     (
@@ -40,13 +47,13 @@ internal sealed class GitHubHost : IRepositoryHost
         BranchName branch,
         CancellationToken cancellationToken
     )
-    => _read.CreateBundleAsync(repoDirectory, bundlePath, baseBranch, branch, cancellationToken);
+    => _job.CreateBundleAsync(repoDirectory, bundlePath, baseBranch, branch, cancellationToken);
 
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
-    => _read.RunGitAsync
+    => _git.RunAsync
     (
         // --end-of-options stops git from reading a branch name starting with "-" as an option —
-        // see GitHubReadHost.CreateBundleAsync for why it's this flag and not "--".
+        // see GitHubJobHost.CreateBundleAsync for why it's this flag and not "--".
         ["push", "origin", "--end-of-options", branch.Value],
         workingDirectory: repoDirectory,
         authenticated: true,
@@ -57,7 +64,6 @@ internal sealed class GitHubHost : IRepositoryHost
     /// (and link) the opened PR rather than only its branch name.</summary>
     public async Task<string> CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken)
     {
-        var url = $"https://api.github.com/repos/{_read.Repo.Value}/pulls";
         var request = new CreatePullRequestRequest
         (
             Title: pullRequest.Title.Value,
@@ -65,16 +71,14 @@ internal sealed class GitHubHost : IRepositoryHost
             Base: pullRequest.BaseBranch.Value,
             Body: pullRequest.Body.Value
         );
-        var operation = $"create pull request for {pullRequest.Branch.Value}";
-        using var content = JsonContent.Create(request, GitHubApiJsonContext.Default.CreatePullRequestRequest);
-        using var response = await GitHubReadHost.TransportAsync
+        var created = await _api.PostJsonAsync
         (
-            () => _read.Http.PostAsync(url, content, cancellationToken), operation, cancellationToken
-        );
-        GitHubReadHost.EnsureSuccess(response, operation);
-        var created = await GitHubReadHost.ReadJsonAsync
-        (
-            response, GitHubApiJsonContext.Default.CreatePullRequestResponse, operation, cancellationToken
+            "pulls",
+            request,
+            GitHubApiJsonContext.Default.CreatePullRequestRequest,
+            GitHubApiJsonContext.Default.CreatePullRequestResponse,
+            $"create pull request for {pullRequest.Branch.Value}",
+            cancellationToken
         );
         if (created.HtmlUrl is null)
             throw new RepositoryHostException("create PR response did not include html_url");

@@ -14,12 +14,12 @@ namespace Rix.CiFailure;
 /// runner reads each half exactly once, so nothing pays for the extra hop, while a positional copy
 /// between two same-shaped records is a swap waiting to happen.
 ///
-/// In production both halves are backed by the same <see cref="Repository.GitHubReadHost"/>, which
-/// implements the ci-failure check and the job's clone alike; they are separate fields so a test
-/// can stub either role on its own.</summary>
-/// <param name="JobFor">A factory rather than a ready-made <see cref="JobContext"/> because a
-/// context needs the agent named by the <see cref="JobConfig"/> it will run, and
-/// <see cref="CiFailureConfig"/> holds its job inputs raw until <see cref="CiFailureConfig.ToJobConfig"/>
-/// validates them — which it cannot do before a failure has supplied the prompt. Never invoked when
-/// the run hadn't failed.</param>
-internal sealed record CiFailureContext(IGitHubCiFailureHost CiFailureHost, Func<JobConfig, JobContext> JobFor);
+/// In production both halves ride one shared <see cref="Repository.GitHubApi"/> transport — the
+/// ci-failure check and the job's clone are two roles against the same repo under the same
+/// credential — while staying separate fields so a test can stub either role on its own.</summary>
+/// <param name="Job">Ready-made rather than built per <see cref="JobConfig"/>: the only thing a
+/// <see cref="JobContext"/> takes from its config is which agent to run, and
+/// <see cref="CiFailureConfig.Agent"/> names that up front — unlike the prompt, which only a
+/// detected failure can supply. A run that hadn't failed leaves it unused, which costs nothing:
+/// building one opens no connection and starts no process.</param>
+internal sealed record CiFailureContext(ICiFailureHost CiFailureHost, JobContext Job);
