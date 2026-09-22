@@ -87,8 +87,8 @@ jobs:
       # at github.workspace - there's no such thing as it resolving against "the reusable
       # workflow's own repo" automatically, so this checkout is required before the composite
       # action step below (and its own nested `uses: ./.github/actions/download-rix`) can
-      # resolve. .github/scripts/download-rix.sh itself isn't needed here - download-rix fetches
-      # its own copy.
+      # resolve. download-rix's own download script is covered by this same sparse-checkout: it
+      # sits inside .github/actions/download-rix rather than in .github/scripts.
       #
       # Pinned to job.workflow_sha - the exact commit of *this* job.yml file that's actually
       # running - rather than rix-version. rix-version only selects which release binary to

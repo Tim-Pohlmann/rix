@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Downloads the rix release binary matching the current runner's OS/arch and extracts it to
 # ./rix-bin, then exports the resolved binary path as RIX_BIN (via $GITHUB_ENV when run in
-# Actions). Used by .github/workflows/job.yml.
+# Actions). Lives beside action.yml rather than in .github/scripts so the action can run it
+# straight out of its own directory ($GITHUB_ACTION_PATH), which is already checked out at
+# whatever ref the caller pinned — no second checkout, and the two can't drift apart.
 #
 # The OS/asset-resolution logic lives in small functions so it is unit-tested by
 # tests/scripts/download-rix.bats without any network access — the recurring class of bug here
 # (platform mapping, the Windows rix.exe name, a missing RID) is exactly what those tests cover.
 #
+# Usage: download-rix.sh <version>   release tag, or "latest"
+#
 # Env:
-#   VERSION        release tag, or "latest"/empty (default: latest)
 #   GH_TOKEN       token for the releases REST API (optional; only raises rate limits)
 # Test hooks (override auto-detection / the network call):
 #   RIX_UNAME_S, RIX_UNAME_M   stand in for `uname -s` / `uname -m`
@@ -91,14 +94,22 @@ rix_verify_checksum() {
 
 rix_main() {
   local repo_slug="Tim-Pohlmann/rix"
-  local version="${VERSION:-latest}"
+  # Required rather than defaulted: an empty version used to mean "latest", which silently turned
+  # a caller that forgot to resolve its pin into one tracking whatever shipped most recently -
+  # the failure this whole pin exists to prevent, and invisible when it happened.
+  local version="${1:-}"
   local target rid ext api json asset_url archive bin
+
+  if [[ -z "$version" ]]; then
+    echo "Usage: download-rix.sh <version|latest>" >&2
+    return 1
+  fi
 
   target="$(rix_detect_target)"
   rid="${target% *}"
   ext="${target#* }"
 
-  if [[ "$version" == "latest" || -z "$version" ]]; then
+  if [[ "$version" == "latest" ]]; then
     api="https://api.github.com/repos/$repo_slug/releases/latest"
   else
     api="https://api.github.com/repos/$repo_slug/releases/tags/$version"
@@ -154,5 +165,5 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   # Set strict mode only when executed directly — sourcing (e.g. by the bats tests) must not
   # mutate the caller's shell options.
   set -euo pipefail
-  rix_main
+  rix_main "$@"
 fi

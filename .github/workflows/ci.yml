@@ -57,7 +57,7 @@ jobs:
         # still parses these actions' arguments) rather than loudly, hence a check here.
         run: |
           csproj="v$(grep -oPm1 '(?<=<Version>)[^<]+' src/Rix/Rix.csproj)"
-          pin="$(grep -oPm1 '(?<=^    default: ).+' .github/actions/download-rix/action.yml)"
+          pin="$(grep -oPm1 "(?<=inputs\.rix-version \|\| ')[^']+" .github/actions/download-rix/action.yml)"
           if [[ "$csproj" != "$pin" ]]; then
             echo "download-rix rix-version default ($pin) does not match src/Rix/Rix.csproj ($csproj)" >&2
             exit 1
@@ -159,6 +159,68 @@ jobs:
           input-dir: out
           rix-bin: ${{ env.RIX_BIN_PATH }}
 
+  ci-failure-plumbing:
+    name: CI-failure plumbing
+    runs-on: ubuntu-latest
+    needs: build-rix
+    permissions:
+      contents: read
+      # run-ci-failure reads the workflow run's metadata through the Actions API, which
+      # contents:read does not cover.
+      actions: read
+    env:
+      RIX_BIN_PATH: ${{ github.workspace }}/rix-bin/rix
+
+    # agent-plumbing's counterpart for the other composite action: runs the real
+    # .github/actions/run-ci-failure (the one on-ci-failure.yml drives) against this very run,
+    # using the binary build-rix published from this PR's own source. This run has not concluded
+    # while it is checking itself, so rix stops at `skipped` well before the agent - which is the
+    # point. What is covered here is the layer above the agent: the inputs every caller leaves
+    # alone, resolved and forwarded for real. Nothing else in CI calls this action, which is how a
+    # max-rix-commits default that failed 100% of unconfigured runs got as far as review.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
+
+      - name: Run rix ci-failure against this in-progress run
+        id: ci-failure
+        uses: ./.github/actions/run-ci-failure
+        with:
+          repo: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          read-token: ${{ github.token }}
+          agent: opencode
+          # All three are 0 rather than omitted, for the reason spelled out on agent-plumbing's
+          # max-tokens above: 0 is what on-ci-failure.yml's workflow_call inputs resolve to for a
+          # caller who leaves them alone, and rix rejects an explicit 0 for every one of them. A
+          # regression that forwards it therefore fails here - "--max-rix-commits must be between
+          # 1 and 100, got '0'" - instead of in every unconfigured production run. Omitting them
+          # would only exercise the empty-string path, which never reaches that validation.
+          max-rix-commits: 0
+          max-tokens: 0
+          timeout: 0
+          rix-bin: ${{ env.RIX_BIN_PATH }}
+
+      - name: Assert the unfinished run was skipped, not answered
+        env:
+          HAS_RESULT: ${{ steps.ci-failure.outputs.has-result }}
+        run: |
+          # The step above already fails on a rejected input or an API error, so this only pins
+          # down the decision: a run with no conclusion yet is not a failure to answer, and a
+          # has-result of true would mean rix had started an agent against one.
+          [[ "$HAS_RESULT" == "false" ]] || { echo "expected has-result=false, got '$HAS_RESULT'" >&2; exit 1; }
+
   rix-job-e2e:
     name: rix job e2e
     runs-on: ubuntu-latest
@@ -205,6 +267,71 @@ jobs:
         # so a failing assertion here comes with the agent's actual raw output instead of just the
         # failed jq/status check.
         run: bats --print-output-on-failure tests/e2e
+
+  download-rix:
+    name: Download rix (release path)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    # The only job that exercises download-rix's actual download. agent-plumbing and rix-job-e2e
+    # both hand the actions a locally built binary via rix-bin - which is exactly what
+    # download-rix's steps are gated against - so its version resolution, checksum verification
+    # and extraction otherwise run nowhere in CI. That gap is why an empty rix-version silently
+    # resolving to "latest" survived: the one action that was broken is the one CI never ran.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Check whether the pinned release is published yet
+        id: pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pin="$(grep -oPm1 "(?<=inputs\.rix-version \|\| ')[^']+" .github/actions/download-rix/action.yml)"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+          # A version-bump PR names a release that Release only cuts after that PR has merged, so
+          # between the two the pin legitimately points at nothing. Skip there rather than fail
+          # every bump PR - the explicit-version step below still covers the download itself.
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$pin" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Pinned release $pin is not published yet - skipped the default-version download."
+          fi
+
+      # No `with:` at all - the path every caller takes, and the one that used to reach for
+      # whatever release was newest instead of this action's own.
+      - name: Download the pinned release (rix-version omitted)
+        if: steps.pin.outputs.published == 'true'
+        uses: ./.github/actions/download-rix
+
+      - name: Assert the pinned binary landed
+        if: steps.pin.outputs.published == 'true'
+        env:
+          PIN: ${{ steps.pin.outputs.pin }}
+        run: |
+          [[ -n "${RIX_BIN:-}" ]] || { echo "download-rix exported no RIX_BIN" >&2; exit 1; }
+          [[ -x "$RIX_BIN" ]] || { echo "RIX_BIN=$RIX_BIN is not executable" >&2; exit 1; }
+          echo "Pinned ($PIN) download OK: $RIX_BIN"
+
+      - name: Clear the first download
+        run: rm -rf rix-bin rix-archive.*
+
+      # Covers the download, checksum and extraction unconditionally, including on the bump PRs
+      # where the step above skips.
+      - name: Download an explicitly requested release
+        uses: ./.github/actions/download-rix
+        with:
+          rix-version: latest
+
+      - name: Assert the explicitly requested binary landed
+        run: |
+          [[ -n "${RIX_BIN:-}" ]] || { echo "download-rix exported no RIX_BIN" >&2; exit 1; }
+          [[ -x "$RIX_BIN" ]] || { echo "RIX_BIN=$RIX_BIN is not executable" >&2; exit 1; }
+          echo "Explicit download OK: $RIX_BIN"
 
   test:
     name: Test (${{ matrix.os }})
