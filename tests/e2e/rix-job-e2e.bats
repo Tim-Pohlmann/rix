@@ -97,3 +97,42 @@ diagnostic_of() {
   [ "$(result_field status)" = success ]
   [ "$(result_field pendingPrRequests | jq 'length')" = 0 ]
 }
+
+# Every test above tells the agent *not* to call /pr, so nothing here had ever exercised the one
+# path the whole job exists for: the agent commits work, POSTs it, and rix turns that into a bundle
+# on disk. That path spans the local API server, the /pr guards, and JobRunner's delivery step, and
+# until now only in-process tests (JobRunnerTests) covered it - with a fake agent POSTing on the
+# real agent's behalf, so nothing proved a real agent can drive it from the system prompt alone.
+#
+# opencode is the agent used because it is the only one that runs here without a key (see the first
+# test above). The prompt is deliberately step-by-step, naming the exact git commands and the exact
+# JSON body: this asserts that the endpoint and the delivery path work, not that a free default
+# model can plan a PR unaided - that would make the test a model-quality benchmark and fail for
+# reasons that are nothing to do with rix.
+@test "opencode can commit a branch and queue a PR that rix bundles" {
+  export RIX_AGENT=opencode
+  # rix/e2e-pr-check must not exist on the remote or POST /pr answers 409 (see HandlePrAsync).
+  # Nothing in the job path pushes, so running this test never creates it.
+  export RIX_PROMPT='Do exactly these four steps in your working directory, then stop.
+1. Run: git checkout -b rix/e2e-pr-check
+2. Run: printf "rix e2e\n" > rix-e2e-check.txt
+3. Run: git add rix-e2e-check.txt && git commit -m "rix e2e check"
+4. POST to the pull request endpoint of the local API with exactly this JSON body:
+   {"branch":"rix/e2e-pr-check","baseBranch":"main","title":"rix e2e check","body":"queued by the rix job e2e test"}
+Make no other changes and run no other commands.'
+
+  run "$RIX_BIN" job
+  [ "$status" -eq 0 ]
+  [ "$(result_field status)" = success ]
+  [ "$(result_field pendingPrRequests | jq 'length')" = 1 ]
+  [ "$(result_field 'pendingPrRequests[0].branch')" = rix/e2e-pr-check ]
+  [ "$(result_field 'pendingPrRequests[0].baseBranch')" = main ]
+
+  # The queue entry alone would pass even if bundling silently produced nothing, so check the
+  # artifact `rix submit` would later consume: a real bundle, carrying the agent's branch.
+  bundle="$RIX_OUTPUT_DIR/$(result_field 'pendingPrRequests[0].bundleFile')"
+  [ -f "$bundle" ]
+  run git bundle list-heads "$bundle"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *refs/heads/rix/e2e-pr-check* ]]
+}
