@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -14,18 +13,18 @@ internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
     private readonly PrQueue _pendingPrRequests;
-    private readonly ConcurrentDictionary<string, QueuedPush> _pendingPushRequests;
+    private readonly BranchQueue<QueuedPush> _pendingPushRequests;
 
     internal Uri BaseUrl { get; }
     internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => _pendingPrRequests.Snapshot();
-    internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => _pendingPushRequests.Values.ToArray();
+    internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => _pendingPushRequests.Snapshot();
 
     private LocalApiServer
     (
         WebApplication app,
         Uri baseUrl,
         PrQueue pendingPrRequests,
-        ConcurrentDictionary<string, QueuedPush> pendingPushRequests
+        BranchQueue<QueuedPush> pendingPushRequests
     )
     {
         _app = app;
@@ -53,7 +52,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     )
     {
         var pendingPrRequests = new PrQueue();
-        var pendingPushRequests = new ConcurrentDictionary<string, QueuedPush>();
+        var pendingPushRequests = new BranchQueue<QueuedPush>("push", push => push.Branch);
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
@@ -124,7 +123,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IJobRepoHost host,
         string cloneDir,
         PrQueue pendingPrRequests,
-        ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
+        BranchQueue<QueuedPush> pendingPushRequests,
         IReadOnlyList<BranchName>? allowedPushBranches
     )
     {
@@ -151,7 +150,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             .WithSummary("List queued pull requests")
             .WithDescription("Returns the pull requests queued so far this run, in the order they will be opened.");
 
-        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests.TryRemove))
+        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests))
             .WithTags(deliveryTag)
             .WithSummary("Cancel a queued pull request")
             .WithDescription("Removes the queued pull request for the given branch. 404 if nothing is queued for it.");
@@ -161,12 +160,12 @@ internal sealed class LocalApiServer : IAsyncDisposable
             .WithSummary("Queue new commits onto a branch that already exists on the remote")
             .WithDescription(BuildPushEndpointDescription(allowedPushBranches));
 
-        app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()))
+        app.MapGet("/push", () => Results.Ok(pendingPushRequests.Snapshot()))
             .WithTags(deliveryTag)
             .WithSummary("List queued pushes")
             .WithDescription("Returns the pushes queued so far this run.");
 
-        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, branch => RemoveFromDictionary(pendingPushRequests, branch)))
+        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPushRequests))
             .WithTags(deliveryTag)
             .WithSummary("Cancel a queued push")
             .WithDescription("Removes the queued push for the given branch. 404 if nothing is queued for it.");
@@ -264,7 +263,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         PushRequest req,
         IJobRepoHost host,
         string cloneDir,
-        ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
+        BranchQueue<QueuedPush> pendingPushRequests,
         IReadOnlyList<BranchName>? allowedPushBranches,
         CancellationToken ct
     )
@@ -307,35 +306,15 @@ internal sealed class LocalApiServer : IAsyncDisposable
         if (!await host.BranchExistsLocallyAsync(cloneDir, queuedPush.Branch, ct))
             return Results.BadRequest(new ErrorResponse($"Branch {queuedPush.Branch.Value} was not found in your working directory. Make sure you committed it there before calling /push."));
 
-        return Enqueue(pendingPushRequests, queuedPush.Branch.Value, queuedPush);
+        return pendingPushRequests.TryEnqueue(queuedPush);
     }
 
-    // A branch already queued keeps its slot: without this, a second POST for the same branch would
-    // report 200 "queued" while silently overwriting the first request, so the caller would have no
-    // way to tell its first call never went through.
-    private static IResult Enqueue<T>(ConcurrentDictionary<string, T> pendingRequests, string branch, T item)
-    {
-        if (!pendingRequests.TryAdd(branch, item))
-            return Results.Conflict(new ErrorResponse($"Branch {branch} is already queued."));
-        return Results.Ok(new QueuedResponse("queued"));
-    }
-
-    /// <summary>Cancels the queued request for <paramref name="req"/>'s branch by dispatching to
-    /// <paramref name="remove"/> once the branch is known non-empty — shared by /pr and /push,
-    /// which differ only in where the branch is actually removed from. So the branch can't be
-    /// restricted to rix/* here: only /pr's own POST enforces that when it queues the branch in the
-    /// first place; deleting a queued push must accept whatever name was queued.</summary>
-    private static IResult HandleDelete(DeleteRequest req, Func<BranchName, IResult> remove)
-    => remove(Input.Required("branch", req.Branch, value => new BranchName(value)));
-
-    // A branch name with nothing queued is a 404 so the agent learns its cancel was a no-op
-    // rather than assuming it took.
-    private static IResult RemoveFromDictionary(ConcurrentDictionary<string, QueuedPush> pendingRequests, BranchName branch)
-    {
-        if (pendingRequests.TryRemove(branch.Value, out _))
-            return Results.Ok(new QueuedResponse("deleted"));
-        return Results.NotFound(new ErrorResponse($"No queued push for branch {branch.Value}."));
-    }
+    /// <summary>Cancels the queued request for <paramref name="req"/>'s branch — shared by /pr and
+    /// /push. So the branch can't be restricted to rix/* here: only /pr's own POST enforces that
+    /// when it queues the branch in the first place; deleting a queued push must accept whatever
+    /// name was queued.</summary>
+    private static IResult HandleDelete<T>(DeleteRequest req, BranchQueue<T> pendingRequests)
+    => pendingRequests.TryRemove(Input.Required("branch", req.Branch, value => new BranchName(value)));
 
     public async ValueTask DisposeAsync()
     {
