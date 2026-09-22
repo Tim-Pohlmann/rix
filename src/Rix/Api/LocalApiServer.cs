@@ -129,18 +129,6 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return overview + "\n\n" + PushPolicySentence(allowedPushBranches);
     }
 
-    /// <summary>The <c>/push</c> endpoint description, including this run's allow-list so the agent
-    /// sees what <c>/push</c> will accept without having to trigger a rejection first.</summary>
-    private static string BuildPushEndpointDescription(IReadOnlyList<BranchName> allowedPushBranches)
-    {
-        const string overview =
-            "Deliver new commits to a branch that already exists on the remote, for instance when " +
-            "resuming a previous run. Commit them locally on that branch first. The branch must exist " +
-            "on the remote — use /pr to create a new one. ";
-
-        return overview + PushPolicySentence(allowedPushBranches);
-    }
-
     private static string PushPolicySentence(IReadOnlyList<BranchName> allowedPushBranches)
     => allowedPushBranches.Count switch
     {
@@ -182,6 +170,9 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IReadOnlyList<BranchName> allowedPushBranches
     )
     {
+        private const string PrPath = "/pr";
+        private const string PushPath = "/push";
+
         internal PrQueue PendingPrRequests { get; } = new();
         internal BranchQueue<QueuedPush> PendingPushRequests { get; } = new("push", push => push.Branch);
 
@@ -197,29 +188,41 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 "baseBranch is the branch the PR targets; stacked PRs are allowed as long as the queued base " +
                 "branches form no cycle. The pull request is opened after the job ends, not immediately.";
 
-            delivery.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, ct))
+            delivery.MapPost(PrPath, (PrRequest req, CancellationToken ct) => HandlePrAsync(req, ct))
                 .WithSummary("Queue a branch to be opened as a pull request")
                 .WithDescription(prDescription);
 
-            delivery.MapGet("/pr", () => Results.Ok(PendingPrRequests.Snapshot()))
+            delivery.MapGet(PrPath, () => Results.Ok(PendingPrRequests.Snapshot()))
                 .WithSummary("List queued pull requests")
                 .WithDescription("Returns the pull requests queued so far this run, in the order they will be opened.");
 
-            delivery.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPrRequests))
+            delivery.MapDelete(PrPath, ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPrRequests))
                 .WithSummary("Cancel a queued pull request")
                 .WithDescription("Removes the queued pull request for the given branch. 404 if nothing is queued for it.");
 
-            delivery.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, ct))
+            delivery.MapPost(PushPath, (PushRequest req, CancellationToken ct) => HandlePushAsync(req, ct))
                 .WithSummary("Queue new commits onto a branch that already exists on the remote")
                 .WithDescription(BuildPushEndpointDescription(allowedPushBranches));
 
-            delivery.MapGet("/push", () => Results.Ok(PendingPushRequests.Snapshot()))
+            delivery.MapGet(PushPath, () => Results.Ok(PendingPushRequests.Snapshot()))
                 .WithSummary("List queued pushes")
                 .WithDescription("Returns the pushes queued so far this run.");
 
-            delivery.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPushRequests))
+            delivery.MapDelete(PushPath, ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPushRequests))
                 .WithSummary("Cancel a queued push")
                 .WithDescription("Removes the queued push for the given branch. 404 if nothing is queued for it.");
+        }
+
+        /// <summary>The <c>/push</c> endpoint description, including this run's allow-list so the agent
+        /// sees what <c>/push</c> will accept without having to trigger a rejection first.</summary>
+        private static string BuildPushEndpointDescription(IReadOnlyList<BranchName> allowedPushBranches)
+        {
+            const string overview =
+                "Deliver new commits to a branch that already exists on the remote, for instance when " +
+                "resuming a previous run. Commit them locally on that branch first. The branch must exist " +
+                "on the remote — use /pr to create a new one. ";
+
+            return overview + PushPolicySentence(allowedPushBranches);
         }
 
         private async Task<IResult> HandlePrAsync(PrRequest req, CancellationToken ct)
@@ -235,7 +238,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
                 return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
 
-            return await CheckCommittedLocallyAsync(queuedPr.Branch, "/pr", ct)
+            return await CheckCommittedLocallyAsync(queuedPr.Branch, PrPath, ct)
                 ?? PendingPrRequests.TryEnqueue(queuedPr);
         }
 
@@ -272,7 +275,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             if (!await host.BranchExistsOnRemoteAsync(queuedPush.Branch, ct))
                 return Results.Conflict(new ErrorResponse($"Branch {queuedPush.Branch.Value} does not exist on the remote. Use /pr to create a new branch."));
 
-            return await CheckCommittedLocallyAsync(queuedPush.Branch, "/push", ct)
+            return await CheckCommittedLocallyAsync(queuedPush.Branch, PushPath, ct)
                 ?? PendingPushRequests.TryEnqueue(queuedPush);
         }
 
