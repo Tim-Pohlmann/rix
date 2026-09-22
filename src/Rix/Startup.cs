@@ -10,6 +10,7 @@ using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Rix;
 
@@ -148,24 +149,12 @@ internal static class Startup
     /// </summary>
     private static async Task<int> WriteJobResultAsync(JobConfig config, IJobResult result, List<string> transcriptLines)
     {
-        var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
-        // Best-effort: once the job outcome above is decided, a broken/closed stdout pipe must not
-        // stop the correct exit code from being returned any more than a result.json write failure
-        // does below.
-        await WriteBestEffortAsync(Console.Out, json);
-        // Best-effort and uncancellable: this runs after the job itself is already decided, so a
-        // cancellation requested in this narrow window (or a transient disk error) must not stop
-        // the correct exit code from being returned - only the result.json copy would be lost.
-        try
+        var json = await WriteResultJsonAsync(result, JobJsonContext.Default.IJobResult);
+        await WriteOutputFileAsync(config, "result.json", json);
+        if (transcriptLines.Count > 0)
         {
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, CancellationToken.None);
+            await WriteOutputFileAsync(config, "transcript.md", string.Join("\n\n", transcriptLines));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Also best-effort: a closed/broken stderr must not defeat the exit-code guarantee above.
-            await WriteBestEffortAsync(Console.Error, $"warning: failed to write result.json: {ex.Message}");
-        }
-        await WriteTranscriptAsync(config, transcriptLines);
         return result switch
         {
             JobSuccess => ExitCodes.Success,
@@ -175,35 +164,39 @@ internal static class Startup
         };
     }
 
-    /// <summary>
-    /// Persists the collected agent transcript to <c>transcript.md</c> in the output directory,
-    /// joining each extracted chunk with a blank line. Best-effort and uncancellable, mirroring the
-    /// <c>result.json</c> write above: a disk error must never affect the exit code. Skipped
-    /// entirely when nothing was extracted, so the artifact only exists when there is content.
-    /// </summary>
-    private static async Task WriteTranscriptAsync(JobConfig config, List<string> transcriptLines)
+    /// <summary>Serializes <paramref name="result"/> and writes it to stdout, returning the JSON for
+    /// callers that also persist it. Best-effort: once the outcome is decided, a broken/closed stdout
+    /// pipe must not stop the correct exit code from being returned.</summary>
+    private static async Task<string> WriteResultJsonAsync<T>(T result, JsonTypeInfo<T> typeInfo)
     {
-        if (transcriptLines.Count == 0) return;
+        var json = JsonSerializer.Serialize(result, typeInfo);
+        await WriteBestEffortAsync(Console.Out, json);
+        return json;
+    }
+
+    /// <summary>
+    /// Writes <paramref name="content"/> to <paramref name="fileName"/> in <paramref name="config"/>'s
+    /// output dir. Best-effort and uncancellable: this runs after the job itself is already decided,
+    /// so a cancellation requested in this narrow window (or a transient disk error) must not stop
+    /// the correct exit code from being returned - only the file would be lost.
+    /// </summary>
+    private static async Task WriteOutputFileAsync(JobConfig config, string fileName, string content)
+    {
         try
         {
-            await File.WriteAllTextAsync
-            (
-                Path.Combine(config.OutputDir.Value, "transcript.md"),
-                string.Join("\n\n", transcriptLines),
-                CancellationToken.None
-            );
+            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, fileName), content, CancellationToken.None);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await WriteBestEffortAsync(Console.Error, $"warning: failed to write transcript.md: {ex.Message}");
+            // Also best-effort: a closed/broken stderr must not defeat the exit-code guarantee above.
+            await WriteBestEffortAsync(Console.Error, $"warning: failed to write {fileName}: {ex.Message}");
         }
     }
 
     /// <summary>Writes <paramref name="line"/> to <paramref name="writer"/>, swallowing the ways a
     /// closed/broken console stream can fail a write (<see cref="IOException"/> for a broken pipe,
-    /// <see cref="ObjectDisposedException"/> if the stream was already disposed) - used by
-    /// <see cref="ExecuteJobAsync"/> for output that must never prevent the correct exit code from
-    /// being returned.</summary>
+    /// <see cref="ObjectDisposedException"/> if the stream was already disposed) - used for output
+    /// that must never prevent the correct exit code from being returned.</summary>
     private static async Task WriteBestEffortAsync(TextWriter writer, string line)
     {
         try { await writer.WriteLineAsync(line); }
@@ -218,8 +211,7 @@ internal static class Startup
     {
         context ??= DefaultSubmitContext(config);
         var result = await SubmitRunner.RunAsync(config, context, cancellationToken);
-        var json = JsonSerializer.Serialize(result, SubmitJsonContext.Default.ISubmitResult);
-        Console.WriteLine(json);
+        await WriteResultJsonAsync(result, SubmitJsonContext.Default.ISubmitResult);
         return result switch
         {
             SubmitSuccess => ExitCodes.Success,
@@ -233,10 +225,9 @@ internal static class Startup
     /// simply nothing to do); only <see cref="CiFailureError"/> — a problem talking to the API, not
     /// the run itself failing — is treated as a job failure. <see cref="CiFailureDetected"/> never
     /// arrives here: it always leads to <see cref="WriteJobResultAsync"/> instead.</summary>
-    private static int WriteCiFailureResult(ICiFailureResult result)
+    private static async Task<int> WriteCiFailureResultAsync(ICiFailureResult result)
     {
-        var json = JsonSerializer.Serialize(result, CiFailureJsonContext.Default.ICiFailureResult);
-        Console.WriteLine(json);
+        await WriteResultJsonAsync(result, CiFailureJsonContext.Default.ICiFailureResult);
         return result switch
         {
             CiFailureDetected or CiFailureSkipped or CiFailureLoopGuarded => ExitCodes.Success,
@@ -247,7 +238,7 @@ internal static class Startup
 
     /// <summary>
     /// Imperative shell around <see cref="CiFailureRunner.RunAsync"/>: checks whether the run
-    /// failed and, only if it did, runs the agent — reusing <see cref="WriteCiFailureResult"/> and
+    /// failed and, only if it did, runs the agent — reusing <see cref="WriteCiFailureResultAsync"/> and
     /// <see cref="WriteJobResultAsync"/> so each outcome is reported identically to its <c>rix
     /// job</c> counterpart.
     /// </summary>
@@ -261,7 +252,7 @@ internal static class Startup
         var outcome = await CiFailureRunner.RunAsync(config, teed, cancellationToken);
         return outcome switch
         {
-            CiFailureNotRun(var reason) => WriteCiFailureResult(reason),
+            CiFailureNotRun(var reason) => await WriteCiFailureResultAsync(reason),
             CiFailureRan(var job, var result) => await WriteJobResultAsync(job, result, transcriptLines),
             _ => throw new NotSupportedException($"Unexpected ci-failure outcome: {outcome.GetType()}"),
         };
