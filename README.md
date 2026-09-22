@@ -229,15 +229,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch to factory repo
+        # Every value reaches the script through env, never through ${{ }} inside `run:` - an
+        # expression there is pasted into the script before bash sees it. A fork PR's branch name
+        # is chosen by its author and git allows `$(...)` and backticks in one, so interpolating
+        # it would run the author's command in this step, which holds the dispatch token.
         env:
           GH_TOKEN: ${{ secrets.RIX_FACTORY_DISPATCH_TOKEN }}
+          FACTORY_REPO: ${{ vars.RIX_FACTORY_REPO }}
+          PROJECT_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
         run: |
-          gh api repos/${{ vars.RIX_FACTORY_REPO }}/dispatches \
+          gh api "repos/$FACTORY_REPO/dispatches" \
             -f event_type=rix-ci-failure \
-            -f "client_payload[repo]=${{ github.repository }}" \
-            -f "client_payload[run_id]=${{ github.event.workflow_run.id }}" \
-            -f "client_payload[branch]=${{ github.event.workflow_run.head_branch }}" \
-            -f "client_payload[head_repo]=${{ github.event.workflow_run.head_repository.full_name }}"
+            -f "client_payload[repo]=$PROJECT_REPO" \
+            -f "client_payload[run_id]=$RUN_ID" \
+            -f "client_payload[branch]=$HEAD_BRANCH" \
+            -f "client_payload[head_repo]=$HEAD_REPO"
 ```
 
 `RIX_FACTORY_DISPATCH_TOKEN` needs `contents:write` on the factory repo (required by the
