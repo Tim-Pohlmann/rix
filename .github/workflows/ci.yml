@@ -333,6 +333,59 @@ jobs:
           [[ -x "$RIX_BIN" ]] || { echo "RIX_BIN=$RIX_BIN is not executable" >&2; exit 1; }
           echo "Explicit download OK: $RIX_BIN"
 
+  initialize-templates:
+    name: Initialize templates (actionlint)
+    runs-on: ubuntu-latest
+    needs: build-rix
+    permissions:
+      contents: read
+
+    # `rix initialize` writes caller workflows into someone else's repo, and nothing checked that
+    # what it writes is valid GitHub Actions YAML. InitializeRunnerTests covers which files land
+    # and where, and WorkflowTemplatesTests that the ref placeholder is substituted, but the
+    # templates are embedded resources - no C# test can tell whether Actions would accept them.
+    # A broken one is invisible here and surfaces in a consumer repo at the moment they adopt rix,
+    # which is the worst place to find out.
+    #
+    # No checkout: the templates come out of the binary build-rix published, and actionlint is
+    # fetched by its own action.
+    steps:
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
+
+      - name: Write the caller workflows into an empty target
+        run: |
+          # --dir must already exist (DirectoryPath rejects a missing one); the .github/workflows
+          # path under it is rix's to create.
+          mkdir -p init-out
+          ./rix-bin/rix initialize --dir init-out
+          # A template that failed to substitute would still be valid YAML, so actionlint below
+          # would pass it - and every `uses:` in it would resolve to a ref that cannot exist.
+          if grep -rn '__RIX_REF__' init-out; then
+            echo "a template reached the target repo with its ref placeholder unsubstituted" >&2
+            exit 1
+          fi
+          # Named explicitly rather than counted, so adding a template means updating this list
+          # and deciding whether it needs anything else here.
+          for f in init-out/.github/workflows/rix.yml init-out/.github/workflows/rix-on-ci-failure.yml; do
+            [[ -f "$f" ]] || { echo "rix initialize did not write $f" >&2; exit 1; }
+          done
+
+      - name: Lint the written workflows (actionlint)
+        uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
+        with:
+          files: init-out/.github/workflows/*.yml
+          # The matcher annotates a PR's changed lines, which these files are not - they are
+          # generated into a scratch directory, so annotations would point at paths that do not
+          # exist in the repo.
+          matcher: false
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
