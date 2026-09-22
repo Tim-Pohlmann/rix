@@ -221,6 +221,154 @@ jobs:
           # has-result of true would mean rix had started an agent against one.
           [[ "$HAS_RESULT" == "false" ]] || { echo "expected has-result=false, got '$HAS_RESULT'" >&2; exit 1; }
 
+  ci-failure-statuses:
+    name: CI-failure status (${{ matrix.case.name }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Read by the stub below, which the action invokes as its rix binary. Job-level env reaches
+      # a composite action's own run steps, so the stub sees these without run-ci-failure having
+      # to forward anything.
+      STUB_STDOUT: ${{ matrix.case.stdout }}
+      STUB_EXIT: ${{ matrix.case.exit }}
+      STUB_WRITES_RESULT: ${{ matrix.case.writes-result }}
+
+    # ci-failure-plumbing above drives the real binary, which - checking the run it is part of -
+    # can only ever reach `skipped`. Every other arm of run-ci-failure's `case` needs rix to print
+    # a result no workflow can arrange for real: a branch already carrying rix's own commits, an
+    # Actions API error, a status a newer release invented. The action already accepts a `rix-bin`
+    # path, so each case here points it at a stub that prints one canned result and exits with a
+    # chosen code - no token, no agent, no network, no clone. What that buys over
+    # ci-failure-result-fields-style extraction of the bash out of the YAML is that the decision is
+    # read back through the action's real interface: the `has-result` output on-ci-failure.yml
+    # gates create-pr with, and whether the step fails at all.
+    #
+    # Not covered here: the ::notice::/::error:: text itself, and so escape_workflow_command. A
+    # step's annotations are not readable by a later step in the same job, so pinning that would
+    # mean fetching this run's own log back through the API.
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          # `outcome` is the run step's own result, read through continue-on-error below; the
+          # `case` arms that only annotate leave rix's exit code alone, so the step passes.
+          - name: skipped
+            stdout: '{"status":"skipped","conclusion":"success"}'
+            exit: 0
+            has-result: 'false'
+            outcome: success
+            writes-result: 'false'
+
+          - name: loopGuarded
+            stdout: '{"status":"loopGuarded","rixCommits":5,"branch":"rix/fix-the-thing"}'
+            exit: 0
+            has-result: 'false'
+            outcome: success
+            writes-result: 'false'
+
+          # rix reports an API/setup problem of its own and exits non-zero; the action turns that
+          # into an ::error:: and passes the code through.
+          - name: error
+            stdout: '{"status":"error","error":"read token lacks actions:read"}'
+            exit: 1
+            has-result: 'false'
+            outcome: failure
+            writes-result: 'false'
+
+          # The agent ran and the job failed. No annotation of its own - rix's non-zero exit is
+          # what fails the step, and has-result stays false so create-pr is skipped.
+          - name: failure
+            stdout: '{"status":"failure","error":"agent failed: exited with code 1"}'
+            exit: 1
+            has-result: 'false'
+            outcome: failure
+            writes-result: 'false'
+
+          - name: setupFailure
+            stdout: '{"status":"setupFailure","error":"--max-tokens must be a positive integer"}'
+            exit: 1
+            has-result: 'false'
+            outcome: failure
+            writes-result: 'false'
+
+          # The one arm that sets has-result=true, and so the only one create-pr would run after.
+          - name: success
+            stdout: '{"status":"success","costUsd":0.0123,"durationSeconds":42}'
+            exit: 0
+            has-result: 'true'
+            outcome: success
+            writes-result: 'true'
+
+          # The `*)` arm, and the reason it overrides rix's exit code: a binary newer than this
+          # action emits a status it has no arm for, having succeeded on its own terms and exited
+          # 0. Inheriting that 0 would leave a green job that submitted nothing, so the step must
+          # fail even though the stub exits 0. Nothing else in CI covers this.
+          - name: unrecognized status, rix exited 0
+            stdout: '{"status":"inventedByANewerRelease"}'
+            exit: 0
+            has-result: 'false'
+            outcome: failure
+            writes-result: 'false'
+
+    steps:
+      # Only the composite actions are needed - no rix source, and no binary to download.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Write the stub rix binary
+        run: |
+          cat > stub-rix <<'STUB'
+          #!/usr/bin/env bash
+          # Stands in for the rix binary: ignores its arguments, prints one canned ci-failure
+          # result on stdout the way rix does on every exit code, and exits with the code the
+          # matrix asked for.
+          set -euo pipefail
+          # Only a run that got as far as the agent leaves a result.json behind, so write one
+          # just where rix would have - the action reads it back in its post-job-summary step.
+          if [[ "${STUB_WRITES_RESULT:-}" == "true" ]]; then
+            mkdir -p out
+            printf '%s' "$STUB_STDOUT" > out/result.json
+          fi
+          printf '%s\n' "$STUB_STDOUT"
+          exit "$STUB_EXIT"
+          STUB
+          chmod +x stub-rix
+
+      - name: Run rix ci-failure with the stub binary
+        id: ci-failure
+        # Several cases expect this step to fail; the assertion below reads the real result out of
+        # steps.ci-failure.outcome rather than letting it end the job.
+        continue-on-error: true
+        uses: ./.github/actions/run-ci-failure
+        with:
+          repo: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          # The stub makes no API call, so this only has to be non-empty.
+          read-token: ${{ github.token }}
+          agent: opencode
+          rix-bin: ${{ github.workspace }}/stub-rix
+
+      - name: Assert the action's decision matches the result it was handed
+        env:
+          EXPECTED_HAS_RESULT: ${{ matrix.case.has-result }}
+          EXPECTED_OUTCOME: ${{ matrix.case.outcome }}
+          ACTUAL_HAS_RESULT: ${{ steps.ci-failure.outputs.has-result }}
+          ACTUAL_OUTCOME: ${{ steps.ci-failure.outcome }}
+        run: |
+          failed=0
+          if [[ "$ACTUAL_HAS_RESULT" != "$EXPECTED_HAS_RESULT" ]]; then
+            echo "has-result: expected '$EXPECTED_HAS_RESULT', got '$ACTUAL_HAS_RESULT'" >&2
+            failed=1
+          fi
+          if [[ "$ACTUAL_OUTCOME" != "$EXPECTED_OUTCOME" ]]; then
+            echo "step outcome: expected '$EXPECTED_OUTCOME', got '$ACTUAL_OUTCOME'" >&2
+            failed=1
+          fi
+          exit "$failed"
+
   rix-job-e2e:
     name: rix job e2e
     runs-on: ubuntu-latest
