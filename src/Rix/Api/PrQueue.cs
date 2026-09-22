@@ -1,60 +1,26 @@
 namespace Rix.Api;
 
 /// <summary>Keeps queued PRs in a valid base-branch dependency order at all times, rather than
-/// requiring callers to sort a snapshot before use — <see cref="TryEnqueue"/> only accepts a PR
-/// if the resulting queue stays acyclic and orderable, so <see cref="Snapshot"/> is always ready
+/// requiring callers to sort a snapshot before use — <see cref="BranchQueue{T}.TryEnqueue"/> only accepts a PR
+/// if the resulting queue stays acyclic and orderable, so <see cref="BranchQueue{T}.Snapshot"/> is always ready
 /// to submit as-is.</summary>
-internal sealed class PrQueue
+internal sealed class PrQueue() : BranchQueue<QueuedPr>("PR", pr => pr.Branch)
 {
-    private readonly Lock _lock = new();
-    private readonly List<QueuedPr> _items = [];
-
-    internal IResult TryEnqueue(QueuedPr pr)
+    protected override string? Admit(List<QueuedPr> items, QueuedPr pr)
     {
-        lock (_lock)
-        {
-            if (_items.Any(item => item.Branch.Value == pr.Branch.Value))
-                return Results.Conflict(new ErrorResponse($"Branch {pr.Branch.Value} is already queued."));
+        // pr can create a transitive dependency between two already-queued items that were
+        // previously unrelated (e.g. pr's base is one item and another item depends on pr),
+        // which can require reordering those existing items relative to each other - not
+        // just placing pr among them. So the whole order has to be re-derived from all the
+        // constraints together, rather than only checking pr's own immediate bounds.
+        var ordered = TryOrder([.. items, pr]);
 
-            // pr can create a transitive dependency between two already-queued items that were
-            // previously unrelated (e.g. pr's base is one item and another item depends on pr),
-            // which can require reordering those existing items relative to each other - not
-            // just placing pr among them. So the whole order has to be re-derived from all the
-            // constraints together, rather than only checking pr's own immediate bounds.
-            var ordered = TryOrder([.. _items, pr]);
+        if (ordered is null)
+            return $"Branch {pr.Branch.Value} would create a cyclic base-branch dependency among queued PRs.";
 
-            if (ordered is null)
-            {
-                return Results.BadRequest
-                (
-                    new ErrorResponse($"Branch {pr.Branch.Value} would create a cyclic base-branch dependency among queued PRs.")
-                );
-            }
-
-            _items.Clear();
-            _items.AddRange(ordered);
-            return Results.Ok(new QueuedResponse("queued"));
-        }
-    }
-
-    internal IResult TryRemove(BranchName branch)
-    {
-        lock (_lock)
-        {
-            var index = _items.FindIndex(item => item.Branch.Value == branch.Value);
-            if (index < 0)
-                return Results.NotFound(new ErrorResponse($"No queued PR for branch {branch.Value}."));
-
-            // Removing one item from an already-valid topological order leaves the remaining
-            // items in a still-valid order, so no re-sort is needed here.
-            _items.RemoveAt(index);
-            return Results.Ok(new QueuedResponse("deleted"));
-        }
-    }
-
-    internal IReadOnlyList<QueuedPr> Snapshot()
-    {
-        lock (_lock) { return _items.ToArray(); }
+        items.Clear();
+        items.AddRange(ordered);
+        return null;
     }
 
     /// <summary>Orders items by branch/base-branch dependency so an item whose base branch is
