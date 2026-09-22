@@ -51,6 +51,57 @@ public class InitializeCommandTests
     }
 
     [TestMethod]
+    public async Task Command_DefaultsRefToThisBuildsMajorTag_WhenFlagAbsentOrBlank()
+    {
+        InitializeConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync("initialize");
+        Assert.AreEqual(WorkflowRef.ForThisBuild, captured?.Ref);
+
+        captured = null;
+        await parser.InvokeAsync(["initialize", "--ref", "  "]);
+        Assert.AreEqual(WorkflowRef.ForThisBuild, captured?.Ref);
+    }
+
+    [TestMethod]
+    public async Task Command_PassesRefFlag_ToConfig()
+    {
+        InitializeConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(["initialize", "--ref", "v1.2.3"]);
+
+        Assert.AreEqual("v1.2.3", captured?.Ref.Value);
+    }
+
+    [TestMethod]
+    public async Task Command_Returns2_WhenRefIsMalformed()
+    {
+        InitializeConfig? captured = null;
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
+
+        using var stderr = new ConsoleErrorScope();
+        var exitCode = await parser.InvokeAsync(["initialize", "--ref", "main branch"]);
+
+        Assert.IsNull(captured);
+        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
+        StringAssert.Contains(stderr.Text, "error: --ref: 'main branch' is not a valid workflow ref");
+    }
+
+    [TestMethod]
     public async Task Command_Returns2_WhenDirDoesNotExist()
     {
         InitializeConfig? captured = null;

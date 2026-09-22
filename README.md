@@ -20,15 +20,18 @@ the resulting PRs. Each repo drives it through a small caller workflow.
 Run `rix initialize` inside a checkout of the target repo to write both caller workflows
 (`.github/workflows/rix.yml` and `.github/workflows/rix-on-ci-failure.yml`; existing files are
 overwritten). The templates are baked into the `rix` binary, so this needs no network access.
-Then:
+Their `uses:` lines point at the floating major-version tag of the release this `rix` comes
+from (`@v0` for any 0.x build), so the caller workflows call the reusable workflows they were
+released with. Then:
 
 1. Add repo secrets `RIX_READ_TOKEN` and `RIX_WRITE_TOKEN` (see [Secrets](#secrets)).
 2. In `rix-on-ci-failure.yml`, change `workflows: ["CI"]` to the `name:` of the workflow rix
    should react to.
 3. Commit and push the two files.
 
-Pass `--dir <path>` to target a repo other than the current directory. The sections below
-describe the files it writes and how to customize them further.
+Pass `--dir <path>` to target a repo other than the current directory, and `--ref <git-ref>` to
+pin the written workflows to a different tag, branch, or commit SHA of this repo. The sections
+below describe the files it writes and how to customize them further.
 
 ### The `rix` caller workflow
 
@@ -42,7 +45,7 @@ on:
         required: true
 jobs:
   rix:
-    uses: Tim-Pohlmann/rix/.github/workflows/job.yml@main
+    uses: Tim-Pohlmann/rix/.github/workflows/job.yml@v0
     with:
       repo: ${{ github.repository }}
       prompt: ${{ inputs.prompt }}
@@ -114,8 +117,11 @@ Local/self-hosted backends (e.g. Ollama, LM Studio) aren't supported yet — ope
 reach those through a generated config file rather than a model string + API key, which is a
 separate mechanism this workflow doesn't build today.
 
-`@main` tracks the latest workflow; once a release is tagged, pin to that tag or a commit
-SHA (e.g. `...job.yml@v1.0.0`) for reproducible, supply-chain-safe runs.
+`@v0` is the floating major-version tag: it moves to each new 0.x release, so callers pick up
+fixes without re-pinning, and the workflow keeps fetching the binary belonging to that release.
+Pin an exact tag (e.g. `...job.yml@v0.5.0`) or a commit SHA for byte-for-byte reproducible,
+supply-chain-safe runs. `@main` is not recommended: between a version bump and the release it
+names, it asks for a binary that isn't published yet.
 
 ### Secrets
 
@@ -170,7 +176,19 @@ jobs:
   rix:
     # Cheap short-circuit; on-ci-failure.yml re-checks the conclusion via the API regardless.
     if: github.event.workflow_run.conclusion == 'failure'
-    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main
+    # One rix run per branch at a time: when CI fails again while rix is still working on the
+    # previous failure, the second run waits instead of starting a second agent from the same tip.
+    # On the job rather than the workflow, so only runs that get past the `if` above contend:
+    # GitHub keeps a single pending entry per group and cancels whatever a newcomer displaces
+    # (`cancel-in-progress` governs the running entry, not the queued one), so at workflow scope
+    # every completion on the branch - a later successful rerun included - would join the group
+    # and could drop a queued answer to a real failure. The head repository is in the key for a
+    # related reason: a fork PR's run reaches this workflow too, under a branch name its author
+    # picked, which may well be one of yours.
+    concurrency:
+      group: rix-on-ci-failure-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v0
     with:
       # repo defaults to the calling repo — no need to set it here.
       run-id: ${{ github.event.workflow_run.id }}
@@ -215,13 +233,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch to factory repo
+        # Every value reaches the script through env, never through ${{ }} inside `run:` - an
+        # expression there is pasted into the script before bash sees it. A fork PR's branch name
+        # is chosen by its author and git allows `$(...)` and backticks in one, so interpolating
+        # it would run the author's command in this step, which holds the dispatch token.
         env:
           GH_TOKEN: ${{ secrets.RIX_FACTORY_DISPATCH_TOKEN }}
+          FACTORY_REPO: ${{ vars.RIX_FACTORY_REPO }}
+          PROJECT_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
         run: |
-          gh api repos/${{ vars.RIX_FACTORY_REPO }}/dispatches \
+          gh api "repos/$FACTORY_REPO/dispatches" \
             -f event_type=rix-ci-failure \
-            -f "client_payload[repo]=${{ github.repository }}" \
-            -f "client_payload[run_id]=${{ github.event.workflow_run.id }}"
+            -f "client_payload[repo]=$PROJECT_REPO" \
+            -f "client_payload[run_id]=$RUN_ID" \
+            -f "client_payload[branch]=$HEAD_BRANCH" \
+            -f "client_payload[head_repo]=$HEAD_REPO"
 ```
 
 `RIX_FACTORY_DISPATCH_TOKEN` needs `contents:write` on the factory repo (required by the
@@ -233,12 +262,23 @@ name: rix (dispatched CI failure)
 on:
   repository_dispatch:
     types: [rix-ci-failure]
+
 jobs:
   rix:
     # Bounds which repos the factory will act on, but does not say who asked — see the
     # trust caveat below.
     if: contains(fromJSON(vars.RIX_FACTORY_ALLOWED_REPOS), github.event.client_payload.repo)
-    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main
+    # The factory's equivalent of the simple pattern's group, on the job for the same reason and
+    # below the allowlist so a payload naming a repo this factory does not serve never reaches it.
+    # `repository_dispatch` carries no branch of its own, so the key comes from the payload. Those
+    # fields are unauthenticated: an onboarded repo can name another one's tuple and cancel its
+    # queued response. That is a real denial rather than mere serialization, and it is the same
+    # mutual trust the allowlist already asks for - not something the allowlist bounds. See the
+    # caveat below.
+    concurrency:
+      group: rix-on-ci-failure-${{ github.event.client_payload.repo }}-${{ github.event.client_payload.head_repo }}-${{ github.event.client_payload.branch }}
+      cancel-in-progress: false
+    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v0
     with:
       repo: ${{ github.event.client_payload.repo }}
       run-id: ${{ github.event.client_payload.run_id }}
@@ -267,7 +307,9 @@ passes — the run exists, it failed, and its head repo matches. rix then spends
 cross-repo write token on that other repo. What an attacker gets is the trigger, not the
 content: rix still answers a genuine CI failure and still opens an ordinary `rix/*` PR. But the
 timing and the target are theirs to pick, and the reachable set is exactly the repos worth
-reaching. Read the allowlist as a blast-radius bound, not as authentication.
+reaching. The same holds in the other direction: `client_payload` also supplies the concurrency
+key, so an onboarded repo can name another's `repo`/`head_repo`/`branch` and cancel a response
+that repo had queued. Read the allowlist as a blast-radius bound, not as authentication.
 
 Two things that don't close this, despite looking like they should: `github.event.sender`
 names the account or App that called the dispatch API, not the repo it was called from, so with
@@ -283,3 +325,37 @@ missing — claiming to be another repo then requires that repo's secret. The co
 factory now stores one secret per project, which is most of the per-repo key management
 centralizing was meant to avoid; that trade is the reason to prefer the first option when the
 trust domain allows it.
+
+### Keeping rix from answering its own failures
+
+rix pushes commits, those commits run CI, and a failing one triggers this workflow again — so
+left alone, rix answering its own failures is a loop with nothing to stop it. Two things bound
+it, and both apply to either pattern above:
+
+- **The loop guard.** Before doing any work, `on-ci-failure.yml` counts how many commits at the
+  tip of the failing branch rix authored itself, and leaves the failure alone once that reaches
+  `max-rix-commits` (default 5, max 100). The count stops at the first commit rix didn't write,
+  so anyone pushing to the branch re-enables rix on it; a guarded run logs a notice, succeeds,
+  and creates nothing. The default is 5 rather than 1 because rix fixing up its own previous
+  attempt is the normal case — the first attempt failing is exactly why there is a second.
+  Note it bounds *commits*, not attempts: one agent run can produce more than one commit, so the
+  effective number of attempts is at most this.
+- **The `concurrency` group**, keyed on the failing branch and the repository that branch lives
+  in, so a branch that fails twice in quick succession queues the second run rather than
+  starting a second agent from the same tip. `cancel-in-progress: false` because a run already
+  talking to the agent has work worth finishing. It sits on the job rather than on the workflow,
+  which matters more than it looks: GitHub keeps one *pending* entry per group and cancels
+  whatever a newcomer displaces, and `cancel-in-progress` governs the running entry, not the
+  queued one. At workflow scope the group is taken before any `if` is looked at, so an event
+  that does no work — a later successful rerun of the same branch, or a fork run a trust gate
+  would have rejected — could quietly drop a queued answer to a real failure. The head
+  repository is in the key because a fork's branch can share a name with one of yours. Both
+  callers above carry a group; the factory keys its on the dispatch payload's `repo`,
+  `head_repo` and `branch` rather than on `workflow_run`, since a `repository_dispatch` knows
+  none of them on its own.
+
+```yaml
+    with:
+      run-id: ${{ github.event.workflow_run.id }}
+      max-rix-commits: 3
+```

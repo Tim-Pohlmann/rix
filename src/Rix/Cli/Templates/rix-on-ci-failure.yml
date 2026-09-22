@@ -7,7 +7,19 @@ jobs:
   rix:
     # Cheap short-circuit; on-ci-failure.yml re-checks the conclusion via the API regardless.
     if: github.event.workflow_run.conclusion == 'failure'
-    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main
+    # One rix run per branch at a time: when CI fails again while rix is still working on the
+    # previous failure, the second run waits instead of starting a second agent from the same tip.
+    # On the job rather than the workflow, so only runs that get past the `if` above contend:
+    # GitHub keeps a single pending entry per group and cancels whatever a newcomer displaces
+    # (`cancel-in-progress` governs the running entry, not the queued one), so at workflow scope
+    # every completion on the branch - a later successful rerun included - would join the group
+    # and could drop a queued answer to a real failure. The head repository is in the key for a
+    # related reason: a fork PR's run reaches this workflow too, under a branch name its author
+    # picked, which may well be one of yours.
+    concurrency:
+      group: rix-on-ci-failure-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@__RIX_REF__
     with:
       # repo defaults to the calling repo.
       run-id: ${{ github.event.workflow_run.id }}

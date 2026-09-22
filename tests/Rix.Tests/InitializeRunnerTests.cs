@@ -36,7 +36,7 @@ public class InitializeRunnerTests
 
         CollectionAssert.AreEqual
         (
-            WorkflowTemplates.All.Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
+            WorkflowTemplates.For(WorkflowRef.ForThisBuild).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
             _writes.Select(w => w.Path).ToArray()
         );
     }
@@ -44,15 +44,17 @@ public class InitializeRunnerTests
     [TestMethod]
     public async Task RunAsync_WritesTemplateContent_WithReusableWorkflowRefsAndCiPlaceholder()
     {
-        AssertSuccess(await Run(TestConfig.ValidInitialize(), Context()));
+        AssertSuccess(await Run(TestConfig.ValidInitialize(workflowRef: "release/2.x"), Context()));
 
         var rixYml = _writes.Single(w => w.Path.EndsWith("workflows/rix.yml", StringComparison.Ordinal)).Content;
         var ciYml = _writes.Single(w => w.Path.EndsWith("rix-on-ci-failure.yml", StringComparison.Ordinal)).Content;
 
-        StringAssert.Contains(rixYml, "uses: Tim-Pohlmann/rix/.github/workflows/job.yml@main");
+        StringAssert.Contains(rixYml, "uses: Tim-Pohlmann/rix/.github/workflows/job.yml@release/2.x");
         StringAssert.Contains(rixYml, "read-token: ${{ secrets.RIX_READ_TOKEN }}");
-        StringAssert.Contains(ciYml, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@main");
+        StringAssert.Contains(ciYml, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@release/2.x");
         StringAssert.Contains(ciYml, "workflows: [\"CI\"] # change \"CI\" to the name:");
+        // Every occurrence is substituted, not just the first one the runner happens to hit.
+        Assert.IsFalse(_writes.Any(w => w.Content.Contains(WorkflowTemplates.RefPlaceholder, StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -65,7 +67,7 @@ public class InitializeRunnerTests
         _writes.Clear();
         AssertSuccess(await Run(config, Context()));
 
-        Assert.AreEqual(WorkflowTemplates.All.Count, _writes.Count);
+        Assert.AreEqual(WorkflowTemplates.For(WorkflowRef.ForThisBuild).Count, _writes.Count);
     }
 
     [TestMethod]

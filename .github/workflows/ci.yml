@@ -159,6 +159,68 @@ jobs:
           input-dir: out
           rix-bin: ${{ env.RIX_BIN_PATH }}
 
+  ci-failure-plumbing:
+    name: CI-failure plumbing
+    runs-on: ubuntu-latest
+    needs: build-rix
+    permissions:
+      contents: read
+      # run-ci-failure reads the workflow run's metadata through the Actions API, which
+      # contents:read does not cover.
+      actions: read
+    env:
+      RIX_BIN_PATH: ${{ github.workspace }}/rix-bin/rix
+
+    # agent-plumbing's counterpart for the other composite action: runs the real
+    # .github/actions/run-ci-failure (the one on-ci-failure.yml drives) against this very run,
+    # using the binary build-rix published from this PR's own source. This run has not concluded
+    # while it is checking itself, so rix stops at `skipped` well before the agent - which is the
+    # point. What is covered here is the layer above the agent: the inputs every caller leaves
+    # alone, resolved and forwarded for real. Nothing else in CI calls this action, which is how a
+    # max-rix-commits default that failed 100% of unconfigured runs got as far as review.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
+
+      - name: Run rix ci-failure against this in-progress run
+        id: ci-failure
+        uses: ./.github/actions/run-ci-failure
+        with:
+          repo: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          read-token: ${{ github.token }}
+          agent: opencode
+          # All three are 0 rather than omitted, for the reason spelled out on agent-plumbing's
+          # max-tokens above: 0 is what on-ci-failure.yml's workflow_call inputs resolve to for a
+          # caller who leaves them alone, and rix rejects an explicit 0 for every one of them. A
+          # regression that forwards it therefore fails here - "--max-rix-commits must be between
+          # 1 and 100, got '0'" - instead of in every unconfigured production run. Omitting them
+          # would only exercise the empty-string path, which never reaches that validation.
+          max-rix-commits: 0
+          max-tokens: 0
+          timeout: 0
+          rix-bin: ${{ env.RIX_BIN_PATH }}
+
+      - name: Assert the unfinished run was skipped, not answered
+        env:
+          HAS_RESULT: ${{ steps.ci-failure.outputs.has-result }}
+        run: |
+          # The step above already fails on a rejected input or an API error, so this only pins
+          # down the decision: a run with no conclusion yet is not a failure to answer, and a
+          # has-result of true would mean rix had started an agent against one.
+          [[ "$HAS_RESULT" == "false" ]] || { echo "expected has-result=false, got '$HAS_RESULT'" >&2; exit 1; }
+
   rix-job-e2e:
     name: rix job e2e
     runs-on: ubuntu-latest

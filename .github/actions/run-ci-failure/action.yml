@@ -31,6 +31,12 @@ inputs:
       opencode, ANTHROPIC_API_KEY for claude. Required for pi whenever agent-api-key is set,
       since pi has no single default provider to fall back on.
     required: false
+  max-rix-commits:
+    description: >-
+      How many of rix's own commits may already sit at the failing branch's tip before the failure
+      is left alone instead of answered (default: 5). Bounds rix reacting to the CI failures of its
+      own fixes forever; a commit by anyone else at the tip clears the count.
+    required: false
   max-tokens:
     description: Coding agent token budget cap
     required: false
@@ -73,6 +79,7 @@ runs:
         RIX_READ_TOKEN: ${{ inputs.read-token }}
         RIX_REPO: ${{ inputs.repo }}
         RIX_RUN_ID: ${{ inputs.run-id }}
+        RIX_MAX_RIX_COMMITS: ${{ inputs.max-rix-commits }}
       shell: bash
       run: |
         # AGENT_API_KEY/AGENT_API_KEY_ENV are forwarded to rix as-is - it resolves which single env
@@ -81,6 +88,19 @@ runs:
         # Rix.Agents.AgentCredential and Rix.Job.JobRunner). The key never needs to exist under
         # that name in this shell or in $GITHUB_ENV.
         mkdir -p out work
+
+        # A caller who omits max-rix-commits reaches here with "0", not empty: it arrives through a
+        # workflow_call input of type: number with no default, the same quirk prepare-rix-env
+        # normalizes away for max-tokens/timeout. 0 is the one value MaxRixCommits rejects, so
+        # forwarding it unchanged failed every unconfigured run before it looked at any CI. Only
+        # that exact value is treated as unset, so rix's own default applies; anything else invalid
+        # (negative, non-numeric) still goes through for rix to report, rather than being masked by
+        # a default here. This has to be done in the shell rather than with `|| ''` on the
+        # expression above, because a composite action's inputs are strings and the non-empty
+        # string "0" is truthy.
+        if [ "${RIX_MAX_RIX_COMMITS:-}" = "0" ]; then
+          export RIX_MAX_RIX_COMMITS=""
+        fi
 
         # Workflow commands (::error::...) read %/CR/LF as control syntax, so any of those in a
         # message straight from rix's JSON output (attacker-influenced, since it can echo failing
@@ -108,8 +128,8 @@ runs:
         # exactly when the ::error:: annotation below is the only diagnostic there is. Translate
         # the separators to a non-whitespace one, which read keeps one for one. @tsv has already
         # escaped any tab inside a field value, so only true separators are converted.
-        IFS=$'\037' read -r status conclusion error \
-          < <(jq -r '[.status, (.conclusion // ""), (.error // "")] | @tsv' <<<"$result" | tr '\t' '\037')
+        IFS=$'\037' read -r status conclusion error branch rix_commits \
+          < <(jq -r '[.status, (.conclusion // ""), (.error // ""), (.branch // ""), (.rixCommits // "")] | @tsv' <<<"$result" | tr '\t' '\037')
         # Default to false so every branch below (including an unrecognized status) leaves
         # has-result in a defined state; only the success branch needs to override it.
         echo "has-result=false" >> "$GITHUB_OUTPUT"
@@ -121,6 +141,16 @@ runs:
             ;;
           skipped)
             echo "Run $RIX_RUN_ID concluded '$conclusion', not 'failure' — skipping."
+            ;;
+          loopGuarded)
+            # Not an error: rix has already had its turns on this branch and is standing down so a
+            # human can look. Their next commit to the branch clears the streak on its own.
+            #
+            # Escaped like the ::error:: arms below, for the same reason: $branch is a ref name
+            # from the target repo, and git allows '%' in one, so a branch called '...%0A::error::'
+            # would otherwise end this notice early and run a workflow command of its author's
+            # choosing - in the job that holds the write token.
+            echo "::notice::$(escape_workflow_command "The last $rix_commits commits on '$branch' are rix's own — not answering this failure. Push a commit to the branch (or raise max-rix-commits) to re-enable rix on it.")"
             ;;
           failure | setupFailure)
             # The agent ran but the job itself failed - exit_code is already non-zero here, which

@@ -64,7 +64,8 @@ internal static class TestConfig
         string readToken = "read-tok",
         long runId = 1,
         string? workDir = null,
-        string? outputDir = null
+        string? outputDir = null,
+        int maxRixCommits = CiFailureConfig.DefaultMaxRixCommits
     )
     => new
     (
@@ -75,9 +76,10 @@ internal static class TestConfig
         WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
         OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
         Agent: JobConfig.DefaultAgent,
-        MaxTokens: new MaxTokens(JobConfig.DefaultMaxTokens)
+        MaxTokens: new MaxTokens(JobConfig.DefaultMaxTokens),
+        MaxRixCommits: new MaxRixCommits(maxRixCommits)
     );
 
-    internal static InitializeConfig ValidInitialize(string? dir = null)
-    => new(new DirectoryPath(dir ?? Path.GetTempPath()));
+    internal static InitializeConfig ValidInitialize(string? dir = null, string? workflowRef = null)
+    => new(new DirectoryPath(dir ?? Path.GetTempPath()), new WorkflowRef(workflowRef ?? "v0"));
 }

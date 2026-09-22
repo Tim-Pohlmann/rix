@@ -53,6 +53,14 @@ on:
         description: "Path to an already-built rix binary to use instead of downloading a release"
         required: false
         type: string
+      max-rix-commits:
+        description: >-
+          How many of rix's own commits may already sit at the failing branch's tip before the
+          failure is left alone instead of answered (default: 5, max: 100). Bounds rix reacting to
+          the CI failures of its own fixes forever; a commit by anyone else at the tip clears the
+          count, so a human stepping in re-enables it.
+        required: false
+        type: number
       max-tokens:
         description: Coding agent token budget cap
         required: false
@@ -127,6 +135,10 @@ jobs:
           model: ${{ inputs.model }}
           agent-api-key: ${{ secrets.agent-api-key }}
           agent-api-key-env: ${{ inputs.agent-api-key-env }}
+          # Forwarded raw, 0 and all: run-ci-failure normalizes the omitted-number-input 0 the
+          # same way prepare-rix-env does for the two below, so it holds for every caller of that
+          # action rather than only for this workflow.
+          max-rix-commits: ${{ inputs.max-rix-commits }}
           max-tokens: ${{ inputs.max-tokens }}
           timeout: ${{ inputs.timeout }}
           rix-version: ${{ inputs.rix-version }}

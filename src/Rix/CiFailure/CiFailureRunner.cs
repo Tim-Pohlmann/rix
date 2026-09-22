@@ -18,7 +18,7 @@ internal static class CiFailureRunner
         CancellationToken cancellationToken
     )
     {
-        var detection = await CiFailureDetector.DetectAsync(config.Repo, config.RunId, context.CiFailureHost, cancellationToken);
+        var detection = await CiFailureDetector.DetectAsync(config.Repo, config.RunId, context.CiFailureHost, config.MaxRixCommits, cancellationToken);
         if (detection is not CiFailureDetected detected)
             return new CiFailureNotRun(detection);
 
@@ -39,9 +39,10 @@ internal abstract record CiFailureOutcome
     private protected CiFailureOutcome() { }
 }
 
-/// <summary>The run either hadn't failed (<see cref="CiFailureSkipped"/>) or couldn't be checked
-/// (<see cref="CiFailureError"/>) — never <see cref="CiFailureDetected"/>, which always leads to
-/// <see cref="CiFailureRan"/> instead.</summary>
+/// <summary>The run either hadn't failed (<see cref="CiFailureSkipped"/>), had failed but on a
+/// branch rix has already been fixing on its own (<see cref="CiFailureLoopGuarded"/>), or couldn't
+/// be checked (<see cref="CiFailureError"/>) — never <see cref="CiFailureDetected"/>, which always
+/// leads to <see cref="CiFailureRan"/> instead.</summary>
 internal sealed record CiFailureNotRun(ICiFailureResult Reason) : CiFailureOutcome;
 
 /// <summary>The agent ran. Carries the <see cref="JobConfig"/> it ran under, which only exists once

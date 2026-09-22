@@ -9,8 +9,13 @@ namespace Rix.Tests;
 internal sealed class StubCiFailureHost(
     Func<RunId, Task<WorkflowRun>>? getRun = null,
     Func<RunId, Task<string>>? getLogs = null,
-    Func<BranchName, Task<int?>>? findPr = null) : IGitHubCiFailureHost
+    Func<BranchName, Task<int?>>? findPr = null,
+    Func<BranchName, Task<int>>? countRixCommits = null) : IGitHubCiFailureHost
 {
+    /// <summary>The cap the loop guard was asked to count against, so a test can assert the
+    /// configured value reaches the host instead of a constant fixed in the detector.</summary>
+    internal MaxRixCommits? MaxRixCommits { get; private set; }
+
     /// <summary>The log budget the caller asked for, so a test can assert the cap is actually
     /// pushed down to the host rather than only applied afterwards.</summary>
     internal int? TotalTailChars { get; private set; }
@@ -26,6 +31,12 @@ internal sealed class StubCiFailureHost(
 
     public Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken)
     => findPr switch { { } check => check(branch), _ => Task.FromResult<int?>(null) };
+
+    public Task<int> CountLeadingRixCommitsAsync(BranchName branch, MaxRixCommits max, CancellationToken cancellationToken)
+    {
+        MaxRixCommits = max;
+        return countRixCommits switch { { } count => count(branch), _ => Task.FromResult(0) };
+    }
 }
 
 /// <summary>An <see cref="HttpMessageHandler"/> that answers every request from

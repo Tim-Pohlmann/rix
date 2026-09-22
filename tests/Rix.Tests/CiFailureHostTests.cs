@@ -6,8 +6,8 @@ using System.Text;
 namespace Rix.Tests;
 
 /// <summary>Covers the <see cref="IGitHubCiFailureHost"/> methods <see cref="GitHubReadHost"/>
-/// implements: fetching a run's facts, concatenating its failed jobs' logs, and looking up an
-/// open PR for its branch.</summary>
+/// implements: fetching a run's facts, concatenating its failed jobs' logs, looking up an open PR
+/// for its branch, and counting rix's own commits at that branch's tip.</summary>
 [TestClass]
 public class CiFailureHostTests
 {
@@ -229,6 +229,67 @@ public class CiFailureHostTests
 
         Assert.IsNotNull(capturedUri);
         StringAssert.Contains(Uri.UnescapeDataString(capturedUri!.Query), "head=owner:rix/fix");
+    }
+
+    /// <summary>A commit rix made: the git author metadata carries <see cref="GitIdentity.Email"/>,
+    /// while the top-level <c>author</c> - the linked GitHub account - is null, since that address
+    /// belongs to no account.</summary>
+    private const string RixCommit = """{"author":null,"commit":{"author":{"email":"rix@noreply.invalid"}}}""";
+
+    private const string HumanCommit = """{"author":{"login":"someone"},"commit":{"author":{"email":"someone@example.com"}}}""";
+
+    private static readonly MaxRixCommits Cap = new(5);
+
+    [TestMethod]
+    public async Task CountLeadingRixCommitsAsync_CountsTheStreakAtTheTip()
+    {
+        var host = BuildHost(_ => Json($"[{RixCommit},{RixCommit},{HumanCommit},{RixCommit}]"));
+
+        var count = await host.CountLeadingRixCommitsAsync(new BranchName("rix/fix"), Cap, CancellationToken.None);
+
+        // Stops at the human commit: the one after it is rix's again but no longer part of the run.
+        Assert.AreEqual(2, count);
+    }
+
+    [TestMethod]
+    public async Task CountLeadingRixCommitsAsync_ReturnsZero_WhenSomeoneElseCommittedLast()
+    {
+        var host = BuildHost(_ => Json($"[{HumanCommit},{RixCommit}]"));
+
+        Assert.AreEqual(0, await host.CountLeadingRixCommitsAsync(new BranchName("rix/fix"), Cap, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task CountLeadingRixCommitsAsync_ReturnsZero_ForAnEmptyOrAuthorlessHistory()
+    {
+        Assert.AreEqual(0, await BuildHost(_ => Json("[]")).CountLeadingRixCommitsAsync(new BranchName("rix/fix"), Cap, CancellationToken.None));
+        Assert.AreEqual(0, await BuildHost(_ => Json("""[{"commit":{}}]""")).CountLeadingRixCommitsAsync(new BranchName("rix/fix"), Cap, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task CountLeadingRixCommitsAsync_AsksForTheBranchAndNoMoreCommitsThanTheCap()
+    {
+        Uri? capturedUri = null;
+        var host = BuildHost(request => { capturedUri = request.RequestUri; return Json("[]"); });
+
+        await host.CountLeadingRixCommitsAsync(new BranchName("rix/fix"), new MaxRixCommits(3), CancellationToken.None);
+
+        Assert.IsNotNull(capturedUri);
+        var query = Uri.UnescapeDataString(capturedUri!.Query);
+        StringAssert.Contains(query, "sha=rix/fix");
+        StringAssert.Contains(query, "per_page=3");
+    }
+
+    [TestMethod]
+    public async Task CountLeadingRixCommitsAsync_Throws_OnErrorStatus()
+    {
+        var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>
+        (
+            () => host.CountLeadingRixCommitsAsync(new BranchName("rix/fix"), Cap, CancellationToken.None)
+        );
+        StringAssert.Contains(ex.Message, "list commits on branch rix/fix");
     }
 
     /// <summary>A host that can't be reached fails before any response exists to inspect, so the
