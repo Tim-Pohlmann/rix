@@ -136,6 +136,9 @@ jobs:
           model: ${{ inputs.model }}
           agent-api-key: ${{ secrets.agent-api-key }}
           agent-api-key-env: ${{ inputs.agent-api-key-env }}
+          # Forwarded raw, 0 and all: run-ci-failure normalizes the omitted-number-input 0 the
+          # same way prepare-rix-env does for the two below, so it holds for every caller of that
+          # action rather than only for this workflow.
           max-rix-commits: ${{ inputs.max-rix-commits }}
           max-tokens: ${{ inputs.max-tokens }}
           timeout: ${{ inputs.timeout }}

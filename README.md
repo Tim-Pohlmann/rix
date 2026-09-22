@@ -238,7 +238,8 @@ jobs:
           gh api repos/${{ vars.RIX_FACTORY_REPO }}/dispatches \
             -f event_type=rix-ci-failure \
             -f "client_payload[repo]=${{ github.repository }}" \
-            -f "client_payload[run_id]=${{ github.event.workflow_run.id }}"
+            -f "client_payload[run_id]=${{ github.event.workflow_run.id }}" \
+            -f "client_payload[branch]=${{ github.event.workflow_run.head_branch }}"
 ```
 
 `RIX_FACTORY_DISPATCH_TOKEN` needs `contents:write` on the factory repo (required by the
@@ -250,6 +251,15 @@ name: rix (dispatched CI failure)
 on:
   repository_dispatch:
     types: [rix-ci-failure]
+
+# The factory's equivalent of the simple pattern's group: `repository_dispatch` carries no branch
+# of its own, so it keys on the two payload fields instead. Those are unauthenticated (see the
+# caveat below), which costs nothing here - a payload can only choose which of its own dispatches
+# queue behind each other, and the loop guard, not this, is what actually bounds rix.
+concurrency:
+  group: rix-on-ci-failure-${{ github.event.client_payload.repo }}-${{ github.event.client_payload.branch }}
+  cancel-in-progress: false
+
 jobs:
   rix:
     # Bounds which repos the factory will act on, but does not say who asked — see the
@@ -315,10 +325,12 @@ it, and both apply to either pattern above:
   attempt is the normal case — the first attempt failing is exactly why there is a second.
   Note it bounds *commits*, not attempts: one agent run can produce more than one commit, so the
   effective number of attempts is at most this.
-- **The `concurrency` group** in the caller workflow above, keyed on the failing branch, so a
-  branch that fails twice in quick succession queues the second run rather than starting a
-  second agent from the same tip. `cancel-in-progress: false` because a run already talking to
-  the agent has work worth finishing.
+- **The `concurrency` group**, keyed on the failing branch, so a branch that fails twice in
+  quick succession queues the second run rather than starting a second agent from the same tip.
+  `cancel-in-progress: false` because a run already talking to the agent has work worth
+  finishing. Both callers above carry one; the factory keys its group on the dispatch payload's
+  `repo` and `branch` rather than on `workflow_run`, since a `repository_dispatch` knows neither
+  on its own.
 
 ```yaml
     with:

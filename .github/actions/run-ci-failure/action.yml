@@ -89,6 +89,19 @@ runs:
         # that name in this shell or in $GITHUB_ENV.
         mkdir -p out work
 
+        # A caller who omits max-rix-commits reaches here with "0", not empty: it arrives through a
+        # workflow_call input of type: number with no default, the same quirk prepare-rix-env
+        # normalizes away for max-tokens/timeout. 0 is the one value MaxRixCommits rejects, so
+        # forwarding it unchanged failed every unconfigured run before it looked at any CI. Only
+        # that exact value is treated as unset, so rix's own default applies; anything else invalid
+        # (negative, non-numeric) still goes through for rix to report, rather than being masked by
+        # a default here. This has to be done in the shell rather than with `|| ''` on the
+        # expression above, because a composite action's inputs are strings and the non-empty
+        # string "0" is truthy.
+        if [ "${RIX_MAX_RIX_COMMITS:-}" = "0" ]; then
+          export RIX_MAX_RIX_COMMITS=""
+        fi
+
         # Workflow commands (::error::...) read %/CR/LF as control syntax, so any of those in a
         # message straight from rix's JSON output (attacker-influenced, since it can echo failing
         # test/log content) could break the command or inject another one. Percent-encode them.
@@ -138,7 +151,12 @@ runs:
           loopGuarded)
             # Not an error: rix has already had its turns on this branch and is standing down so a
             # human can look. Their next commit to the branch clears the streak on its own.
-            echo "::notice::The last $rix_commits commits on '$branch' are rix's own — not answering this failure. Push a commit to the branch (or raise max-rix-commits) to re-enable rix on it."
+            #
+            # Escaped like the ::error:: arms below, for the same reason: $branch is a ref name
+            # from the target repo, and git allows '%' in one, so a branch called '...%0A::error::'
+            # would otherwise end this notice early and run a workflow command of its author's
+            # choosing - in the job that holds the write token.
+            echo "::notice::$(escape_workflow_command "The last $rix_commits commits on '$branch' are rix's own — not answering this failure. Push a commit to the branch (or raise max-rix-commits) to re-enable rix on it.")"
             ;;
           failure | setupFailure)
             # The agent ran but the job itself failed - exit_code is already non-zero here, which
