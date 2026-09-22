@@ -45,9 +45,11 @@ jobs:
         run: shellcheck .github/scripts/*.sh .github/actions/*/*.sh
 
       - name: Run bats tests
+        # python3-jsonschema checks every hand-written rix result fixture against schemas/ (see
+        # tests/scripts/result-schema.bash).
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats python3-jsonschema
           bats tests/scripts
 
       - name: Check the workflow binary pin matches the version
@@ -177,7 +179,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: tests/e2e
+          # schemas/ and the helper that reads it, so the real binary's result.json is checked
+          # against the same schema the hand-written fixtures are.
+          sparse-checkout: |
+            tests/e2e
+            tests/scripts/result-schema.bash
+            schemas
           sparse-checkout-cone-mode: false
 
       - name: Setup Node (rix installs the coding agent CLI via npm)
@@ -197,7 +204,7 @@ jobs:
       - name: Install bats
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats python3-jsonschema
 
       - name: Run rix job e2e tests
         # rix forwards every line the agent CLI prints to stderr (see JobRunner.ForwardLine), and
