@@ -185,9 +185,11 @@ internal sealed class LocalApiServer : IAsyncDisposable
         internal PrQueue PendingPrRequests { get; } = new();
         internal BranchQueue<QueuedPush> PendingPushRequests { get; } = new("push", push => push.Branch);
 
-        internal void Map(WebApplication app)
+        internal void Map(IEndpointRouteBuilder app)
         {
-            const string deliveryTag = "delivery";
+            // One group so the tag is set once rather than on every endpoint; its empty prefix
+            // leaves the routes themselves unchanged.
+            var delivery = app.MapGroup("").WithTags("delivery");
 
             var prDescription =
                 "Call this once a rix/<short-description> branch is committed locally in your working " +
@@ -195,33 +197,27 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 "baseBranch is the branch the PR targets; stacked PRs are allowed as long as the queued base " +
                 "branches form no cycle. The pull request is opened after the job ends, not immediately.";
 
-            app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, ct))
-                .WithTags(deliveryTag)
+            delivery.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, ct))
                 .WithSummary("Queue a branch to be opened as a pull request")
                 .WithDescription(prDescription);
 
-            app.MapGet("/pr", () => Results.Ok(PendingPrRequests.Snapshot()))
-                .WithTags(deliveryTag)
+            delivery.MapGet("/pr", () => Results.Ok(PendingPrRequests.Snapshot()))
                 .WithSummary("List queued pull requests")
                 .WithDescription("Returns the pull requests queued so far this run, in the order they will be opened.");
 
-            app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPrRequests))
-                .WithTags(deliveryTag)
+            delivery.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPrRequests))
                 .WithSummary("Cancel a queued pull request")
                 .WithDescription("Removes the queued pull request for the given branch. 404 if nothing is queued for it.");
 
-            app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, ct))
-                .WithTags(deliveryTag)
+            delivery.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, ct))
                 .WithSummary("Queue new commits onto a branch that already exists on the remote")
                 .WithDescription(BuildPushEndpointDescription(allowedPushBranches));
 
-            app.MapGet("/push", () => Results.Ok(PendingPushRequests.Snapshot()))
-                .WithTags(deliveryTag)
+            delivery.MapGet("/push", () => Results.Ok(PendingPushRequests.Snapshot()))
                 .WithSummary("List queued pushes")
                 .WithDescription("Returns the pushes queued so far this run.");
 
-            app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPushRequests))
-                .WithTags(deliveryTag)
+            delivery.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPushRequests))
                 .WithSummary("Cancel a queued push")
                 .WithDescription("Removes the queued push for the given branch. 404 if nothing is queued for it.");
         }
