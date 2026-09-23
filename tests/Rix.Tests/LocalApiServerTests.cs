@@ -50,10 +50,10 @@ public class LocalApiServerTests
     => JsonSerializer.Deserialize<T>(await response.Content.ReadAsStringAsync(), JsonOpts)!;
 
     private static async Task<string> ReadErrorAsync(HttpResponseMessage response)
-    => (await ReadJsonAsync<Dictionary<string, string>>(response))["error"];
+    => (await ReadJsonAsync<ErrorResponse>(response)).Error;
 
     private static async Task<string> ReadStatusAsync(HttpResponseMessage response)
-    => (await ReadJsonAsync<Dictionary<string, string>>(response))["status"];
+    => (await ReadJsonAsync<QueuedResponse>(response)).Status;
 
     [TestMethod]
     public async Task GetHealth_Returns200()
