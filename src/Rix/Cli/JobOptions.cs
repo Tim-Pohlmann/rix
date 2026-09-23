@@ -5,18 +5,17 @@ using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
-/// <summary>The CLI options shared by <c>job</c> and <c>ci-failure</c>, which both run the coding
-/// agent and so take the same execution parameters, plus one reader per option that turns its
-/// flag-or-environment text into the value the command's config takes — the first missing or
-/// malformed value throws <see cref="InvalidInputException"/> naming the flag, which
-/// <see cref="CliPipeline"/> reports. Each command assembles its own config from these at the
-/// call site, in the order it wants problems reported. <see cref="PromptOption"/> and
-/// <see cref="AllowedPushBranchesOption"/> are the exception: <c>ci-failure</c> derives both from
-/// the failure it detects rather than accepting them as inputs, so <see cref="AddTo"/> leaves
-/// those two to <c>job</c>. <c>--repo</c> and <c>--work-dir</c> live in <see cref="CommonOptions"/>
-/// instead, since <c>submit</c> takes them too without taking anything else here;
-/// <see cref="AddTo"/> still registers them, so a command accepting the agent-running set keeps
-/// getting the whole flag surface from one call.</summary>
+/// <summary>The CLI options a command that runs the coding agent takes, plus one reader per option
+/// that turns its flag-or-environment text into the value the command's config takes — the first
+/// missing or malformed value throws <see cref="InvalidInputException"/> naming the flag, which
+/// <see cref="CliPipeline"/> reports. The command assembles its config from these at the call site,
+/// in the order it wants problems reported. <c>--repo</c> and <c>--work-dir</c> live in
+/// <see cref="CommonOptions"/> instead, since <c>submit</c> takes them too without taking anything
+/// else here; <see cref="AddTo"/> still registers them, so one call yields the whole flag surface.
+///
+/// <c>ci-failure</c> used to share this set, back when it ran the agent itself. It now reports a
+/// verdict and stops, so it borrows only <see cref="ReadTokenOption"/> and
+/// <see cref="OutputDirOption"/> by name — see <see cref="CiFailureCommand"/>.</summary>
 internal static class JobOptions
 {
     internal static readonly Option<string> ReadTokenOption = new

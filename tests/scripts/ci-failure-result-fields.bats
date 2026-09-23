@@ -9,7 +9,7 @@
 # The action's own parse is extracted and run rather than restated, so this can't pass while the
 # action drifts away from it.
 
-ACTION="${BATS_TEST_DIRNAME}/../../.github/actions/run-ci-failure/action.yml"
+ACTION="${BATS_TEST_DIRNAME}/../../.github/actions/detect-ci-failure/action.yml"
 
 # Takes the read command whole, following backslash continuations, so it extracts the same thing
 # whether the action writes it on one line or several.

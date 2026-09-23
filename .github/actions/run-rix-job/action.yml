@@ -7,8 +7,17 @@ inputs:
     description: Target GitHub repo (owner/name)
     required: true
   prompt:
-    description: Task prompt for the coding agent
-    required: true
+    description: >-
+      Task prompt for the coding agent. Required unless prompt-file is given.
+    required: false
+  prompt-file:
+    description: >-
+      Path to a file holding the task prompt, used instead of prompt. For a prompt that was built
+      somewhere else and carried here — rix ci-failure's, say, which is assembled from a failing
+      run's log output and so is both long and arbitrary. A file crosses a job boundary as an
+      artifact without a size cap, and without its content ever having to survive being quoted
+      through a job output.
+    required: false
   read-token:
     description: GitHub PAT (or equivalent token) with read access to the target repo
     required: true
@@ -80,6 +89,7 @@ runs:
         RIX_READ_TOKEN: ${{ inputs.read-token }}
         RIX_REPO: ${{ inputs.repo }}
         RIX_PROMPT: ${{ inputs.prompt }}
+        RIX_PROMPT_FILE: ${{ inputs.prompt-file }}
         RIX_ALLOWED_PUSH_BRANCHES: ${{ inputs.allowed-push-branches }}
         RIX_FACTORY_REPO: ${{ inputs.factory-repo }}
         RIX_AGENT_HOME_PATH: ${{ inputs.agent-home-path }}
@@ -91,6 +101,18 @@ runs:
         # Rix.Agents.AgentCredential and Rix.Job.JobRunner). The key never needs to exist under
         # that name in this shell or in $GITHUB_ENV.
         mkdir -p out work
+
+        # Assignment from a command substitution is never re-parsed as shell, so the file's
+        # content reaches rix exactly as written no matter what a failing run's logs put in it.
+        if [ -n "$RIX_PROMPT_FILE" ]; then
+          if [ -n "$RIX_PROMPT" ]; then
+            echo "::error::run-rix-job takes either prompt or prompt-file, not both."
+            exit 1
+          fi
+          RIX_PROMPT="$(cat "$RIX_PROMPT_FILE")"
+          export RIX_PROMPT
+        fi
+
         "$RIX_BIN" job --agent "$RIX_AGENT" --output-dir out --work-dir work
 
     - name: Post job summary
