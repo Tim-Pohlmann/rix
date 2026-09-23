@@ -22,7 +22,7 @@ internal static class JobLogExcerpt
     /// <summary>Lays each job's tail out under a heading naming it — without which a multi-job
     /// failure reads as one undifferentiated log whose parts can't be told apart — and names the
     /// count of any jobs past <see cref="MaxJobs"/> rather than silently dropping them.</summary>
-    internal static string Render(IReadOnlyList<FailedJob> included, IReadOnlyList<string> logs, int omittedJobs)
+    internal static string Render(IReadOnlyList<CiJob> included, IReadOnlyList<string> logs, int omittedJobs)
     {
         var excerpt = string.Join("\n", included.Select((job, index) => $"===== {job.Name} =====\n{logs[index]}"));
         return omittedJobs switch
@@ -33,6 +33,11 @@ internal static class JobLogExcerpt
     }
 }
 
-/// <summary>One job of a run that failed, reduced to what the excerpt needs: the ID to fetch its log
-/// by and the name to head its block with.</summary>
-internal sealed record FailedJob(long Id, string Name);
+/// <summary>One job of a CI run, reduced to what building an excerpt needs: the ID to fetch its log
+/// by and a name to head its block with. The domain shape the excerpt is assembled in, as
+/// <see cref="CiRun"/> is for a run — which is why it holds a name GitHub may not have sent,
+/// already resolved, where <see cref="WorkflowJobApiResponse"/> holds the nullable wire field.
+/// Whether a job failed is not part of it: that is the question the caller asks of
+/// <see cref="WorkflowJobApiResponse.Conclusion"/> to decide what to build an excerpt from, and a
+/// type that restated the answer could only ever repeat its caller's filter.</summary>
+internal sealed record CiJob(long Id, string Name);

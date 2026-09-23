@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
-# Unit tests for .github/scripts/download-rix.sh. They source the script (which guards its main
-# entry point) and exercise the pure OS/asset-resolution functions with stubbed uname output and
-# a canned releases-API payload — no network, no real download.
+# Unit tests for .github/actions/download-rix/download-rix.sh. They source the script (which
+# guards its main entry point) and exercise the pure OS/asset-resolution functions with stubbed
+# uname output and a canned releases-API payload — no network, no real download.
 
 setup() {
-  source "${BATS_TEST_DIRNAME}/../../.github/scripts/download-rix.sh"
+  source "${BATS_TEST_DIRNAME}/../../.github/actions/download-rix/download-rix.sh"
 
   # A realistic /releases/latest payload covering every published RID.
   RELEASE_JSON='{"assets":[
@@ -57,24 +57,24 @@ setup() {
 # --- rix_asset_url: pick the matching asset, and only that one ---
 
 @test "asset: linux-x64 selects exactly the linux-x64 tarball" {
-  run bash -c "printf '%s' '$RELEASE_JSON' | { source '${BATS_TEST_DIRNAME}/../../.github/scripts/download-rix.sh'; rix_asset_url linux-x64 tar.gz; }"
+  run bash -c "printf '%s' '$RELEASE_JSON' | { source '${BATS_TEST_DIRNAME}/../../.github/actions/download-rix/download-rix.sh'; rix_asset_url linux-x64 tar.gz; }"
   [ "$status" -eq 0 ]
   [ "$output" = "https://github.com/Tim-Pohlmann/rix/releases/download/v1.2.0/rix-1.2.0-linux-x64.tar.gz" ]
 }
 
 @test "asset: linux-x64 does not match linux-arm64" {
-  run bash -c "printf '%s' '$RELEASE_JSON' | { source '${BATS_TEST_DIRNAME}/../../.github/scripts/download-rix.sh'; rix_asset_url linux-x64 tar.gz; }"
+  run bash -c "printf '%s' '$RELEASE_JSON' | { source '${BATS_TEST_DIRNAME}/../../.github/actions/download-rix/download-rix.sh'; rix_asset_url linux-x64 tar.gz; }"
   [[ "$output" != *"arm64"* ]]
 }
 
 @test "asset: win-x64 selects the zip" {
-  run bash -c "printf '%s' '$RELEASE_JSON' | { source '${BATS_TEST_DIRNAME}/../../.github/scripts/download-rix.sh'; rix_asset_url win-x64 zip; }"
+  run bash -c "printf '%s' '$RELEASE_JSON' | { source '${BATS_TEST_DIRNAME}/../../.github/actions/download-rix/download-rix.sh'; rix_asset_url win-x64 zip; }"
   [ "$status" -eq 0 ]
   [ "$output" = "https://github.com/Tim-Pohlmann/rix/releases/download/v1.2.0/rix-1.2.0-win-x64.zip" ]
 }
 
 @test "asset: a RID with no published asset (win-arm64) yields nothing" {
-  run bash -c "printf '%s' '$RELEASE_JSON' | { source '${BATS_TEST_DIRNAME}/../../.github/scripts/download-rix.sh'; rix_asset_url win-arm64 zip; }"
+  run bash -c "printf '%s' '$RELEASE_JSON' | { source '${BATS_TEST_DIRNAME}/../../.github/actions/download-rix/download-rix.sh'; rix_asset_url win-arm64 zip; }"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -128,7 +128,7 @@ setup() {
     {"browser_download_url":"https://github.com/Tim-Pohlmann/rix/releases/download/v1.2.0/rix-1.2.0-linux-x64.tar.gz.sig"},
     {"browser_download_url":"https://github.com/Tim-Pohlmann/rix/releases/download/v1.2.0/rix-1.2.0-linux-x64.tar.gz"}
   ]}'
-  run bash -c "printf '%s' '$json' | { source '${BATS_TEST_DIRNAME}/../../.github/scripts/download-rix.sh'; rix_asset_url linux-x64 tar.gz; }"
+  run bash -c "printf '%s' '$json' | { source '${BATS_TEST_DIRNAME}/../../.github/actions/download-rix/download-rix.sh'; rix_asset_url linux-x64 tar.gz; }"
   [ "$status" -eq 0 ]
   [ "$output" = "https://github.com/Tim-Pohlmann/rix/releases/download/v1.2.0/rix-1.2.0-linux-x64.tar.gz" ]
 }

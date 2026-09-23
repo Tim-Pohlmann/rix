@@ -42,14 +42,20 @@ internal sealed class GitHubApi
 
     /// <summary>GETs <paramref name="path"/> without judging the status, for the callers that read
     /// one themselves (a 404 meaning "no such branch") or that need the response as a stream rather
-    /// than a parsed body. Everyone else wants <see cref="GetJsonAsync"/>.</summary>
+    /// than a parsed body. Everyone else wants <see cref="GetJsonAsync"/>. Still names its
+    /// <paramref name="operation"/>, because a request that never reaches the host has no status for
+    /// those callers to read and fails in here instead.</summary>
     internal Task<HttpResponseMessage> GetAsync
     (
         string path,
         HttpCompletionOption completionOption,
+        string operation,
         CancellationToken cancellationToken
     )
-    => _http.GetAsync(Url(path), completionOption, cancellationToken);
+    => TransportAsync
+    (
+        () => _http.GetAsync(Url(path), completionOption, cancellationToken), operation, cancellationToken
+    );
 
     /// <summary>GETs <paramref name="path"/> and parses the JSON body, collapsing the
     /// request/status-check/parse sequence every read endpoint would otherwise repeat.
@@ -57,9 +63,9 @@ internal sealed class GitHubApi
     /// failed status produces.</summary>
     internal async Task<T> GetJsonAsync<T>(string path, JsonTypeInfo<T> typeInfo, string operation, CancellationToken cancellationToken)
     {
-        using var response = await GetAsync(path, HttpCompletionOption.ResponseContentRead, cancellationToken);
+        using var response = await GetAsync(path, HttpCompletionOption.ResponseContentRead, operation, cancellationToken);
         EnsureSuccess(response, operation);
-        return await ReadJsonAsync(response, typeInfo, cancellationToken);
+        return await ReadJsonAsync(response, typeInfo, operation, cancellationToken);
     }
 
     /// <summary>POSTs <paramref name="body"/> to <paramref name="path"/> and parses the response,
@@ -76,14 +82,51 @@ internal sealed class GitHubApi
     )
     {
         using var content = JsonContent.Create(body, requestTypeInfo);
-        using var response = await _http.PostAsync(Url(path), content, cancellationToken);
+        using var response = await TransportAsync
+        (
+            () => _http.PostAsync(Url(path), content, cancellationToken), operation, cancellationToken
+        );
         EnsureSuccess(response, operation);
-        return await ReadJsonAsync(response, responseTypeInfo, cancellationToken);
+        return await ReadJsonAsync(response, responseTypeInfo, operation, cancellationToken);
+    }
+
+    /// <summary>Runs one HTTP exchange, turning a transport failure — DNS, a refused connection, TLS,
+    /// a socket dropped part-way through a body — into a <see cref="RepoHostException"/> naming
+    /// the operation. <see cref="EnsureSuccess"/> can only classify a response that already arrived,
+    /// so an unreachable host fails before it ever runs; routing every send and every body read
+    /// through here is what stops those cases escaping as a raw
+    /// <see cref="HttpRequestException"/>. Cancellation through
+    /// <paramref name="cancellationToken"/> is left alone — that is the caller shutting down, not the
+    /// host failing — while <see cref="HttpClient"/>'s own timeout, which raises the same exception
+    /// type without the token being cancelled, is a host failure like any other. Public to the
+    /// assembly so a caller streaming a body itself can put the whole read inside one call.</summary>
+    internal static async Task<T> TransportAsync<T>
+    (
+        Func<Task<T>> exchange, string operation, CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            return await exchange();
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new RepoHostException($"{operation} timed out: {ex.Message}", ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new RepoHostException($"{operation} failed: {ex.Message}", ex);
+        }
+        catch (IOException ex)
+        {
+            throw new RepoHostException($"{operation} failed: {ex.Message}", ex);
+        }
     }
 
     /// <summary>Turns any non-2xx response into a <see cref="RepoHostException"/> naming the
     /// operation, so every REST call reports an error status the same way instead of leaking
-    /// <see cref="HttpRequestException"/> from a bare <c>EnsureSuccessStatusCode</c>. Public to the
+    /// <see cref="HttpRequestException"/> from a bare <c>EnsureSuccessStatusCode</c>. Only covers the
+    /// status line; reaching the host at all is <see cref="TransportAsync"/>'s job. Public to the
     /// assembly because callers of <see cref="GetAsync"/> check the status themselves and still
     /// want this shape for the statuses they don't handle.</summary>
     internal static void EnsureSuccess(HttpResponseMessage response, string operation)
@@ -98,18 +141,30 @@ internal sealed class GitHubApi
         }
     }
 
-    private static async Task<T> ReadJsonAsync<T>(HttpResponseMessage response, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken)
+    /// <summary>Parses a response body, wrapping a malformed or empty one the same way for the read
+    /// and write paths alike. Every failure out of here leads with <paramref name="operation"/> like
+    /// the rest of the boundary's do: the DTO type alone names a shape, not the request that asked
+    /// for it, and several endpoints parse the same shape.</summary>
+    private static async Task<T> ReadJsonAsync<T>
+    (
+        HttpResponseMessage response, JsonTypeInfo<T> typeInfo, string operation,
+        CancellationToken cancellationToken
+    )
     {
         try
         {
-            var value = await response.Content.ReadFromJsonAsync(typeInfo, cancellationToken);
+            var value = await TransportAsync
+            (
+                () => response.Content.ReadFromJsonAsync(typeInfo, cancellationToken),
+                operation, cancellationToken
+            );
             if (value is null)
-                throw new RepoHostException($"{typeof(T).Name} response body was empty");
+                throw new RepoHostException($"{operation} failed: {typeof(T).Name} response body was empty");
             return value;
         }
         catch (JsonException ex)
         {
-            throw new RepoHostException($"could not parse {typeof(T).Name} response", ex);
+            throw new RepoHostException($"{operation} failed: could not parse {typeof(T).Name} response", ex);
         }
     }
 

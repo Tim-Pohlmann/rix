@@ -26,7 +26,7 @@ internal static class TestConfig
         string? agentApiKey = null,
         string? agentApiKeyEnv = null,
         IReadOnlyList<BranchName>? allowedPushBranches = null,
-        FactoryContextConfig? factoryContext = null
+        AgentHomeInfo? agentHome = null
     )
     {
         // The same call the CLI makes, so a change to when the credential is required reaches
@@ -41,7 +41,7 @@ internal static class TestConfig
             OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
             new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, credential),
             allowedPushBranches ?? [],
-            factoryContext
+            agentHome
         );
     }
 
