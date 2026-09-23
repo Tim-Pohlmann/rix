@@ -51,6 +51,39 @@ internal sealed class DelegatingHandlerStub(Func<HttpRequestMessage, HttpRespons
     => Task.FromResult(handler(request));
 }
 
+/// <summary>A response body that fails once it is already being read, for the case a bad status
+/// can't stand in for: the request went out, headers came back, and the connection dropped
+/// mid-stream.</summary>
+internal sealed class FailingStream : Stream
+{
+    public override bool CanRead => true;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => false;
+
+    public override long Length => throw new NotSupportedException();
+
+    public override long Position
+    {
+        get => 0;
+        set => throw new NotSupportedException();
+    }
+
+    public override void Flush()
+    {
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    => throw new IOException("connection reset by peer");
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
 /// <summary>The CI run most ci-failure tests describe: one that ran, on a branch of the repo
 /// itself, with a title and URL. Only <paramref name="outcome"/>, <paramref name="branch"/> and
 /// <paramref name="headRepo"/> vary between scenarios, so the rest is fixed here rather than
@@ -149,24 +182,21 @@ internal sealed class StubSubmitRepoHost(
     }
 }
 
-/// <summary>Records the <see cref="LoadAsync"/> call so tests can assert the factory context was
-/// requested with the configured repo and path; by default it is a no-op (the runner home is left
-/// alone). Pass <c>onLoad</c> to simulate a fetch failure by throwing
-/// <see cref="Rix.Repository.RepoHostException"/>, as the real
-/// <see cref="Rix.Repository.GitHubFactoryContextLoader"/> does.</summary>
-internal sealed class StubFactoryContextLoader(Func<RepoIdentifier, RepoRelativePath, Task>? onLoad = null)
-    : IFactoryContextLoader
+/// <summary>Records each fetch so tests can assert the factory context was requested with the
+/// configured repo and path. <c>onFetch</c> gets the checkout dir and returns the directory to merge
+/// into the home, or throws <see cref="Rix.Repository.RepoHostException"/> to simulate a fetch
+/// failure; by default the empty checkout dir itself is returned, so nothing is copied.</summary>
+internal sealed class StubFactoryContextLoader(Func<string, string>? onFetch = null) : IFactoryContextLoader
 {
-    public int LoadCount { get; private set; }
-    public RepoIdentifier? LoadedRepo { get; private set; }
-    public RepoRelativePath? LoadedContextPath { get; private set; }
+    public List<(RepoIdentifier Repo, RepoRelativePath ContextPath)> Fetches { get; } = [];
 
-    public Task LoadAsync(RepoIdentifier repo, RepoRelativePath contextPath, CancellationToken cancellationToken)
+    public Task<string> FetchAsync
+    (
+        RepoIdentifier repo, RepoRelativePath contextPath, string checkoutDir, CancellationToken cancellationToken
+    )
     {
-        LoadCount++;
-        LoadedRepo = repo;
-        LoadedContextPath = contextPath;
-        return onLoad switch { { } run => run(repo, contextPath), _ => Task.CompletedTask };
+        Fetches.Add((repo, contextPath));
+        return Task.FromResult(onFetch?.Invoke(checkoutDir) ?? checkoutDir);
     }
 }
 

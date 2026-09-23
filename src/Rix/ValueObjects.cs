@@ -132,11 +132,7 @@ internal sealed record RepoRelativePath
     /// rejects anything rooted or containing a <c>..</c> segment (path traversal).</summary>
     internal RepoRelativePath(string path)
     {
-        var trimmed = (path ?? string.Empty).Trim();
-        if (trimmed.Length == 0)
-            throw new InvalidInputException("must not be empty");
-
-        var normalised = trimmed.Replace('\\', '/');
+        var normalised = path.Trim().Replace('\\', '/');
         if (Path.IsPathRooted(normalised))
             throw new InvalidInputException($"must be repo-relative, not rooted: '{path}'");
 
@@ -147,7 +143,7 @@ internal sealed record RepoRelativePath
 
         if (segments.Length == 0)
             throw new InvalidInputException($"does not name a directory inside the repo: '{path}'");
-        if (Array.IndexOf(segments, "..") >= 0)
+        if (segments.Contains(".."))
             throw new InvalidInputException($"must not contain a '..' segment: '{path}'");
 
         Value = string.Join('/', segments);
