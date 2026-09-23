@@ -26,17 +26,19 @@ internal sealed class GitHubCiFailureHost : ICiFailureHost
     internal GitHubCiFailureHost(RepoIdentifier repo, GitReadToken token, HttpMessageHandler? handler = null)
         : this(new GitHubApi(repo, token, handler)) { }
 
-    /// <summary>Fetches a run's conclusion, title, URL and head branch — the facts needed to decide
-    /// whether it failed and to describe the failure. <c>conclusion</c> is the one field GitHub
-    /// itself sends as <c>null</c> (while the run is still queued/in-progress), so it's the one
-    /// field this doesn't require.</summary>
+    /// <summary>Fetches a run's conclusion, title, URL, head branch and head repo — the facts
+    /// needed to decide whether it failed, whether it may be answered at all, and to describe the
+    /// failure. <c>conclusion</c> is the one field GitHub itself sends as <c>null</c> (while the run
+    /// is still queued/in-progress), so it's the one field this doesn't require; a run whose head
+    /// repo is missing (GitHub omits it once a fork has been deleted) is rejected here rather than
+    /// defaulted, since the caller decides by comparing it and has no safe value to compare.</summary>
     public async Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
     {
         var operation = $"get workflow run {runId.Value}";
         var run = await _api.GetJsonAsync($"actions/runs/{runId.Value}", GitHubCiFailureApiJsonContext.Default.WorkflowRunApiResponse, operation, cancellationToken);
-        if (run.DisplayTitle is null || run.HtmlUrl is null || run.HeadBranch is null)
+        if (run.DisplayTitle is null || run.HtmlUrl is null || run.HeadBranch is null || run.HeadRepository?.FullName is null)
             throw new RepositoryHostException($"{operation} response was missing a required field");
-        return new WorkflowRun(run.Conclusion, run.DisplayTitle, run.HtmlUrl, run.HeadBranch);
+        return new WorkflowRun(run.Conclusion, run.DisplayTitle, run.HtmlUrl, run.HeadBranch, run.HeadRepository.FullName);
     }
 
     /// <summary>Fetches the logs of every job that failed in the run and hands them to
@@ -174,7 +176,15 @@ internal sealed record WorkflowRunApiResponse
     [property: JsonPropertyName("conclusion")] string? Conclusion,
     [property: JsonPropertyName("display_title")] string? DisplayTitle,
     [property: JsonPropertyName("html_url")] string? HtmlUrl,
-    [property: JsonPropertyName("head_branch")] string? HeadBranch
+    [property: JsonPropertyName("head_branch")] string? HeadBranch,
+    [property: JsonPropertyName("head_repository")] RepositoryApiResponse? HeadRepository
+);
+
+/// <summary>The one field read from the repo a run's branch lives in: its <c>owner/name</c>, which
+/// says whether that branch is the watched repo's own or a fork's.</summary>
+internal sealed record RepositoryApiResponse
+(
+    [property: JsonPropertyName("full_name")] string? FullName
 );
 
 /// <summary>The JSON body of a GitHub "list jobs for a workflow run" REST response.</summary>

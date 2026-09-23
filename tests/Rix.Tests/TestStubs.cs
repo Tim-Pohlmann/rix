@@ -81,13 +81,14 @@ internal sealed class FailingStream : Stream
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }
 
-/// <summary>The workflow run most ci-failure tests describe: one that ran, on a branch, with a
-/// title and URL. Only <paramref name="conclusion"/> and <paramref name="branch"/> vary between
-/// scenarios, so the rest is fixed here rather than restated per test.</summary>
+/// <summary>The workflow run most ci-failure tests describe: one that ran, on a branch of the repo
+/// itself, with a title and URL. Only <paramref name="conclusion"/>, <paramref name="branch"/> and
+/// <paramref name="headRepo"/> vary between scenarios, so the rest is fixed here rather than
+/// restated per test.</summary>
 internal static class TestRuns
 {
-    internal static WorkflowRun Sample(string? conclusion, string branch = "rix/fix")
-    => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", branch);
+    internal static WorkflowRun Sample(string? conclusion, string branch = "rix/fix", string headRepo = "owner/repo")
+    => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", branch, headRepo);
 }
 
 internal sealed class StubJobHost(

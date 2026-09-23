@@ -8,8 +8,9 @@ name: Rix On CI Failure
 #   - a project repo calling it directly from its own workflow_run trigger
 #   - a central "factory" repo calling it from a repository_dispatch fired by many project repos
 # The factory case can't trust github.event.workflow_run (that context doesn't cross the
-# repository_dispatch boundary), so conclusion is always re-checked here via the API rather
-# than taken from the caller.
+# repository_dispatch boundary), so the conclusion — and whether the run's branch belongs to the
+# target repo at all, rather than to a fork nobody needs write access to push to — is always
+# re-checked here via the API rather than taken from the caller.
 on:
   workflow_call:
     inputs:

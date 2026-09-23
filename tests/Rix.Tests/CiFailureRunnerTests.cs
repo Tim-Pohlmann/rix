@@ -117,6 +117,37 @@ public class CiFailureRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_ReturnsNotRun_AndNeverClones_WhenTheFailureComesFromAFork()
+    {
+        var ciFailureHost = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure", headRepo: "outsider/repo")));
+        var cloneCalled = false;
+        var jobHost = new StubJobHost(clone: () => { cloneCalled = true; return Task.CompletedTask; });
+
+        var outcome = await CiFailureRunner.RunAsync(
+            MakeConfig(), Context(ciFailureHost, jobHost), CancellationToken.None);
+
+        var notRun = AssertNotRun(outcome);
+        Assert.IsInstanceOfType<CiFailureUntrustedRun>(notRun.Reason);
+        Assert.IsFalse(cloneCalled, "a fork's failure must not start an agent run at all");
+    }
+
+    /// <summary>Exit 0, like every other reason not to act: a fork PR failing CI is the normal
+    /// course of events, not a broken rix run for the repo's Actions tab to go red over.</summary>
+    [TestMethod]
+    public async Task ExecuteCiFailureAsync_Returns0_AndWritesNoResultJson_WhenTheFailureComesFromAFork()
+    {
+        var ciFailureHost = new StubCiFailureHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample("failure", headRepo: "outsider/repo")));
+
+        var exitCode = await Startup.ExecuteCiFailureAsync(
+            MakeConfig(), CancellationToken.None, Context(ciFailureHost, new StubJobHost()));
+
+        Assert.AreEqual(0, exitCode);
+        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")));
+    }
+
+    [TestMethod]
     public async Task RunAsync_PassesTheConfiguredCap_ToTheLoopGuard()
     {
         var ciFailureHost = new StubCiFailureHost(

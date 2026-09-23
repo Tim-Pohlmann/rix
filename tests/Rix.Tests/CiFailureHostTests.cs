@@ -23,7 +23,7 @@ public class CiFailureHostTests
     public async Task GetRunAsync_ReturnsWorkflowRun_ForValidResponse()
     {
         var host = BuildHost(_ => Json(
-            """{"conclusion":"failure","display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix"}"""));
+            """{"conclusion":"failure","display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix","head_repository":{"full_name":"owner/repo"}}"""));
 
         var run = await host.GetRunAsync(new RunId(1), CancellationToken.None);
 
@@ -31,6 +31,18 @@ public class CiFailureHostTests
         Assert.AreEqual("Fix thing", run.DisplayTitle);
         Assert.AreEqual("https://github.com/owner/repo/actions/runs/1", run.HtmlUrl);
         Assert.AreEqual("rix/fix", run.HeadBranch);
+        Assert.AreEqual("owner/repo", run.HeadRepo);
+    }
+
+    /// <summary>head_repository is required like the rest: the caller decides whether to answer the
+    /// run by comparing it, and there is no value it could safely stand in with.</summary>
+    [TestMethod]
+    public async Task GetRunAsync_Throws_WhenHeadRepositoryMissing()
+    {
+        var host = BuildHost(_ => Json(
+            """{"conclusion":"failure","display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix"}"""));
+
+        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
     }
 
     [TestMethod]
@@ -45,7 +57,7 @@ public class CiFailureHostTests
     public async Task GetRunAsync_ReturnsNullConclusion_ForInProgressRun()
     {
         var host = BuildHost(_ => Json(
-            """{"conclusion":null,"display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix"}"""));
+            """{"conclusion":null,"display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix","head_repository":{"full_name":"owner/repo"}}"""));
 
         var run = await host.GetRunAsync(new RunId(1), CancellationToken.None);
 

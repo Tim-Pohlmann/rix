@@ -232,9 +232,10 @@ internal static class Startup
     }
 
     /// <summary>Writes the outcome of a check that never reached the agent: the result JSON to
-    /// stdout, mapped to an exit code. <see cref="CiFailureSkipped"/> exits successfully (there was
-    /// simply nothing to do); only <see cref="CiFailureError"/> — a problem talking to the API, not
-    /// the run itself failing — is treated as a job failure. <see cref="CiFailureDetected"/> never
+    /// stdout, mapped to an exit code. <see cref="CiFailureSkipped"/> and
+    /// <see cref="CiFailureUntrustedRun"/> exit successfully (there was simply nothing to do, or
+    /// nothing rix is allowed to do); only <see cref="CiFailureError"/> — a problem talking to the
+    /// API, not the run itself failing — is treated as a job failure. <see cref="CiFailureDetected"/> never
     /// arrives here: it always leads to <see cref="WriteJobResultAsync"/> instead.</summary>
     private static int WriteCiFailureResult(ICiFailureResult result)
     {
@@ -242,7 +243,7 @@ internal static class Startup
         Console.WriteLine(json);
         return result switch
         {
-            CiFailureDetected or CiFailureSkipped or CiFailureLoopGuarded => ExitCodes.Success,
+            CiFailureDetected or CiFailureSkipped or CiFailureLoopGuarded or CiFailureUntrustedRun => ExitCodes.Success,
             CiFailureError => ExitCodes.JobFailed,
             _ => throw new NotSupportedException($"Unexpected ci-failure result type: {result.GetType()}"),
         };

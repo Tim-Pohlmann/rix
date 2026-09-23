@@ -128,8 +128,8 @@ runs:
         # exactly when the ::error:: annotation below is the only diagnostic there is. Translate
         # the separators to a non-whitespace one, which read keeps one for one. @tsv has already
         # escaped any tab inside a field value, so only true separators are converted.
-        IFS=$'\037' read -r status conclusion error branch rix_commits \
-          < <(jq -r '[.status, (.conclusion // ""), (.error // ""), (.branch // ""), (.rixCommits // "")] | @tsv' <<<"$result" | tr '\t' '\037')
+        IFS=$'\037' read -r status conclusion error branch rix_commits head_repo \
+          < <(jq -r '[.status, (.conclusion // ""), (.error // ""), (.branch // ""), (.rixCommits // ""), (.headRepo // "")] | @tsv' <<<"$result" | tr '\t' '\037')
         # Default to false so every branch below (including an unrecognized status) leaves
         # has-result in a defined state; only the success branch needs to override it.
         echo "has-result=false" >> "$GITHUB_OUTPUT"
@@ -141,6 +141,16 @@ runs:
             ;;
           skipped)
             echo "Run $RIX_RUN_ID concluded '$conclusion', not 'failure' — skipping."
+            ;;
+          untrustedRun)
+            # Not an error either: the run belongs to a fork's PR, so its code and logs are written
+            # by someone who needs no write access here - rix does not hand those to an agent
+            # holding this repo's write token.
+            #
+            # Escaped for the reason spelled out on the loopGuarded arm below, and more sharply
+            # here: on a fork's PR the branch name is picked by the very person this arm exists to
+            # keep out, so it is the one ref name an attacker chooses outright.
+            echo "::notice::$(escape_workflow_command "Run $RIX_RUN_ID is from '$head_repo', not this repository — not answering a failure on a fork's branch '$branch'.")"
             ;;
           loopGuarded)
             # Not an error: rix has already had its turns on this branch and is standing down so a
