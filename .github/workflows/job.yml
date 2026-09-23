@@ -60,7 +60,7 @@ on:
           repo. Omit to leave the runner home untouched.
         required: false
         type: string
-      factory-context-path:
+      agent-home-path:
         description: >-
           Directory inside factory-repo whose contents are copied into the runner's home
           before the agent starts (existing files are kept). Requires factory-repo; defaults
@@ -130,7 +130,7 @@ jobs:
           timeout: ${{ inputs.timeout }}
           allowed-push-branches: ${{ inputs.allowed-push-branches }}
           factory-repo: ${{ inputs.factory-repo }}
-          factory-context-path: ${{ inputs.factory-context-path }}
+          agent-home-path: ${{ inputs.agent-home-path }}
           rix-version: ${{ inputs.rix-version }}
 
       - name: Upload job output
