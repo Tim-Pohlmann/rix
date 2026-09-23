@@ -15,7 +15,7 @@ internal static class DirectoryMerge
             var target = Path.Combine(destDir, entry.Name);
             if (entry is DirectoryInfo && entry.LinkTarget is null)
             {
-                if (Directory.Exists(target) || !Path.Exists(target))
+                if (CanMergeDirectoryInto(target))
                     CopySkippingExisting(entry.FullName, target);
             }
             else if (!Path.Exists(target))
@@ -27,4 +27,11 @@ internal static class DirectoryMerge
             }
         }
     }
+
+    /// <summary>Whether a directory can be merged into <paramref name="target"/>: it is already a
+    /// directory (or a link to one), whose contents are merged, or nothing is there yet, so it is
+    /// created. Anything else in its place - a file, a link to a file or a dangling link - is the
+    /// runner's and wins.</summary>
+    private static bool CanMergeDirectoryInto(string target)
+    => Directory.Exists(target) || !Path.Exists(target);
 }
