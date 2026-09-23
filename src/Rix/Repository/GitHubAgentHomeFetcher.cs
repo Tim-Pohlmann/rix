@@ -1,13 +1,13 @@
 namespace Rix.Repository;
 
-/// <summary>Fetches the factory-repo home context with a shallow, blobless, sparse <c>git clone</c>
+/// <summary>Fetches the agent home files from the factory repo with a shallow, blobless, sparse <c>git clone</c>
 /// of just the requested directory, through the shared <see cref="GitCli"/> so the read token never
 /// lands in argv or a persisted remote URL.</summary>
-internal sealed class GitHubFactoryContextLoader(GitCli git) : IFactoryContextLoader
+internal sealed class GitHubAgentHomeFetcher(GitCli git) : IAgentHomeFetcher
 {
     public async Task<string> FetchAsync
     (
-        RepoIdentifier repo, RepoRelativePath contextPath, string checkoutDir, CancellationToken cancellationToken
+        RepoIdentifier repo, RepoRelativePath sourcePath, string checkoutDir, CancellationToken cancellationToken
     )
     {
         // Blobless + sparse + depth 1: fetch the commit's tree and only the blobs under the one
@@ -24,15 +24,15 @@ internal sealed class GitHubFactoryContextLoader(GitCli git) : IFactoryContextLo
 
         await git.RunAsync
         (
-            ["sparse-checkout", "set", contextPath.Value],
+            ["sparse-checkout", "set", sourcePath.Value],
             workingDirectory: checkoutDir,
             authenticated: true,
             cancellationToken
         );
 
-        var source = Path.Combine(checkoutDir, contextPath.Value);
+        var source = Path.Combine(checkoutDir, sourcePath.Value);
         if (!Directory.Exists(source))
-            throw new RepoHostException($"factory context path not found in {repo.Value}: {contextPath.Value}");
+            throw new RepoHostException($"agent home path not found in {repo.Value}: {sourcePath.Value}");
         return source;
     }
 }

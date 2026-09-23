@@ -2,7 +2,7 @@ namespace Rix;
 
 /// <summary>Merges one directory tree into another, keeping whatever already exists at the
 /// destination (file, directory or symlink, dangling or not — <see cref="Path.Exists"/> reports all
-/// of them), so the runner's own config wins over the factory context. Empty source directories are
+/// of them), so the runner's own config wins over the factory repo's. Empty source directories are
 /// recreated, and symlinks are recreated as symlinks rather than followed: a looping link can't
 /// recurse forever and an absolute one can't pull other runner files into the destination.</summary>
 internal static class DirectoryMerge

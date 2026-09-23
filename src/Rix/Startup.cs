@@ -27,8 +27,8 @@ internal static class Startup
     /// <see cref="DefaultCiFailureContext"/>. It takes the pieces separately instead of a
     /// <see cref="JobConfig"/> because a ci-failure run only has a job config once a failure has
     /// supplied the prompt. The agent and credential are configured up front, and the caller's
-    /// <paramref name="api"/> is shared rather than opening a second connection. The factory
-    /// context is fetched through the same git client as the repo host's.</summary>
+    /// <paramref name="api"/> is shared rather than opening a second connection. The agent
+    /// home files are fetched through the same git client as the repo host's.</summary>
     private static JobContext DefaultJobContext(GitHubApi api, AgentKind agent, GitReadToken readToken)
     {
         var git = new GitCli(readToken, ProcessWrapper.RunAsync);
@@ -41,7 +41,7 @@ internal static class Startup
             // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
             LogLine: Console.Error.WriteLine,
             TranscriptLine: _ => { },
-            FactoryContextLoader: new GitHubFactoryContextLoader(git)
+            AgentHomeFetcher: new GitHubAgentHomeFetcher(git)
         );
     }
 

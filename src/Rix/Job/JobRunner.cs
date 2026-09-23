@@ -49,11 +49,8 @@ internal static class JobRunner
             return new SetupFailure(ex.Message);
         }
 
-        if (config.FactoryContext is { } factoryContext)
-        {
-            if (await LoadFactoryContextAsync(factoryContext, config.WorkDir, context.FactoryContextLoader, ct) is { } factoryFailure)
-                return factoryFailure;
-        }
+        if (await CopyAgentHomeAsync(config, context.AgentHomeFetcher, ct) is { } agentHomeFailure)
+            return agentHomeFailure;
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
@@ -98,29 +95,32 @@ internal static class JobRunner
         };
     }
 
-    /// <summary>Lays the operator-supplied home context over the runner's user home before the
-    /// agent starts, so its config/context files are in place when the agent first reads them.
+    /// <summary>Copies the operator-supplied agent home files over the runner's user home before
+    /// the agent starts, so its config/context files are in place when the agent first reads them.
     /// Returns the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once the files are
-    /// in place.</summary>
-    private static async Task<SetupFailure?> LoadFactoryContextAsync
+    /// in place or when the run has none configured.</summary>
+    private static async Task<SetupFailure?> CopyAgentHomeAsync
     (
-        FactoryContextConfig factoryContext, DirectoryPath workDir, IFactoryContextLoader loader, CancellationToken ct
+        JobConfig config, IAgentHomeFetcher fetcher, CancellationToken ct
     )
     {
-        using var checkout = TempDirectory.Create(workDir.Value, "rix-factory");
+        if (config.AgentHome is not { } agentHome)
+            return null;
+
+        using var checkout = TempDirectory.Create(config.WorkDir.Value, "rix-agent-home");
         try
         {
-            var source = await loader.FetchAsync(factoryContext.Repo, factoryContext.ContextPath, checkout.Path, ct);
-            DirectoryMerge.CopySkippingExisting(source, factoryContext.Home.Value);
+            var source = await fetcher.FetchAsync(agentHome.Repo, agentHome.SourcePath, checkout.Path, ct);
+            DirectoryMerge.CopySkippingExisting(source, agentHome.Home.Value);
             return null;
         }
         catch (RepoHostException ex)
         {
-            return new SetupFailure($"factory context fetch failed: {ex.Message}");
+            return new SetupFailure($"agent home fetch failed: {ex.Message}");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return new SetupFailure($"factory context copy into {factoryContext.Home} failed: {ex.Message}");
+            return new SetupFailure($"agent home copy into {agentHome.Home} failed: {ex.Message}");
         }
     }
 

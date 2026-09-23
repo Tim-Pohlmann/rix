@@ -4,13 +4,13 @@ using Rix.Repository;
 namespace Rix.Tests;
 
 [TestClass]
-public class GitHubFactoryContextLoaderTests
+public class GitHubAgentHomeFetcherTests
 {
     private string _checkoutDir = null!;
 
     [TestInitialize]
     public void Setup()
-    => _checkoutDir = Directory.CreateTempSubdirectory("rix-factory-checkout-").FullName;
+    => _checkoutDir = Directory.CreateTempSubdirectory("rix-agent-home-checkout-").FullName;
 
     [TestCleanup]
     public void Cleanup()
@@ -18,9 +18,9 @@ public class GitHubFactoryContextLoaderTests
         try { Directory.Delete(_checkoutDir, recursive: true); } catch (DirectoryNotFoundException) { }
     }
 
-    private Task<string> Fetch(RunProcessAsync git, string contextPath = "agent-home")
-    => new GitHubFactoryContextLoader(new GitCli(new GitReadToken("tok"), git))
-        .FetchAsync(new RepoIdentifier("acme/factory"), new RepoRelativePath(contextPath), _checkoutDir, CancellationToken.None);
+    private Task<string> Fetch(RunProcessAsync git, string sourcePath = "agent-home")
+    => new GitHubAgentHomeFetcher(new GitCli(new GitReadToken("tok"), git))
+        .FetchAsync(new RepoIdentifier("acme/factory"), new RepoRelativePath(sourcePath), _checkoutDir, CancellationToken.None);
 
     /// <summary>A fake <c>git</c> that mimics a sparse clone by creating <paramref name="contextDir"/>
     /// with one file in the clone target, and records every invocation's args and env.</summary>
@@ -52,7 +52,7 @@ public class GitHubFactoryContextLoaderTests
     }
 
     [TestMethod]
-    public async Task FetchAsync_SparseChecksOutTheContextPath_WithAuthOnBothSteps()
+    public async Task FetchAsync_SparseChecksOutTheSourcePath_WithAuthOnBothSteps()
     {
         var calls = new List<(string[] Args, IReadOnlyDictionary<string, string>? Env)>();
 
@@ -72,10 +72,10 @@ public class GitHubFactoryContextLoaderTests
     }
 
     [TestMethod]
-    public async Task FetchAsync_Throws_WhenContextPathAbsentFromRepo()
+    public async Task FetchAsync_Throws_WhenSourcePathAbsentFromRepo()
     {
         var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(() => Fetch(FakeGit("some-other-dir")));
-        StringAssert.Contains(ex.Message, "factory context path not found");
+        StringAssert.Contains(ex.Message, "agent home path not found");
     }
 
     [TestMethod]
