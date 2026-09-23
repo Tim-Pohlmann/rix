@@ -24,7 +24,7 @@ internal sealed class GitHubJobRepoHost : IJobRepoHost
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
     => _git.RunAsync
     (
-        ["clone", $"https://github.com/{_api.Repo.Value}.git", targetDirectory],
+        ["clone", GitCli.CloneUrl(_api.Repo), targetDirectory],
         Path.GetTempPath(),
         authenticated: true,
         cancellationToken

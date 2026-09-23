@@ -1,13 +1,10 @@
 namespace Rix;
 
-/// <summary>Merges one directory tree into another, keeping any entry that already exists at the
-/// destination — the runner's own config wins over the factory context on a collision, whether the
-/// existing entry is a file, a directory or a (possibly dangling) symlink. Empty source directories
-/// are recreated too, so a deliberately-empty placeholder dir survives the copy. Symlinks are
-/// recreated as symlinks rather than followed, so a link that loops back up the tree can't recurse
-/// forever and a link to an absolute path can't pull files from elsewhere on the runner into the
-/// destination. (<see cref="Path.Exists"/> reports a dangling link as present, which is what makes
-/// it the collision check here.)</summary>
+/// <summary>Merges one directory tree into another, keeping whatever already exists at the
+/// destination (file, directory or symlink, dangling or not — <see cref="Path.Exists"/> reports all
+/// of them), so the runner's own config wins over the factory context. Empty source directories are
+/// recreated, and symlinks are recreated as symlinks rather than followed: a looping link can't
+/// recurse forever and an absolute one can't pull other runner files into the destination.</summary>
 internal static class DirectoryMerge
 {
     internal static void CopySkippingExisting(string sourceDir, string destDir)
@@ -18,7 +15,6 @@ internal static class DirectoryMerge
             var target = Path.Combine(destDir, entry.Name);
             if (entry is DirectoryInfo && entry.LinkTarget is null)
             {
-                // Merge into an existing directory; a non-directory already there wins.
                 if (Directory.Exists(target) || !Path.Exists(target))
                     CopySkippingExisting(entry.FullName, target);
             }

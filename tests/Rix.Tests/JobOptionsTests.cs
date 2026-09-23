@@ -210,6 +210,7 @@ public class JobOptionsTests
         Assert.IsNotNull(factory);
         Assert.AreEqual("acme/factory", factory.Repo.Value);
         Assert.AreEqual(JobConfig.DefaultFactoryContextPath, factory.ContextPath.Value);
+        Assert.AreEqual(new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), factory.Home);
     }
 
     [TestMethod]

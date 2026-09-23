@@ -12,7 +12,7 @@ namespace Rix.Job;
 /// branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates via
 /// <c>/pr</c>), since these already exist on the remote before the job ever runs.</param>
 /// <param name="FactoryContext">Optional factory-repo home context: when set, a directory from
-/// another repo is copied into the runner's user home before the agent starts. <c>null</c> (the
+/// another repo is copied into the runner's home before the agent starts. <c>null</c> (the
 /// default) means no <c>--factory-repo</c> was given and the runner home is left untouched.</param>
 internal record JobConfig
 (
@@ -57,8 +57,7 @@ internal sealed record AgentConfig
     AgentCredential? Credential = null
 );
 
-/// <summary>Where the run's user-home context comes from: a <paramref name="Repo"/> to fetch and
-/// the repo-relative <paramref name="ContextPath"/> directory inside it whose contents are copied
-/// into the runner's home before the agent starts. Groups the inputs the <c>--factory-repo</c> and
-/// <c>--factory-context-path</c> flags configure.</summary>
-internal sealed record FactoryContextConfig(RepoIdentifier Repo, RepoRelativePath ContextPath);
+/// <summary>The contents of the repo-relative <paramref name="ContextPath"/> directory in
+/// <paramref name="Repo"/> are copied into <paramref name="Home"/>, the runner user's home, before
+/// the agent starts.</summary>
+internal sealed record FactoryContextConfig(RepoIdentifier Repo, RepoRelativePath ContextPath, DirectoryPath Home);

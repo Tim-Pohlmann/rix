@@ -21,25 +21,18 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultContext
-    (
-        config.Agent.Kind,
-        new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
-        config.ReadToken,
-        config.WorkDir
-    );
+    {
+        var git = new GitCli(config.ReadToken, ProcessWrapper.RunAsync);
+        return DefaultContext(config.Agent.Kind, new GitHubJobRepoHost(git, new GitHubApi(config.Repo, config.ReadToken)), git);
+    }
 
     /// <summary>Overload for callers that already have a repo host to reuse rather than a second,
     /// redundant connection — and that know which agent to run before they have a
     /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
     /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
-    /// agent it will run is configured up front. The read token and work dir come in separately for
-    /// the same reason: the factory context is fetched from a second repo, so it needs a credential
-    /// and somewhere to clone into whether or not a <see cref="JobConfig"/> exists yet.</summary>
-    internal static JobContext DefaultContext
-    (
-        AgentKind agent, IJobRepoHost host, GitReadToken readToken, DirectoryPath workDir
-    )
+    /// agent it will run is configured up front. The factory context is fetched through the same
+    /// <paramref name="git"/> as the host's, under the same read token.</summary>
+    internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host, GitCli git)
     => new
     (
         host,
@@ -49,14 +42,7 @@ internal static class Startup
         // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
         TranscriptLine: _ => { },
-        FactoryContextLoader: new GitHubFactoryContextLoader
-        (
-            readToken, ProcessWrapper.RunAsync, workDir.Value,
-            // The runner user's home, where the agent CLIs read their config. On Unix this already
-            // consults $HOME before the passwd entry; empty means neither resolved, which the
-            // loader reports as a setup failure if the run actually asks for a factory context.
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
-        )
+        FactoryContextLoader: new GitHubFactoryContextLoader(git)
     );
 
     private static ICodingAgent SelectAgent(AgentKind agent)
@@ -78,8 +64,8 @@ internal static class Startup
     internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
-        var host = new GitHubJobRepoHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
-        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host, config.ReadToken, config.WorkDir));
+        var git = new GitCli(config.ReadToken, ProcessWrapper.RunAsync);
+        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, new GitHubJobRepoHost(git, api), git));
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the

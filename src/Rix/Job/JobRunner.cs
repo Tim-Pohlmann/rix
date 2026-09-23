@@ -49,18 +49,10 @@ internal static class JobRunner
             return new SetupFailure(ex.Message);
         }
 
-        // Lay the operator-supplied home context over the runner's user home before the agent
-        // starts, so its config/context files are in place when the agent first reads them.
         if (config.FactoryContext is { } factoryContext)
         {
-            try
-            {
-                await context.FactoryContextLoader.LoadAsync(factoryContext.Repo, factoryContext.ContextPath, ct);
-            }
-            catch (RepoHostException ex)
-            {
-                return new SetupFailure($"factory context load failed: {ex.Message}");
-            }
+            if (await LoadFactoryContextAsync(factoryContext, config.WorkDir, context.FactoryContextLoader, ct) is { } factoryFailure)
+                return factoryFailure;
         }
 
         await using var apiServer = await LocalApiServer.StartAsync
@@ -104,6 +96,32 @@ internal static class JobRunner
                 => new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
             _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
         };
+    }
+
+    /// <summary>Lays the operator-supplied home context over the runner's user home before the
+    /// agent starts, so its config/context files are in place when the agent first reads them.
+    /// Returns the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once the files are
+    /// in place.</summary>
+    private static async Task<SetupFailure?> LoadFactoryContextAsync
+    (
+        FactoryContextConfig factoryContext, DirectoryPath workDir, IFactoryContextLoader loader, CancellationToken ct
+    )
+    {
+        using var checkout = TempDirectory.Create(workDir.Value, "rix-factory");
+        try
+        {
+            var source = await loader.FetchAsync(factoryContext.Repo, factoryContext.ContextPath, checkout.Path, ct);
+            DirectoryMerge.CopySkippingExisting(source, factoryContext.Home.Value);
+            return null;
+        }
+        catch (RepoHostException ex)
+        {
+            return new SetupFailure($"factory context fetch failed: {ex.Message}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new SetupFailure($"factory context copy into {factoryContext.Home} failed: {ex.Message}");
+        }
     }
 
     /// <summary>Runs the coding agent in the cloned repo and returns its raw process result.</summary>
