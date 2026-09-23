@@ -16,7 +16,7 @@ internal sealed class GitHubAgentHomeFetcher(GitCli git) : IAgentHomeFetcher
         // needs the credential as much as the clone does.
         await git.RunAsync
         (
-            ["clone", "--depth", "1", "--filter=blob:none", "--sparse", GitCli.CloneUrl(repo), checkoutDir],
+            ["clone", "--depth", "1", "--filter=blob:none", "--sparse", $"https://github.com/{repo.Value}.git", checkoutDir],
             workingDirectory: Path.GetTempPath(),
             authenticated: true,
             cancellationToken
