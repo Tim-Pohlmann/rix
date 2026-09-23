@@ -20,7 +20,9 @@ namespace Rix.Tests;
 [TestClass]
 public class ResultSchemaTests
 {
-    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+    // Pinned to "\n" rather than the platform default, so Windows generates the same text as the
+    // committed file (whose own line endings the comparison below normalises).
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true, NewLine = "\n" };
 
     [TestMethod]
     [DataRow("job-result.schema.json")]
@@ -48,6 +50,9 @@ public class ResultSchemaTests
         );
     }
 
+    private static readonly string[] CiFailureStdoutStatuses =
+        ["error", "failure", "loopGuarded", "setupFailure", "skipped", "success", "untrustedRun"];
+
     [TestMethod]
     public void CiFailureOutput_OffersEveryStatusThatReachesStdout_AndNotDetected()
     {
@@ -56,11 +61,7 @@ public class ResultSchemaTests
             .Order()
             .ToArray();
 
-        CollectionAssert.AreEqual
-        (
-            new[] { "error", "failure", "loopGuarded", "setupFailure", "skipped", "success", "untrustedRun" },
-            statuses
-        );
+        CollectionAssert.AreEqual(CiFailureStdoutStatuses, statuses);
     }
 
     /// <summary>The schemas claim every property is always written; this holds them to it by
@@ -98,7 +99,7 @@ public class ResultSchemaTests
         }
     }
 
-    private static JsonNode Generate(string fileName) => fileName switch
+    private static JsonObject Generate(string fileName) => fileName switch
     {
         "job-result.schema.json" => Document(
             "The result rix job prints and writes to result.json.",

@@ -28,4 +28,6 @@ errors = list(Draft202012Validator(variants[0]).iter_errors(result))
 if errors:
     sys.exit(f"{text}\n" + "\n".join(f"  {'/'.join(map(str, e.absolute_path)) or '(root)'}: {e.message}" for e in errors))
 EOF
+  # python's own status, not 0 - it is the verdict.
+  return $?
 }
