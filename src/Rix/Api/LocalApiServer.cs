@@ -185,6 +185,14 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 "baseBranch is the branch the PR targets; stacked PRs are allowed as long as the queued base " +
                 "branches form no cycle. The pull request is opened after the job ends, not immediately.";
 
+            // Includes this run's allow-list so the agent sees what /push will accept without having
+            // to trigger a rejection first.
+            var pushDescription =
+                "Deliver new commits to a branch that already exists on the remote, for instance when " +
+                "resuming a previous run. Commit them locally on that branch first. The branch must exist " +
+                "on the remote — use /pr to create a new one. " +
+                PushPolicySentence(allowedPushBranches);
+
             app.MapPost(PrPath, (PrRequest req, CancellationToken ct) => HandlePrAsync(req, ct))
                 .WithTags(deliveryTag)
                 .WithSummary("Queue a branch to be opened as a pull request")
@@ -203,7 +211,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             app.MapPost(PushPath, (PushRequest req, CancellationToken ct) => HandlePushAsync(req, ct))
                 .WithTags(deliveryTag)
                 .WithSummary("Queue new commits onto a branch that already exists on the remote")
-                .WithDescription(BuildPushEndpointDescription(allowedPushBranches));
+                .WithDescription(pushDescription);
 
             app.MapGet(PushPath, () => Results.Ok(PendingPushRequests.Snapshot()))
                 .WithTags(deliveryTag)
@@ -214,18 +222,6 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 .WithTags(deliveryTag)
                 .WithSummary("Cancel a queued push")
                 .WithDescription("Removes the queued push for the given branch. 404 if nothing is queued for it.");
-        }
-
-        /// <summary>The <c>/push</c> endpoint description, including this run's allow-list so the agent
-        /// sees what <c>/push</c> will accept without having to trigger a rejection first.</summary>
-        private static string BuildPushEndpointDescription(IReadOnlyList<BranchName> allowedPushBranches)
-        {
-            const string overview =
-                "Deliver new commits to a branch that already exists on the remote, for instance when " +
-                "resuming a previous run. Commit them locally on that branch first. The branch must exist " +
-                "on the remote — use /pr to create a new one. ";
-
-            return overview + PushPolicySentence(allowedPushBranches);
         }
 
         private async Task<IResult> HandlePrAsync(PrRequest req, CancellationToken ct)
