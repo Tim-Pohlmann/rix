@@ -18,9 +18,9 @@ public class GitHubAgentHomeFetcherTests
         try { Directory.Delete(_checkoutDir, recursive: true); } catch (DirectoryNotFoundException) { }
     }
 
-    private Task<string> Fetch(RunProcessAsync git, string sourcePath = "agent-home")
+    private Task<DirectoryPath> Fetch(RunProcessAsync git, string sourcePath = "agent-home")
     => new GitHubAgentHomeFetcher(new GitCli(new GitReadToken("tok"), git))
-        .FetchAsync(new RepoIdentifier("acme/factory"), new RepoRelativePath(sourcePath), _checkoutDir, CancellationToken.None);
+        .FetchAsync(new RepoIdentifier("acme/factory"), new SubDirectoryPath(sourcePath), new DirectoryPath(_checkoutDir), CancellationToken.None);
 
     /// <summary>A fake <c>git</c> that mimics a sparse clone by creating <paramref name="contextDir"/>
     /// with one file in the clone target, and records every invocation's args and env.</summary>
@@ -47,8 +47,8 @@ public class GitHubAgentHomeFetcherTests
     {
         var source = await Fetch(FakeGit("nested/agent-home"), "nested/agent-home");
 
-        Assert.AreEqual(Path.Combine(_checkoutDir, "nested/agent-home"), source);
-        Assert.IsTrue(File.Exists(Path.Combine(source, "a.txt")));
+        Assert.AreEqual(Path.Combine(_checkoutDir, "nested/agent-home"), source.Value);
+        Assert.IsTrue(File.Exists(Path.Combine(source.Value, "a.txt")));
     }
 
     [TestMethod]

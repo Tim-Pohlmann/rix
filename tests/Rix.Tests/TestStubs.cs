@@ -186,13 +186,13 @@ internal sealed class StubSubmitRepoHost(
 /// configured repo and path. <c>onFetch</c> gets the checkout dir and returns the directory to merge
 /// into the home, or throws <see cref="Rix.Repository.RepoHostException"/> to simulate a fetch
 /// failure; by default the empty checkout dir itself is returned, so nothing is copied.</summary>
-internal sealed class StubAgentHomeFetcher(Func<string, string>? onFetch = null) : IAgentHomeFetcher
+internal sealed class StubAgentHomeFetcher(Func<DirectoryPath, DirectoryPath>? onFetch = null) : IAgentHomeFetcher
 {
-    public List<(RepoIdentifier Repo, RepoRelativePath SourcePath)> Fetches { get; } = [];
+    public List<(RepoIdentifier Repo, SubDirectoryPath SourcePath)> Fetches { get; } = [];
 
-    public Task<string> FetchAsync
+    public Task<DirectoryPath> FetchAsync
     (
-        RepoIdentifier repo, RepoRelativePath sourcePath, string checkoutDir, CancellationToken cancellationToken
+        RepoIdentifier repo, SubDirectoryPath sourcePath, DirectoryPath checkoutDir, CancellationToken cancellationToken
     )
     {
         Fetches.Add((repo, sourcePath));

@@ -794,7 +794,7 @@ public class JobRunnerTests
         var home = Directory.CreateDirectory(Path.Combine(_workDir, "home")).FullName;
         var fetcher = new StubAgentHomeFetcher(checkoutDir =>
         {
-            File.WriteAllText(Path.Combine(checkoutDir, "agent.md"), "from-factory");
+            File.WriteAllText(Path.Combine(checkoutDir.Value, "agent.md"), "from-factory");
             return checkoutDir;
         });
         var homeHadFileWhenAgentRan = false;
@@ -807,7 +807,7 @@ public class JobRunnerTests
                 agentHomeFetcher: fetcher),
             CancellationToken.None);
 
-        (RepoIdentifier, RepoRelativePath)[] expectedFetches = [(new("acme/factory"), new("config/home"))];
+        (RepoIdentifier, SubDirectoryPath)[] expectedFetches = [(new("acme/factory"), new("config/home"))];
         CollectionAssert.AreEqual(expectedFetches, fetcher.Fetches);
         Assert.IsTrue(homeHadFileWhenAgentRan, "the agent home files must be in the home before the agent starts");
     }
@@ -883,7 +883,7 @@ public class JobRunnerTests
     (
         string repo, string home, string sourcePath = JobConfig.DefaultAgentHomePath
     )
-    => new(new RepoIdentifier(repo), new RepoRelativePath(sourcePath), new DirectoryPath(home));
+    => new(new RepoIdentifier(repo), new SubDirectoryPath(sourcePath), new DirectoryPath(home));
 
     /// <summary>A process runner that succeeds at everything and calls <paramref name="onAgent"/>
     /// when the agent is started.</summary>

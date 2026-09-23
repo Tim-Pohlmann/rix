@@ -5,9 +5,9 @@ namespace Rix.Repository;
 /// <see cref="GitCli"/> as the job clone.</summary>
 internal sealed class GitHubAgentHomeFetcher(GitCli git) : IAgentHomeFetcher
 {
-    public async Task<string> FetchAsync
+    public async Task<DirectoryPath> FetchAsync
     (
-        RepoIdentifier repo, RepoRelativePath sourcePath, string checkoutDir, CancellationToken cancellationToken
+        RepoIdentifier repo, SubDirectoryPath sourcePath, DirectoryPath checkoutDir, CancellationToken cancellationToken
     )
     {
         // Blobless + sparse + depth 1: fetch the commit's tree and only the blobs under the one
@@ -16,7 +16,7 @@ internal sealed class GitHubAgentHomeFetcher(GitCli git) : IAgentHomeFetcher
         // needs the credential as much as the clone does.
         await git.RunAsync
         (
-            ["clone", "--depth", "1", "--filter=blob:none", "--sparse", $"https://github.com/{repo.Value}.git", checkoutDir],
+            ["clone", "--depth", "1", "--filter=blob:none", "--sparse", $"https://github.com/{repo.Value}.git", checkoutDir.Value],
             workingDirectory: Path.GetTempPath(),
             authenticated: true,
             cancellationToken
@@ -25,14 +25,14 @@ internal sealed class GitHubAgentHomeFetcher(GitCli git) : IAgentHomeFetcher
         await git.RunAsync
         (
             ["sparse-checkout", "set", sourcePath.Value],
-            workingDirectory: checkoutDir,
+            workingDirectory: checkoutDir.Value,
             authenticated: true,
             cancellationToken
         );
 
-        var source = Path.Combine(checkoutDir, sourcePath.Value);
+        var source = Path.Combine(checkoutDir.Value, sourcePath.Value);
         if (!Directory.Exists(source))
             throw new RepoHostException($"agent home path not found in {repo.Value}: {sourcePath.Value}");
-        return source;
+        return new DirectoryPath(source);
     }
 }
