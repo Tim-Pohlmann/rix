@@ -1,5 +1,6 @@
 using Rix.Agents;
 using Rix.Api;
+using Rix.FileSystem;
 using Rix.Process;
 using Rix.Repository;
 using System.Diagnostics;

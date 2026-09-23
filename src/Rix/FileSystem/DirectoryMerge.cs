@@ -1,4 +1,4 @@
-namespace Rix;
+namespace Rix.FileSystem;
 
 /// <summary>Merges one directory tree into another, keeping whatever already exists at the
 /// destination (file, directory or symlink, dangling or not — <see cref="Path.Exists"/> reports all

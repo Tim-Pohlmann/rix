@@ -1,9 +1,9 @@
-namespace Rix;
+namespace Rix.FileSystem;
 
 /// <summary>Writes a file, creating any missing parent directories first — the composition root
-/// wires this as a context's file-writing effect. One of the few wrapper types allowed to call
-/// <see cref="Directory.CreateDirectory"/>, alongside <see cref="TempDirectory"/> and
-/// <see cref="DirectoryMerge"/>.</summary>
+/// wires this as a context's file-writing effect and writes <c>rix job</c>'s output files through
+/// it. Like everything in <see cref="Rix.FileSystem"/>, it is one of the only places allowed to
+/// write to disk directly.</summary>
 internal static class FileWriter
 {
     internal static async Task WriteAsync(string path, string content, CancellationToken cancellationToken)

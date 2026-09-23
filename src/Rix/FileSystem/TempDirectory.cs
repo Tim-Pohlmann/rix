@@ -1,4 +1,4 @@
-namespace Rix;
+namespace Rix.FileSystem;
 
 /// <summary>A uniquely-named working directory under a base dir that recursively deletes itself on
 /// dispose. Cleanup is best-effort: any I/O failure (already removed, locked file, denied access) is

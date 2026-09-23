@@ -1,6 +1,7 @@
 using Rix.Agents;
 using Rix.CiFailure;
 using Rix.Cli;
+using Rix.FileSystem;
 using Rix.Initialize;
 using Rix.Job;
 using Rix.Process;
@@ -170,7 +171,7 @@ internal static class Startup
         // the correct exit code from being returned - only the result.json copy would be lost.
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, CancellationToken.None);
+            await FileWriter.WriteAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, CancellationToken.None);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -198,7 +199,7 @@ internal static class Startup
         if (transcriptLines.Count == 0) return;
         try
         {
-            await File.WriteAllTextAsync
+            await FileWriter.WriteAsync
             (
                 Path.Combine(config.OutputDir.Value, "transcript.md"),
                 string.Join("\n\n", transcriptLines),

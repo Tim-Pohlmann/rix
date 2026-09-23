@@ -23,7 +23,7 @@ namespace Rix.Agents;
 /// letting the agent recover, silently abandoning the job while still exiting 0. <c>--auto</c>
 /// resolves "ask" to allowed instead (explicit <c>deny</c> rules, of which rix configures none,
 /// would still be enforced); acceptable here because the agent already runs confined to a
-/// disposable <see cref="Rix.TempDirectory"/> clone on an ephemeral CI runner.</item>
+/// disposable <see cref="Rix.FileSystem.TempDirectory"/> clone on an ephemeral CI runner.</item>
 /// </list>
 /// Unlike Claude (Anthropic-only), OpenCode supports many model providers via
 /// <see cref="AgentConfig.Model"/> (a <c>provider/model</c> string forwarded verbatim as

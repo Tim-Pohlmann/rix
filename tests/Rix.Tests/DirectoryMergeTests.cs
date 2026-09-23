@@ -1,3 +1,5 @@
+using Rix.FileSystem;
+
 namespace Rix.Tests;
 
 [TestClass]

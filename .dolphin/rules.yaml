@@ -51,20 +51,39 @@ rules:
       if/else statement instead.
     pattern: "$A ? $B : $C"
 
-  - id: raw-directory-creation
+  - id: raw-file-system-write
     languages: [csharp]
     severity: ERROR
     message: >-
-      Directory.CreateDirectory is reserved for the dedicated file-system
-      wrapper types (TempDirectory, FileWriter, DirectoryMerge); go through
-      one of them instead of calling it directly.
-    # The exclusion list is the list of wrappers: a new one is added here.
+      File-system writes (creating, copying, linking, writing or deleting files
+      and directories) go through the wrappers in src/Rix/FileSystem/
+      (TempDirectory, FileWriter, DirectoryMerge); use one of them, or add a
+      wrapper there, instead of calling System.IO directly.
     paths:
       exclude:
-        - src/Rix/TempDirectory.cs
-        - src/Rix/FileWriter.cs
-        - src/Rix/DirectoryMerge.cs
-    pattern: Directory.CreateDirectory($P)
+        - src/Rix/FileSystem/
+    pattern-either:
+      - pattern: Directory.CreateDirectory(...)
+      - pattern: Directory.CreateSymbolicLink(...)
+      - pattern: Directory.Delete(...)
+      - pattern: Directory.Move(...)
+      - pattern: File.AppendAllLines(...)
+      - pattern: File.AppendAllLinesAsync(...)
+      - pattern: File.AppendAllText(...)
+      - pattern: File.AppendAllTextAsync(...)
+      - pattern: File.Copy(...)
+      - pattern: File.Create(...)
+      - pattern: File.CreateSymbolicLink(...)
+      - pattern: File.Delete(...)
+      - pattern: File.Move(...)
+      - pattern: File.OpenWrite(...)
+      - pattern: File.Replace(...)
+      - pattern: File.WriteAllBytes(...)
+      - pattern: File.WriteAllBytesAsync(...)
+      - pattern: File.WriteAllLines(...)
+      - pattern: File.WriteAllLinesAsync(...)
+      - pattern: File.WriteAllText(...)
+      - pattern: File.WriteAllTextAsync(...)
 
   - id: raw-process-outside-wrapper
     languages: [csharp]
