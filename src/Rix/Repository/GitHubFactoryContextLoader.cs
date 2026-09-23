@@ -27,10 +27,17 @@ internal sealed class GitHubFactoryContextLoader : IFactoryContextLoader
 
     public async Task LoadAsync(RepoIdentifier repo, RepoRelativePath contextPath, CancellationToken cancellationToken)
     {
+        // Checked here rather than at construction: every job builds a loader, but only one run with
+        // --factory-repo needs a home to copy into.
+        if (string.IsNullOrWhiteSpace(_homeDirectory))
+            throw new RepoHostException("cannot load factory context: the runner user's home directory could not be determined");
+
         using var checkout = TempDirectory.Create(_workDir, "rix-factory");
 
         // Blobless + sparse + depth 1: fetch the commit's tree and only the blobs under the one
-        // directory we copy, never the repo's full history or unrelated files.
+        // directory we copy, never the repo's full history or unrelated files. Both steps talk to
+        // GitHub: the blobs are only fetched when sparse-checkout populates the working tree, so it
+        // needs the credential as much as the clone does.
         await _git.RunAsync
         (
             ["clone", "--depth", "1", "--filter=blob:none", "--sparse",
@@ -44,7 +51,7 @@ internal sealed class GitHubFactoryContextLoader : IFactoryContextLoader
         (
             ["-C", checkout.Path, "sparse-checkout", "set", contextPath.Value],
             workingDirectory: checkout.Path,
-            authenticated: false,
+            authenticated: true,
             cancellationToken
         );
 
@@ -52,6 +59,13 @@ internal sealed class GitHubFactoryContextLoader : IFactoryContextLoader
         if (!Directory.Exists(source))
             throw new RepoHostException($"factory context path not found in {repo.Value}: {contextPath.Value}");
 
-        DirectoryMerge.CopySkippingExisting(source, _homeDirectory);
+        try
+        {
+            DirectoryMerge.CopySkippingExisting(source, _homeDirectory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new RepoHostException($"could not copy factory context into {_homeDirectory}: {ex.Message}", ex);
+        }
     }
 }

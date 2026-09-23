@@ -51,20 +51,13 @@ internal static class Startup
         TranscriptLine: _ => { },
         FactoryContextLoader: new GitHubFactoryContextLoader
         (
-            readToken, ProcessWrapper.RunAsync, workDir.Value, RunnerHomeDirectory()
+            readToken, ProcessWrapper.RunAsync, workDir.Value,
+            // The runner user's home, where the agent CLIs read their config. On Unix this already
+            // consults $HOME before the passwd entry; empty means neither resolved, which the
+            // loader reports as a setup failure if the run actually asks for a factory context.
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
         )
     );
-
-    /// <summary>The runner user's home directory, where the coding agent CLIs read their config and
-    /// where <see cref="GitHubFactoryContextLoader"/> lays the factory context. Falls back to
-    /// <c>$HOME</c> if <see cref="Environment.SpecialFolder.UserProfile"/> resolves empty.</summary>
-    private static string RunnerHomeDirectory()
-    {
-        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (string.IsNullOrEmpty(profile))
-            return Environment.GetEnvironmentVariable("HOME") ?? profile;
-        return profile;
-    }
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch

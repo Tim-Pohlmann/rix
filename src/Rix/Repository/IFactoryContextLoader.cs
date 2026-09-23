@@ -9,8 +9,9 @@ internal interface IFactoryContextLoader
 {
     /// <summary>Fetches <paramref name="contextPath"/> (a repo-relative directory) from
     /// <paramref name="repo"/> and copies its contents into the runner's user home, creating missing
-    /// directories and skipping any file that already exists there. Throws
-    /// <see cref="RepoHostException"/> if the repo cannot be fetched or the path is absent, so the
-    /// caller can report it as a setup failure.</summary>
+    /// directories and skipping any entry that already exists there. Throws
+    /// <see cref="RepoHostException"/> for every expected failure — the repo cannot be fetched, the
+    /// path is absent, the home is unknown or the copy hits an I/O error — so the caller can report
+    /// it as a setup failure by catching that one type.</summary>
     Task LoadAsync(RepoIdentifier repo, RepoRelativePath contextPath, CancellationToken cancellationToken);
 }

@@ -23,8 +23,8 @@ public class GitHubFactoryContextLoaderTests
         try { Directory.Delete(_homeDir, recursive: true); } catch (DirectoryNotFoundException) { }
     }
 
-    private GitHubFactoryContextLoader Loader(RunProcessAsync runProcess)
-    => new(new GitReadToken("tok"), runProcess, _workDir, _homeDir);
+    private GitHubFactoryContextLoader Loader(RunProcessAsync runProcess, string? homeDir = null)
+    => new(new GitReadToken("tok"), runProcess, _workDir, homeDir ?? _homeDir);
 
     /// <summary>A fake <c>git</c> that mimics a sparse clone by writing <paramref name="tree"/>
     /// (relative path → contents) plus any <paramref name="emptyDirs"/> under the requested context
@@ -33,7 +33,8 @@ public class GitHubFactoryContextLoaderTests
         string contextDir,
         IReadOnlyDictionary<string, string> tree,
         IEnumerable<string>? emptyDirs = null,
-        List<(string[] Args, IReadOnlyDictionary<string, string>? Env)>? calls = null)
+        List<(string[] Args, IReadOnlyDictionary<string, string>? Env)>? calls = null,
+        IReadOnlyDictionary<string, string>? symlinks = null)
     => (file, args, wd, env, onLine, ct) =>
     {
         var a = args.ToArray();
@@ -41,14 +42,18 @@ public class GitHubFactoryContextLoaderTests
         if (a[0] == "clone")
         {
             var dest = a[^1];
+            var root = System.IO.Path.Combine(dest, contextDir);
+            Directory.CreateDirectory(root);
             foreach (var (rel, contents) in tree)
             {
-                var target = System.IO.Path.Combine(dest, contextDir, rel);
+                var target = System.IO.Path.Combine(root, rel);
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!);
                 File.WriteAllText(target, contents);
             }
             foreach (var dir in emptyDirs ?? [])
-                Directory.CreateDirectory(System.IO.Path.Combine(dest, contextDir, dir));
+                Directory.CreateDirectory(System.IO.Path.Combine(root, dir));
+            foreach (var (rel, linkTarget) in symlinks ?? new Dictionary<string, string>())
+                File.CreateSymbolicLink(System.IO.Path.Combine(root, rel), linkTarget);
         }
         return Task.FromResult<ProcessResult>(new ProcessSuccess());
     };
@@ -86,7 +91,7 @@ public class GitHubFactoryContextLoaderTests
     }
 
     [TestMethod]
-    public async Task LoadAsync_SparseChecksOutTheContextPath_WithAuthOnlyOnClone()
+    public async Task LoadAsync_SparseChecksOutTheContextPath_WithAuthOnBothSteps()
     {
         var calls = new List<(string[] Args, IReadOnlyDictionary<string, string>? Env)>();
         var git = FakeGit("nested/agent-home", new Dictionary<string, string> { ["a.txt"] = "x" }, calls: calls);
@@ -101,7 +106,9 @@ public class GitHubFactoryContextLoaderTests
         var sparse = calls.Single(c => c.Args.Contains("sparse-checkout"));
         string[] expectedSparseArgs = ["sparse-checkout", "set", "nested/agent-home"];
         CollectionAssert.IsSubsetOf(expectedSparseArgs, sparse.Args);
-        Assert.IsNull(sparse.Env, "local sparse-checkout must not be handed the credential env");
+        // The clone is blobless, so sparse-checkout fetches the context files from GitHub: without
+        // the credential, a private factory repo fails right here.
+        Assert.IsTrue(sparse.Env?.ContainsKey("GIT_CONFIG_VALUE_0"), "sparse-checkout fetches blobs, so it must carry the auth extraheader env");
     }
 
     [TestMethod]
@@ -123,5 +130,79 @@ public class GitHubFactoryContextLoaderTests
         var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => Loader(git).LoadAsync(new RepoIdentifier("acme/factory"), new RepoRelativePath("agent-home"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "git clone failed");
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_KeepsWhateverAlreadyOccupiesATarget_FileOrDirectory()
+    {
+        Directory.CreateDirectory(System.IO.Path.Combine(_homeDir, "was-dir"));
+        await File.WriteAllTextAsync(System.IO.Path.Combine(_homeDir, "was-file"), "original");
+        var git = FakeGit("agent-home", new Dictionary<string, string>
+        {
+            ["was-dir"] = "factory file where home has a directory",
+            ["was-file/inner.txt"] = "factory directory where home has a file",
+        });
+
+        await Loader(git).LoadAsync(new RepoIdentifier("acme/factory"), new RepoRelativePath("agent-home"), CancellationToken.None);
+
+        Assert.IsTrue(Directory.Exists(System.IO.Path.Combine(_homeDir, "was-dir")));
+        Assert.AreEqual("original", await File.ReadAllTextAsync(System.IO.Path.Combine(_homeDir, "was-file")));
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_RecreatesSymlinks_InsteadOfFollowingThem()
+    {
+        var outside = System.IO.Path.Combine(_workDir, "outside.txt");
+        await File.WriteAllTextAsync(outside, "runner secret");
+        var git = FakeGit("agent-home", new Dictionary<string, string> { ["a.txt"] = "x" }, symlinks: new Dictionary<string, string>
+        {
+            // Followed, this loop would recurse until the path got too long.
+            ["self"] = "..",
+            // Followed, this would copy a file from elsewhere on the runner into the home.
+            ["abs"] = outside,
+        });
+
+        await Loader(git).LoadAsync(new RepoIdentifier("acme/factory"), new RepoRelativePath("agent-home"), CancellationToken.None);
+
+        Assert.AreEqual("..", new FileInfo(System.IO.Path.Combine(_homeDir, "self")).LinkTarget);
+        Assert.AreEqual(outside, new FileInfo(System.IO.Path.Combine(_homeDir, "abs")).LinkTarget);
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_KeepsAnExistingDanglingSymlink()
+    {
+        File.CreateSymbolicLink(System.IO.Path.Combine(_homeDir, "a.txt"), "missing-target");
+        var git = FakeGit("agent-home", new Dictionary<string, string> { ["a.txt"] = "from-factory" });
+
+        await Loader(git).LoadAsync(new RepoIdentifier("acme/factory"), new RepoRelativePath("agent-home"), CancellationToken.None);
+
+        Assert.AreEqual("missing-target", new FileInfo(System.IO.Path.Combine(_homeDir, "a.txt")).LinkTarget);
+        Assert.IsFalse(File.Exists(System.IO.Path.Combine(_homeDir, "missing-target")), "the factory file must not be written through the link");
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_ThrowsRepoHostException_WhenTheCopyFails()
+    {
+        // A file where the home directory should be: creating it fails with an IOException.
+        var home = System.IO.Path.Combine(_homeDir, "not-a-dir");
+        await File.WriteAllTextAsync(home, "x");
+        var git = FakeGit("agent-home", new Dictionary<string, string> { ["a.txt"] = "x" });
+
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
+            () => Loader(git, home).LoadAsync(new RepoIdentifier("acme/factory"), new RepoRelativePath("agent-home"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "could not copy factory context");
+        Assert.IsInstanceOfType<IOException>(ex.InnerException);
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_ThrowsRepoHostException_WithoutRunningGit_WhenHomeIsUnknown()
+    {
+        var calls = new List<(string[] Args, IReadOnlyDictionary<string, string>? Env)>();
+        var git = FakeGit("agent-home", new Dictionary<string, string> { ["a.txt"] = "x" }, calls: calls);
+
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
+            () => Loader(git, homeDir: "").LoadAsync(new RepoIdentifier("acme/factory"), new RepoRelativePath("agent-home"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "home directory could not be determined");
+        Assert.AreEqual(0, calls.Count);
     }
 }
