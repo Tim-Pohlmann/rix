@@ -17,7 +17,7 @@ internal class BranchQueue<T>(string noun, Func<T, BranchName> branchOf)
         var branch = branchOf(item);
         lock (_lock)
         {
-            if (_items.Exists(queued => branchOf(queued).Value == branch.Value))
+            if (IndexOf(branch) >= 0)
                 return Results.Conflict(new ErrorResponse($"Branch {branch.Value} is already queued."));
 
             if (Admit(_items, item) is { } rejection)
@@ -33,7 +33,7 @@ internal class BranchQueue<T>(string noun, Func<T, BranchName> branchOf)
     {
         lock (_lock)
         {
-            var index = _items.FindIndex(item => branchOf(item).Value == branch.Value);
+            var index = IndexOf(branch);
             if (index < 0)
                 return Results.NotFound(new ErrorResponse($"No queued {noun} for branch {branch.Value}."));
 
@@ -48,6 +48,10 @@ internal class BranchQueue<T>(string noun, Func<T, BranchName> branchOf)
     {
         lock (_lock) { return _items.ToArray(); }
     }
+
+    // Compared by value, not record equality: a RixBranchName and a BranchName with the same name
+    // are different records, but DELETE looks /pr's rix/* branches up by a plain BranchName.
+    private int IndexOf(BranchName branch) => _items.FindIndex(item => branchOf(item).Value == branch.Value);
 
     /// <summary>Adds <paramref name="item"/> (whose branch is not yet queued) to
     /// <paramref name="items"/>, keeping them in delivery order, or leaves <paramref name="items"/>
