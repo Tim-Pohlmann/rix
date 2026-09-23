@@ -47,7 +47,7 @@ public class GitHubAgentHomeFetcherTests
     {
         var source = await Fetch(FakeGit("nested/agent-home"), "nested/agent-home");
 
-        Assert.AreEqual(Path.Combine(_checkoutDir, "nested/agent-home"), source.Value);
+        Assert.AreEqual(new DirectoryPath(Path.Combine(_checkoutDir, "nested/agent-home")), source);
         Assert.IsTrue(File.Exists(Path.Combine(source.Value, "a.txt")));
     }
 
