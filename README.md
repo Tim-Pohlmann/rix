@@ -106,11 +106,13 @@ When `factory-repo` is set, rix fetches one directory from it (a depth-1 blobles
 and copies that directory's **contents** into the runner's home. `factory-context-path` names the
 directory inside the factory repo and defaults to `.rix/agent-home`. Collisions are resolved by
 **keeping the existing file** — only paths not already present in home are written, and directories
-are merged — so the factory bundle never clobbers what the runner image ships.
+are merged — so the factory bundle never clobbers what the runner image ships. Symlinks in the
+bundle are recreated as symlinks, not followed.
 
 The existing `read-token` is reused to clone the factory repo, so that PAT must also grant **read
-access to `factory-repo`**. If the clone fails or `factory-context-path` is absent from the repo,
-the job stops with a setup failure and the agent never runs. The inputs forward as
+access to `factory-repo`**. If the clone fails, `factory-context-path` is absent from the repo, or
+the copy into home fails, the job stops with a setup failure and the agent never runs.
+`factory-context-path` without `factory-repo` is rejected. The inputs forward as
 `--factory-repo` / `--factory-context-path` (env `RIX_FACTORY_REPO` / `RIX_FACTORY_CONTEXT_PATH`).
 
 ### Using a different provider or model
