@@ -129,15 +129,14 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return overview + "\n\n" + PushPolicySentence(allowedPushBranches);
     }
 
+    // Shared by the OpenAPI text and the 403, so the agent is told the same policy up front as when
+    // a push is refused.
     private static string PushPolicySentence(IReadOnlyList<BranchName> allowedPushBranches)
     => allowedPushBranches.Count switch
     {
         0 => "This run has allowed no push branches, so /push rejects every request; use /pr for all changes.",
-        _ => $"This run's /push is restricted to these branches: {FormatBranchList(allowedPushBranches)}.",
+        _ => $"This run's /push is restricted to these branches: {string.Join(", ", allowedPushBranches.Select(b => b.Value))}.",
     };
-
-    private static string FormatBranchList(IReadOnlyList<BranchName> branches)
-    => string.Join(", ", branches.Select(b => b.Value));
 
     private sealed class ApiInfoTransformer(string description) : IOpenApiDocumentTransformer
     {
@@ -188,6 +187,14 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 "baseBranch is the branch the PR targets; stacked PRs are allowed as long as the queued base " +
                 "branches form no cycle. The pull request is opened after the job ends, not immediately.";
 
+            // Includes this run's allow-list so the agent sees what /push will accept without having
+            // to trigger a rejection first.
+            var pushDescription =
+                "Deliver new commits to a branch that already exists on the remote, for instance when " +
+                "resuming a previous run. Commit them locally on that branch first. The branch must exist " +
+                "on the remote — use /pr to create a new one. " +
+                PushPolicySentence(allowedPushBranches);
+
             delivery.MapPost(PrPath, (PrRequest req, CancellationToken ct) => HandlePrAsync(req, ct))
                 .WithSummary("Queue a branch to be opened as a pull request")
                 .WithDescription(prDescription);
@@ -202,7 +209,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
             delivery.MapPost(PushPath, (PushRequest req, CancellationToken ct) => HandlePushAsync(req, ct))
                 .WithSummary("Queue new commits onto a branch that already exists on the remote")
-                .WithDescription(BuildPushEndpointDescription(allowedPushBranches));
+                .WithDescription(pushDescription);
 
             delivery.MapGet(PushPath, () => Results.Ok(PendingPushRequests.Snapshot()))
                 .WithSummary("List queued pushes")
@@ -211,18 +218,6 @@ internal sealed class LocalApiServer : IAsyncDisposable
             delivery.MapDelete(PushPath, ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPushRequests))
                 .WithSummary("Cancel a queued push")
                 .WithDescription("Removes the queued push for the given branch. 404 if nothing is queued for it.");
-        }
-
-        /// <summary>The <c>/push</c> endpoint description, including this run's allow-list so the agent
-        /// sees what <c>/push</c> will accept without having to trigger a rejection first.</summary>
-        private static string BuildPushEndpointDescription(IReadOnlyList<BranchName> allowedPushBranches)
-        {
-            const string overview =
-                "Deliver new commits to a branch that already exists on the remote, for instance when " +
-                "resuming a previous run. Commit them locally on that branch first. The branch must exist " +
-                "on the remote — use /pr to create a new one. ";
-
-            return overview + PushPolicySentence(allowedPushBranches);
         }
 
         private async Task<IResult> HandlePrAsync(PrRequest req, CancellationToken ct)
@@ -260,12 +255,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
             // where the branch lives.
             if (!allowedPushBranches.Contains(queuedPush.Branch))
             {
-                var message = allowedPushBranches.Count switch
-                {
-                    0 => $"Push to branch {queuedPush.Branch.Value} is not allowed. This job does not permit pushing to any branch.",
-                    _ => $"Push to branch {queuedPush.Branch.Value} is not allowed. " +
-                        $"This job permits pushes only to: {FormatBranchList(allowedPushBranches)}.",
-                };
+                var message = $"Push to branch {queuedPush.Branch.Value} is not allowed. " +
+                    PushPolicySentence(allowedPushBranches);
                 return Results.Json(new ErrorResponse(message), statusCode: StatusCodes.Status403Forbidden);
             }
 
