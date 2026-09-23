@@ -129,15 +129,14 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return overview + "\n\n" + PushPolicySentence(allowedPushBranches);
     }
 
+    // Shared by the OpenAPI text and the 403, so the agent is told the same policy up front as when
+    // a push is refused.
     private static string PushPolicySentence(IReadOnlyList<BranchName> allowedPushBranches)
     => allowedPushBranches.Count switch
     {
         0 => "This run has allowed no push branches, so /push rejects every request; use /pr for all changes.",
-        _ => $"This run's /push is restricted to these branches: {FormatBranchList(allowedPushBranches)}.",
+        _ => $"This run's /push is restricted to these branches: {string.Join(", ", allowedPushBranches.Select(b => b.Value))}.",
     };
-
-    private static string FormatBranchList(IReadOnlyList<BranchName> branches)
-    => string.Join(", ", branches.Select(b => b.Value));
 
     private sealed class ApiInfoTransformer(string description) : IOpenApiDocumentTransformer
     {
@@ -264,12 +263,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
             // where the branch lives.
             if (!allowedPushBranches.Contains(queuedPush.Branch))
             {
-                var message = allowedPushBranches.Count switch
-                {
-                    0 => $"Push to branch {queuedPush.Branch.Value} is not allowed. This job does not permit pushing to any branch.",
-                    _ => $"Push to branch {queuedPush.Branch.Value} is not allowed. " +
-                        $"This job permits pushes only to: {FormatBranchList(allowedPushBranches)}.",
-                };
+                var message = $"Push to branch {queuedPush.Branch.Value} is not allowed. " +
+                    PushPolicySentence(allowedPushBranches);
                 return Results.Json(new ErrorResponse(message), statusCode: StatusCodes.Status403Forbidden);
             }
 
