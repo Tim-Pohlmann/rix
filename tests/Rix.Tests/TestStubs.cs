@@ -6,21 +6,15 @@ using Rix.Repository;
 
 namespace Rix.Tests;
 
-internal sealed class StubCiFailureRepoHost(
-    Func<RunId, Task<WorkflowRun>>? getRun = null,
-    Func<RunId, Task<string>>? getLogs = null,
-    Func<BranchName, Task<int?>>? findPr = null,
-    Func<BranchName, Task<int>>? countRixCommits = null) : ICiFailureRepoHost
+internal sealed class StubCiHost(
+    Func<RunId, Task<CiRun>>? getRun = null,
+    Func<RunId, Task<string>>? getLogs = null) : ICiHost
 {
-    /// <summary>The cap the loop guard was asked to count against, so a test can assert the
-    /// configured value reaches the host instead of a constant fixed in the detector.</summary>
-    internal MaxRixCommits? MaxRixCommits { get; private set; }
-
     /// <summary>The log budget the caller asked for, so a test can assert the cap is actually
     /// pushed down to the host rather than only applied afterwards.</summary>
     internal int? TotalTailChars { get; private set; }
 
-    public Task<WorkflowRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
+    public Task<CiRun> GetRunAsync(RunId runId, CancellationToken cancellationToken)
     => getRun switch { { } check => check(runId), _ => throw new InvalidOperationException("getRun not stubbed") };
 
     public Task<string> GetFailedJobLogsAsync(RunId runId, int totalTailChars, CancellationToken cancellationToken)
@@ -28,6 +22,15 @@ internal sealed class StubCiFailureRepoHost(
         TotalTailChars = totalTailChars;
         return getLogs switch { { } check => check(runId), _ => Task.FromResult("") };
     }
+}
+
+internal sealed class StubCiFailureRepoHost(
+    Func<BranchName, Task<int?>>? findPr = null,
+    Func<BranchName, Task<int>>? countRixCommits = null) : ICiFailureRepoHost
+{
+    /// <summary>The cap the loop guard was asked to count against, so a test can assert the
+    /// configured value reaches the host instead of a constant fixed in the detector.</summary>
+    internal MaxRixCommits? MaxRixCommits { get; private set; }
 
     public Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken)
     => findPr switch { { } check => check(branch), _ => Task.FromResult<int?>(null) };
@@ -81,14 +84,14 @@ internal sealed class FailingStream : Stream
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }
 
-/// <summary>The workflow run most ci-failure tests describe: one that ran, on a branch of the repo
-/// itself, with a title and URL. Only <paramref name="conclusion"/>, <paramref name="branch"/> and
+/// <summary>The CI run most ci-failure tests describe: one that ran, on a branch of the repo
+/// itself, with a title and URL. Only <paramref name="outcome"/>, <paramref name="branch"/> and
 /// <paramref name="headRepo"/> vary between scenarios, so the rest is fixed here rather than
 /// restated per test.</summary>
 internal static class TestRuns
 {
-    internal static WorkflowRun Sample(string? conclusion, string branch = "rix/fix", string headRepo = "owner/repo")
-    => new(conclusion, "Fix thing", "https://github.com/owner/repo/actions/runs/1", branch, headRepo);
+    internal static CiRun Sample(CiOutcome outcome, string branch = "rix/fix", string headRepo = "owner/repo")
+    => new(outcome, "Fix thing", "https://github.com/owner/repo/actions/runs/1", new BranchName(branch), new RepoIdentifier(headRepo));
 }
 
 internal sealed class StubJobRepoHost(

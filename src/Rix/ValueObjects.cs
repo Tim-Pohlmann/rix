@@ -67,10 +67,10 @@ internal sealed record MaxRixCommits
     }
 }
 
-/// <summary>The GitHub Actions identifier of a single workflow run. A distinct type rather than a
-/// bare <c>long</c> so it can't be transposed with the other numbers threaded through the same
-/// calls (a PR number, a job count). A class for the reason given on <see cref="MaxTokens"/>; run
-/// ids are issued from one upwards, so zero identifies no run.</summary>
+/// <summary>The CI system's identifier for a single run. A distinct type rather than a bare
+/// <c>long</c> so it can't be transposed with the other numbers threaded through the same calls (a
+/// PR number, a job count). A class for the reason given on <see cref="MaxTokens"/>; run ids are
+/// issued from one upwards, so zero identifies no run.</summary>
 internal sealed record RunId
 {
     internal long Value { get; }
@@ -83,9 +83,10 @@ internal sealed record RunId
     }
 }
 
-/// <summary>A validated GitHub <c>owner/name</c> identifier. The constructor is the single source
-/// of the format rule: it throws <see cref="InvalidInputException"/> for anything else, so any
-/// <c>RepoIdentifier</c> that exists is guaranteed well-formed.</summary>
+/// <summary>A validated <c>owner/name</c> repository identifier. The constructor is the single
+/// source of the format rule: it throws <see cref="InvalidInputException"/> for anything else, so
+/// any <c>RepoIdentifier</c> that exists is guaranteed well-formed. Equality is the other rule it
+/// owns, and the reason to compare two of these rather than two strings.</summary>
 internal sealed record RepoIdentifier
 {
     internal string Value { get; }
@@ -104,6 +105,15 @@ internal sealed record RepoIdentifier
         Value = value;
         Owner = value[..slash];
     }
+
+    /// <summary>Case-insensitive, because repository hosts treat owner and repo names that way: the
+    /// same repo can be named in either casing and still be the same repo, and turning rix off for a
+    /// whole repo over a capital letter would be the worse failure. Stated here rather than at the
+    /// comparisons, so nowhere has to remember it.</summary>
+    public bool Equals(RepoIdentifier? other)
+    => other is not null && Value.Equals(other.Value, StringComparison.OrdinalIgnoreCase);
+
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
 
     public override string ToString() => Value;
 }

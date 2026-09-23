@@ -45,6 +45,17 @@ public class TypesTests
         Assert.AreEqual("owner", repo.Owner);
     }
 
+    /// <summary>Repository hosts treat owner and repo names case-insensitively, so two spellings of
+    /// one repo are one repo here too — the rule lives on the type rather than at the places that
+    /// compare two of them.</summary>
+    [TestMethod]
+    public void RepoIdentifier_IsEqual_WhenOnlyCasingDiffers()
+    {
+        Assert.AreEqual(new RepoIdentifier("owner/repo"), new RepoIdentifier("Owner/Repo"));
+        Assert.AreEqual(new RepoIdentifier("owner/repo").GetHashCode(), new RepoIdentifier("Owner/Repo").GetHashCode());
+        Assert.AreNotEqual(new RepoIdentifier("owner/repo"), new RepoIdentifier("outsider/repo"));
+    }
+
     [TestMethod]
     public void DirectoryPath_NormalisesRelativeToAbsolute()
     {
@@ -206,6 +217,19 @@ public class TypesTests
         // no cap at all, since the streak is read in a single request.
         var error = Assert.ThrowsExactly<InvalidInputException>(() => new MaxRixCommits(value).ToString()).Message;
         StringAssert.Contains(error, "must be between 1 and 100");
+    }
+
+    /// <summary>run-ci-failure/action.yml reads `.outcome` to say which non-failure ending the run
+    /// had, so the field name is as much a contract as the status discriminator is.</summary>
+    [TestMethod]
+    public void CiFailureSkipped_SerializesWithSkippedStatus_AndTheOutcomeWord()
+    {
+        var json = JsonSerializer.Serialize<ICiFailureResult>(new CiFailureSkipped("timed_out"), CiFailureJsonContext.Default.ICiFailureResult);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.AreEqual("skipped", root.GetProperty("status").GetString());
+        Assert.AreEqual("timed_out", root.GetProperty("outcome").GetString());
     }
 
     /// <summary>The discriminator the composite action switches on: run-ci-failure/action.yml reads

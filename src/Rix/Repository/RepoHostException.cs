@@ -9,6 +9,7 @@ namespace Rix.Repository;
 /// programming errors keep surfacing as other exception types and are deliberately not folded in
 /// here, so a boundary <c>catch (RepoHostException)</c> can't swallow them. Keeps a generic
 /// name where the repo hosts are named for their subcommand, because every one of them throws it
-/// and every caller catches it the same way.</summary>
+/// and every caller catches it the same way. Reading the CI run is the one operation that isn't a
+/// repo operation, and reports as <see cref="CiHostException"/> instead.</summary>
 internal sealed class RepoHostException(string message, Exception? innerException = null)
     : Exception(message, innerException);
