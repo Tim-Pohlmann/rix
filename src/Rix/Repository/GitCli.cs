@@ -4,9 +4,10 @@ using System.Text;
 namespace Rix.Repository;
 
 /// <summary>The <c>git</c> half of talking to GitHub: runs the binary and owns the credential
-/// injection, and nothing else. Split from the hosts so that "how a git command is run" is stated
-/// once and both the job host and the submit host get the exact same treatment of the token —
-/// rather than one of them reaching into the other's private runner to borrow it.</summary>
+/// injection, and nothing else. Split from the repo hosts so that "how a git command is run" is
+/// stated once and both <see cref="IJobRepoHost"/> and <see cref="ISubmitRepoHost"/> get the exact
+/// same treatment of the token — rather than one of them reaching into the other's private runner
+/// to borrow it.</summary>
 internal sealed class GitCli
 {
     private readonly RunProcessAsync _runProcess;
@@ -35,7 +36,7 @@ internal sealed class GitCli
     }
 
     /// <summary>Runs <c>git</c> and fails the way every caller here wants it to: any non-zero exit
-    /// becomes a <see cref="RepositoryHostException"/> naming the subcommand. The credential is
+    /// becomes a <see cref="RepoHostException"/> naming the subcommand. The credential is
     /// injected only when <paramref name="authenticated"/> is set, so local-only commands (e.g.
     /// <c>bundle create</c>) never hand the token to a subprocess with no use for it.</summary>
     internal async Task RunAsync
@@ -45,7 +46,7 @@ internal sealed class GitCli
     {
         var result = await TryRunAsync(args, workingDirectory, authenticated, cancellationToken);
         if (result is ProcessFailure f)
-            throw new RepositoryHostException($"git {args[0]} failed: {f.Reason}");
+            throw new RepoHostException($"git {args[0]} failed: {f.Reason}");
     }
 
     /// <summary>Runs <c>git</c> and hands back the raw <see cref="ProcessResult"/>, for the commands

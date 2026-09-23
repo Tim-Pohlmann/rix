@@ -15,23 +15,23 @@ namespace Rix;
 
 internal static class Startup
 {
-    /// <summary>The production <see cref="JobContext"/>: real GitHub host, process runner,
+    /// <summary>The production <see cref="JobContext"/>: real GitHub repo host, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
     /// from <paramref name="config"/>. <see cref="JobContext.TranscriptLine"/> is a no-op here;
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultContext(config.Agent.Kind, new GitHubJobHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
+    => DefaultContext(config.Agent.Kind, new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
 
-    /// <summary>Overload for callers that already have a host to reuse rather than a second,
+    /// <summary>Overload for callers that already have a repo host to reuse rather than a second,
     /// redundant connection — and that know which agent to run before they have a
     /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
     /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
     /// agent it will run is configured up front.</summary>
-    internal static JobContext DefaultContext(AgentKind agent, IJobHost host)
+    internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host)
     => new
     (
-        Host: host,
+        RepoHost: host,
         RunProcess: ProcessWrapper.RunAsync,
         Agent: SelectAgent(agent),
         LogLine: Console.Error.WriteLine,
@@ -48,23 +48,23 @@ internal static class Startup
     };
 
     /// <summary>The production <see cref="CiFailureContext"/>: the ci-failure check and the job's
-    /// clone are two roles against the same repo under the same credential, so they are two hosts
-    /// over one shared <see cref="GitHubApi"/> transport rather than two independently connected
+    /// clone are two roles against the same repo under the same credential, so they are two repo
+    /// hosts over one shared <see cref="GitHubApi"/> transport rather than two independently connected
     /// ones. Built only when no context was supplied, so a test that brings its own stubs opens no
     /// connection at all.</summary>
     internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
-        var host = new GitHubJobHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
-        return new CiFailureContext(new GitHubCiFailureHost(api), DefaultContext(config.Agent, host));
+        var host = new GitHubJobRepoHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
+        return new CiFailureContext(new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host));
     }
 
-    /// <summary>The production <see cref="SubmitContext"/>: a GitHub host authenticated with the
+    /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the
     /// write token, the default process runner, and a stderr log sink.</summary>
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        Host: new GitHubSubmitHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
+        RepoHost: new GitHubSubmitRepoHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
         RunProcess: ProcessWrapper.RunAsync,
         LogLine: Console.Error.WriteLine
     );

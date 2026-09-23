@@ -7,7 +7,7 @@ namespace Rix.Repository;
 
 /// <summary>The REST half of talking to GitHub: one authenticated client scoped to one repo, plus
 /// the request/status-check/parse sequence every endpoint would otherwise repeat. Split from the
-/// hosts so the read and write paths share a connection pool and an error shape by construction
+/// repo hosts so the read and write paths share a connection pool and an error shape by construction
 /// rather than by one host holding a reference to another's <see cref="HttpClient"/>.</summary>
 internal sealed class GitHubApi
 {
@@ -56,7 +56,7 @@ internal sealed class GitHubApi
 
     /// <summary>GETs <paramref name="path"/> and parses the JSON body, collapsing the
     /// request/status-check/parse sequence every read endpoint would otherwise repeat.
-    /// <paramref name="operation"/> names the call in the <see cref="RepositoryHostException"/> a
+    /// <paramref name="operation"/> names the call in the <see cref="RepoHostException"/> a
     /// failed status produces.</summary>
     internal async Task<T> GetJsonAsync<T>(string path, JsonTypeInfo<T> typeInfo, string operation, CancellationToken cancellationToken)
     {
@@ -88,7 +88,7 @@ internal sealed class GitHubApi
     }
 
     /// <summary>Runs one HTTP exchange, turning a transport failure — DNS, a refused connection, TLS,
-    /// a socket dropped part-way through a body — into a <see cref="RepositoryHostException"/> naming
+    /// a socket dropped part-way through a body — into a <see cref="RepoHostException"/> naming
     /// the operation. <see cref="EnsureSuccess"/> can only classify a response that already arrived,
     /// so an unreachable host fails before it ever runs; routing every send and every body read
     /// through here is what stops those cases escaping as a raw
@@ -108,19 +108,19 @@ internal sealed class GitHubApi
         }
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new RepositoryHostException($"{operation} timed out: {ex.Message}", ex);
+            throw new RepoHostException($"{operation} timed out: {ex.Message}", ex);
         }
         catch (HttpRequestException ex)
         {
-            throw new RepositoryHostException($"{operation} failed: {ex.Message}", ex);
+            throw new RepoHostException($"{operation} failed: {ex.Message}", ex);
         }
         catch (IOException ex)
         {
-            throw new RepositoryHostException($"{operation} failed: {ex.Message}", ex);
+            throw new RepoHostException($"{operation} failed: {ex.Message}", ex);
         }
     }
 
-    /// <summary>Turns any non-2xx response into a <see cref="RepositoryHostException"/> naming the
+    /// <summary>Turns any non-2xx response into a <see cref="RepoHostException"/> naming the
     /// operation, so every REST call reports an error status the same way instead of leaking
     /// <see cref="HttpRequestException"/> from a bare <c>EnsureSuccessStatusCode</c>. Only covers the
     /// status line; reaching the host at all is <see cref="TransportAsync"/>'s job. Public to the
@@ -134,7 +134,7 @@ internal sealed class GitHubApi
         }
         catch (HttpRequestException ex)
         {
-            throw new RepositoryHostException($"{operation} failed: {ex.Message}", ex);
+            throw new RepoHostException($"{operation} failed: {ex.Message}", ex);
         }
     }
 
@@ -156,12 +156,12 @@ internal sealed class GitHubApi
                 operation, cancellationToken
             );
             if (value is null)
-                throw new RepositoryHostException($"{operation} failed: {typeof(T).Name} response body was empty");
+                throw new RepoHostException($"{operation} failed: {typeof(T).Name} response body was empty");
             return value;
         }
         catch (JsonException ex)
         {
-            throw new RepositoryHostException($"{operation} failed: could not parse {typeof(T).Name} response", ex);
+            throw new RepoHostException($"{operation} failed: could not parse {typeof(T).Name} response", ex);
         }
     }
 

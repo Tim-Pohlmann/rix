@@ -5,10 +5,10 @@ namespace Rix.Repository;
 
 /// <summary>Reads everything <c>rix ci-failure</c> needs to know about a workflow run: whether it
 /// failed, what its failing jobs logged, whether a PR is open for its branch, and how much of that
-/// branch's tip rix wrote itself. A separate class from <see cref="GitHubJobHost"/> rather than a
+/// branch's tip rix wrote itself. A separate class from <see cref="GitHubJobRepoHost"/> rather than a
 /// second interface on it, because the two roles share only their transport — which they now share
 /// explicitly, by being handed the same <see cref="GitHubApi"/>.</summary>
-internal sealed class GitHubCiFailureHost : ICiFailureHost
+internal sealed class GitHubCiFailureRepoHost : ICiFailureRepoHost
 {
     private readonly GitHubApi _api;
 
@@ -21,9 +21,9 @@ internal sealed class GitHubCiFailureHost : ICiFailureHost
     /// of the tail being kept, no matter how large the log is.</summary>
     private const int LogChunkChars = 8192;
 
-    internal GitHubCiFailureHost(GitHubApi api) => _api = api;
+    internal GitHubCiFailureRepoHost(GitHubApi api) => _api = api;
 
-    internal GitHubCiFailureHost(RepoIdentifier repo, GitReadToken token, HttpMessageHandler? handler = null)
+    internal GitHubCiFailureRepoHost(RepoIdentifier repo, GitReadToken token, HttpMessageHandler? handler = null)
         : this(new GitHubApi(repo, token, handler)) { }
 
     /// <summary>Fetches a run's conclusion, title, URL, head branch and head repo — the facts
@@ -37,7 +37,7 @@ internal sealed class GitHubCiFailureHost : ICiFailureHost
         var operation = $"get workflow run {runId.Value}";
         var run = await _api.GetJsonAsync($"actions/runs/{runId.Value}", GitHubCiFailureApiJsonContext.Default.WorkflowRunApiResponse, operation, cancellationToken);
         if (run.DisplayTitle is null || run.HtmlUrl is null || run.HeadBranch is null || run.HeadRepository?.FullName is null)
-            throw new RepositoryHostException($"{operation} response was missing a required field");
+            throw new RepoHostException($"{operation} response was missing a required field");
         return new WorkflowRun(run.Conclusion, run.DisplayTitle, run.HtmlUrl, run.HeadBranch, run.HeadRepository.FullName);
     }
 
@@ -82,7 +82,7 @@ internal sealed class GitHubCiFailureHost : ICiFailureHost
                 cancellationToken
             );
             if (jobs.Jobs is null)
-                throw new RepositoryHostException($"{operation} response was missing the jobs field");
+                throw new RepoHostException($"{operation} response was missing the jobs field");
 
             failedJobs.AddRange
             (
@@ -152,7 +152,7 @@ internal sealed class GitHubCiFailureHost : ICiFailureHost
     /// <summary>Counts the run of rix's own commits at <paramref name="branch"/>'s tip, which is how
     /// <c>rix ci-failure</c> tells "CI failed" from "CI failed on rix's last attempt to fix it".
     /// Authorship is read from <c>commit.author</c>, git's own metadata written by
-    /// <see cref="GitHubJobHost.ConfigureGitAsync"/>, rather than the sibling top-level
+    /// <see cref="GitHubJobRepoHost.ConfigureGitAsync"/>, rather than the sibling top-level
     /// <c>author</c> — that one is the linked GitHub account, which is <c>null</c> for rix precisely
     /// because <see cref="GitIdentity.Email"/> belongs to no account. One page of at most
     /// <paramref name="max"/> commits answers it: a streak that long already trips the cap, so a
@@ -223,7 +223,7 @@ internal sealed record PullRequestApiResponse
     [property: JsonPropertyName("number")] int Number
 );
 
-/// <summary>Separate from <see cref="GitHubApiJsonContext"/> (defined in <c>GitHubSubmitHost.cs</c>):
+/// <summary>Separate from <see cref="GitHubApiJsonContext"/> (defined in <c>GitHubSubmitRepoHost.cs</c>):
 /// splitting one <see cref="JsonSerializerContext"/>'s <c>[JsonSerializable]</c> attributes across
 /// multiple files trips a source-generator bug (duplicate-hint-name failure), so these DTOs get
 /// their own context instead.</summary>

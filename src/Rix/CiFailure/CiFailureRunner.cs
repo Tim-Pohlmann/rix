@@ -18,7 +18,7 @@ internal static class CiFailureRunner
         CancellationToken cancellationToken
     )
     {
-        var detection = await CiFailureDetector.DetectAsync(config.Repo, config.RunId, context.CiFailureHost, config.MaxRixCommits, cancellationToken);
+        var detection = await CiFailureDetector.DetectAsync(config.Repo, config.RunId, context.RepoHost, config.MaxRixCommits, cancellationToken);
         if (detection is not CiFailureDetected detected)
             return new CiFailureNotRun(detection);
 

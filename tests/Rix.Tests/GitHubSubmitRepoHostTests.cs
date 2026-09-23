@@ -5,7 +5,7 @@ using System.Net;
 namespace Rix.Tests;
 
 [TestClass]
-public class GitHubSubmitHostTests
+public class GitHubSubmitRepoHostTests
 {
     private static readonly RunProcessAsync SuccessGitRunner =
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -23,7 +23,7 @@ public class GitHubSubmitHostTests
     private static readonly string[] ExpectedConfigureUserEmailArgs =
         ["config", "user.email", "rix@noreply.invalid"];
 
-    private static GitHubJobHost BuildHost(
+    private static GitHubJobRepoHost BuildHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string readToken = "read-tok",
@@ -54,7 +54,7 @@ public class GitHubSubmitHostTests
     public async Task BranchExistsOnRemoteAsync_Throws_ForNon404Error()
     {
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
-        await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.BranchExistsOnRemoteAsync(new BranchName("rix/branch"), CancellationToken.None));
     }
 
@@ -82,7 +82,7 @@ public class GitHubSubmitHostTests
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
-        await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.BranchExistsLocallyAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None));
     }
 
@@ -215,7 +215,7 @@ public class GitHubSubmitHostTests
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.PushBranchAsync("/tmp/clone", new BranchName("rix/fix"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "push");
     }
@@ -227,7 +227,7 @@ public class GitHubSubmitHostTests
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.CreateBundleAsync("/tmp/clone", "/tmp/out/fix.bundle",
                 new BranchName("main"), new BranchName("rix/fix"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "bundle");
@@ -263,7 +263,7 @@ public class GitHubSubmitHostTests
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")));
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.ConfigureGitAsync("/tmp/clone", CancellationToken.None));
         StringAssert.Contains(ex.Message, "config");
     }
@@ -275,7 +275,7 @@ public class GitHubSubmitHostTests
             _ => new HttpResponseMessage(HttpStatusCode.OK),
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.CloneAsync("/tmp/target", CancellationToken.None));
         StringAssert.Contains(ex.Message, "clone");
     }
@@ -315,7 +315,7 @@ public class GitHubSubmitHostTests
     {
         var host = BuildWriteHost(_ => new HttpResponseMessage(HttpStatusCode.UnprocessableEntity));
 
-        await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
     }
 
@@ -327,7 +327,7 @@ public class GitHubSubmitHostTests
             Content = new StringContent("not json"),
         });
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "create pull request for rix/fix");
     }
@@ -337,7 +337,7 @@ public class GitHubSubmitHostTests
     {
         var host = BuildHost(_ => throw new HttpRequestException("connection refused"));
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.BranchExistsOnRemoteAsync(new BranchName("rix/fix"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "check branch rix/fix on remote");
     }
@@ -347,7 +347,7 @@ public class GitHubSubmitHostTests
     {
         var host = BuildWriteHost(_ => throw new HttpRequestException("connection refused"));
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.CreatePullRequestAsync(SamplePr("t", "b"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "create pull request for rix/fix");
     }
@@ -359,7 +359,7 @@ public class GitHubSubmitHostTests
         new PrTitle(title), new PrBody(body), "rix_2Ffix.bundle"
     );
 
-    private static GitHubSubmitHost BuildWriteHost(
+    private static GitHubSubmitRepoHost BuildWriteHost(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         string repo = "owner/repo",
         string writeToken = "write-tok",

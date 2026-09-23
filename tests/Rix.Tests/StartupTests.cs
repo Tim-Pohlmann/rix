@@ -35,7 +35,7 @@ public class StartupTests
         var context = Startup.DefaultCiFailureContext(TestConfig.ValidCiFailure(agent: AgentKind.Claude));
 
         Assert.IsInstanceOfType<ClaudeAgent>(context.Job.Agent);
-        Assert.IsInstanceOfType<GitHubCiFailureHost>(context.CiFailureHost);
+        Assert.IsInstanceOfType<GitHubCiFailureRepoHost>(context.RepoHost);
     }
 
     [TestMethod]

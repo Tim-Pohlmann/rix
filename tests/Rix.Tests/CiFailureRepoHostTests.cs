@@ -4,16 +4,16 @@ using System.Text;
 
 namespace Rix.Tests;
 
-/// <summary>Covers <see cref="GitHubCiFailureHost"/>: fetching a run's facts, concatenating its
+/// <summary>Covers <see cref="GitHubCiFailureRepoHost"/>: fetching a run's facts, concatenating its
 /// failed jobs' logs, looking up an open PR for its branch, and counting rix's own commits at that
 /// branch's tip. Only the REST side is stubbed - this host runs no git commands.</summary>
 [TestClass]
-public class CiFailureHostTests
+public class CiFailureRepoHostTests
 {
     /// <summary>Generous enough that the tests not about truncation are unaffected by it.</summary>
     private const int TailChars = 10_000;
 
-    private static GitHubCiFailureHost BuildHost(Func<HttpRequestMessage, HttpResponseMessage> handler, string repo = "owner/repo")
+    private static GitHubCiFailureRepoHost BuildHost(Func<HttpRequestMessage, HttpResponseMessage> handler, string repo = "owner/repo")
     => new(new RepoIdentifier(repo), new GitReadToken("read-tok"), new DelegatingHandlerStub(handler));
 
     private static HttpResponseMessage Json(string body)
@@ -42,7 +42,7 @@ public class CiFailureHostTests
         var host = BuildHost(_ => Json(
             """{"conclusion":"failure","display_title":"Fix thing","html_url":"https://github.com/owner/repo/actions/runs/1","head_branch":"rix/fix"}"""));
 
-        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<RepoHostException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
     }
 
     [TestMethod]
@@ -50,7 +50,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("""{"conclusion":"failure"}"""));
 
-        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<RepoHostException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
     }
 
     [TestMethod]
@@ -69,7 +69,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
-        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<RepoHostException>(() => host.GetRunAsync(new RunId(1), CancellationToken.None));
     }
 
     [TestMethod]
@@ -204,7 +204,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("{}"));
 
-        await Assert.ThrowsExactlyAsync<RepositoryHostException>(() => host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<RepoHostException>(() => host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None));
     }
 
     [TestMethod]
@@ -293,7 +293,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>
         (
             () => host.CountLeadingRixCommitsAsync(new BranchName("rix/fix"), Cap, CancellationToken.None)
         );
@@ -309,7 +309,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => throw new HttpRequestException("no such host is known"));
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.GetRunAsync(new RunId(7), CancellationToken.None));
 
         StringAssert.Contains(ex.Message, "get workflow run 7");
@@ -324,7 +324,7 @@ public class CiFailureHostTests
             Content = new StreamContent(new FailingStream()),
         });
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.GetRunAsync(new RunId(7), CancellationToken.None));
 
         StringAssert.Contains(ex.Message, "get workflow run 7");
@@ -342,7 +342,7 @@ public class CiFailureHostTests
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new FailingStream()) };
         });
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.GetFailedJobLogsAsync(new RunId(1), TailChars, CancellationToken.None));
 
         StringAssert.Contains(ex.Message, "get logs for job 3");
@@ -356,7 +356,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("null"));
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.GetRunAsync(new RunId(7), CancellationToken.None));
 
         StringAssert.Contains(ex.Message, "get workflow run 7");
@@ -367,7 +367,7 @@ public class CiFailureHostTests
     {
         var host = BuildHost(_ => Json("not json"));
 
-        var ex = await Assert.ThrowsExactlyAsync<RepositoryHostException>(
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => host.GetRunAsync(new RunId(7), CancellationToken.None));
 
         StringAssert.Contains(ex.Message, "get workflow run 7");
