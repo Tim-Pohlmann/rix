@@ -1,8 +1,8 @@
 namespace Rix.Repository;
 
-/// <summary>Fetches the agent home files from the factory repo with a shallow, blobless, sparse <c>git clone</c>
-/// of just the requested directory, through the shared <see cref="GitCli"/> so the read token never
-/// lands in argv or a persisted remote URL.</summary>
+/// <summary>Fetches the agent home files from the factory repo with a shallow, blobless, sparse
+/// <c>git clone</c> of just the requested directory, authenticated through the same
+/// <see cref="GitCli"/> as the job clone.</summary>
 internal sealed class GitHubAgentHomeFetcher(GitCli git) : IAgentHomeFetcher
 {
     public async Task<string> FetchAsync
