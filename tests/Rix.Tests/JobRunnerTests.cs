@@ -68,7 +68,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_DoesNotClone_WhenClaudeInstallerFails()
     {
-        var host = new TrackingRepositoryHost();
+        var host = new TrackingJobRepoHost();
 
         await JobRunner.RunAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))),
@@ -223,7 +223,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ClonesRepo()
     {
-        var host = new TrackingRepositoryHost();
+        var host = new TrackingJobRepoHost();
 
         await JobRunner.RunAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
@@ -235,7 +235,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ConfiguresGitIdentity_InCloneDir()
     {
-        var host = new TrackingRepositoryHost();
+        var host = new TrackingJobRepoHost();
         string? agentWorkingDir = null;
         RunProcessAsync tracker = (f, a, d, e, onLine, ct) =>
         {
@@ -958,7 +958,7 @@ public class JobRunnerTests
 
     private record QueuedPrSpec(string Branch, string BaseBranch, string Title, string Body);
 
-    private sealed class TrackingRepositoryHost : IJobRepoHost
+    private sealed class TrackingJobRepoHost : IJobRepoHost
     {
         public bool CloneCalled { get; private set; }
         public bool ConfigureGitCalled { get; private set; }
