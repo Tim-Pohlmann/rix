@@ -49,11 +49,8 @@ internal static class JobRunner
             return new SetupFailure(ex.Message);
         }
 
-        if (config.FactoryContext is { } factoryContext)
-        {
-            if (await LoadFactoryContextAsync(factoryContext, config.WorkDir, context.FactoryContextLoader, ct) is { } factoryFailure)
-                return factoryFailure;
-        }
+        if (await LoadFactoryContextAsync(config, context.FactoryContextLoader, ct) is { } factoryFailure)
+            return factoryFailure;
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
@@ -101,13 +98,16 @@ internal static class JobRunner
     /// <summary>Lays the operator-supplied home context over the runner's user home before the
     /// agent starts, so its config/context files are in place when the agent first reads them.
     /// Returns the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once the files are
-    /// in place.</summary>
+    /// in place or when the run has no factory context.</summary>
     private static async Task<SetupFailure?> LoadFactoryContextAsync
     (
-        FactoryContextConfig factoryContext, DirectoryPath workDir, IFactoryContextLoader loader, CancellationToken ct
+        JobConfig config, IFactoryContextLoader loader, CancellationToken ct
     )
     {
-        using var checkout = TempDirectory.Create(workDir.Value, "rix-factory");
+        if (config.FactoryContext is not { } factoryContext)
+            return null;
+
+        using var checkout = TempDirectory.Create(config.WorkDir.Value, "rix-factory");
         try
         {
             var source = await loader.FetchAsync(factoryContext.Repo, factoryContext.ContextPath, checkout.Path, ct);
