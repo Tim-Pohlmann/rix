@@ -131,7 +131,7 @@ public class CiFailureDetectorTests
     /// <summary>The trust boundary: a fork's branch can be pushed to by anyone, so its logs must
     /// never reach the agent — which means they must never even be fetched.</summary>
     [TestMethod]
-    public async Task DetectAsync_ReturnsUntrustedRun_WhenTheRunsBranchIsAForks()
+    public async Task DetectAsync_ReturnsUntrustedRun_WhenTheRunComesFromAFork()
     {
         var ci = new StubCiHost(
             getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "patch-1", headRepo: "outsider/repo")),

@@ -11,8 +11,8 @@ namespace Rix.Job;
 /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch. Any
 /// branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates via
 /// <c>/pr</c>), since these already exist on the remote before the job ever runs.</param>
-/// <param name="FactoryContext">Optional factory-repo home context: when set, a directory from
-/// another repo is copied into the runner's user home before the agent starts. <c>null</c> (the
+/// <param name="AgentHome">Optional agent home files: when set, a directory from another repo is
+/// copied into the runner's home before the agent starts. <c>null</c> (the
 /// default) means no <c>--factory-repo</c> was given and the runner home is left untouched.</param>
 internal record JobConfig
 (
@@ -26,7 +26,7 @@ internal record JobConfig
     DirectoryPath OutputDir,
     AgentConfig Agent,
     IReadOnlyList<BranchName> AllowedPushBranches,
-    FactoryContextConfig? FactoryContext = null
+    AgentHomeInfo? AgentHome = null
 )
 {
     internal const int DefaultMaxTokens = 50_000;
@@ -34,8 +34,8 @@ internal record JobConfig
     internal const AgentKind DefaultAgent = AgentKind.OpenCode;
 
     /// <summary>Directory inside the factory repo whose contents are copied into the runner home
-    /// when <c>--factory-context-path</c> is omitted but <c>--factory-repo</c> is set.</summary>
-    internal const string DefaultFactoryContextPath = ".rix/agent-home";
+    /// when <c>--agent-home-path</c> is omitted but <c>--factory-repo</c> is set.</summary>
+    internal const string DefaultAgentHomePath = ".rix/agent-home";
 }
 
 /// <summary>How the coding agent should be run: which agent (<see cref="AgentKind"/>), the task
@@ -57,8 +57,7 @@ internal sealed record AgentConfig
     AgentCredential? Credential = null
 );
 
-/// <summary>Where the run's user-home context comes from: a <paramref name="Repo"/> to fetch and
-/// the repo-relative <paramref name="ContextPath"/> directory inside it whose contents are copied
-/// into the runner's home before the agent starts. Groups the inputs the <c>--factory-repo</c> and
-/// <c>--factory-context-path</c> flags configure.</summary>
-internal sealed record FactoryContextConfig(RepoIdentifier Repo, RepoRelativePath ContextPath);
+/// <summary>Where the agent home files come from and where they go: the contents of the
+/// repo-relative <paramref name="SourcePath"/> directory in <paramref name="Repo"/> are copied into
+/// <paramref name="Home"/>, the runner user's home, before the agent starts.</summary>
+internal sealed record AgentHomeInfo(RepoIdentifier Repo, RepoRelativePath SourcePath, DirectoryPath Home);
