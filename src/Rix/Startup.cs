@@ -21,18 +21,20 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    {
-        var git = new GitCli(config.ReadToken, ProcessWrapper.RunAsync);
-        return DefaultContext(config.Agent.Kind, new GitHubJobRepoHost(git, new GitHubApi(config.Repo, config.ReadToken)), git);
-    }
+    => DefaultContext
+    (
+        config.Agent.Kind,
+        new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
+        config.ReadToken
+    );
 
     /// <summary>Overload for callers that already have a repo host to reuse rather than a second,
     /// redundant connection — and that know which agent to run before they have a
     /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
     /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
-    /// agent it will run is configured up front. The agent home files are fetched through the same
-    /// <paramref name="git"/> as the host's, under the same read token.</summary>
-    internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host, GitCli git)
+    /// agent it will run is configured up front. The agent home files are fetched from a second repo,
+    /// so the fetcher gets its own git client under <paramref name="readToken"/>.</summary>
+    internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host, GitReadToken readToken)
     => new
     (
         host,
@@ -42,7 +44,7 @@ internal static class Startup
         // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
         TranscriptLine: _ => { },
-        AgentHomeFetcher: new GitHubAgentHomeFetcher(git)
+        AgentHomeFetcher: new GitHubAgentHomeFetcher(new GitCli(readToken, ProcessWrapper.RunAsync))
     );
 
     private static ICodingAgent SelectAgent(AgentKind agent)
@@ -64,8 +66,8 @@ internal static class Startup
     internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
-        var git = new GitCli(config.ReadToken, ProcessWrapper.RunAsync);
-        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, new GitHubJobRepoHost(git, api), git));
+        var host = new GitHubJobRepoHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
+        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host, config.ReadToken));
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the
