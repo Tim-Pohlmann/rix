@@ -98,16 +98,16 @@ internal static class JobOptions
     internal static readonly Option<string> FactoryRepoOption = new
     (
         name: "--factory-repo",
-        description: "Optional repo (owner/name) to fetch agent home-context files from before the run. " +
-            "Read with --read-token, which must also grant read access to this repo."
+        description: "Optional repo (owner/name) holding agent config/context files to copy into the runner's " +
+            "home directory. Read with --read-token, which must also grant read access to this repo."
     )
     { IsRequired = false };
 
     internal static readonly Option<string> FactoryContextPathOption = new
     (
         name: "--factory-context-path",
-        description: "Directory inside --factory-repo whose contents are copied into the runner's user " +
-            $"home, skipping files that already exist (default: {JobConfig.DefaultFactoryContextPath})"
+        description: "Directory inside --factory-repo whose contents are copied into the runner's home " +
+            $"directory, skipping files that already exist. Requires --factory-repo (default: {JobConfig.DefaultFactoryContextPath})"
     )
     { IsRequired = false };
 
