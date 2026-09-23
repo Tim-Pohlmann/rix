@@ -10,10 +10,6 @@ namespace Rix.Repository;
 /// to borrow it.</summary>
 internal sealed class GitCli
 {
-    /// <summary>The host the credential is scoped to. Every URL git is pointed at comes from
-    /// <see cref="CloneUrl"/>, so a remote and its auth header can't drift apart.</summary>
-    private const string GitHubHost = "https://github.com/";
-
     private readonly RunProcessAsync _runProcess;
     private readonly IReadOnlyDictionary<string, string> _authEnv;
 
@@ -34,15 +30,10 @@ internal sealed class GitCli
         return new Dictionary<string, string>
         {
             ["GIT_CONFIG_COUNT"] = "1",
-            ["GIT_CONFIG_KEY_0"] = $"http.{GitHubHost}.extraheader",
+            ["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader",
             ["GIT_CONFIG_VALUE_0"] = $"Authorization: Basic {basic}",
         };
     }
-
-    /// <summary>The HTTPS URL to clone <paramref name="repo"/> from — on the host the credential
-    /// is scoped to.</summary>
-    internal static string CloneUrl(RepoIdentifier repo)
-    => $"{GitHubHost}{repo.Value}.git";
 
     /// <summary>Runs <c>git</c> and fails the way every caller here wants it to: any non-zero exit
     /// becomes a <see cref="RepoHostException"/> naming the subcommand. The credential is
