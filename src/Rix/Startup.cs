@@ -25,21 +25,16 @@ internal static class Startup
     (
         config.Agent.Kind,
         new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
-        config.ReadToken,
-        config.WorkDir
+        config.ReadToken
     );
 
     /// <summary>Overload for callers that already have a repo host to reuse rather than a second,
     /// redundant connection — and that know which agent to run before they have a
     /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
     /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
-    /// agent it will run is configured up front. The read token and work dir come in separately for
-    /// the same reason: the factory context is fetched from a second repo, so it needs a credential
-    /// and somewhere to clone into whether or not a <see cref="JobConfig"/> exists yet.</summary>
-    internal static JobContext DefaultContext
-    (
-        AgentKind agent, IJobRepoHost host, GitReadToken readToken, DirectoryPath workDir
-    )
+    /// agent it will run is configured up front. The agent home files are fetched from a second repo,
+    /// so the fetcher gets its own git client under <paramref name="readToken"/>.</summary>
+    internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host, GitReadToken readToken)
     => new
     (
         host,
@@ -49,22 +44,8 @@ internal static class Startup
         // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
         TranscriptLine: _ => { },
-        FactoryContextLoader: new GitHubFactoryContextLoader
-        (
-            readToken, ProcessWrapper.RunAsync, workDir.Value, RunnerHomeDirectory()
-        )
+        AgentHomeFetcher: new GitHubAgentHomeFetcher(new GitCli(readToken, ProcessWrapper.RunAsync))
     );
-
-    /// <summary>The runner user's home directory, where the coding agent CLIs read their config and
-    /// where <see cref="GitHubFactoryContextLoader"/> lays the factory context. Falls back to
-    /// <c>$HOME</c> if <see cref="Environment.SpecialFolder.UserProfile"/> resolves empty.</summary>
-    private static string RunnerHomeDirectory()
-    {
-        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (string.IsNullOrEmpty(profile))
-            return Environment.GetEnvironmentVariable("HOME") ?? profile;
-        return profile;
-    }
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
@@ -86,7 +67,7 @@ internal static class Startup
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
         var host = new GitHubJobRepoHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
-        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host, config.ReadToken, config.WorkDir));
+        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host, config.ReadToken));
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the

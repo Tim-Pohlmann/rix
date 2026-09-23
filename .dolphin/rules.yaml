@@ -51,32 +51,20 @@ rules:
       if/else statement instead.
     pattern: "$A ? $B : $C"
 
-  - id: raw-temp-dir-creation
+  - id: raw-directory-creation
     languages: [csharp]
     severity: ERROR
     message: >-
-      Directory.CreateDirectory is reserved for dedicated wrapper types
-      (TempDirectory for temp dirs, FileWriter for real paths) and for
-      DirectoryMerge's file-tree materialization; don't call it directly
-      elsewhere.
+      Directory.CreateDirectory is reserved for the dedicated file-system
+      wrapper types (TempDirectory, FileWriter, DirectoryMerge); go through
+      one of them instead of calling it directly.
+    # The exclusion list is the list of wrappers: a new one is added here.
     paths:
       exclude:
+        - src/Rix/TempDirectory.cs
         - src/Rix/FileWriter.cs
-    patterns:
-      - pattern: Directory.CreateDirectory($P)
-      - pattern-not-inside: |
-          class TempDirectory
-          {
-            ...
-          }
-      # DirectoryMerge recreates a source tree's directories (empty ones included) at
-      # the destination - that is file-tree materialization, not temp-dir hand-rolling,
-      # so it is exempt alongside TempDirectory itself.
-      - pattern-not-inside: |
-          class DirectoryMerge
-          {
-            ...
-          }
+        - src/Rix/DirectoryMerge.cs
+    pattern: Directory.CreateDirectory($P)
 
   - id: raw-process-outside-wrapper
     languages: [csharp]

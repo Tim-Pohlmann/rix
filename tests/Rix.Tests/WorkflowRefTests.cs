@@ -14,6 +14,10 @@ public class WorkflowRefTests
     [DataRow("main")]
     [DataRow("release/2.x")]
     [DataRow("10f8ca55a5edface0e59d9bc19e60664ad917024")]
+    // Nobody would pin to this, but git's trailing-dot rule is about the refname as a whole, so a
+    // dot at the end of an interior component is legal. Kept as a row to pin down that the
+    // rejection below is the one git makes and not a per-component rule that only looks similar.
+    [DataRow("release./2.x")]
     public void Constructor_AcceptsTagsBranchesAndShas(string value)
     => Assert.AreEqual(value, new WorkflowRef(value).Value);
 
@@ -23,10 +27,32 @@ public class WorkflowRefTests
     [DataRow("'main'")]
     [DataRow("-main")]
     [DataRow("main\nrun: rm -rf /")]
+    // A newline with nothing after it, which the interior-newline row above does not cover: .NET's
+    // $ matches immediately before a final newline, so this rode through validation and into the
+    // uses: line until the pattern was anchored with \z.
+    [DataRow("main\n")]
     public void Constructor_RejectsAnythingThatWouldNotSurviveYaml(string value)
     {
         var error = Assert.ThrowsExactly<InvalidInputException>(() => new WorkflowRef(value).ToString()).Message;
-        StringAssert.Contains(error, "not a valid git ref");
+        StringAssert.Contains(error, "not a valid workflow ref");
+    }
+
+    /// <summary>Shapes that survive YAML intact but that git itself refuses, so pinning to one
+    /// would write a workflow whose <c>uses:</c> line cannot resolve — a failure that surfaces in
+    /// the target repo's Actions tab, a commit and a push away from the mistake.</summary>
+    [TestMethod]
+    [DataRow("release..x")]
+    [DataRow("release/")]
+    [DataRow("release/.hidden")]
+    [DataRow("release//2.x")]
+    [DataRow("v1.lock")]
+    [DataRow("release/2.x.lock")]
+    [DataRow("main.")]
+    [DataRow("release/2.x.")]
+    public void Constructor_RejectsRefsGitWouldReject(string value)
+    {
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new WorkflowRef(value).ToString()).Message;
+        StringAssert.Contains(error, "not a valid workflow ref");
     }
 
     [TestMethod]
