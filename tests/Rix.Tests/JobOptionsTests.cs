@@ -199,52 +199,52 @@ public class JobOptionsTests
     }
 
     [TestMethod]
-    public void ReadFactoryContext_IsNull_WhenNoFactoryRepo()
-    => Assert.IsNull(JobOptions.ReadFactoryContext(Parse()));
+    public void ReadAgentHome_IsNull_WhenNoFactoryRepo()
+    => Assert.IsNull(JobOptions.ReadAgentHome(Parse()));
 
     [TestMethod]
-    public void ReadFactoryContext_DefaultsPath_WhenOnlyRepoSupplied()
+    public void ReadAgentHome_DefaultsPath_WhenOnlyRepoSupplied()
     {
-        var factory = JobOptions.ReadFactoryContext(Parse("--factory-repo", "acme/factory"));
+        var factory = JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory"));
 
         Assert.IsNotNull(factory);
         Assert.AreEqual("acme/factory", factory.Repo.Value);
-        Assert.AreEqual(JobConfig.DefaultFactoryContextPath, factory.ContextPath.Value);
+        Assert.AreEqual(JobConfig.DefaultAgentHomePath, factory.SourcePath.Value);
         Assert.AreEqual(new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), factory.Home);
     }
 
     [TestMethod]
-    public void ReadFactoryContext_NormalisesExplicitPath()
+    public void ReadAgentHome_NormalisesExplicitPath()
     {
-        var factory = JobOptions.ReadFactoryContext(Parse("--factory-repo", "acme/factory", "--factory-context-path", "./config/home/"));
+        var factory = JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "./config/home/"));
 
         Assert.IsNotNull(factory);
-        Assert.AreEqual("config/home", factory.ContextPath.Value);
+        Assert.AreEqual("config/home", factory.SourcePath.Value);
     }
 
     /// <summary>A blank path is "not supplied" rather than an empty path, the same reading every
     /// other optional flag gets, so a workflow that interpolates an unset variable falls back to the
     /// default instead of failing.</summary>
     [TestMethod]
-    public void ReadFactoryContext_FallsBackToDefault_WhenPathIsBlank()
+    public void ReadAgentHome_FallsBackToDefault_WhenPathIsBlank()
     => Assert.AreEqual
     (
-        JobConfig.DefaultFactoryContextPath,
-        JobOptions.ReadFactoryContext(Parse("--factory-repo", "acme/factory", "--factory-context-path", "   "))!.ContextPath.Value
+        JobConfig.DefaultAgentHomePath,
+        JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "   "))!.SourcePath.Value
     );
 
     [TestMethod]
-    public void ReadFactoryContext_RejectsPath_WithoutRepo()
+    public void ReadAgentHome_RejectsPath_WithoutRepo()
     => Assert.AreEqual
     (
-        "--factory-context-path requires --factory-repo",
-        ErrorOf(() => JobOptions.ReadFactoryContext(Parse("--factory-context-path", ".rix/agent-home")))
+        "--agent-home-path requires --factory-repo",
+        ErrorOf(() => JobOptions.ReadAgentHome(Parse("--agent-home-path", ".rix/agent-home")))
     );
 
     [TestMethod]
-    public void ReadFactoryContext_RejectsMalformedRepo()
+    public void ReadAgentHome_RejectsMalformedRepo()
     {
-        var error = ErrorOf(() => JobOptions.ReadFactoryContext(Parse("--factory-repo", "not-a-repo")));
+        var error = ErrorOf(() => JobOptions.ReadAgentHome(Parse("--factory-repo", "not-a-repo")));
         StringAssert.StartsWith(error, "--factory-repo: ");
     }
 
@@ -252,9 +252,9 @@ public class JobOptionsTests
     [DataRow("../escape")]
     [DataRow("/abs/path")]
     [DataRow("a/../../b")]
-    public void ReadFactoryContext_RejectsMalformedPath(string path)
+    public void ReadAgentHome_RejectsMalformedPath(string path)
     {
-        var error = ErrorOf(() => JobOptions.ReadFactoryContext(Parse("--factory-repo", "acme/factory", "--factory-context-path", path)));
-        StringAssert.StartsWith(error, "--factory-context-path: ");
+        var error = ErrorOf(() => JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", path)));
+        StringAssert.StartsWith(error, "--agent-home-path: ");
     }
 }

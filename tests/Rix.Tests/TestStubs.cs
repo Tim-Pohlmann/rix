@@ -182,20 +182,20 @@ internal sealed class StubSubmitRepoHost(
     }
 }
 
-/// <summary>Records each fetch so tests can assert the factory context was requested with the
+/// <summary>Records each fetch so tests can assert the agent home files were requested with the
 /// configured repo and path. <c>onFetch</c> gets the checkout dir and returns the directory to merge
 /// into the home, or throws <see cref="Rix.Repository.RepoHostException"/> to simulate a fetch
 /// failure; by default the empty checkout dir itself is returned, so nothing is copied.</summary>
-internal sealed class StubFactoryContextLoader(Func<string, string>? onFetch = null) : IFactoryContextLoader
+internal sealed class StubAgentHomeFetcher(Func<string, string>? onFetch = null) : IAgentHomeFetcher
 {
-    public List<(RepoIdentifier Repo, RepoRelativePath ContextPath)> Fetches { get; } = [];
+    public List<(RepoIdentifier Repo, RepoRelativePath SourcePath)> Fetches { get; } = [];
 
     public Task<string> FetchAsync
     (
-        RepoIdentifier repo, RepoRelativePath contextPath, string checkoutDir, CancellationToken cancellationToken
+        RepoIdentifier repo, RepoRelativePath sourcePath, string checkoutDir, CancellationToken cancellationToken
     )
     {
-        Fetches.Add((repo, contextPath));
+        Fetches.Add((repo, sourcePath));
         return Task.FromResult(onFetch?.Invoke(checkoutDir) ?? checkoutDir);
     }
 }

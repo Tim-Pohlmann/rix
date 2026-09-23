@@ -30,7 +30,7 @@ internal static class Startup
     /// redundant connection — and that know which agent to run before they have a
     /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
     /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
-    /// agent it will run is configured up front. The factory context is fetched through the same
+    /// agent it will run is configured up front. The agent home files are fetched through the same
     /// <paramref name="git"/> as the host's, under the same read token.</summary>
     internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host, GitCli git)
     => new
@@ -42,7 +42,7 @@ internal static class Startup
         // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
         TranscriptLine: _ => { },
-        FactoryContextLoader: new GitHubFactoryContextLoader(git)
+        AgentHomeFetcher: new GitHubAgentHomeFetcher(git)
     );
 
     private static ICodingAgent SelectAgent(AgentKind agent)

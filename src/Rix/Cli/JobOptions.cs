@@ -103,11 +103,11 @@ internal static class JobOptions
     )
     { IsRequired = false };
 
-    internal static readonly Option<string> FactoryContextPathOption = new
+    internal static readonly Option<string> AgentHomePathOption = new
     (
-        name: "--factory-context-path",
+        name: "--agent-home-path",
         description: "Directory inside --factory-repo whose contents are copied into the runner's home " +
-            $"directory, skipping files that already exist. Requires --factory-repo (default: {JobConfig.DefaultFactoryContextPath})"
+            $"directory, skipping files that already exist. Requires --factory-repo (default: {JobConfig.DefaultAgentHomePath})"
     )
     { IsRequired = false };
 
@@ -175,26 +175,26 @@ internal static class JobOptions
     internal static AgentCredential? ReadAgentCredential(ParseResult parsed, AgentKind agent, string? apiKey)
     => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.Resolve(agent, apiKey, raw));
 
-    /// <summary>Reads <c>--factory-repo</c>/<c>--factory-context-path</c> as a pair, because whether
+    /// <summary>Reads <c>--factory-repo</c>/<c>--agent-home-path</c> as a pair, because whether
     /// the path means anything depends on the repo — a path without a repo is reported, not
     /// ignored. The runner home is resolved only when a repo is given, so a job that doesn't use
     /// the feature never depends on having one.</summary>
-    internal static FactoryContextConfig? ReadFactoryContext(ParseResult parsed)
+    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed)
     {
         var repo = parsed.Optional<RepoIdentifier?>(FactoryRepoOption, "RIX_FACTORY_REPO", raw => new RepoIdentifier(raw), () => null);
         if (repo is null)
         {
-            if (parsed.OptionalText(FactoryContextPathOption, "RIX_FACTORY_CONTEXT_PATH") is not null)
-                throw new InvalidInputException($"{ParseResultExtensions.Flag(FactoryContextPathOption)} requires {ParseResultExtensions.Flag(FactoryRepoOption)}");
+            if (parsed.OptionalText(AgentHomePathOption, "RIX_AGENT_HOME_PATH") is not null)
+                throw new InvalidInputException($"{ParseResultExtensions.Flag(AgentHomePathOption)} requires {ParseResultExtensions.Flag(FactoryRepoOption)}");
             return null;
         }
 
-        var contextPath = parsed.Optional
+        var sourcePath = parsed.Optional
         (
-            FactoryContextPathOption,
-            "RIX_FACTORY_CONTEXT_PATH",
+            AgentHomePathOption,
+            "RIX_AGENT_HOME_PATH",
             raw => new RepoRelativePath(raw),
-            new RepoRelativePath(JobConfig.DefaultFactoryContextPath)
+            new RepoRelativePath(JobConfig.DefaultAgentHomePath)
         );
         // On Unix this already consults $HOME before the passwd entry.
         var home = Input.Named
@@ -202,6 +202,6 @@ internal static class JobOptions
             "runner home directory",
             () => new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
         );
-        return new FactoryContextConfig(repo, contextPath, home);
+        return new AgentHomeInfo(repo, sourcePath, home);
     }
 }
