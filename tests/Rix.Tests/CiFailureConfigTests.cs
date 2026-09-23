@@ -8,10 +8,14 @@ namespace Rix.Tests;
 public class CiFailureConfigTests
 {
     /// <summary>ToJobConfig copies nine values between two records whose fields are mostly the same
-    /// shape - three consecutive <c>string?</c>s among them - by name, with nothing checking that
+    /// shape - two directory paths side by side among them - by name, with nothing checking that
     /// each one lands in the slot it was read from. Two swapped arguments compile, pass every other
     /// test, and only show up as an agent run configured with someone else's values. So every value
-    /// here is distinct and asserted individually, including the two ToJobConfig supplies itself.</summary>
+    /// here is distinct and asserted individually, including the two ToJobConfig supplies itself.
+    ///
+    /// Pairing the key with its variable name as one <see cref="AgentCredential"/> took the worst
+    /// of that away - the two bare <c>string?</c>s that used to sit next to each other here could
+    /// be swapped in silence - but the rest of the copy is still positional.</summary>
     [TestMethod]
     public void ToJobConfig_CarriesEveryValueIntoItsOwnSlot()
     {

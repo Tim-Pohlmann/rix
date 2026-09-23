@@ -115,7 +115,7 @@ public class CiFailureRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_ReturnsNotRun_AndNeverClones_WhenTheFailureIsAForks()
+    public async Task RunAsync_ReturnsNotRun_AndNeverClones_WhenTheFailureComesFromAFork()
     {
         var ci = new StubCiHost(
             getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), headRepo: "outsider/repo")));
@@ -133,7 +133,7 @@ public class CiFailureRunnerTests
     /// <summary>Exit 0, like every other reason not to act: a fork PR failing CI is the normal
     /// course of events, not a broken rix run for the repo's Actions tab to go red over.</summary>
     [TestMethod]
-    public async Task ExecuteCiFailureAsync_Returns0_AndWritesNoResultJson_WhenTheFailureIsAForks()
+    public async Task ExecuteCiFailureAsync_Returns0_AndWritesNoResultJson_WhenTheFailureComesFromAFork()
     {
         var ci = new StubCiHost(
             getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), headRepo: "outsider/repo")));

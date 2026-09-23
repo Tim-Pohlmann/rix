@@ -98,7 +98,7 @@ public class InitializeCommandTests
 
         Assert.IsNull(captured);
         Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
-        StringAssert.Contains(stderr.Text, "error: --ref: 'main branch' is not a valid git ref");
+        StringAssert.Contains(stderr.Text, "error: --ref: 'main branch' is not a valid workflow ref");
     }
 
     [TestMethod]

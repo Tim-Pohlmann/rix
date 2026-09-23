@@ -172,17 +172,23 @@ on:
   workflow_run:
     workflows: ["CI"] # must match the `name:` of the workflow to watch
     types: [completed]
-# One rix run per branch at a time: when CI fails again while rix is still working on the
-# previous failure, the second run waits instead of starting a second agent from the same tip.
-concurrency:
-  group: rix-on-ci-failure-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: false
 jobs:
   rix:
     # Cheap short-circuit; on-ci-failure.yml re-checks both conditions via the API regardless.
     if: >-
       github.event.workflow_run.conclusion == 'failure' &&
       github.event.workflow_run.head_repository.full_name == github.repository
+    # One rix run per branch at a time: when CI fails again while rix is still working on the
+    # previous failure, the second run waits instead of starting a second agent from the same tip.
+    # On the job rather than the workflow, so only runs that get past the `if` above contend:
+    # GitHub keeps a single pending entry per group and cancels whatever a newcomer displaces
+    # (`cancel-in-progress` governs the running entry, not the queued one), so at workflow scope
+    # every completion on the branch - a later successful rerun included - would join the group
+    # and could drop a queued answer to a real failure. The branch names the group on its own
+    # because the head_repository check above has already pinned which repo's branch it is.
+    concurrency:
+      group: rix-on-ci-failure-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
     uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v0
     with:
       # repo defaults to the calling repo — no need to set it here.
@@ -232,13 +238,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch to factory repo
+        # Every value reaches the script through env, never through ${{ }} inside `run:` - an
+        # expression there is pasted into the script before bash sees it. A fork PR's branch name
+        # is chosen by its author and git allows `$(...)` and backticks in one, so interpolating
+        # it would run the author's command in this step, which holds the dispatch token.
         env:
           GH_TOKEN: ${{ secrets.RIX_FACTORY_DISPATCH_TOKEN }}
+          FACTORY_REPO: ${{ vars.RIX_FACTORY_REPO }}
+          PROJECT_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          gh api repos/${{ vars.RIX_FACTORY_REPO }}/dispatches \
+          gh api "repos/$FACTORY_REPO/dispatches" \
             -f event_type=rix-ci-failure \
-            -f "client_payload[repo]=${{ github.repository }}" \
-            -f "client_payload[run_id]=${{ github.event.workflow_run.id }}"
+            -f "client_payload[repo]=$PROJECT_REPO" \
+            -f "client_payload[run_id]=$RUN_ID" \
+            -f "client_payload[branch]=$HEAD_BRANCH"
 ```
 
 `RIX_FACTORY_DISPATCH_TOKEN` needs `contents:write` on the factory repo (required by the
@@ -250,11 +265,22 @@ name: rix (dispatched CI failure)
 on:
   repository_dispatch:
     types: [rix-ci-failure]
+
 jobs:
   rix:
     # Bounds which repos the factory will act on, but does not say who asked — see the
     # trust caveat below.
     if: contains(fromJSON(vars.RIX_FACTORY_ALLOWED_REPOS), github.event.client_payload.repo)
+    # The factory's equivalent of the simple pattern's group, on the job for the same reason and
+    # below the allowlist so a payload naming a repo this factory does not serve never reaches it.
+    # `repository_dispatch` carries neither repo nor branch of its own, so the key comes from the
+    # payload. Those fields are unauthenticated: an onboarded repo can name another one's pair and
+    # cancel its queued response. That is a real denial rather than mere serialization, and it is
+    # the same mutual trust the allowlist already asks for - not something the allowlist bounds.
+    # See the caveat below.
+    concurrency:
+      group: rix-on-ci-failure-${{ github.event.client_payload.repo }}-${{ github.event.client_payload.branch }}
+      cancel-in-progress: false
     uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v0
     with:
       repo: ${{ github.event.client_payload.repo }}
@@ -284,7 +310,9 @@ passes — the run exists, it failed, and its head repo matches. rix then spends
 cross-repo write token on that other repo. What an attacker gets is the trigger, not the
 content: rix still answers a genuine CI failure and still opens an ordinary `rix/*` PR. But the
 timing and the target are theirs to pick, and the reachable set is exactly the repos worth
-reaching. Read the allowlist as a blast-radius bound, not as authentication.
+reaching. The same holds in the other direction: `client_payload` also supplies the concurrency
+key, so an onboarded repo can name another's `repo`/`branch` and cancel a response that repo
+had queued. Read the allowlist as a blast-radius bound, not as authentication.
 
 Two things that don't close this, despite looking like they should: `github.event.sender`
 names the account or App that called the dispatch API, not the repo it was called from, so with
@@ -315,10 +343,18 @@ it, and both apply to either pattern above:
   attempt is the normal case — the first attempt failing is exactly why there is a second.
   Note it bounds *commits*, not attempts: one agent run can produce more than one commit, so the
   effective number of attempts is at most this.
-- **The `concurrency` group** in the caller workflow above, keyed on the failing branch, so a
-  branch that fails twice in quick succession queues the second run rather than starting a
-  second agent from the same tip. `cancel-in-progress: false` because a run already talking to
-  the agent has work worth finishing.
+- **The `concurrency` group**, keyed on the failing branch and the repository that branch lives
+  in, so a branch that fails twice in quick succession queues the second run rather than
+  starting a second agent from the same tip. `cancel-in-progress: false` because a run already
+  talking to the agent has work worth finishing. It sits on the job rather than on the workflow,
+  which matters more than it looks: GitHub keeps one *pending* entry per group and cancels
+  whatever a newcomer displaces, and `cancel-in-progress` governs the running entry, not the
+  queued one. At workflow scope the group is taken before any `if` is looked at, so an event
+  that does no work — a later successful rerun of the same branch — could quietly drop a queued
+  answer to a real failure. The branch alone is enough to name the group because the `if:` above
+  it has already pinned the repository. Both callers above carry a group; the factory keys its
+  on the dispatch payload's `repo` and `branch` rather than on `workflow_run`, since a
+  `repository_dispatch` knows neither on its own.
 
 ```yaml
     with:
