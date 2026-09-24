@@ -256,7 +256,7 @@ jobs:
           # `outcome` is the run step's own result, read through continue-on-error below; the
           # `case` arms that only annotate leave rix's exit code alone, so the step passes.
           - name: skipped
-            stdout: '{"status":"skipped","conclusion":"success"}'
+            stdout: '{"status":"skipped","outcome":"succeeded"}'
             exit: 0
             has-result: 'false'
             outcome: success
@@ -281,14 +281,14 @@ jobs:
           # The agent ran and the job failed. No annotation of its own - rix's non-zero exit is
           # what fails the step, and has-result stays false so create-pr is skipped.
           - name: failure
-            stdout: '{"status":"failure","error":"agent failed: exited with code 1"}'
+            stdout: '{"status":"failure","error":"agent failed: exited with code 1","costUsd":0.0123,"durationSeconds":42}'
             exit: 1
             has-result: 'false'
             outcome: failure
             writes-result: 'false'
 
           - name: setupFailure
-            stdout: '{"status":"setupFailure","error":"--max-tokens must be a positive integer"}'
+            stdout: '{"status":"setupFailure","error":"--max-tokens must be a positive integer","costUsd":0,"durationSeconds":0}'
             exit: 1
             has-result: 'false'
             outcome: failure
@@ -296,7 +296,7 @@ jobs:
 
           # The one arm that sets has-result=true, and so the only one create-pr would run after.
           - name: success
-            stdout: '{"status":"success","costUsd":0.0123,"durationSeconds":42}'
+            stdout: '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0.0123,"durationSeconds":42}'
             exit: 0
             has-result: 'true'
             outcome: success
@@ -312,13 +312,30 @@ jobs:
             has-result: 'false'
             outcome: failure
             writes-result: 'false'
+            # Off the schema on purpose - it stands in for a release this repo hasn't seen.
+            off-schema: true
 
     steps:
-      # Only the composite actions are needed - no rix source, and no binary to download.
+      # Only the composite actions, plus the schema check below - no rix source, and no binary to
+      # download.
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: .github/actions
+          sparse-checkout: |
+            .github/actions
+            tests/scripts/result-schema.bash
+            schemas
           sparse-checkout-cone-mode: false
+
+      # A canned result that has drifted from what rix prints would keep passing here while
+      # proving nothing about the real one, so each is checked against the schema generated from
+      # rix's result types first.
+      - name: Check the canned result is one rix could print
+        if: ${{ !matrix.case.off-schema }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-jsonschema
+          source tests/scripts/result-schema.bash
+          assert_matches_schema ci-failure-output.schema.json "$STUB_STDOUT"
 
       - name: Write the stub rix binary
         run: |
