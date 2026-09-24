@@ -47,8 +47,8 @@ public class SharedJobOptionsTests
         ("--output-dir", _outputDir, job => Assert.AreEqual(_outputDir, job.OutputDir.Value)),
         ("--agent", "claude", job => Assert.AreEqual(AgentKind.Claude, job.Agent.Kind)),
         ("--model", "vendor/shared-model", job => Assert.AreEqual("vendor/shared-model", job.Agent.Model)),
-        ("--agent-api-key", "shared-api-key", job => Assert.AreEqual("shared-api-key", job.Agent.ApiKey)),
-        ("--agent-api-key-env", "SHARED_API_KEY", job => Assert.AreEqual("SHARED_API_KEY", job.Agent.ApiKeyEnv)),
+        ("--agent-api-key", "shared-api-key", job => Assert.AreEqual("shared-api-key", job.Agent.Credential?.Key)),
+        ("--agent-api-key-env", "SHARED_API_KEY", job => Assert.AreEqual("SHARED_API_KEY", job.Agent.Credential?.EnvName)),
     ];
 
     private string[] SharedArgs

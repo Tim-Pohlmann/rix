@@ -17,14 +17,16 @@ internal sealed record CiFailureConfig
     RepoIdentifier Repo,
     GitReadToken ReadToken,
     TimeoutMinutes TimeoutMinutes,
+    // Reordering these two relative to each other compiles at every call site and silently swaps
+    // the clone's location with the results' - they share a type, so nothing catches it. That is
+    // why call sites pass them by name while the rest of the list stays positional.
     DirectoryPath WorkDir,
     DirectoryPath OutputDir,
     AgentKind Agent,
     MaxTokens MaxTokens,
     MaxRixCommits MaxRixCommits,
     string? Model = null,
-    string? ApiKey = null,
-    string? ApiKeyEnv = null
+    AgentCredential? Credential = null
 )
 {
     /// <summary>How many of rix's own commits may already sit at a failing branch's tip before
@@ -46,12 +48,12 @@ internal sealed record CiFailureConfig
     internal JobConfig ToJobConfig(string prompt, BranchName allowedPushBranch)
     => new
     (
-        Repo: Repo,
-        ReadToken: ReadToken,
-        TimeoutMinutes: TimeoutMinutes,
+        Repo,
+        ReadToken,
+        TimeoutMinutes,
         WorkDir: WorkDir,
         OutputDir: OutputDir,
-        Agent: new AgentConfig(Agent, prompt, MaxTokens, Model, ApiKey, ApiKeyEnv),
-        AllowedPushBranches: [allowedPushBranch]
+        new AgentConfig(Agent, prompt, MaxTokens, Model, Credential),
+        [allowedPushBranch]
     );
 }

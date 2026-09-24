@@ -9,6 +9,8 @@ namespace Rix.Tests;
 public class SubmitCommandTests
 {
     private static readonly string ExistingDir = Path.GetTempPath();
+    private static readonly string[] ExpectedTrimmedBranches = ["main", "release/1"];
+    private static readonly string[] ExpectedUnusualBranches = ["--not-a-flag", "feature/ünïcode"];
 
     private static Parser BuildParser(Func<SubmitConfig, Task<int>> handler)
     {
@@ -24,7 +26,8 @@ public class SubmitCommandTests
         string repo = "owner/repo",
         string writeToken = "write-tok",
         string? inputDir = null,
-        string? workDir = null
+        string? workDir = null,
+        string? allowedPushBranches = null
     )
     {
         SubmitConfig? captured = null;
@@ -36,6 +39,8 @@ public class SubmitCommandTests
         var args = new List<string> { "submit", "--repo", repo, "--write-token", writeToken, "--input-dir", inputDir ?? ExistingDir };
         if (workDir is not null)
             args.AddRange(["--work-dir", workDir]);
+        if (allowedPushBranches is not null)
+            args.AddRange(["--allowed-push-branches", allowedPushBranches]);
 
         using var stderr = new ConsoleErrorScope();
         var exitCode = await parser.InvokeAsync([.. args]);
@@ -106,5 +111,32 @@ public class SubmitCommandTests
         Assert.IsNull(config);
         Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
         StringAssert.Contains(stderr, "error: --work-dir: directory does not exist: /nonexistent/path/xyz");
+    }
+
+    [TestMethod]
+    public async Task Command_AllowsNoPushBranches_WhenTheListIsUnset()
+    {
+        Assert.AreEqual(0, (await RunAsync()).Config?.AllowedPushBranches.Count);
+        Assert.AreEqual(0, (await RunAsync(allowedPushBranches: "   ")).Config?.AllowedPushBranches.Count);
+    }
+
+    [TestMethod]
+    public async Task Command_SplitsAllowedPushBranches_TrimmingAndDroppingDuplicates()
+    {
+        var config = (await RunAsync(allowedPushBranches: " main , release/1 ,main, ")).Config;
+
+        Assert.IsNotNull(config);
+        CollectionAssert.AreEqual(ExpectedTrimmedBranches, config.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
+
+    /// <summary>An unusable entry is not an error: every string is a possible branch name, so the
+    /// list can only ever be over- or under-inclusive, and the safe direction is taken silently.</summary>
+    [TestMethod]
+    public async Task Command_KeepsAnyBranchName_InAllowedPushBranches()
+    {
+        var config = (await RunAsync(allowedPushBranches: "--not-a-flag,feature/ünïcode")).Config;
+
+        Assert.IsNotNull(config);
+        CollectionAssert.AreEqual(ExpectedUnusualBranches, config.AllowedPushBranches.Select(b => b.Value).ToArray());
     }
 }

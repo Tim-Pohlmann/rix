@@ -21,22 +21,29 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultContext(config.Agent.Kind, new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
+    => DefaultJobContext(new GitHubApi(config.Repo, config.ReadToken), config.Agent.Kind, config.ReadToken);
 
-    /// <summary>Overload for callers that already have a repo host to reuse rather than a second,
-    /// redundant connection — and that know which agent to run before they have a
-    /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
-    /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
-    /// agent it will run is configured up front.</summary>
-    internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host)
-    => new
-    (
-        RepoHost: host,
-        RunProcess: ProcessWrapper.RunAsync,
-        Agent: SelectAgent(agent),
-        LogLine: Console.Error.WriteLine,
-        TranscriptLine: _ => { }
-    );
+    /// <summary>Builds the <see cref="JobContext"/> for both <c>rix job</c> and
+    /// <see cref="DefaultCiFailureContext"/>. It takes the pieces separately instead of a
+    /// <see cref="JobConfig"/> because a ci-failure run only has a job config once a failure has
+    /// supplied the prompt. The agent and credential are configured up front, and the caller's
+    /// <paramref name="api"/> is shared rather than opening a second connection. The agent
+    /// home files are fetched through the same git client as the repo host's.</summary>
+    private static JobContext DefaultJobContext(GitHubApi api, AgentKind agent, GitReadToken readToken)
+    {
+        var git = new GitCli(readToken, ProcessWrapper.RunAsync);
+        return new
+        (
+            new GitHubJobRepoHost(git, api),
+            ProcessWrapper.RunAsync,
+            SelectAgent(agent),
+            // Named because LogLine and TranscriptLine are the same delegate type: transposing them
+            // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
+            LogLine: Console.Error.WriteLine,
+            TranscriptLine: _ => { },
+            AgentHomeFetcher: new GitHubAgentHomeFetcher(git)
+        );
+    }
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
@@ -57,8 +64,7 @@ internal static class Startup
     internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
-        var host = new GitHubJobRepoHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
-        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host));
+        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultJobContext(api, config.Agent, config.ReadToken));
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the
@@ -66,9 +72,9 @@ internal static class Startup
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        RepoHost: new GitHubSubmitRepoHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
-        RunProcess: ProcessWrapper.RunAsync,
-        LogLine: Console.Error.WriteLine
+        new GitHubSubmitRepoHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
+        ProcessWrapper.RunAsync,
+        Console.Error.WriteLine
     );
 
     /// <summary>
@@ -277,8 +283,8 @@ internal static class Startup
     private static InitializeContext DefaultInitializeContext()
     => new
     (
-        WriteFile: FileWriter.WriteAsync,
-        LogLine: Console.Error.WriteLine
+        FileWriter.WriteAsync,
+        Console.Error.WriteLine
     );
 
     /// <summary>
@@ -296,7 +302,7 @@ internal static class Startup
                 await Console.Error.WriteLineAsync(NextStepsGuidance);
                 return ExitCodes.Success;
             case InitializeFailure failure:
-                await Console.Error.WriteLineAsync($"error: {failure.Message}");
+                await Console.Error.WriteLineAsync($"error: {failure.Error}");
                 return ExitCodes.SetupFailed;
             default:
                 throw new NotSupportedException($"Unexpected initialize result type: {result.GetType()}");
