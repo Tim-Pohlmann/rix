@@ -35,6 +35,11 @@ setup() {
   # agent is incidental to these tests, but it does run: the copy has to survive a real job.
   export RIX_AGENT=opencode
   export RIX_FACTORY_REPO="$RIX_REPO"
+  # Well under rix's 30-minute default, because the agent turn is incidental to what these legs
+  # assert - it only has to reply OK, which takes under a minute in this job. An agent CLI that
+  # hangs instead (seen locally: opencode against an empty HOME sat there for the whole default)
+  # should fail this in minutes rather than hold a runner for half an hour.
+  export RIX_TIMEOUT=5
   export RIX_OUTPUT_DIR="$BATS_TEST_TMPDIR/out"
   export RIX_WORK_DIR="$BATS_TEST_TMPDIR/work"
   mkdir -p "$RIX_OUTPUT_DIR" "$RIX_WORK_DIR"
