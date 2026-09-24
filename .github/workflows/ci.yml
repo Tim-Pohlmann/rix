@@ -426,12 +426,18 @@ jobs:
 
     # One level deeper than agent-plumbing above: invokes the built rix binary directly (bypassing
     # the composite-action/workflow layer) and does real JSON parsing on its result, so
-    # per-failure-mode assertions live in a proper, reviewable test script
-    # (tests/e2e/rix-job-e2e.bats) instead of workflow YAML.
+    # per-failure-mode assertions live in proper, reviewable test scripts
+    # (tests/e2e/rix-job-e2e.bats for the agent itself, tests/e2e/agent-home-e2e.bats for the
+    # factory-repo agent home it runs with) instead of workflow YAML.
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: tests/e2e
+          # tests/fixtures as well as the test files: agent-home-e2e.bats asks the factory repo for
+          # tests/fixtures/agent-home, and reads the same path here to tell a fixture that is not on
+          # main yet (skip) from one that was deleted (fail).
+          sparse-checkout: |
+            tests/e2e
+            tests/fixtures
           sparse-checkout-cone-mode: false
 
       - name: Setup Node (rix installs the coding agent CLI via npm)
@@ -458,10 +464,10 @@ jobs:
         # `run` merges that into $output - print it on failure instead of silently discarding it,
         # so a failing assertion here comes with the agent's actual raw output instead of just the
         # failed jq/status check.
-        # Named file rather than the directory: each e2e file needs its own environment (this
-        # one an agent CLI and a key, ci-failure-e2e.bats below only actions:read), so a new file
+        # Named files rather than the directory: each e2e file needs its own environment (these
+        # two an agent CLI and a key, ci-failure-e2e.bats above only actions:read), so a new file
         # here joins the job built for it instead of silently joining this one.
-        run: bats --print-output-on-failure tests/e2e/rix-job-e2e.bats
+        run: bats --print-output-on-failure tests/e2e/rix-job-e2e.bats tests/e2e/agent-home-e2e.bats
 
   download-rix:
     name: Download rix (release path)
