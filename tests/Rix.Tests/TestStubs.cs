@@ -100,7 +100,8 @@ internal sealed class StubGit(
     Func<Task>? clone = null,
     Func<BranchName, Task<bool>>? branchExistsLocally = null,
     Func<string, Task>? configureIdentity = null,
-    Func<BranchName, Task>? pushBranch = null) : IGit
+    Func<BranchName, Task>? pushBranch = null,
+    Func<string, SubDirectoryPath, Task>? sparseClone = null) : IGit
 {
     public List<BranchName> PushedBranches { get; } = [];
     public bool CloneCalled { get; private set; }
@@ -113,6 +114,11 @@ internal sealed class StubGit(
         CloneCalled = true;
         return clone switch { { } check => check(), _ => Task.CompletedTask };
     }
+
+    /// <summary>Succeeds without creating anything by default; override via the
+    /// <c>sparseClone</c> constructor parameter to lay out the checkout or to simulate a failure.</summary>
+    public Task SparseCloneAsync(string targetDirectory, SubDirectoryPath directory, CancellationToken cancellationToken)
+    => sparseClone switch { { } check => check(targetDirectory, directory), _ => Task.CompletedTask };
 
     public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
     => branchExists switch { { } check => check(branch), _ => Task.FromResult(false) };
@@ -159,6 +165,24 @@ internal sealed class StubSubmitRepoHost(Func<PendingPr, Task<string>>? createPu
             { } check => check(pullRequest),
             _ => Task.FromResult($"https://github.com/owner/repo/pull/{CreatedPrs.Count}"),
         };
+    }
+}
+
+/// <summary>Records each fetch so tests can assert the agent home files were requested with the
+/// configured repo and path. <c>onFetch</c> gets the checkout dir and returns the directory to merge
+/// into the home, or throws <see cref="Rix.Repository.RepoHostException"/> to simulate a fetch
+/// failure; by default the empty checkout dir itself is returned, so nothing is copied.</summary>
+internal sealed class StubAgentHomeFetcher(Func<DirectoryPath, DirectoryPath>? onFetch = null) : IAgentHomeFetcher
+{
+    public List<(RepoIdentifier Repo, SubDirectoryPath SourcePath)> Fetches { get; } = [];
+
+    public Task<DirectoryPath> FetchAsync
+    (
+        RepoIdentifier repo, SubDirectoryPath sourcePath, DirectoryPath checkoutDir, CancellationToken cancellationToken
+    )
+    {
+        Fetches.Add((repo, sourcePath));
+        return Task.FromResult(onFetch?.Invoke(checkoutDir) ?? checkoutDir);
     }
 }
 

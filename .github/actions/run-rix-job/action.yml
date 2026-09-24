@@ -41,6 +41,18 @@ inputs:
       Comma-separated list of branches the /push endpoint may deliver to; omit to
       disable /push entirely
     required: false
+  factory-repo:
+    description: >-
+      Optional repo (owner/name) holding agent config/context files to copy into the
+      runner's home directory. The read-token must also grant read access to this repo. Omit
+      to leave the runner home untouched.
+    required: false
+  agent-home-path:
+    description: >-
+      Directory inside factory-repo whose contents are copied into the runner's home before
+      the agent starts (existing files are kept). Requires factory-repo; defaults to
+      .rix/agent-home.
+    required: false
   rix-version:
     description: "Rix release tag to download, or 'latest'"
     required: false
@@ -69,6 +81,8 @@ runs:
         RIX_REPO: ${{ inputs.repo }}
         RIX_PROMPT: ${{ inputs.prompt }}
         RIX_ALLOWED_PUSH_BRANCHES: ${{ inputs.allowed-push-branches }}
+        RIX_FACTORY_REPO: ${{ inputs.factory-repo }}
+        RIX_AGENT_HOME_PATH: ${{ inputs.agent-home-path }}
       shell: bash
       run: |
         # AGENT_API_KEY/AGENT_API_KEY_ENV are forwarded to rix as-is - it resolves which single env

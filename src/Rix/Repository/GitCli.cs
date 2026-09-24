@@ -40,6 +40,22 @@ internal sealed class GitCli : IGit
     public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
     => RunAsync(["clone", _remote.AbsoluteUri, targetDirectory], Path.GetTempPath(), authenticated: true, cancellationToken);
 
+    /// <summary>Blobless + sparse + depth 1: fetch the commit's tree and only the blobs under
+    /// <paramref name="directory"/>, never the repo's full history or unrelated files. Both steps
+    /// talk to the remote: the blobs are only fetched when sparse-checkout populates the working
+    /// tree, so it needs the credential as much as the clone does.</summary>
+    public async Task SparseCloneAsync(string targetDirectory, SubDirectoryPath directory, CancellationToken cancellationToken)
+    {
+        await RunAsync
+        (
+            ["clone", "--depth", "1", "--filter=blob:none", "--sparse", _remote.AbsoluteUri, targetDirectory],
+            Path.GetTempPath(),
+            authenticated: true,
+            cancellationToken
+        );
+        await RunAsync(["sparse-checkout", "set", directory.Value], targetDirectory, authenticated: true, cancellationToken);
+    }
+
     /// <summary>Asks the remote with <c>git ls-remote</c>. Its patterns are globs, so a branch name
     /// containing <c>*</c> would match other branches: the listed refs are compared exactly instead
     /// of trusting the exit code alone. Exit 2 is <c>--exit-code</c>'s "nothing matched" - an answer,

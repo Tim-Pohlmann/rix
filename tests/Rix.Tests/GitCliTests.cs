@@ -25,6 +25,11 @@ public class GitCliTests
     private static readonly string[] ExpectedLsRemoteArgs =
         ["ls-remote", "--exit-code", "https://github.com/owner/repo.git", "refs/heads/rix/fix"];
 
+    private static readonly string[] ExpectedSparseCloneArgs =
+        ["clone", "--depth", "1", "--filter=blob:none", "--sparse", "https://github.com/owner/repo.git", "/tmp/checkout"];
+
+    private static readonly string[] ExpectedSparseCheckoutArgs = ["sparse-checkout", "set", "nested/agent-home"];
+
     private static GitCli Build(string readToken = "read-tok", RunProcessAsync? gitRunner = null)
     => new(new Uri("https://github.com/owner/repo.git"), new GitReadToken(readToken), gitRunner ?? SuccessGitRunner);
 
@@ -293,5 +298,39 @@ public class GitCliTests
         var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
             () => git.CloneAsync("/tmp/target", CancellationToken.None));
         StringAssert.Contains(ex.Message, "clone");
+    }
+
+    [TestMethod]
+    public async Task SparseCloneAsync_ClonesShallowBloblessSparse_ThenChecksOutTheDirectory_WithAuthOnBothSteps()
+    {
+        var runs = new List<(string[] Args, string WorkingDir, IReadOnlyDictionary<string, string>? Env)>();
+        var git = Build(
+            gitRunner: (_, args, workingDir, env, _, _) =>
+            {
+                runs.Add((args.ToArray(), workingDir, env));
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await git.SparseCloneAsync("/tmp/checkout", new SubDirectoryPath("nested/agent-home"), CancellationToken.None);
+
+        Assert.AreEqual(2, runs.Count);
+        CollectionAssert.AreEqual(ExpectedSparseCloneArgs, runs[0].Args);
+        CollectionAssert.AreEqual(ExpectedSparseCheckoutArgs, runs[1].Args);
+        Assert.AreEqual("/tmp/checkout", runs[1].WorkingDir);
+        Assert.IsTrue(runs[0].Env?.ContainsKey("GIT_CONFIG_VALUE_0"), "clone must carry the auth extraheader env");
+        // The clone is blobless, so sparse-checkout fetches the files from the remote: without the
+        // credential, a private repo fails right here.
+        Assert.IsTrue(runs[1].Env?.ContainsKey("GIT_CONFIG_VALUE_0"), "sparse-checkout fetches blobs, so it must carry the auth extraheader env");
+    }
+
+    [TestMethod]
+    public async Task SparseCloneAsync_Throws_WhenGitCloneFails()
+    {
+        var git = Build(
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
+
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
+            () => git.SparseCloneAsync("/tmp/checkout", new SubDirectoryPath("agent-home"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "git clone failed");
     }
 }

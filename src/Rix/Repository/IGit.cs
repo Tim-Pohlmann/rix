@@ -10,6 +10,11 @@ internal interface IGit
     /// <summary>Clones the remote into <paramref name="targetDirectory"/>.</summary>
     Task CloneAsync(string targetDirectory, CancellationToken cancellationToken);
 
+    /// <summary>Clones the remote into <paramref name="targetDirectory"/> with only
+    /// <paramref name="directory"/> checked out: the latest commit alone, and only the file contents
+    /// under that directory.</summary>
+    Task SparseCloneAsync(string targetDirectory, SubDirectoryPath directory, CancellationToken cancellationToken);
+
     Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken);
 
     /// <summary>Checks whether <paramref name="branch"/> exists as a local ref inside the

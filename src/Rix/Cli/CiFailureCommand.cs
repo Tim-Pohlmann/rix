@@ -53,7 +53,7 @@ internal static class CiFailureCommand
                 var outputDir = JobOptions.ReadOutputDir(parsed);
                 var model = JobOptions.ReadModel(parsed);
                 var apiKey = JobOptions.ReadAgentApiKey(parsed);
-                var apiKeyEnv = JobOptions.ReadAgentApiKeyEnv(parsed, agent, apiKey);
+                var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
                 var runId = parsed.Required(RunIdOption, "RIX_RUN_ID", raw => new RunId(Input.WholeNumber<long>(raw)));
                 var maxRixCommits = parsed.Optional
                 (
@@ -65,18 +65,17 @@ internal static class CiFailureCommand
 
                 var config = new CiFailureConfig
                 (
-                    RunId: runId,
-                    Repo: repo,
-                    ReadToken: readToken,
-                    TimeoutMinutes: timeout,
+                    runId,
+                    repo,
+                    readToken,
+                    timeout,
                     WorkDir: workDir,
                     OutputDir: outputDir,
-                    Agent: agent,
-                    MaxTokens: maxTokens,
-                    MaxRixCommits: maxRixCommits,
-                    Model: model,
-                    ApiKey: apiKey,
-                    ApiKeyEnv: apiKeyEnv
+                    agent,
+                    maxTokens,
+                    maxRixCommits,
+                    model,
+                    credential
                 );
                 ctx.ExitCode = await handler(config);
             }

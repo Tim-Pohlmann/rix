@@ -264,7 +264,8 @@ public class CiFailureRunnerTests
     => new(ci, repoHost ?? new StubCiFailureRepoHost(), JobContext(git, processRunner));
 
     private static JobContext JobContext(IGit git, RunProcessAsync? processRunner = null)
-    => new(git, processRunner ?? DefaultRunner, new StubAgent(_ => Task.FromResult<InstallResult>(new Installed())), _ => { }, _ => { });
+    => new(git, processRunner ?? DefaultRunner, new StubAgent(_ => Task.FromResult<InstallResult>(new Installed())), _ => { }, _ => { },
+        new StubAgentHomeFetcher());
 
     private static Task<ProcessResult> DefaultRunner(
         string fileName, IEnumerable<string> args, string workDir,

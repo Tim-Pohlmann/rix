@@ -49,9 +49,9 @@ internal sealed class OpenCodeAgent : ICodingAgent
 
         return new
         (
-            FileName: "opencode",
-            Arguments: args,
-            EnvironmentOverrides: new Dictionary<string, string>()
+            "opencode",
+            args,
+            new Dictionary<string, string>()
         );
     }
 

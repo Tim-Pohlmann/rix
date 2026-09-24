@@ -66,8 +66,10 @@ skipped.
 
 ### Allowing the agent to push (resuming a run)
 
-`rix job` exposes a local API to the agent. Besides opening PRs (`/pr`), the agent can push new
-commits onto a branch that already exists on the remote (`/push`, e.g. resuming a previous run).
+`rix job` exposes a local API to the agent, described by an OpenAPI 3 document the agent fetches
+from `/openapi.json` (the system prompt only points at it). Besides opening PRs (`/pr`), the agent
+can push new commits onto a branch that already exists on the remote (`/push`, e.g. resuming a
+previous run).
 `/push` accepts nothing by default — an untrusted agent cannot touch any existing branch unless
 you opt in with the `allowed-push-branches` input, a comma-separated list of branches the `/push`
 endpoint accepts:
@@ -84,6 +86,48 @@ with a 403, and the agent is told the allow-list in its system prompt. The input
 as `--allowed-push-branches` (env `RIX_ALLOWED_PUSH_BRANCHES`); an entry can be any branch name
 that already exists on the remote, not just `rix/*` — e.g. a human's own branch you want the agent
 to resume.
+
+The same list is given to `rix submit`, which checks it again before pushing. That repetition is
+the point: `rix job` writes what the agent asked for into `result.json`, the agent runs as an
+ordinary process in the same workspace and can rewrite that file afterwards, and `rix submit` is
+where the write token actually is. Only the second check decides what reaches the remote, so
+`submit` takes the list from its own input and never from `result.json`. The `job.yml` workflow
+passes your `allowed-push-branches` to both jobs; if you drive the composite actions yourself,
+give `submit-rix-job` the same value you gave `run-rix-job`, or its pushes will all be refused.
+
+Pending pull requests need no such input. A PR names a branch that cannot exist yet, and the
+`rix/*` rule bounding it is carried by `result.json`'s own type (`RixBranchName`), so it is
+re-applied when `rix submit` parses the file.
+
+### Supplying agent home files from a factory repo
+
+The coding agent CLIs read configuration and context from the runner's user home (`~/.config/...`,
+`~/.claude/...`, house style guides, MCP configs, and so on). Point `rix job` at a second repo — a
+"factory repo" — to copy files into that home directory before the agent starts:
+
+```yaml
+    with:
+      repo: ${{ github.repository }}
+      prompt: ${{ inputs.prompt }}
+      factory-repo: my-org/rix-factory
+      # agent-home-path: .rix/agent-home   # optional; this is the default
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
+```
+
+When `factory-repo` is set, rix fetches one directory from it (a depth-1 blobless sparse checkout)
+and copies that directory's **contents** into the runner's home. `agent-home-path` names the
+directory inside the factory repo and defaults to `.rix/agent-home`. Collisions are resolved by
+**keeping the existing file** — only paths not already present in home are written, and directories
+are merged — so the factory bundle never clobbers what the runner image ships. Symlinks in the
+bundle are recreated as symlinks, not followed.
+
+The existing `read-token` is reused to clone the factory repo, so that PAT must also grant **read
+access to `factory-repo`**. If the clone fails, `agent-home-path` is absent from the repo, or
+the copy into home fails, the job stops with a setup failure and the agent never runs.
+`agent-home-path` without `factory-repo` is rejected. The inputs forward as
+`--factory-repo` / `--agent-home-path` (env `RIX_FACTORY_REPO` / `RIX_AGENT_HOME_PATH`).
 
 ### Using a different provider or model
 

@@ -57,6 +57,23 @@ public class TypesTests
     }
 
     [TestMethod]
+    [DataRow("a\\b\\c", "a/b/c")]
+    [DataRow("./x/y", "x/y")]
+    [DataRow("x//y///z", "x/y/z")]
+    [DataRow(" .rix/agent-home ", ".rix/agent-home")]
+    public void SubDirectoryPath_Normalises(string raw, string expected)
+    => Assert.AreEqual(expected, new SubDirectoryPath(raw).Value);
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("   ")]
+    [DataRow("..")]
+    [DataRow("foo/../bar")]
+    [DataRow("/rooted")]
+    public void SubDirectoryPath_RejectsInvalid(string raw)
+    => Assert.ThrowsExactly<InvalidInputException>(() => _ = new SubDirectoryPath(raw));
+
+    [TestMethod]
     public void DirectoryPath_NormalisesRelativeToAbsolute()
     {
         var path = new DirectoryPath(".");

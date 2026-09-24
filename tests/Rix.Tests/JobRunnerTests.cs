@@ -622,31 +622,18 @@ public class JobRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_SystemPrompt_DescribesGetAndDeleteEndpoints()
+    public async Task RunAsync_SystemPrompt_PointsAtOpenApiSpec_AndMentionsGetAndDelete()
     {
-        string? systemPrompt = null;
-
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude")
-            {
-                var argList = a.ToList();
-                var idx = argList.IndexOf("--append-system-prompt");
-                if (idx >= 0 && idx + 1 < argList.Count)
-                    systemPrompt = argList[idx + 1];
-            }
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubGit(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
-            CancellationToken.None);
+        // The per-endpoint contract (paths, request bodies, GET/DELETE semantics) now lives in the
+        // served OpenAPI document rather than being spelled out in the prompt — the prompt only has
+        // to point the agent at it and give the high-level workflow.
+        var systemPrompt = await CaptureSystemPromptAsync(MakeConfig());
 
         Assert.IsNotNull(systemPrompt);
-        StringAssert.Contains(systemPrompt, "list your queued pull requests");
-        StringAssert.Contains(systemPrompt, "cancel a queued pull request");
-        StringAssert.Contains(systemPrompt, "list your queued pushes");
-        StringAssert.Contains(systemPrompt, "cancel a queued push");
+        StringAssert.Contains(systemPrompt, "/openapi.json");
+        StringAssert.Contains(systemPrompt, "OpenAPI");
+        StringAssert.Contains(systemPrompt, "GET");
+        StringAssert.Contains(systemPrompt, "DELETE");
     }
 
     [TestMethod]
@@ -793,6 +780,69 @@ public class JobRunnerTests
         Assert.IsFalse(capturedEnv.ContainsKey("ANTHROPIC_API_KEY"));
     }
 
+    [TestMethod]
+    public async Task RunAsync_CopiesAgentHomeFiles_BeforeAgentRuns_WhenConfigured()
+    {
+        var home = Directory.CreateDirectory(Path.Combine(_workDir, "home")).FullName;
+        var fetcher = new StubAgentHomeFetcher(checkoutDir =>
+        {
+            File.WriteAllText(Path.Combine(checkoutDir.Value, "agent.md"), "from-factory");
+            return checkoutDir;
+        });
+        var homeHadFileWhenAgentRan = false;
+
+        await JobRunner.RunAsync(
+            MakeConfig(agentHome: AgentHome("acme/factory", home, "config/home")),
+            Context(new StubGit(),
+                OnAgent(() => homeHadFileWhenAgentRan = File.Exists(Path.Combine(home, "agent.md"))),
+                _ => Task.FromResult<InstallResult>(new Installed()),
+                agentHomeFetcher: fetcher),
+            CancellationToken.None);
+
+        (RepoIdentifier, SubDirectoryPath)[] expectedFetches = [(new("acme/factory"), new("config/home"))];
+        CollectionAssert.AreEqual(expectedFetches, fetcher.Fetches);
+        Assert.IsTrue(homeHadFileWhenAgentRan, "the agent home files must be in the home before the agent starts");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DoesNotFetchAgentHomeFiles_WhenNotConfigured()
+    {
+        var fetcher = new StubAgentHomeFetcher();
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()),
+                agentHomeFetcher: fetcher),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, fetcher.Fetches.Count);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsSetupFailure_AndSkipsAgent_WhenAgentHomeFetchFails()
+    {
+        var fetcher = new StubAgentHomeFetcher(_ => throw new RepoHostException("git clone failed: exited with code 128"));
+
+        var (failure, agentRan) = await RunExpectingSetupFailure(AgentHome("acme/factory", _workDir), fetcher);
+
+        StringAssert.Contains(failure.Error, "agent home fetch failed: git clone failed");
+        Assert.IsFalse(agentRan, "the agent must not run when the agent home files could not be fetched");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsSetupFailure_AndSkipsAgent_WhenCopyIntoHomeFails()
+    {
+        // The home existed when the config was read, but a file sits there by the time of the copy.
+        var home = Directory.CreateDirectory(Path.Combine(_workDir, "home")).FullName;
+        var agentHome = AgentHome("acme/factory", home);
+        Directory.Delete(home);
+        await File.WriteAllTextAsync(home, "not a directory");
+
+        var (failure, agentRan) = await RunExpectingSetupFailure(agentHome, new StubAgentHomeFetcher());
+
+        StringAssert.Contains(failure.Error, "agent home copy into");
+        Assert.IsFalse(agentRan, "the agent must not run when the agent home files could not be copied");
+    }
+
     // ---- helpers ----
 
     private static JobContext Context(
@@ -800,8 +850,10 @@ public class JobRunnerTests
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
         LogLine? logLine = null,
-        LogLine? transcriptLine = null)
-    => new(git, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }));
+        LogLine? transcriptLine = null,
+        IAgentHomeFetcher? agentHomeFetcher = null)
+    => new(git, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }),
+        agentHomeFetcher ?? new StubAgentHomeFetcher());
 
     private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null)
     => Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
@@ -809,11 +861,50 @@ public class JobRunnerTests
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
             _ => Task.FromResult<InstallResult>(new Installed())));
 
-    private JobConfig MakeConfig(string[]? allowedPushBranches = null, string? agentApiKey = null, string? agentApiKeyEnv = null)
+    private JobConfig MakeConfig(
+        string[]? allowedPushBranches = null,
+        string? agentApiKey = null,
+        string? agentApiKeyEnv = null,
+        AgentHomeInfo? agentHome = null)
     => TestConfig.Valid(
         prompt: "Do something", workDir: _workDir, outputDir: _outputDir,
         allowedPushBranches: (allowedPushBranches ?? []).Select(b => new BranchName(b)).ToList(),
-        agentApiKey: agentApiKey, agentApiKeyEnv: agentApiKeyEnv);
+        agentApiKey: agentApiKey, agentApiKeyEnv: agentApiKeyEnv, agentHome: agentHome);
+
+    private static AgentHomeInfo AgentHome
+    (
+        string repo, string home, string sourcePath = JobConfig.DefaultAgentHomePath
+    )
+    => new(new RepoIdentifier(repo), new SubDirectoryPath(sourcePath), new DirectoryPath(home));
+
+    /// <summary>A process runner that succeeds at everything and calls <paramref name="onAgent"/>
+    /// when the agent is started.</summary>
+    private static RunProcessAsync OnAgent(Action onAgent)
+    => (f, a, d, e, onLine, ct) =>
+    {
+        if (f == "claude") onAgent();
+        return Task.FromResult<ProcessResult>(new ProcessSuccess());
+    };
+
+    private async Task<(SetupFailure Failure, bool AgentRan)> RunExpectingSetupFailure
+    (
+        AgentHomeInfo agentHome, StubAgentHomeFetcher fetcher
+    )
+    {
+        var agentRan = false;
+        var result = await JobRunner.RunAsync(
+            MakeConfig(agentHome: agentHome),
+            Context(new StubGit(), OnAgent(() => agentRan = true),
+                _ => Task.FromResult<InstallResult>(new Installed()), agentHomeFetcher: fetcher),
+            CancellationToken.None);
+
+        var failure = result switch
+        {
+            SetupFailure f => f,
+            var other => throw new AssertFailedException($"expected a setup failure, got {other}"),
+        };
+        return (failure, agentRan);
+    }
 
     private static RunProcessAsync FakeRunner(
         int claudeExitCode = 0,
