@@ -1,7 +1,9 @@
-name: Run rix ci-failure
+name: Detect rix CI failure
 description: >-
-  Checks whether a specific workflow run actually failed and, only if it did, runs the coding
-  agent against the failure, writing result.json and any git bundles to ./out.
+  Checks whether a specific workflow run failed in a way rix should answer and, if it did, writes
+  the prompt a coding agent would answer it with to ./out/prompt.md. Runs no agent, clones nothing,
+  and needs only a read token — everything it touches is read-only, which is what lets the answer
+  it produces be trusted by a later job that the agent's own machine cannot write to.
 
 inputs:
   repo:
@@ -13,35 +15,11 @@ inputs:
   read-token:
     description: GitHub PAT with read access to the target repo, including Actions:read
     required: true
-  agent:
-    description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
-    required: false
-  model:
-    description: Model identifier passed to the agent CLI via --model; omit for the agent's own default
-    required: false
-  agent-api-key:
-    description: API key for the selected agent's model provider; optional (opencode's free default model needs none)
-    required: false
-  agent-api-key-env:
-    description: >-
-      Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
-      ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_ACCESS_KEY_ID) — whatever the selected
-      provider/model expects. Must end in a credential-shaped suffix (_API_KEY, _TOKEN,
-      _ACCESS_KEY_ID, ...). Omit to use a default based on agent: OPENCODE_API_KEY for
-      opencode, ANTHROPIC_API_KEY for claude. Required for pi whenever agent-api-key is set,
-      since pi has no single default provider to fall back on.
-    required: false
   max-rix-commits:
     description: >-
       How many of rix's own commits may already sit at the failing branch's tip before the failure
       is left alone instead of answered (default: 5). Bounds rix reacting to the CI failures of its
       own fixes forever; a commit by anyone else at the tip clears the count.
-    required: false
-  max-tokens:
-    description: Coding agent token budget cap
-    required: false
-  timeout:
-    description: Wall-clock timeout in minutes
     required: false
   rix-version:
     description: "Rix release tag to download, or 'latest'"
@@ -51,43 +29,42 @@ inputs:
     required: false
 
 outputs:
-  has-result:
+  should-run:
     description: >-
-      'true' if the run had actually failed and the agent ran (result.json was written and is
-      ready for submit-rix-job), 'false' otherwise (nothing to do, or the check/run itself
-      failed).
-    value: ${{ steps.run.outputs.has-result }}
+      'true' if the run failed and rix should answer it (out/prompt.md was written), 'false'
+      otherwise — the run didn't fail, it belongs to a fork, the loop guard stood down, or the
+      check itself errored.
+    value: ${{ steps.detect.outputs.should-run }}
+  branch:
+    description: >-
+      The failing run's branch, and the only branch the answer to this failure may be pushed to.
+      Read here rather than from anything the agent's run produces: this job holds no write token
+      and runs before the agent exists, so a later privileged job comparing a push target against
+      it is comparing against a value the agent had no way to influence. Empty unless should-run
+      is 'true'.
+    value: ${{ steps.detect.outputs.branch }}
 
 runs:
   using: composite
   steps:
-    - name: Prepare rix environment
-      uses: ./.github/actions/prepare-rix-env
+    # download-rix rather than prepare-rix-env: this check runs no agent, so it needs neither Node
+    # nor the agent's token/timeout budget - only the binary.
+    - name: Download rix
+      uses: ./.github/actions/download-rix
       with:
-        max-tokens: ${{ inputs.max-tokens }}
-        timeout: ${{ inputs.timeout }}
         rix-version: ${{ inputs.rix-version }}
         rix-bin: ${{ inputs.rix-bin }}
 
     - name: Run rix ci-failure
-      id: run
+      id: detect
       env:
-        AGENT_API_KEY: ${{ inputs.agent-api-key }}
-        AGENT_API_KEY_ENV: ${{ inputs.agent-api-key-env }}
-        RIX_AGENT: ${{ inputs.agent }}
-        RIX_MODEL: ${{ inputs.model }}
         RIX_READ_TOKEN: ${{ inputs.read-token }}
         RIX_REPO: ${{ inputs.repo }}
         RIX_RUN_ID: ${{ inputs.run-id }}
         RIX_MAX_RIX_COMMITS: ${{ inputs.max-rix-commits }}
       shell: bash
       run: |
-        # AGENT_API_KEY/AGENT_API_KEY_ENV are forwarded to rix as-is - it resolves which single env
-        # var to export the key under (defaulting per agent, validating a caller-supplied name) and
-        # adds it directly to the agent CLI subprocess's own environment (see
-        # Rix.Agents.AgentCredential and Rix.Job.JobRunner). The key never needs to exist under
-        # that name in this shell or in $GITHUB_ENV.
-        mkdir -p out work
+        mkdir -p out
 
         # A caller who omits max-rix-commits reaches here with "0", not empty: it arrives through a
         # workflow_call input of type: number with no default, the same quirk prepare-rix-env
@@ -115,7 +92,7 @@ runs:
         # Startup.ExecuteCiFailureAsync) - capture it before deciding, rather than letting a
         # non-zero exit short-circuit under errexit before it can be read.
         set +e
-        result=$("$RIX_BIN" ci-failure --agent "$RIX_AGENT" --output-dir out --work-dir work)
+        result=$("$RIX_BIN" ci-failure --output-dir out)
         exit_code=$?
         set -e
 
@@ -132,13 +109,22 @@ runs:
         IFS=$'\037' read -r status outcome error branch rix_commits head_repo \
           < <(jq -r '[.status, (.outcome // ""), (.error // ""), (.branch // ""), (.rixCommits // ""), (.headRepo // "")] | @tsv' <<<"$result" | tr '\t' '\037')
         # Default to false so every branch below (including an unrecognized status) leaves
-        # has-result in a defined state; only the success branch needs to override it.
-        echo "has-result=false" >> "$GITHUB_OUTPUT"
+        # should-run in a defined state; only the detected branch needs to override it.
+        echo "should-run=false" >> "$GITHUB_OUTPUT"
         case "$status" in
-          success)
-            # The only case create-pr has anything to submit: the run had failed, the agent ran,
-            # and result.json now exists in out/.
-            echo "has-result=true" >> "$GITHUB_OUTPUT"
+          detected)
+            # The one case the agent runs for. The branch goes out alongside it because the job
+            # that answers this failure may push nowhere else, and this is the last point at which
+            # that name is known to be untouched by the answer.
+            #
+            # Written in the plain key=value form without a heredoc delimiter, deliberately: a git
+            # ref name cannot contain a newline (git rejects control characters outright), so there
+            # is no value here that could close the assignment early and forge a second output.
+            # That is also why the prompt - the one field built from the failing run's own log
+            # output, and therefore the one with no bound on its content - travels as a file rather
+            # than through here.
+            echo "should-run=true" >> "$GITHUB_OUTPUT"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
             ;;
           skipped)
             echo "Run $RIX_RUN_ID ended '$outcome', not 'failed' — skipping."
@@ -160,12 +146,8 @@ runs:
             # Escaped like the ::error:: arms below, for the same reason: $branch is a ref name
             # from the target repo, and git allows '%' in one, so a branch called '...%0A::error::'
             # would otherwise end this notice early and run a workflow command of its author's
-            # choosing - in the job that holds the write token.
+            # choosing - in the one job here whose word anything later is allowed to trust.
             echo "::notice::$(escape_workflow_command "The last $rix_commits commits on '$branch' are rix's own — not answering this failure. Push a commit to the branch (or raise max-rix-commits) to re-enable rix on it.")"
-            ;;
-          failure | setupFailure)
-            # The agent ran but the job itself failed - exit_code is already non-zero here, which
-            # fails this step (and, via needs:, skips create-pr) regardless of has-result.
             ;;
           error)
             echo "::error::$(escape_workflow_command "$error")"
@@ -176,20 +158,10 @@ runs:
             # output that isn't a result at all, or a released binary newer than the action calling
             # it. Either way rix may well have exited 0 - a newer binary emitting a status this
             # action has not learned yet has succeeded on its own terms - so set a failing code
-            # rather than inheriting it, or the job goes green having submitted nothing.
+            # rather than inheriting it, or the job goes green having answered nothing.
             echo "::error::$(escape_workflow_command "rix ci-failure did not produce a usable result: $result")"
             exit_code=1
             ;;
         esac
 
         exit "$exit_code"
-
-    - name: Post job summary
-      # result.json only exists once the agent actually ran (see Startup.ExecuteCiFailureAsync)
-      # - post-job-summary.sh handles a missing file gracefully, so this is safe to call
-      # unconditionally, including when the run above never got past the ci-failure check.
-      if: always()
-      uses: ./.github/actions/post-job-summary
-      with:
-        result-file: ${{ github.workspace }}/out/result.json
-        transcript-file: ${{ github.workspace }}/out/transcript.md
