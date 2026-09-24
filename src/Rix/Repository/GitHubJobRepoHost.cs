@@ -25,7 +25,7 @@ internal sealed class GitHubJobRepoHost : IJobRepoHost
     => _git.RunAsync
     (
         ["clone", $"https://github.com/{_api.Repo.Value}.git", targetDirectory],
-        workingDirectory: Path.GetTempPath(),
+        Path.GetTempPath(),
         authenticated: true,
         cancellationToken
     );
@@ -44,7 +44,7 @@ internal sealed class GitHubJobRepoHost : IJobRepoHost
         // BranchName never validates its format. Unlike "--", it doesn't repurpose the range
         // argument as a pathspec, so "bundle create" still treats it as a revision range.
         ["bundle", "create", bundlePath, "--end-of-options", $"{baseBranch.Value}..{branch.Value}"],
-        workingDirectory: repoDirectory,
+        repoDirectory,
         authenticated: false,
         cancellationToken
     );

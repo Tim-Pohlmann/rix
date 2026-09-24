@@ -87,11 +87,31 @@ internal static class JobOptions
     )
     { IsRequired = false };
 
+    /// <summary>Shared with <c>submit</c> rather than redeclared there, so the flag the agent is
+    /// bounded by and the flag the write credential is bounded by can never name different
+    /// branches. Both commands read it from the same <c>RIX_ALLOWED_PUSH_BRANCHES</c>.</summary>
     internal static readonly Option<string> AllowedPushBranchesOption = new
     (
         name: "--allowed-push-branches",
-        description: "Comma-separated list of branches the /push API endpoint may deliver to " +
-            "(default: none — /push is disabled until this is set)"
+        description: "Comma-separated list of branches rix may push onto. Defaults to none, which " +
+            "refuses every push onto an already-existing branch. Enforced twice: by `job`, which " +
+            "turns down the agent's /push request, and again by `submit`, which does the pushing"
+    )
+    { IsRequired = false };
+
+    internal static readonly Option<string> FactoryRepoOption = new
+    (
+        name: "--factory-repo",
+        description: "Optional repo (owner/name) holding agent config/context files to copy into the runner's " +
+            "home directory. Read with --read-token, which must also grant read access to this repo."
+    )
+    { IsRequired = false };
+
+    internal static readonly Option<string> AgentHomePathOption = new
+    (
+        name: "--agent-home-path",
+        description: "Directory inside --factory-repo whose contents are copied into the runner's home " +
+            $"directory, skipping files that already exist. Requires --factory-repo (default: {JobConfig.DefaultAgentHomePath})"
     )
     { IsRequired = false };
 
@@ -150,11 +170,42 @@ internal static class JobOptions
     internal static string? ReadAgentApiKey(ParseResult parsed)
     => parsed.OptionalText(AgentApiKeyOption, "AGENT_API_KEY");
 
-    /// <summary>Whether the name is needed at all, and what it defaults to, both depend on values
-    /// read from other flags, so <paramref name="agent"/> and <paramref name="apiKey"/> are passed
-    /// in rather than re-read here. <see cref="AgentCredential.ResolveEnvName"/> owns both
-    /// rules; this only supplies the raw flag text and the flag name any complaint is reported
-    /// under.</summary>
-    internal static string? ReadAgentApiKeyEnv(ParseResult parsed, AgentKind agent, string? apiKey)
-    => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.ResolveEnvName(agent, apiKey, raw));
+    /// <summary>Whether a credential is needed at all, and what env var name it defaults to, both
+    /// depend on values read from other flags, so <paramref name="agent"/> and the key from
+    /// <see cref="ReadAgentApiKey"/> are passed in rather than re-read here.
+    /// <see cref="AgentCredential.Resolve"/> owns both rules; this only supplies the raw flag text
+    /// and the flag name any complaint is reported under. Returns the key paired with its name, so
+    /// no caller has to carry the two separately and keep them consistent.</summary>
+    internal static AgentCredential? ReadAgentCredential(ParseResult parsed, AgentKind agent, string? apiKey)
+    => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.Resolve(agent, apiKey, raw));
+
+    /// <summary>Reads <c>--factory-repo</c>/<c>--agent-home-path</c> as a pair, because whether
+    /// the path means anything depends on the repo — a path without a repo is reported, not
+    /// ignored. The runner home is resolved only when a repo is given, so a job that doesn't use
+    /// the feature never depends on having one.</summary>
+    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed)
+    {
+        var repo = parsed.Optional<RepoIdentifier?>(FactoryRepoOption, "RIX_FACTORY_REPO", raw => new RepoIdentifier(raw), () => null);
+        if (repo is null)
+        {
+            if (parsed.OptionalText(AgentHomePathOption, "RIX_AGENT_HOME_PATH") is not null)
+                throw new InvalidInputException($"{ParseResultExtensions.Flag(AgentHomePathOption)} requires {ParseResultExtensions.Flag(FactoryRepoOption)}");
+            return null;
+        }
+
+        var sourcePath = parsed.Optional
+        (
+            AgentHomePathOption,
+            "RIX_AGENT_HOME_PATH",
+            raw => new SubDirectoryPath(raw),
+            new SubDirectoryPath(JobConfig.DefaultAgentHomePath)
+        );
+        // On Unix this already consults $HOME before the passwd entry.
+        var home = Input.Named
+        (
+            "runner home directory",
+            () => new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
+        );
+        return new AgentHomeInfo(repo, sourcePath, home);
+    }
 }

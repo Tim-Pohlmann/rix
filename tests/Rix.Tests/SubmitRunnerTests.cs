@@ -183,12 +183,75 @@ public class SubmitRunnerTests
         Assert.AreEqual(0, host.CreatedPrs.Count);
     }
 
+    [TestMethod]
+    public async Task RunAsync_RefusesThePush_WhenItsBranchIsNotInTheAllowList()
+    {
+        WriteOnePendingPush();
+        var host = new StubSubmitRepoHost();
+
+        var result = await Run(host, allowedPushBranches: "main,release");
+
+        AssertFailure(result, "branch is not allowed to be pushed to: rix/my-fix");
+        Assert.AreEqual(0, host.PushedBranches.Count, "a refused push must reach the remote in no form");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_RefusesEveryPush_WhenTheAllowListIsEmpty()
+    {
+        WriteOnePendingPush();
+        var host = new StubSubmitRepoHost();
+
+        var result = await Run(host, allowedPushBranches: null);
+
+        AssertFailure(result, "branch is not allowed to be pushed to");
+        Assert.AreEqual(0, host.PushedBranches.Count);
+    }
+
+    /// <summary>The allow-list decides before anything reads the bundle the agent wrote, so a
+    /// forged request is refused on the branch it names rather than on whatever its payload turns
+    /// out to be — the bundle here does not exist at all, and the branch is still the reason given.</summary>
+    [TestMethod]
+    public async Task RunAsync_RefusesTheDisallowedPush_BeforeTouchingItsBundle()
+    {
+        WriteResultJson(OnePendingPushJson(bundleFile: "missing.bundle"));
+        var gitCommands = new List<string>();
+
+        var result = await Run(new StubSubmitRepoHost(), GitRunner(gitCommands), allowedPushBranches: "main");
+
+        AssertFailure(result, "branch is not allowed to be pushed to: rix/my-fix");
+        Assert.AreEqual(0, gitCommands.Count, "nothing may be fetched from a bundle for a refused push");
+    }
+
+    /// <summary>The allow-list bounds pushes onto existing branches only. A pending PR names a
+    /// branch that cannot exist yet and is bounded instead by RixBranchName's rix/* rule, which
+    /// result.json re-applies on deserialization — so an operator who allows no pushes at all still
+    /// gets their PRs.</summary>
+    [TestMethod]
+    public async Task RunAsync_OpensPullRequests_EvenWhenNoPushBranchIsAllowed()
+    {
+        WriteOnePendingPr();
+        var host = new StubSubmitRepoHost();
+
+        var result = await Run(host, allowedPushBranches: null);
+
+        var success = AssertSuccess(result);
+        Assert.AreEqual(1, success.CreatedPrs.Count);
+        CollectionAssert.AreEqual(ExpectedPushedBranches, host.PushedBranches.Select(b => b.Value).ToArray());
+    }
+
     // ---- helpers ----
 
-    private Task<ISubmitResult> Run(StubSubmitRepoHost host, RunProcessAsync? runner = null)
+    /// <summary>Defaults to allowing the branch every push fixture here uses, so a test that isn't
+    /// about the allow-list doesn't have to restate it. The deny cases pass their own list.</summary>
+    private Task<ISubmitResult> Run
+    (
+        StubSubmitRepoHost host,
+        RunProcessAsync? runner = null,
+        string? allowedPushBranches = "rix/my-fix"
+    )
     => SubmitRunner.RunAsync
     (
-        TestConfig.ValidSubmit(inputDir: _inputDir, workDir: _workDir),
+        TestConfig.ValidSubmit(inputDir: _inputDir, workDir: _workDir, allowedPushBranches: allowedPushBranches),
         new SubmitContext(host, runner ?? OkGit, _ => { }),
         CancellationToken.None
     );

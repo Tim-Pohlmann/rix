@@ -15,6 +15,13 @@ inputs:
     description: Directory holding result.json and the git bundles produced by `rix job`
     required: false
     default: out
+  allowed-push-branches:
+    description: >-
+      Comma-separated branches a pending push may deliver to; must repeat whatever the `rix job`
+      run was given. Omit to refuse every push (pull requests are unaffected). Passed here rather
+      than read back out of result.json because the agent that wrote that file runs unsandboxed in
+      the same workspace and can rewrite it — this is the copy of the list it cannot reach.
+    required: false
   rix-version:
     description: "Rix release tag to download, or 'latest'"
     required: false
@@ -36,6 +43,7 @@ runs:
         RIX_REPO: ${{ inputs.repo }}
         RIX_WRITE_TOKEN: ${{ inputs.write-token }}
         RIX_INPUT_DIR: ${{ inputs.input-dir }}
+        RIX_ALLOWED_PUSH_BRANCHES: ${{ inputs.allowed-push-branches }}
       shell: bash
       run: |
         # Keep rix submit's stdout (the submit result JSON) for the job-summary step below, and its
