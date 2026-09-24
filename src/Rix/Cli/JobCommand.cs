@@ -33,7 +33,7 @@ internal static class JobCommand
                 var model = JobOptions.ReadModel(parsed);
                 var apiKey = JobOptions.ReadAgentApiKey(parsed);
                 var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
-                var allowedPushBranches = ParseAllowedPushBranches(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
+                var allowedPushBranches = BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
                 var agentHome = JobOptions.ReadAgentHome(parsed);
 
                 var config = new JobConfig
@@ -53,17 +53,4 @@ internal static class JobCommand
 
         return command;
     }
-
-    /// <summary>Parses the raw comma-separated <c>--allowed-push-branches</c> value into the
-    /// branches the <c>/push</c> API endpoint may deliver to. Blank input (the flag was
-    /// never set) means <c>/push</c> permits nothing, so the result is the empty list — an operator
-    /// must opt in to letting the agent push at all. Unlike the <c>rix/*</c>-restricted branches the
-    /// agent creates via <c>/pr</c>, any branch name is acceptable here, since these already exist on
-    /// the remote before the job ever runs. Duplicates are dropped.</summary>
-    private static List<BranchName> ParseAllowedPushBranches(string raw)
-    => raw
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .Select(entry => new BranchName(entry))
-        .Distinct()
-        .ToList();
 }

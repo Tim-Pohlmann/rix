@@ -27,6 +27,9 @@ internal static class SubmitCommand
         command.AddOption(WriteTokenOption);
         command.AddOption(InputDirOption);
         command.AddOption(CommonOptions.WorkDirOption);
+        // The same Option instance job registers, so neither command can drift into a different
+        // flag name or a different environment variable for the same list.
+        command.AddOption(JobOptions.AllowedPushBranchesOption);
 
         command.SetHandler
         (
@@ -38,7 +41,11 @@ internal static class SubmitCommand
                     CommonOptions.ReadRepo(parsed),
                     parsed.Required(WriteTokenOption, "RIX_WRITE_TOKEN", value => new GitToken(value)),
                     InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path)),
-                    WorkDir: CommonOptions.ReadWorkDir(parsed)
+                    WorkDir: CommonOptions.ReadWorkDir(parsed),
+                    // Unparseable input is impossible: every branch name is acceptable, and a blank
+                    // value means the empty list, which is the safe end of the range rather than an
+                    // error.
+                    BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"))
                 );
                 ctx.ExitCode = await handler(config);
             }

@@ -87,6 +87,18 @@ as `--allowed-push-branches` (env `RIX_ALLOWED_PUSH_BRANCHES`); an entry can be 
 that already exists on the remote, not just `rix/*` — e.g. a human's own branch you want the agent
 to resume.
 
+The same list is given to `rix submit`, which checks it again before pushing. That repetition is
+the point: `rix job` writes what the agent asked for into `result.json`, the agent runs as an
+ordinary process in the same workspace and can rewrite that file afterwards, and `rix submit` is
+where the write token actually is. Only the second check decides what reaches the remote, so
+`submit` takes the list from its own input and never from `result.json`. The `job.yml` workflow
+passes your `allowed-push-branches` to both jobs; if you drive the composite actions yourself,
+give `submit-rix-job` the same value you gave `run-rix-job`, or its pushes will all be refused.
+
+Pending pull requests need no such input. A PR names a branch that cannot exist yet, and the
+`rix/*` rule bounding it is carried by `result.json`'s own type (`RixBranchName`), so it is
+re-applied when `rix submit` parses the file.
+
 ### Supplying agent home files from a factory repo
 
 The coding agent CLIs read configuration and context from the runner's user home (`~/.config/...`,

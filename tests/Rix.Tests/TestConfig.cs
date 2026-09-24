@@ -50,14 +50,16 @@ internal static class TestConfig
         string repo = "owner/repo",
         string writeToken = "tok",
         string? inputDir = null,
-        string? workDir = null
+        string? workDir = null,
+        string? allowedPushBranches = null
     )
     => new
     (
         new RepoIdentifier(repo),
         new GitToken(writeToken),
         InputDir: new DirectoryPath(inputDir ?? Path.GetTempPath()),
-        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath())
+        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
+        BranchName.ParseAllowList(allowedPushBranches)
     );
 
     internal static CiFailureConfig ValidCiFailure

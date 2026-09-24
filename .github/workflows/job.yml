@@ -164,5 +164,8 @@ jobs:
         with:
           repo: ${{ inputs.repo }}
           write-token: ${{ secrets.write-token }}
+          # The same caller-supplied list the `run` job bounded the agent with. Read from inputs,
+          # never from the artifact, which the agent could have rewritten before it was uploaded.
+          allowed-push-branches: ${{ inputs.allowed-push-branches }}
           input-dir: out
           rix-version: ${{ inputs.rix-version }}
