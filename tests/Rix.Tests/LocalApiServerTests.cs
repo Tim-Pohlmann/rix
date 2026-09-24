@@ -432,6 +432,20 @@ public class LocalApiServerTests
     }
 
     [TestMethod]
+    public async Task GetPush_ListsPushesInQueuedOrder()
+    {
+        string[] branches = ["rix/zeta", "rix/alpha", "rix/mid"];
+        await using var server = await StartAsync(FakeHost(true), [.. branches.Select(b => new BranchName(b))]);
+
+        foreach (var branch in branches)
+            await PostPushAsync(server, branch);
+
+        var listed = await ReadJsonAsync<List<Dictionary<string, string>>>(await GetAsync(server, "/push"));
+        CollectionAssert.AreEqual(branches, listed.Select(push => push["branch"]).ToArray());
+        CollectionAssert.AreEqual(branches, server.GetQueuedPushRequests().Select(push => push.Branch.Value).ToArray());
+    }
+
+    [TestMethod]
     public async Task PostPush_Returns403_ByDefault_WhenNoAllowListConfigured()
     {
         await using var server = await StartAsync(FakeHost(true));
