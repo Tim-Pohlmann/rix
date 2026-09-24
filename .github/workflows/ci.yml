@@ -341,15 +341,18 @@ jobs:
       contents: read
 
     # `rix initialize` writes caller workflows into someone else's repo, and nothing checked that
-    # what it writes is valid GitHub Actions YAML. InitializeRunnerTests covers which files land
-    # and where, and WorkflowTemplatesTests that the ref placeholder is substituted, but the
-    # templates are embedded resources - no C# test can tell whether Actions would accept them.
-    # A broken one is invisible here and surfaces in a consumer repo at the moment they adopt rix,
-    # which is the worst place to find out.
-    #
-    # No checkout: the templates come out of the binary build-rix published, and actionlint is
-    # fetched by its own action.
+    # what it writes is valid GitHub Actions YAML, or that it still fits the reusable workflows it
+    # calls. InitializeRunnerTests covers which files land and where, and WorkflowTemplatesTests
+    # that the ref placeholder is substituted, but the templates are embedded resources - no C# test
+    # can tell whether Actions would accept them. A broken one is invisible here and surfaces in a
+    # consumer repo at the moment they adopt rix, which is the worst place to find out.
     steps:
+      # Only the reusable workflows, which the contract check below reads as the callee side.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/workflows
+          sparse-checkout-cone-mode: false
+
       - name: Download rix binary
         uses: actions/download-artifact@v4
         with:
@@ -365,17 +368,94 @@ jobs:
           # path under it is rix's to create.
           mkdir -p init-out
           ./rix-bin/rix initialize --dir init-out
+
+          # Compared as a set, not file by file: the steps below glob whatever is there, so a new
+          # template would otherwise sail through them without anyone deciding what else it needs.
+          # Every path, not just the names, so a template written somewhere unexpected fails too.
+          # LC_ALL=C because a locale that ignores punctuation while sorting orders rix.yml and
+          # rix-on-ci-failure.yml the other way round.
+          expected=$'init-out/.github/workflows/rix-on-ci-failure.yml\ninit-out/.github/workflows/rix.yml'
+          actual="$(find init-out -type f | LC_ALL=C sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "rix initialize wrote a different set of files than this job expects (< expected, > actual):" >&2
+            diff <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") >&2 || true
+            exit 1
+          fi
+
           # A template that failed to substitute would still be valid YAML, so actionlint below
           # would pass it - and every `uses:` in it would resolve to a ref that cannot exist.
           if grep -rn '__RIX_REF__' init-out; then
             echo "a template reached the target repo with its ref placeholder unsubstituted" >&2
             exit 1
           fi
-          # Named explicitly rather than counted, so adding a template means updating this list
-          # and deciding whether it needs anything else here.
-          for f in init-out/.github/workflows/rix.yml init-out/.github/workflows/rix-on-ci-failure.yml; do
-            [[ -f "$f" ]] || { echo "rix initialize did not write $f" >&2; exit 1; }
-          done
+
+      # actionlint checks each file on its own; nothing checks that what a caller passes is what
+      # the workflow it calls accepts. That pairing is only broken by editing one side - rename an
+      # input, or make a new one required - and the templates are re-emitted at each release
+      # pointing at that release's own workflows, so the drift ships to consumers as a workflow
+      # that fails on its first run. Compared against the reusable workflows in this checkout
+      # rather than the published ones the `uses:` ref names, because this commit is what the next
+      # release will tag: the drift has to fail here, where it was introduced.
+      - name: Check each caller against the reusable workflow it calls
+        run: |
+          python3 - <<'PY'
+          import glob
+          import sys
+          import yaml
+
+
+          def triggers(workflow):
+              # yaml reads an unquoted `on:` key as the boolean True.
+              return workflow.get(True, workflow.get("on"))
+
+
+          def declared(workflow_path):
+              call = triggers(yaml.safe_load(open(workflow_path)))["workflow_call"]
+              return (call.get("inputs") or {}), (call.get("secrets") or {})
+
+
+          def required(declarations):
+              return {name for name, spec in declarations.items() if (spec or {}).get("required")}
+
+
+          errors = []
+          for caller_path in sorted(glob.glob("init-out/.github/workflows/*.yml")):
+              caller = yaml.safe_load(open(caller_path))
+              for job_name, job in caller["jobs"].items():
+                  uses = job.get("uses")
+                  if uses is None:
+                      errors.append(f"{caller_path}: job {job_name} calls no reusable workflow")
+                      continue
+                  repo_and_path, _, ref = uses.partition("@")
+                  owner, repo, callee_path = repo_and_path.split("/", 2)
+                  if f"{owner}/{repo}" != "Tim-Pohlmann/rix":
+                      errors.append(f"{caller_path}: job {job_name} calls {owner}/{repo}, not this repository")
+                      continue
+                  if not ref:
+                      errors.append(f"{caller_path}: job {job_name} calls {callee_path} with no ref")
+                      continue
+
+                  inputs, secrets = declared(callee_path)
+                  passed_inputs = job.get("with") or {}
+                  passed_secrets = job.get("secrets") or {}
+                  # `secrets: inherit` passes everything and names nothing, so there is no pairing
+                  # left to check on that side.
+                  inherited = passed_secrets == "inherit"
+
+                  for name in sorted(set(passed_inputs) - set(inputs)):
+                      errors.append(f"{caller_path}: passes input '{name}', which {callee_path} does not declare")
+                  for name in sorted(required(inputs) - set(passed_inputs)):
+                      errors.append(f"{caller_path}: does not pass '{name}', a required input of {callee_path}")
+                  if not inherited:
+                      for name in sorted(set(passed_secrets) - set(secrets)):
+                          errors.append(f"{caller_path}: passes secret '{name}', which {callee_path} does not declare")
+                      for name in sorted(required(secrets) - set(passed_secrets)):
+                          errors.append(f"{caller_path}: does not pass '{name}', a required secret of {callee_path}")
+
+          for error in errors:
+              print(error, file=sys.stderr)
+          sys.exit(1 if errors else 0)
+          PY
 
       - name: Lint the written workflows (actionlint)
         uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
