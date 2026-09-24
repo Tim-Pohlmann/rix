@@ -231,4 +231,53 @@ public class ProcessWrapperTests
         Assert.IsTrue(inheritLines.Any(l => l.Contains("inherited-value")), "Child should still inherit parent env when overrides provided");
         Assert.IsTrue(overrideLines.Any(l => l.Contains("overridden-value")), "Override should replace the original value");
     }
+
+    // WorkingDirectory changes the child's real cwd without touching the PWD it inherits, and a
+    // tool that reads PWD instead of calling getcwd() then acts on rix's own directory rather than
+    // the one it was pointed at. opencode does exactly that, so the coding agent worked in whatever
+    // directory rix was launched from instead of its clone - silently, in the wrong repository.
+    //
+    // Asserted against the start info rather than a real child, because a POSIX shell overwrites
+    // PWD from getcwd() when it starts and so reports the right directory whether or not rix set it.
+    [TestMethod]
+    public void BuildStartInfo_SetsChildPwd_ToTheWorkingDirectory()
+    {
+        var startInfo = ProcessWrapper.BuildStartInfo(
+            "some-tool", [], workingDirectory: Path.GetTempPath(), environmentOverrides: null);
+
+        Assert.AreEqual(Path.GetFullPath(Path.GetTempPath()), startInfo.Environment["PWD"]);
+    }
+
+    // The path the child is told about has to be one it can act on from anywhere, so a relative
+    // working directory - which .NET itself resolves against rix's cwd - must not reach it as-is.
+    [TestMethod]
+    public void BuildStartInfo_SetsChildPwd_ToAnAbsolutePath_WhenTheWorkingDirectoryIsRelative()
+    {
+        var startInfo = ProcessWrapper.BuildStartInfo(
+            "some-tool", [], workingDirectory: ".", environmentOverrides: null);
+
+        Assert.AreEqual(Path.GetFullPath("."), startInfo.Environment["PWD"]);
+    }
+
+    // The invariant is that the two never disagree, so PWD is applied after the overrides: an
+    // override naming some other directory would put the child straight back into the state above.
+    [TestMethod]
+    public void BuildStartInfo_KeepsChildPwd_WhenAnOverrideNamesADifferentDirectory()
+    {
+        var workingDirectory = Directory.CreateTempSubdirectory("rix-pwd-");
+        try
+        {
+            var startInfo = ProcessWrapper.BuildStartInfo(
+                "some-tool",
+                [],
+                workingDirectory.FullName,
+                new Dictionary<string, string> { ["PWD"] = Path.GetTempPath() });
+
+            Assert.AreEqual(workingDirectory.FullName, startInfo.Environment["PWD"]);
+        }
+        finally
+        {
+            workingDirectory.Delete(recursive: true);
+        }
+    }
 }
