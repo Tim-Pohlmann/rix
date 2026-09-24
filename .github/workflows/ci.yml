@@ -389,6 +389,17 @@ jobs:
             exit 1
           fi
 
+      - name: Ensure the contract check has a YAML parser
+        # ubuntu-latest ships python3-yaml today (this job's first run proved it), so this is
+        # normally a no-op that costs nothing. It's here so the check below depends on a package it
+        # asked for rather than on an image detail: an image that stopped shipping it would
+        # otherwise fail on the import, with neither template checked and nothing saying why.
+        run: |
+          python3 -c 'import yaml' || {
+            sudo apt-get update
+            sudo apt-get install -y python3-yaml
+          }
+
       # actionlint checks each file on its own; nothing checks that what a caller passes is what
       # the workflow it calls accepts. That pairing is only broken by editing one side - rename an
       # input, or make a new one required - and the templates are re-emitted at each release
