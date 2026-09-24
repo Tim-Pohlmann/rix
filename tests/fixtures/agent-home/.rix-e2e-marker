@@ -1,0 +1,7 @@
+Fixture for tests/e2e/agent-home-e2e.bats, which copies this directory into a throwaway HOME to
+check `rix job`'s --factory-repo/--agent-home-path feature against the real thing. The fetch is a
+depth-1 clone (see GitHubAgentHomeFetcher), so it reads this repo's default branch and not the
+branch under test - these files have to be on main before that test can run at all.
+
+A dotfile on purpose: what an operator puts in an agent home is things like .config and
+.claude.json, so a copy that enumerated with a glob would miss exactly the files that matter.
