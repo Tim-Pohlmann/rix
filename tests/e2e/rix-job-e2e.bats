@@ -44,6 +44,13 @@ setup() {
   export RIX_OUTPUT_DIR="$BATS_TEST_TMPDIR/out"
   export RIX_WORK_DIR="$BATS_TEST_TMPDIR/work"
   mkdir -p "$RIX_OUTPUT_DIR" "$RIX_WORK_DIR"
+
+  # rix is launched from a directory of this test's own, never from wherever bats was started. rix
+  # hands the agent its clone as a working directory, but an agent CLI that resolves its directory
+  # some other way (opencode reads PWD - see ProcessWrapper.BuildStartInfo) would otherwise act on
+  # the caller's checkout, and the tests below have the agent commit and write files. This keeps
+  # that blast radius inside $BATS_TEST_TMPDIR whatever the CLI does with the directory it is given.
+  cd "$BATS_TEST_TMPDIR" || return 1
 }
 
 teardown() {
