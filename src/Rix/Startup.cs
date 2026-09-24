@@ -15,28 +15,32 @@ namespace Rix;
 
 internal static class Startup
 {
-    /// <summary>The production <see cref="JobContext"/>: real GitHub repo host, process runner,
+    /// <summary>The production <see cref="JobContext"/>: git against the GitHub repo, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
     /// from <paramref name="config"/>. <see cref="JobContext.TranscriptLine"/> is a no-op here;
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultContext(config.Agent.Kind, new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
+    => DefaultContext(config.Agent.Kind, GitHubGit(config.Repo, config.ReadToken));
 
-    /// <summary>Overload for callers that already have a repo host to reuse rather than a second,
-    /// redundant connection — and that know which agent to run before they have a
+    /// <summary>Overload for callers that know which agent to run before they have a
     /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
     /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
     /// agent it will run is configured up front.</summary>
-    internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host)
+    internal static JobContext DefaultContext(AgentKind agent, IGit git)
     => new
     (
-        RepoHost: host,
+        Git: git,
         RunProcess: ProcessWrapper.RunAsync,
         Agent: SelectAgent(agent),
         LogLine: Console.Error.WriteLine,
         TranscriptLine: _ => { }
     );
+
+    /// <summary>Git against <paramref name="repo"/> on GitHub, authenticated with
+    /// <paramref name="token"/> — the one place the GitHub clone URL is spelled out.</summary>
+    private static GitCli GitHubGit(RepoIdentifier repo, GitReadToken token)
+    => new(new Uri($"https://github.com/{repo.Value}.git"), token, ProcessWrapper.RunAsync);
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
@@ -47,26 +51,31 @@ internal static class Startup
         _ => throw new NotSupportedException($"Unsupported agent: {agent}"),
     };
 
-    /// <summary>The production <see cref="CiFailureContext"/>: reading the run, judging its branch
-    /// and cloning for the job are three roles against the same GitHub account under the same
-    /// credential, so they are three hosts over one shared <see cref="GitHubApi"/> transport rather
-    /// than three independently connected ones. This is where GitHub-hosting-its-own-CI is asserted
+    /// <summary>The production <see cref="CiFailureContext"/>: reading the run and judging its branch
+    /// are two roles against the same GitHub account under the same credential, so they are two
+    /// hosts over one shared <see cref="GitHubApi"/> transport rather than two independently
+    /// connected ones. This is where GitHub-hosting-its-own-CI is asserted
     /// — the seams themselves don't require it, and pointing <see cref="CiFailureContext.Ci"/> at
     /// another CI provider is a change to this method alone. Built only when no context was
     /// supplied, so a test that brings its own stubs opens no connection at all.</summary>
     internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
-        var host = new GitHubJobRepoHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
-        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host));
+        return new CiFailureContext
+        (
+            new GitHubActionsCiHost(api),
+            new GitHubCiFailureRepoHost(api),
+            DefaultContext(config.Agent, GitHubGit(config.Repo, config.ReadToken))
+        );
     }
 
-    /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the
-    /// write token, the default process runner, and a stderr log sink.</summary>
+    /// <summary>The production <see cref="SubmitContext"/>: git and the GitHub repo host, both
+    /// authenticated with the write token, the default process runner, and a stderr log sink.</summary>
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        RepoHost: new GitHubSubmitRepoHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
+        Git: GitHubGit(config.Repo, config.WriteToken),
+        RepoHost: new GitHubSubmitRepoHost(config.Repo, config.WriteToken),
         RunProcess: ProcessWrapper.RunAsync,
         LogLine: Console.Error.WriteLine
     );

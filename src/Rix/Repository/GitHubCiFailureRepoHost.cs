@@ -4,10 +4,8 @@ namespace Rix.Repository;
 
 /// <summary>Answers the two questions <c>rix ci-failure</c> asks about the repo a failing run
 /// belongs to: whether a PR is open for its branch, and how much of that branch's tip rix wrote
-/// itself. A separate class from <see cref="GitHubJobRepoHost"/> rather than a second interface on
-/// it, because the two roles share only their transport — which they now share explicitly, by being
-/// handed the same <see cref="GitHubApi"/>. Reading the run itself is
-/// <see cref="GitHubActionsCiHost"/>'s job.</summary>
+/// itself. Reading the run itself is <see cref="GitHubActionsCiHost"/>'s job; the two share their
+/// transport explicitly, by being handed the same <see cref="GitHubApi"/>.</summary>
 internal sealed class GitHubCiFailureRepoHost : ICiFailureRepoHost
 {
     private readonly GitHubApi _api;
@@ -30,7 +28,7 @@ internal sealed class GitHubCiFailureRepoHost : ICiFailureRepoHost
     /// <summary>Counts the run of rix's own commits at <paramref name="branch"/>'s tip, which is how
     /// <c>rix ci-failure</c> tells "CI failed" from "CI failed on rix's last attempt to fix it".
     /// Authorship is read from <c>commit.author</c>, git's own metadata written by
-    /// <see cref="GitHubJobRepoHost.ConfigureGitAsync"/>, rather than the sibling top-level
+    /// <see cref="GitCli.ConfigureIdentityAsync"/>, rather than the sibling top-level
     /// <c>author</c> — that one is the linked GitHub account, which is <c>null</c> for rix precisely
     /// because <see cref="GitIdentity.Email"/> belongs to no account. One page of at most
     /// <paramref name="max"/> commits answers it: a streak that long already trips the cap, so a

@@ -1,6 +1,6 @@
 namespace Rix.Repository;
 
-/// <summary>Thrown by every host here — <see cref="GitHubJobRepoHost"/>, <see cref="GitHubSubmitRepoHost"/>
+/// <summary>Thrown by <see cref="GitCli"/> and every host here — <see cref="GitHubSubmitRepoHost"/>
 /// and <see cref="GitHubCiFailureRepoHost"/> — when an operation fails for an operational reason the
 /// caller cannot recover from: a git command that
 /// exited non-zero, an unreachable or error-returning GitHub API, or a malformed API response.

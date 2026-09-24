@@ -11,7 +11,7 @@ namespace Rix.Job;
 /// </summary>
 internal sealed record JobContext
 (
-    IJobRepoHost RepoHost,
+    IGit Git,
     RunProcessAsync RunProcess,
     ICodingAgent Agent,
     LogLine LogLine,

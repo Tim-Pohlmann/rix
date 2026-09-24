@@ -39,10 +39,10 @@ internal static class JobRunner
 
         try
         {
-            await context.RepoHost.CloneAsync(cloneDir.Path, ct);
+            await context.Git.CloneAsync(cloneDir.Path, ct);
             // Set the commit identity before the agent starts, so it can commit without guessing
             // author metadata.
-            await context.RepoHost.ConfigureGitAsync(cloneDir.Path, ct);
+            await context.Git.ConfigureIdentityAsync(cloneDir.Path, ct);
         }
         catch (RepoHostException ex)
         {
@@ -51,7 +51,7 @@ internal static class JobRunner
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
-            context.RepoHost, cloneDir.Path, ct, context.LogLine.Invoke,
+            context.Git, cloneDir.Path, ct, context.LogLine.Invoke,
             allowedPushBranches: config.AllowedPushBranches
         );
 
@@ -220,7 +220,7 @@ internal static class JobRunner
 
         try
         {
-            await context.RepoHost.CreateBundleAsync(cloneDir, bundlePath, request.BaseBranch, request.Branch, ct);
+            await context.Git.CreateBundleAsync(cloneDir, bundlePath, request.BaseBranch, request.Branch, ct);
         }
         catch (RepoHostException)
         {

@@ -1,64 +1,16 @@
-using Rix.Process;
 using System.Text.Json.Serialization;
 
 namespace Rix.Repository;
 
-/// <summary>The full GitHub host behind <c>rix submit</c>: delegates every read operation to a
-/// <see cref="GitHubJobRepoHost"/> and layers the write operations (push, open PR) on top of the same
-/// <see cref="GitCli"/> and
-/// <see cref="GitHubApi"/> that host was built from — so both paths share one connection pool and
-/// one credential injection by construction. Requires a write-capable <see cref="GitToken"/>.</summary>
+/// <summary>The GitHub host behind <c>rix submit</c>: opens pull requests over the REST API.
+/// Requires a write-capable <see cref="GitToken"/>; the push itself goes through
+/// <see cref="GitCli"/>.</summary>
 internal sealed class GitHubSubmitRepoHost : ISubmitRepoHost
 {
-    private readonly GitHubJobRepoHost _job;
-    private readonly GitCli _git;
     private readonly GitHubApi _api;
 
-    internal GitHubSubmitRepoHost
-    (
-        RepoIdentifier repo,
-        GitToken token,
-        RunProcessAsync runProcess,
-        HttpMessageHandler? handler = null
-    )
-    {
-        _git = new GitCli(token, runProcess);
-        _api = new GitHubApi(repo, token, handler);
-        _job = new GitHubJobRepoHost(_git, _api);
-    }
-
-    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
-    => _job.CloneAsync(targetDirectory, cancellationToken);
-
-    public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
-    => _job.BranchExistsOnRemoteAsync(branch, cancellationToken);
-
-    public Task<bool> BranchExistsLocallyAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
-    => _job.BranchExistsLocallyAsync(repoDirectory, branch, cancellationToken);
-
-    public Task ConfigureGitAsync(string repoDirectory, CancellationToken cancellationToken)
-    => _job.ConfigureGitAsync(repoDirectory, cancellationToken);
-
-    public Task CreateBundleAsync
-    (
-        string repoDirectory,
-        string bundlePath,
-        BranchName baseBranch,
-        BranchName branch,
-        CancellationToken cancellationToken
-    )
-    => _job.CreateBundleAsync(repoDirectory, bundlePath, baseBranch, branch, cancellationToken);
-
-    public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
-    => _git.RunAsync
-    (
-        // --end-of-options stops git from reading a branch name starting with "-" as an option —
-        // see GitHubJobRepoHost.CreateBundleAsync for why it's this flag and not "--".
-        ["push", "origin", "--end-of-options", branch.Value],
-        workingDirectory: repoDirectory,
-        authenticated: true,
-        cancellationToken
-    );
+    internal GitHubSubmitRepoHost(RepoIdentifier repo, GitToken token, HttpMessageHandler? handler = null)
+    => _api = new GitHubApi(repo, token, handler);
 
     /// <summary>Creates the pull request and returns its <c>html_url</c>, so the caller can report
     /// (and link) the opened PR rather than only its branch name.</summary>

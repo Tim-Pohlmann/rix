@@ -43,7 +43,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// by the agent.</param>
     internal static async Task<LocalApiServer> StartAsync
     (
-        IJobRepoHost host,
+        IGit git,
         string cloneDir,
         CancellationToken cancellationToken,
         Action<string>? logLine = null,
@@ -99,7 +99,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 }
             }
         );
-        MapEndpoints(app, host, cloneDir, pendingPrRequests, pendingPushRequests, allowedPushBranches);
+        MapEndpoints(app, git, cloneDir, pendingPrRequests, pendingPushRequests, allowedPushBranches);
 
         await app.StartAsync(cancellationToken);
 
@@ -110,7 +110,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static void MapEndpoints
     (
         WebApplication app,
-        IJobRepoHost host,
+        IGit git,
         string cloneDir,
         PrQueue pendingPrRequests,
         ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
@@ -118,10 +118,10 @@ internal sealed class LocalApiServer : IAsyncDisposable
     )
     {
         app.MapGet("/health", () => Results.Ok());
-        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct));
+        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, git, cloneDir, pendingPrRequests, ct));
         app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Snapshot()));
         app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests.TryRemove));
-        app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct));
+        app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, git, cloneDir, pendingPushRequests, allowedPushBranches, ct));
         app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()));
         app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, branch => RemoveFromDictionary(pendingPushRequests, branch)));
     }
@@ -129,7 +129,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static async Task<IResult> HandlePrAsync
     (
         PrRequest req,
-        IJobRepoHost host,
+        IGit git,
         string cloneDir,
         PrQueue pendingPrRequests,
         CancellationToken ct
@@ -143,14 +143,14 @@ internal sealed class LocalApiServer : IAsyncDisposable
             Body: Input.Required("body", req.Body, value => new PrBody(value))
         );
 
-        if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
+        if (await git.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
             return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
 
         // Catches an agent that queues a branch it never actually committed into its assigned
         // working directory (e.g. because it made the change somewhere else on the runner) — without
         // this, the mistake surfaces only later, as an opaque git-bundle failure after the agent's
         // session has already ended and it's too late to retry.
-        if (!await host.BranchExistsLocallyAsync(cloneDir, queuedPr.Branch, ct))
+        if (!await git.BranchExistsLocallyAsync(cloneDir, queuedPr.Branch, ct))
         {
             var message = $"Branch {queuedPr.Branch.Value} was not found in your working directory. " +
                 "Make sure you committed it there (not in a different directory) before calling /pr.";
@@ -163,7 +163,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static async Task<IResult> HandlePushAsync
     (
         PushRequest req,
-        IJobRepoHost host,
+        IGit git,
         string cloneDir,
         ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
         IReadOnlyList<BranchName>? allowedPushBranches,
@@ -197,13 +197,13 @@ internal sealed class LocalApiServer : IAsyncDisposable
         // The point of /push is delivering to a branch that already exists on the remote, so the
         // opposite guard from /pr: if the branch does not exist there, the agent should have used
         // /pr instead.
-        if (!await host.BranchExistsOnRemoteAsync(queuedPush.Branch, ct))
+        if (!await git.BranchExistsOnRemoteAsync(queuedPush.Branch, ct))
             return Results.Conflict(new ErrorResponse($"Branch {queuedPush.Branch.Value} does not exist on the remote. Use /pr to create a new branch."));
 
         // Same "committed it into your assigned working directory" guard as /pr — a queued push for
         // a branch the agent never actually committed would otherwise fail much later, as an opaque
         // git-bundle failure after the session has ended.
-        if (!await host.BranchExistsLocallyAsync(cloneDir, queuedPush.Branch, ct))
+        if (!await git.BranchExistsLocallyAsync(cloneDir, queuedPush.Branch, ct))
             return Results.BadRequest(new ErrorResponse($"Branch {queuedPush.Branch.Value} was not found in your working directory. Make sure you committed it there before calling /push."));
 
         return Enqueue(pendingPushRequests, queuedPush.Branch.Value, queuedPush);
