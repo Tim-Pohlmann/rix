@@ -45,6 +45,16 @@ setup() {
   export RIX_WORK_DIR="$BATS_TEST_TMPDIR/work"
   mkdir -p "$RIX_OUTPUT_DIR" "$RIX_WORK_DIR"
 
+  # Made absolute while the caller's directory is still the current one, so a relative RIX_BIN -
+  # ./rix-bin/rix is the layout the e2e workflow job produces, and the obvious thing to type when
+  # running these by hand - names the same binary after the cd below. A bare command name is left
+  # alone: that one is for $PATH to resolve, not this.
+  case "$RIX_BIN" in
+    /*) ;;
+    */*) RIX_BIN="$PWD/$RIX_BIN" ;;
+  esac
+  export RIX_BIN
+
   # rix is launched from a directory of this test's own, never from wherever bats was started. rix
   # hands the agent its clone as a working directory, but an agent CLI that resolves its directory
   # some other way (opencode reads PWD - see ProcessWrapper.BuildStartInfo) would otherwise act on
