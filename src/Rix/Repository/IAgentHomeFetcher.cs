@@ -11,8 +11,8 @@ internal interface IAgentHomeFetcher
     /// <paramref name="repo"/> into the empty <paramref name="checkoutDir"/> and returns the
     /// directory holding its contents. Throws <see cref="RepoHostException"/> if the repo cannot
     /// be fetched or the path is absent.</summary>
-    Task<string> FetchAsync
+    Task<DirectoryPath> FetchAsync
     (
-        RepoIdentifier repo, RepoRelativePath sourcePath, string checkoutDir, CancellationToken cancellationToken
+        RepoIdentifier repo, SubDirectoryPath sourcePath, DirectoryPath checkoutDir, CancellationToken cancellationToken
     );
 }

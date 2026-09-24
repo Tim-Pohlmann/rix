@@ -60,4 +60,4 @@ internal sealed record AgentConfig
 /// <summary>Where the agent home files come from and where they go: the contents of the
 /// repo-relative <paramref name="SourcePath"/> directory in <paramref name="Repo"/> are copied into
 /// <paramref name="Home"/>, the runner user's home, before the agent starts.</summary>
-internal sealed record AgentHomeInfo(RepoIdentifier Repo, RepoRelativePath SourcePath, DirectoryPath Home);
+internal sealed record AgentHomeInfo(RepoIdentifier Repo, SubDirectoryPath SourcePath, DirectoryPath Home);

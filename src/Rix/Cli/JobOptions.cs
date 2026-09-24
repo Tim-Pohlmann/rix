@@ -197,8 +197,8 @@ internal static class JobOptions
         (
             AgentHomePathOption,
             "RIX_AGENT_HOME_PATH",
-            raw => new RepoRelativePath(raw),
-            new RepoRelativePath(JobConfig.DefaultAgentHomePath)
+            raw => new SubDirectoryPath(raw),
+            new SubDirectoryPath(JobConfig.DefaultAgentHomePath)
         );
         // On Unix this already consults $HOME before the passwd entry.
         var home = Input.Named
