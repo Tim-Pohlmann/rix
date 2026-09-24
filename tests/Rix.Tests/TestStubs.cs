@@ -182,6 +182,24 @@ internal sealed class StubSubmitRepoHost(
     }
 }
 
+/// <summary>Records each fetch so tests can assert the agent home files were requested with the
+/// configured repo and path. <c>onFetch</c> gets the checkout dir and returns the directory to merge
+/// into the home, or throws <see cref="Rix.Repository.RepoHostException"/> to simulate a fetch
+/// failure; by default the empty checkout dir itself is returned, so nothing is copied.</summary>
+internal sealed class StubAgentHomeFetcher(Func<DirectoryPath, DirectoryPath>? onFetch = null) : IAgentHomeFetcher
+{
+    public List<(RepoIdentifier Repo, SubDirectoryPath SourcePath)> Fetches { get; } = [];
+
+    public Task<DirectoryPath> FetchAsync
+    (
+        RepoIdentifier repo, SubDirectoryPath sourcePath, DirectoryPath checkoutDir, CancellationToken cancellationToken
+    )
+    {
+        Fetches.Add((repo, sourcePath));
+        return Task.FromResult(onFetch?.Invoke(checkoutDir) ?? checkoutDir);
+    }
+}
+
 /// <summary>
 /// A coding agent for tests: install behavior is supplied by the caller, while invocation
 /// and cost parsing delegate to the real <see cref="ClaudeAgent"/> so tests exercise the

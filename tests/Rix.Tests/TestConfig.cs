@@ -25,21 +25,23 @@ internal static class TestConfig
         string? model = null,
         string? agentApiKey = null,
         string? agentApiKeyEnv = null,
-        IReadOnlyList<BranchName>? allowedPushBranches = null
+        IReadOnlyList<BranchName>? allowedPushBranches = null,
+        AgentHomeInfo? agentHome = null
     )
     {
-        // The same call the CLI makes, so a change to when the name is required reaches the
-        // fixtures too instead of leaving them asserting a rule the CLI no longer follows.
-        var apiKeyEnv = AgentCredential.ResolveEnvName(agent, agentApiKey, agentApiKeyEnv);
+        // The same call the CLI makes, so a change to when the credential is required reaches
+        // the fixtures too instead of leaving them asserting a rule the CLI no longer follows.
+        var credential = AgentCredential.Resolve(agent, agentApiKey, agentApiKeyEnv);
         return new JobConfig
         (
-            Repo: new RepoIdentifier(repo),
-            ReadToken: new GitReadToken(readToken),
-            TimeoutMinutes: new TimeoutMinutes(timeoutMinutes),
+            new RepoIdentifier(repo),
+            new GitReadToken(readToken),
+            new TimeoutMinutes(timeoutMinutes),
             WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
             OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
-            Agent: new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, agentApiKey, apiKeyEnv),
-            AllowedPushBranches: allowedPushBranches ?? []
+            new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, credential),
+            allowedPushBranches ?? [],
+            agentHome
         );
     }
 
@@ -52,8 +54,8 @@ internal static class TestConfig
     )
     => new
     (
-        Repo: new RepoIdentifier(repo),
-        WriteToken: new GitToken(writeToken),
+        new RepoIdentifier(repo),
+        new GitToken(writeToken),
         InputDir: new DirectoryPath(inputDir ?? Path.GetTempPath()),
         WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath())
     );
@@ -70,15 +72,15 @@ internal static class TestConfig
     )
     => new
     (
-        RunId: new RunId(runId),
-        Repo: new RepoIdentifier(repo),
-        ReadToken: new GitReadToken(readToken),
-        TimeoutMinutes: new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes),
+        new RunId(runId),
+        new RepoIdentifier(repo),
+        new GitReadToken(readToken),
+        new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes),
         WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
         OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
-        Agent: agent,
-        MaxTokens: new MaxTokens(JobConfig.DefaultMaxTokens),
-        MaxRixCommits: new MaxRixCommits(maxRixCommits)
+        agent,
+        new MaxTokens(JobConfig.DefaultMaxTokens),
+        new MaxRixCommits(maxRixCommits)
     );
 
     internal static InitializeConfig ValidInitialize(string? dir = null, string? workflowRef = null)

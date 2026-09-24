@@ -155,30 +155,34 @@ public class JobOptionsTests
     => Assert.AreEqual("secret", JobOptions.ReadAgentApiKey(Parse("--agent-api-key", "secret")));
 
     [TestMethod]
-    public void ReadAgentApiKeyEnv_IsNull_WhenNoKeySupplied()
+    public void ReadAgentCredential_IsNull_WhenNoKeySupplied()
     {
         // Even an explicit env name is ignored without a key: there is nothing to export under it.
         var parsed = Parse("--agent-api-key-env", "ANTHROPIC_API_KEY");
-        Assert.IsNull(JobOptions.ReadAgentApiKeyEnv(parsed, AgentKind.OpenCode, apiKey: null));
+        Assert.IsNull(JobOptions.ReadAgentCredential(parsed, AgentKind.OpenCode, apiKey: null));
     }
 
     [TestMethod]
-    public void ReadAgentApiKeyEnv_DefaultsPerAgent_WhenKeySuppliedWithoutOverride()
+    public void ReadAgentCredential_DefaultsPerAgent_WhenKeySuppliedWithoutOverride()
     {
-        Assert.AreEqual("OPENCODE_API_KEY", JobOptions.ReadAgentApiKeyEnv(Parse(), AgentKind.OpenCode, "secret"));
-        Assert.AreEqual("ANTHROPIC_API_KEY", JobOptions.ReadAgentApiKeyEnv(Parse(), AgentKind.Claude, "secret"));
+        Assert.AreEqual(new AgentCredential("OPENCODE_API_KEY", "secret"), JobOptions.ReadAgentCredential(Parse(), AgentKind.OpenCode, "secret"));
+        Assert.AreEqual(new AgentCredential("ANTHROPIC_API_KEY", "secret"), JobOptions.ReadAgentCredential(Parse(), AgentKind.Claude, "secret"));
     }
 
     [TestMethod]
-    public void ReadAgentApiKeyEnv_UsesExplicitValue_WhenValid()
-    => Assert.AreEqual("OPENAI_API_KEY", JobOptions.ReadAgentApiKeyEnv(Parse("--agent-api-key-env", "OPENAI_API_KEY"), AgentKind.OpenCode, "secret"));
+    public void ReadAgentCredential_UsesExplicitValue_WhenValid()
+    => Assert.AreEqual
+    (
+        new AgentCredential("OPENAI_API_KEY", "secret"),
+        JobOptions.ReadAgentCredential(Parse("--agent-api-key-env", "OPENAI_API_KEY"), AgentKind.OpenCode, "secret")
+    );
 
     [TestMethod]
-    public void ReadAgentApiKeyEnv_RejectsPiAgent_WithoutOverride()
+    public void ReadAgentCredential_RejectsPiAgent_WithoutOverride()
     {
         // The composed line, because that is what the user is shown and the half either side of
         // the colon is chosen to read as one sentence with the other.
-        var error = ErrorOf(() => JobOptions.ReadAgentApiKeyEnv(Parse(), AgentKind.Pi, "secret"));
+        var error = ErrorOf(() => JobOptions.ReadAgentCredential(Parse(), AgentKind.Pi, "secret"));
         Assert.AreEqual("--agent-api-key-env: is required when agent=pi and agent-api-key is set", error);
     }
 
@@ -187,10 +191,70 @@ public class JobOptionsTests
     // Full rejection matrix (RIX_*, AGENT_API_KEY*, GITHUB_*) is covered by
     // AgentCredentialTests; this just proves the reader wires the error through.
     [DataRow("RIX_AGENT")]
-    public void ReadAgentApiKeyEnv_RejectsName_ThatIsNotCredentialShaped(string envName)
+    public void ReadAgentCredential_RejectsName_ThatIsNotCredentialShaped(string envName)
     {
-        var error = ErrorOf(() => JobOptions.ReadAgentApiKeyEnv(Parse("--agent-api-key-env", envName), AgentKind.OpenCode, "secret"));
+        var error = ErrorOf(() => JobOptions.ReadAgentCredential(Parse("--agent-api-key-env", envName), AgentKind.OpenCode, "secret"));
         StringAssert.StartsWith(error, "--agent-api-key-env: ");
         StringAssert.Contains(error, envName);
+    }
+
+    [TestMethod]
+    public void ReadAgentHome_IsNull_WhenNoFactoryRepo()
+    => Assert.IsNull(JobOptions.ReadAgentHome(Parse()));
+
+    [TestMethod]
+    public void ReadAgentHome_DefaultsPath_WhenOnlyRepoSupplied()
+    {
+        var factory = JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory"));
+
+        Assert.IsNotNull(factory);
+        Assert.AreEqual("acme/factory", factory.Repo.Value);
+        Assert.AreEqual(JobConfig.DefaultAgentHomePath, factory.SourcePath.Value);
+        Assert.AreEqual(new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), factory.Home);
+    }
+
+    [TestMethod]
+    public void ReadAgentHome_NormalisesExplicitPath()
+    {
+        var factory = JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "./config/home/"));
+
+        Assert.IsNotNull(factory);
+        Assert.AreEqual("config/home", factory.SourcePath.Value);
+    }
+
+    /// <summary>A blank path is "not supplied" rather than an empty path, the same reading every
+    /// other optional flag gets, so a workflow that interpolates an unset variable falls back to the
+    /// default instead of failing.</summary>
+    [TestMethod]
+    public void ReadAgentHome_FallsBackToDefault_WhenPathIsBlank()
+    => Assert.AreEqual
+    (
+        JobConfig.DefaultAgentHomePath,
+        JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "   "))!.SourcePath.Value
+    );
+
+    [TestMethod]
+    public void ReadAgentHome_RejectsPath_WithoutRepo()
+    => Assert.AreEqual
+    (
+        "--agent-home-path requires --factory-repo",
+        ErrorOf(() => JobOptions.ReadAgentHome(Parse("--agent-home-path", ".rix/agent-home")))
+    );
+
+    [TestMethod]
+    public void ReadAgentHome_RejectsMalformedRepo()
+    {
+        var error = ErrorOf(() => JobOptions.ReadAgentHome(Parse("--factory-repo", "not-a-repo")));
+        StringAssert.StartsWith(error, "--factory-repo: ");
+    }
+
+    [TestMethod]
+    [DataRow("../escape")]
+    [DataRow("/abs/path")]
+    [DataRow("a/../../b")]
+    public void ReadAgentHome_RejectsMalformedPath(string path)
+    {
+        var error = ErrorOf(() => JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", path)));
+        StringAssert.StartsWith(error, "--agent-home-path: ");
     }
 }

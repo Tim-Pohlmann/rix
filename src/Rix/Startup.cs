@@ -21,21 +21,30 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultContext(config.Agent.Kind, new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync));
+    => DefaultContext
+    (
+        config.Agent.Kind,
+        new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
+        config.ReadToken
+    );
 
     /// <summary>Overload for callers that already have a repo host to reuse rather than a second,
     /// redundant connection — and that know which agent to run before they have a
     /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
     /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
-    /// agent it will run is configured up front.</summary>
-    internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host)
+    /// agent it will run is configured up front. The agent home files are fetched from a second repo,
+    /// so the fetcher gets its own git client under <paramref name="readToken"/>.</summary>
+    internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host, GitReadToken readToken)
     => new
     (
-        RepoHost: host,
-        RunProcess: ProcessWrapper.RunAsync,
-        Agent: SelectAgent(agent),
+        host,
+        ProcessWrapper.RunAsync,
+        SelectAgent(agent),
+        // Named because LogLine and TranscriptLine are the same delegate type: transposing them
+        // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
-        TranscriptLine: _ => { }
+        TranscriptLine: _ => { },
+        AgentHomeFetcher: new GitHubAgentHomeFetcher(new GitCli(readToken, ProcessWrapper.RunAsync))
     );
 
     private static ICodingAgent SelectAgent(AgentKind agent)
@@ -58,7 +67,7 @@ internal static class Startup
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
         var host = new GitHubJobRepoHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
-        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host));
+        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host, config.ReadToken));
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the
@@ -66,9 +75,9 @@ internal static class Startup
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        RepoHost: new GitHubSubmitRepoHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
-        RunProcess: ProcessWrapper.RunAsync,
-        LogLine: Console.Error.WriteLine
+        new GitHubSubmitRepoHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
+        ProcessWrapper.RunAsync,
+        Console.Error.WriteLine
     );
 
     /// <summary>
@@ -277,8 +286,8 @@ internal static class Startup
     private static InitializeContext DefaultInitializeContext()
     => new
     (
-        WriteFile: FileWriter.WriteAsync,
-        LogLine: Console.Error.WriteLine
+        FileWriter.WriteAsync,
+        Console.Error.WriteLine
     );
 
     /// <summary>

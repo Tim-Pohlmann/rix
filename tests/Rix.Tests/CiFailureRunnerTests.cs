@@ -264,7 +264,8 @@ public class CiFailureRunnerTests
     => new(ci, repoHost ?? new StubCiFailureRepoHost(), JobContext(host, processRunner));
 
     private static JobContext JobContext(IJobRepoHost host, RunProcessAsync? processRunner = null)
-    => new(host, processRunner ?? DefaultRunner, new StubAgent(_ => Task.FromResult<InstallResult>(new Installed())), _ => { }, _ => { });
+    => new(host, processRunner ?? DefaultRunner, new StubAgent(_ => Task.FromResult<InstallResult>(new Installed())), _ => { }, _ => { },
+        new StubAgentHomeFetcher());
 
     private static Task<ProcessResult> DefaultRunner(
         string fileName, IEnumerable<string> args, string workDir,

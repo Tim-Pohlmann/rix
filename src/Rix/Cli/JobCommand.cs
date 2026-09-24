@@ -12,6 +12,8 @@ internal static class JobCommand
         JobOptions.AddTo(command);
         command.AddOption(JobOptions.PromptOption);
         command.AddOption(JobOptions.AllowedPushBranchesOption);
+        command.AddOption(JobOptions.FactoryRepoOption);
+        command.AddOption(JobOptions.AgentHomePathOption);
 
         command.SetHandler
         (
@@ -30,18 +32,20 @@ internal static class JobCommand
                 var outputDir = JobOptions.ReadOutputDir(parsed);
                 var model = JobOptions.ReadModel(parsed);
                 var apiKey = JobOptions.ReadAgentApiKey(parsed);
-                var apiKeyEnv = JobOptions.ReadAgentApiKeyEnv(parsed, agent, apiKey);
+                var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
                 var allowedPushBranches = ParseAllowedPushBranches(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
+                var agentHome = JobOptions.ReadAgentHome(parsed);
 
                 var config = new JobConfig
                 (
-                    Repo: repo,
-                    ReadToken: readToken,
-                    TimeoutMinutes: timeout,
+                    repo,
+                    readToken,
+                    timeout,
                     WorkDir: workDir,
                     OutputDir: outputDir,
-                    Agent: new AgentConfig(agent, prompt, maxTokens, model, apiKey, apiKeyEnv),
-                    AllowedPushBranches: allowedPushBranches
+                    new AgentConfig(agent, prompt, maxTokens, model, credential),
+                    allowedPushBranches,
+                    agentHome
                 );
                 ctx.ExitCode = await handler(config);
             }

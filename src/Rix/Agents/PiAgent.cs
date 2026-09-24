@@ -36,9 +36,9 @@ internal sealed class PiAgent : ICodingAgent
 
         return new
         (
-            FileName: "pi",
-            Arguments: args,
-            EnvironmentOverrides: new Dictionary<string, string>()
+            "pi",
+            args,
+            new Dictionary<string, string>()
         );
     }
 

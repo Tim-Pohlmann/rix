@@ -53,6 +53,20 @@ on:
           branch until this is set; omit it to disable /push entirely.
         required: false
         type: string
+      factory-repo:
+        description: >-
+          Optional repo (owner/name) holding agent config/context files to copy into the
+          runner's home directory. The read-token secret must also grant read access to this
+          repo. Omit to leave the runner home untouched.
+        required: false
+        type: string
+      agent-home-path:
+        description: >-
+          Directory inside factory-repo whose contents are copied into the runner's home
+          before the agent starts (existing files are kept). Requires factory-repo; defaults
+          to .rix/agent-home.
+        required: false
+        type: string
       runner:
         description: runs-on label for both jobs (e.g. a self-hosted runner label)
         required: false
@@ -115,6 +129,8 @@ jobs:
           max-tokens: ${{ inputs.max-tokens }}
           timeout: ${{ inputs.timeout }}
           allowed-push-branches: ${{ inputs.allowed-push-branches }}
+          factory-repo: ${{ inputs.factory-repo }}
+          agent-home-path: ${{ inputs.agent-home-path }}
           rix-version: ${{ inputs.rix-version }}
 
       - name: Upload job output

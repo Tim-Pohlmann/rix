@@ -55,7 +55,7 @@ internal sealed class GitHubSubmitRepoHost : ISubmitRepoHost
         // --end-of-options stops git from reading a branch name starting with "-" as an option —
         // see GitHubJobRepoHost.CreateBundleAsync for why it's this flag and not "--".
         ["push", "origin", "--end-of-options", branch.Value],
-        workingDirectory: repoDirectory,
+        repoDirectory,
         authenticated: true,
         cancellationToken
     );

@@ -66,8 +66,10 @@ skipped.
 
 ### Allowing the agent to push (resuming a run)
 
-`rix job` exposes a local API to the agent. Besides opening PRs (`/pr`), the agent can push new
-commits onto a branch that already exists on the remote (`/push`, e.g. resuming a previous run).
+`rix job` exposes a local API to the agent, described by an OpenAPI 3 document the agent fetches
+from `/openapi.json` (the system prompt only points at it). Besides opening PRs (`/pr`), the agent
+can push new commits onto a branch that already exists on the remote (`/push`, e.g. resuming a
+previous run).
 `/push` accepts nothing by default — an untrusted agent cannot touch any existing branch unless
 you opt in with the `allowed-push-branches` input, a comma-separated list of branches the `/push`
 endpoint accepts:
@@ -84,6 +86,36 @@ with a 403, and the agent is told the allow-list in its system prompt. The input
 as `--allowed-push-branches` (env `RIX_ALLOWED_PUSH_BRANCHES`); an entry can be any branch name
 that already exists on the remote, not just `rix/*` — e.g. a human's own branch you want the agent
 to resume.
+
+### Supplying agent home files from a factory repo
+
+The coding agent CLIs read configuration and context from the runner's user home (`~/.config/...`,
+`~/.claude/...`, house style guides, MCP configs, and so on). Point `rix job` at a second repo — a
+"factory repo" — to copy files into that home directory before the agent starts:
+
+```yaml
+    with:
+      repo: ${{ github.repository }}
+      prompt: ${{ inputs.prompt }}
+      factory-repo: my-org/rix-factory
+      # agent-home-path: .rix/agent-home   # optional; this is the default
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
+```
+
+When `factory-repo` is set, rix fetches one directory from it (a depth-1 blobless sparse checkout)
+and copies that directory's **contents** into the runner's home. `agent-home-path` names the
+directory inside the factory repo and defaults to `.rix/agent-home`. Collisions are resolved by
+**keeping the existing file** — only paths not already present in home are written, and directories
+are merged — so the factory bundle never clobbers what the runner image ships. Symlinks in the
+bundle are recreated as symlinks, not followed.
+
+The existing `read-token` is reused to clone the factory repo, so that PAT must also grant **read
+access to `factory-repo`**. If the clone fails, `agent-home-path` is absent from the repo, or
+the copy into home fails, the job stops with a setup failure and the agent never runs.
+`agent-home-path` without `factory-repo` is rejected. The inputs forward as
+`--factory-repo` / `--agent-home-path` (env `RIX_FACTORY_REPO` / `RIX_AGENT_HOME_PATH`).
 
 ### Using a different provider or model
 
