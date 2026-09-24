@@ -302,7 +302,7 @@ internal static class Startup
                 await Console.Error.WriteLineAsync(NextStepsGuidance);
                 return ExitCodes.Success;
             case InitializeFailure failure:
-                await Console.Error.WriteLineAsync($"error: {failure.Message}");
+                await Console.Error.WriteLineAsync($"error: {failure.Error}");
                 return ExitCodes.SetupFailed;
             default:
                 throw new NotSupportedException($"Unexpected initialize result type: {result.GetType()}");

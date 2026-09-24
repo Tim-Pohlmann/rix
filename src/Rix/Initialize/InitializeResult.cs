@@ -8,4 +8,4 @@ internal interface IInitializeResult;
 /// this carries no payload.</summary>
 internal sealed record InitializeSuccess : IInitializeResult;
 
-internal sealed record InitializeFailure(string Message) : IInitializeResult;
+internal sealed record InitializeFailure(string Error) : IInitializeResult;
