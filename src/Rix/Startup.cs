@@ -21,30 +21,18 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultContext
-    (
-        config.Agent.Kind,
-        new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
-        config.ReadToken
-    );
-
-    /// <summary>Overload for callers that already have a repo host to reuse rather than a second,
-    /// redundant connection — and that know which agent to run before they have a
-    /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
-    /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
-    /// agent it will run is configured up front. The agent home files are fetched from a second repo,
-    /// so the fetcher gets its own git client under <paramref name="readToken"/>.</summary>
-    internal static JobContext DefaultContext(AgentKind agent, IJobRepoHost host, GitReadToken readToken)
     => new
     (
-        host,
+        new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
         ProcessWrapper.RunAsync,
-        SelectAgent(agent),
+        SelectAgent(config.Agent.Kind),
         // Named because LogLine and TranscriptLine are the same delegate type: transposing them
         // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
         TranscriptLine: _ => { },
-        AgentHomeFetcher: new GitHubAgentHomeFetcher(new GitCli(readToken, ProcessWrapper.RunAsync))
+        // The agent home files come from a second repo, so the fetcher gets its own git client
+        // rather than the host's.
+        AgentHomeFetcher: new GitHubAgentHomeFetcher(new GitCli(config.ReadToken, ProcessWrapper.RunAsync))
     );
 
     private static ICodingAgent SelectAgent(AgentKind agent)

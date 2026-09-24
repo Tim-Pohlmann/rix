@@ -195,7 +195,7 @@ jobs:
         run: chmod +x rix-bin/rix
 
       - name: Run rix ci-failure against this in-progress run
-        id: ci-failure
+        id: detect
         uses: ./.github/actions/detect-ci-failure
         with:
           repo: ${{ github.repository }}
@@ -212,8 +212,8 @@ jobs:
 
       - name: Assert the unfinished run was skipped, not answered
         env:
-          SHOULD_RUN: ${{ steps.ci-failure.outputs.should-run }}
-          BRANCH: ${{ steps.ci-failure.outputs.branch }}
+          SHOULD_RUN: ${{ steps.detect.outputs.should-run }}
+          BRANCH: ${{ steps.detect.outputs.branch }}
         run: |
           # The step above already fails on a rejected input or an API error, so this only pins
           # down the decision: a run with no conclusion yet is not a failure to answer, and a
