@@ -140,6 +140,9 @@ jobs:
           repo: ${{ inputs.repo || github.repository }}
           run-id: ${{ inputs.run-id }}
           read-token: ${{ secrets.read-token }}
+          # Forwarded raw, 0 and all: detect-ci-failure normalizes the omitted-number-input 0 the
+          # same way prepare-rix-env does for max-tokens/timeout, so it holds for every caller of
+          # that action rather than only for this workflow.
           max-rix-commits: ${{ inputs.max-rix-commits }}
           rix-version: ${{ inputs.rix-version }}
           rix-bin: ${{ inputs.rix-bin }}
