@@ -254,7 +254,7 @@ jobs:
           # `outcome` is the run step's own result, read through continue-on-error below; the
           # `case` arms that only annotate leave rix's exit code alone, so the step passes.
           - name: skipped
-            stdout: '{"status":"skipped","conclusion":"success"}'
+            stdout: '{"status":"skipped","outcome":"succeeded"}'
             exit: 0
             has-result: 'false'
             outcome: success
@@ -369,6 +369,50 @@ jobs:
           fi
           exit "$failed"
 
+  ci-failure-e2e:
+    name: rix ci-failure e2e
+    runs-on: ubuntu-latest
+    needs: build-rix
+    permissions:
+      contents: read
+      # Same reason as ci-failure-plumbing above: the Actions API is not covered by contents:read.
+      actions: read
+    env:
+      RIX_BIN: ${{ github.workspace }}/rix-bin/rix
+      RIX_REPO: ${{ github.repository }}
+      RIX_READ_TOKEN: ${{ github.token }}
+
+    # What rix-job-e2e is to agent-plumbing, this is to ci-failure-plumbing: the built binary driven
+    # directly, with the per-outcome assertions in a reviewable test script
+    # (tests/e2e/ci-failure-e2e.bats) instead of workflow YAML. The plumbing job above can only ever
+    # see its own unfinished run; this one also points rix at finished runs and at requests GitHub
+    # refuses, so the mapping from real API responses onto rix's own vocabulary is covered rather
+    # than only the mapping from the canned ones the unit tests use. No agent runs here (the test
+    # file's header says why the one outcome that would start one is out of reach), so this needs
+    # neither Node nor an agent key.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tests/e2e
+          sparse-checkout-cone-mode: false
+
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
+
+      - name: Install bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      - name: Run rix ci-failure e2e tests
+        run: bats --print-output-on-failure tests/e2e/ci-failure-e2e.bats
+
   rix-job-e2e:
     name: rix job e2e
     runs-on: ubuntu-latest
@@ -414,7 +458,10 @@ jobs:
         # `run` merges that into $output - print it on failure instead of silently discarding it,
         # so a failing assertion here comes with the agent's actual raw output instead of just the
         # failed jq/status check.
-        run: bats --print-output-on-failure tests/e2e
+        # Named file rather than the directory: each e2e file needs its own environment (this
+        # one an agent CLI and a key, ci-failure-e2e.bats below only actions:read), so a new file
+        # here joins the job built for it instead of silently joining this one.
+        run: bats --print-output-on-failure tests/e2e/rix-job-e2e.bats
 
   download-rix:
     name: Download rix (release path)
