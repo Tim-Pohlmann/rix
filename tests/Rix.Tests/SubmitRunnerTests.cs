@@ -256,7 +256,7 @@ public class SubmitRunnerTests
     => SubmitRunner.RunAsync
     (
         TestConfig.ValidSubmit(inputDir: _inputDir, workDir: _workDir, allowedPushBranches: allowedPushBranches),
-        new SubmitContext(git, host ?? new StubSubmitRepoHost(), runner ?? OkGit, _ => { }),
+        new SubmitContext(git, host ?? new StubSubmitRepoHost(), runner ?? OkGit, _ => { }, new LocalFileSystem()),
         CancellationToken.None
     );
 

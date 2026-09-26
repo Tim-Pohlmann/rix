@@ -29,13 +29,13 @@ internal static class SubmitRunner
     )
     {
         var resultPath = Path.Combine(config.InputDir.Value, "result.json");
-        if (!File.Exists(resultPath))
+        if (!context.FileSystem.FileExists(resultPath))
             return new SubmitFailure($"result.json not found in {config.InputDir.Value}");
 
         IJobResult? jobResult;
         try
         {
-            await using var stream = File.OpenRead(resultPath);
+            await using var stream = context.FileSystem.OpenRead(resultPath);
             jobResult = await JsonSerializer.DeserializeAsync
             (
                 stream, JobJsonContext.Default.IJobResult, cancellationToken
@@ -80,7 +80,7 @@ internal static class SubmitRunner
         CancellationToken cancellationToken
     )
     {
-        using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-submit");
+        using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-submit");
 
         await context.Git.CloneAsync(cloneDir.Path, cancellationToken);
 
@@ -191,7 +191,7 @@ internal static class SubmitRunner
     )
     {
         var bundlePath = Path.Combine(config.InputDir.Value, bundleFile);
-        if (!File.Exists(bundlePath))
+        if (!context.FileSystem.FileExists(bundlePath))
             return new SubmitFailure($"bundle file not found: {bundleFile}");
 
         // --end-of-options stops git from reading a branch name starting with "-" as an option —

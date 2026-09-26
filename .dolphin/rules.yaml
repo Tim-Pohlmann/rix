@@ -51,20 +51,31 @@ rules:
       if/else statement instead.
     pattern: "$A ? $B : $C"
 
-  - id: raw-directory-creation
+  - id: raw-file-system-access
     languages: [csharp]
     severity: ERROR
     message: >-
-      Directory.CreateDirectory is reserved for the dedicated file-system
-      wrapper types (TempDirectory, FileWriter, DirectoryMerge); go through
-      one of them instead of calling it directly.
-    # The exclusion list is the list of wrappers: a new one is added here.
+      Access files and directories through IFileSystem, whose only
+      implementation (LocalFileSystem) may call File/Directory directly, so
+      the calling code stays testable without touching the disk.
+    # Tests arrange and inspect real directories. DirectoryPath checks that its directory exists
+    # when constructed, like every value object validates its input, and is built from parsed
+    # options with no seam to hand it.
     paths:
       exclude:
-        - src/Rix/TempDirectory.cs
-        - src/Rix/FileWriter.cs
-        - src/Rix/DirectoryMerge.cs
-    pattern: Directory.CreateDirectory($P)
+        - src/Rix/LocalFileSystem.cs
+        - src/Rix/ValueObjects.cs
+        - tests/**
+    patterns:
+      - pattern-either:
+          - pattern: File.$M(...)
+          - pattern: Directory.$M(...)
+          - pattern: Path.Exists(...)
+          - pattern: new FileInfo(...)
+          - pattern: new DirectoryInfo(...)
+          - pattern: new FileStream(...)
+      # The working directory is process state, not file access.
+      - pattern-not: Directory.GetCurrentDirectory()
 
   - id: raw-process-outside-wrapper
     languages: [csharp]

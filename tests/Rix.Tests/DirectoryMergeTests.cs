@@ -23,7 +23,7 @@ public class DirectoryMergeTests
     private string Src(params string[] parts) => Path.Combine([_source, .. parts]);
     private string Dest(params string[] parts) => Path.Combine([_dest, .. parts]);
 
-    private void Merge() => DirectoryMerge.CopySkippingExisting(_source, _dest);
+    private void Merge() => DirectoryMerge.CopySkippingExisting(new LocalFileSystem(), _source, _dest);
 
     [TestMethod]
     public void CopiesFilesAndDirectories_IncludingEmptyOnes()
@@ -112,6 +112,6 @@ public class DirectoryMergeTests
         var notADir = Dest("not-a-dir");
         File.WriteAllText(notADir, "x");
 
-        Assert.ThrowsExactly<IOException>(() => DirectoryMerge.CopySkippingExisting(_source, notADir));
+        Assert.ThrowsExactly<IOException>(() => DirectoryMerge.CopySkippingExisting(new LocalFileSystem(), _source, notADir));
     }
 }

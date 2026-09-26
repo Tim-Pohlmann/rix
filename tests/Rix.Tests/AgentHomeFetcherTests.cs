@@ -22,7 +22,7 @@ public class AgentHomeFetcherTests
         {
             onGitFor?.Invoke(repo);
             return git;
-        })
+        }, new LocalFileSystem())
         .FetchAsync(new RepoIdentifier("acme/factory"), new SubDirectoryPath(sourcePath), new DirectoryPath(_checkoutDir), CancellationToken.None);
 
     /// <summary>A git that mimics a sparse clone by creating <paramref name="contextDir"/> with one

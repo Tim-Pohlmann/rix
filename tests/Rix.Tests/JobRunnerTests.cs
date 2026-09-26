@@ -111,13 +111,12 @@ public class JobRunnerTests
     [TestMethod]
     public async Task ExecuteJobAsync_StillReturnsExitCode_WhenResultJsonCannotBeWritten()
     {
-        // Forces the write to fail with UnauthorizedAccessException: "result.json" already exists
-        // as a directory at that path, so it can't be opened as a file.
-        Directory.CreateDirectory(Path.Combine(_outputDir, "result.json"));
+        using var stderr = new ConsoleErrorScope();
 
-        var result = await Run();
+        var result = await Run(fileSystem: new StubFileSystem(writeAllText: _ => throw new IOException("disk full")));
 
         Assert.AreEqual(0, result);
+        StringAssert.Contains(stderr.Text, "warning: failed to write result.json: disk full");
     }
 
     [TestMethod]
@@ -851,15 +850,17 @@ public class JobRunnerTests
         Func<CancellationToken, Task<InstallResult>> install,
         LogLine? logLine = null,
         LogLine? transcriptLine = null,
-        IAgentHomeFetcher? agentHomeFetcher = null)
+        IAgentHomeFetcher? agentHomeFetcher = null,
+        IFileSystem? fileSystem = null)
     => new(git, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }),
-        agentHomeFetcher ?? new StubAgentHomeFetcher());
+        agentHomeFetcher ?? new StubAgentHomeFetcher(), fileSystem ?? new LocalFileSystem());
 
-    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null)
+    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null)
     => Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
         Context(new StubGit(),
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
-            _ => Task.FromResult<InstallResult>(new Installed())));
+            _ => Task.FromResult<InstallResult>(new Installed()),
+            fileSystem: fileSystem));
 
     private JobConfig MakeConfig(
         string[]? allowedPushBranches = null,

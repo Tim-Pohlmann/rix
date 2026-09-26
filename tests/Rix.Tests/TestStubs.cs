@@ -186,6 +186,46 @@ internal sealed class StubAgentHomeFetcher(Func<DirectoryPath, DirectoryPath>? o
     }
 }
 
+/// <summary>The local disk, except for the operations a test overrides — to make a write or a
+/// cleanup fail the way a full disk or a locked file would, without arranging one.</summary>
+internal sealed class StubFileSystem(
+    Func<string, Task>? writeAllText = null,
+    Action<string>? deleteDirectory = null) : IFileSystem
+{
+    private readonly LocalFileSystem _real = new();
+
+    public bool FileExists(string path) => _real.FileExists(path);
+
+    public bool DirectoryExists(string path) => _real.DirectoryExists(path);
+
+    public bool PathExists(string path) => _real.PathExists(path);
+
+    public void CreateDirectory(string path) => _real.CreateDirectory(path);
+
+    public void DeleteDirectory(string path)
+    {
+        if (deleteDirectory is { } delete)
+            delete(path);
+        else
+            _real.DeleteDirectory(path);
+    }
+
+    public IEnumerable<FileSystemEntry> EnumerateEntries(string directory) => _real.EnumerateEntries(directory);
+
+    public void CopyFile(string source, string destination) => _real.CopyFile(source, destination);
+
+    public void CreateSymbolicLink(string path, string target) => _real.CreateSymbolicLink(path, target);
+
+    public Stream OpenRead(string path) => _real.OpenRead(path);
+
+    public Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken)
+    => writeAllText switch
+    {
+        { } write => write(path),
+        _ => _real.WriteAllTextAsync(path, content, cancellationToken),
+    };
+}
+
 /// <summary>
 /// A coding agent for tests: install behavior is supplied by the caller, while invocation
 /// and cost parsing delegate to the real <see cref="ClaudeAgent"/> so tests exercise the
