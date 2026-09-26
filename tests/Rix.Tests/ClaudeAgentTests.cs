@@ -27,7 +27,7 @@ public class ClaudeAgentTests
             },
             "/tmp/work", CancellationToken.None);
 
-        CollectionAssert.AreEqual(new[] { "/tmp/work" }, workingDirs);
+        Assert.AreEqual("/tmp/work", workingDirs.Single());
     }
 
     [TestMethod]

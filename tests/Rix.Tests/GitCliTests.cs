@@ -22,6 +22,8 @@ public class GitCliTests
     private static readonly string[] ExpectedConfigureUserEmailArgs =
         ["config", "user.email", "rix@noreply.invalid"];
 
+    private static readonly string[] ExpectedWorkingDirs = ["/tmp/work", "/tmp/work", "/tmp/checkout", "/tmp/work"];
+
     private static readonly string[] ExpectedLsRemoteArgs =
         ["ls-remote", "--exit-code", "https://github.com/owner/repo.git", "refs/heads/rix/fix"];
 
@@ -48,7 +50,7 @@ public class GitCliTests
         await git.SparseCloneAsync("/tmp/checkout", new SubDirectoryPath("agent-home"), CancellationToken.None);
         await git.BranchExistsOnRemoteAsync(new BranchName("rix/fix"), CancellationToken.None);
 
-        CollectionAssert.AreEqual(new[] { "/tmp/work", "/tmp/work", "/tmp/checkout", "/tmp/work" }, workingDirs);
+        CollectionAssert.AreEqual(ExpectedWorkingDirs, workingDirs);
     }
 
     [TestMethod]
