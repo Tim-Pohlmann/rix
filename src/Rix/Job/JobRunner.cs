@@ -49,19 +49,8 @@ internal static class JobRunner
             return new SetupFailure(ex.Message);
         }
 
-        // Lay the operator-supplied home context over the runner's user home before the agent
-        // starts, so its config/context files are in place when the agent first reads them.
-        if (config.FactoryContext is { } factoryContext)
-        {
-            try
-            {
-                await context.FactoryContextLoader.LoadAsync(factoryContext.Repo, factoryContext.ContextPath, ct);
-            }
-            catch (RepoHostException ex)
-            {
-                return new SetupFailure($"factory context load failed: {ex.Message}");
-            }
-        }
+        if (await CopyAgentHomeAsync(config, context.AgentHomeFetcher, ct) is { } agentHomeFailure)
+            return agentHomeFailure;
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
@@ -104,6 +93,35 @@ internal static class JobRunner
                 => new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
             _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
         };
+    }
+
+    /// <summary>Copies the operator-supplied agent home files over the runner's user home before
+    /// the agent starts, so its config/context files are in place when the agent first reads them.
+    /// Returns the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once the files are
+    /// in place or when the run has none configured.</summary>
+    private static async Task<SetupFailure?> CopyAgentHomeAsync
+    (
+        JobConfig config, IAgentHomeFetcher fetcher, CancellationToken ct
+    )
+    {
+        if (config.AgentHome is not { } agentHome)
+            return null;
+
+        using var checkout = TempDirectory.Create(config.WorkDir.Value, "rix-agent-home");
+        try
+        {
+            var source = await fetcher.FetchAsync(agentHome.Repo, agentHome.SourcePath, new DirectoryPath(checkout.Path), ct);
+            DirectoryMerge.CopySkippingExisting(source.Value, agentHome.Home.Value);
+            return null;
+        }
+        catch (RepoHostException ex)
+        {
+            return new SetupFailure($"agent home fetch failed: {ex.Message}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new SetupFailure($"agent home copy into {agentHome.Home} failed: {ex.Message}");
+        }
     }
 
     /// <summary>Runs the coding agent in the cloned repo and returns its raw process result.</summary>

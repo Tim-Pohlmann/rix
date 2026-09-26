@@ -102,16 +102,16 @@ internal static class JobOptions
     internal static readonly Option<string> FactoryRepoOption = new
     (
         name: "--factory-repo",
-        description: "Optional repo (owner/name) to fetch agent home-context files from before the run. " +
-            "Read with --read-token, which must also grant read access to this repo."
+        description: "Optional repo (owner/name) holding agent config/context files to copy into the runner's " +
+            "home directory. Read with --read-token, which must also grant read access to this repo."
     )
     { IsRequired = false };
 
-    internal static readonly Option<string> FactoryContextPathOption = new
+    internal static readonly Option<string> AgentHomePathOption = new
     (
-        name: "--factory-context-path",
-        description: "Directory inside --factory-repo whose contents are copied into the runner's user " +
-            $"home, skipping files that already exist (default: {JobConfig.DefaultFactoryContextPath})"
+        name: "--agent-home-path",
+        description: "Directory inside --factory-repo whose contents are copied into the runner's home " +
+            $"directory, skipping files that already exist. Requires --factory-repo (default: {JobConfig.DefaultAgentHomePath})"
     )
     { IsRequired = false };
 
@@ -179,31 +179,33 @@ internal static class JobOptions
     internal static AgentCredential? ReadAgentCredential(ParseResult parsed, AgentKind agent, string? apiKey)
     => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.Resolve(agent, apiKey, raw));
 
-    /// <summary>Turns the <c>--factory-repo</c>/<c>--factory-context-path</c> pair into an optional
-    /// <see cref="FactoryContextConfig"/>. A blank repo means the feature is off, so the result is
-    /// <c>null</c> — but a context path given without a repo is a caller mistake and is reported
-    /// rather than silently ignored. When a repo is given, a blank path resolves to
-    /// <see cref="JobConfig.DefaultFactoryContextPath"/>. Read as a pair because whether the path
-    /// means anything at all depends on the repo, which is exactly what a per-option reader cannot
-    /// see.</summary>
-    internal static FactoryContextConfig? ReadFactoryContext(ParseResult parsed)
+    /// <summary>Reads <c>--factory-repo</c>/<c>--agent-home-path</c> as a pair, because whether
+    /// the path means anything depends on the repo — a path without a repo is reported, not
+    /// ignored. The runner home is resolved only when a repo is given, so a job that doesn't use
+    /// the feature never depends on having one.</summary>
+    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed)
     {
-        var rawRepo = parsed.OptionalText(FactoryRepoOption, "RIX_FACTORY_REPO");
-        if (rawRepo is null)
+        var repo = parsed.Optional<RepoIdentifier?>(FactoryRepoOption, "RIX_FACTORY_REPO", raw => new RepoIdentifier(raw), () => null);
+        if (repo is null)
         {
-            if (parsed.OptionalText(FactoryContextPathOption, "RIX_FACTORY_CONTEXT_PATH") is not null)
-                throw new InvalidInputException($"{ParseResultExtensions.Flag(FactoryContextPathOption)} requires {ParseResultExtensions.Flag(FactoryRepoOption)}");
+            if (parsed.OptionalText(AgentHomePathOption, "RIX_AGENT_HOME_PATH") is not null)
+                throw new InvalidInputException($"{ParseResultExtensions.Flag(AgentHomePathOption)} requires {ParseResultExtensions.Flag(FactoryRepoOption)}");
             return null;
         }
 
-        var repo = parsed.Named(FactoryRepoOption, "RIX_FACTORY_REPO", raw => new RepoIdentifier(raw));
-        var contextPath = parsed.Optional
+        var sourcePath = parsed.Optional
         (
-            FactoryContextPathOption,
-            "RIX_FACTORY_CONTEXT_PATH",
-            raw => new RepoRelativePath(raw),
-            new RepoRelativePath(JobConfig.DefaultFactoryContextPath)
+            AgentHomePathOption,
+            "RIX_AGENT_HOME_PATH",
+            raw => new SubDirectoryPath(raw),
+            new SubDirectoryPath(JobConfig.DefaultAgentHomePath)
         );
-        return new FactoryContextConfig(repo, contextPath);
+        // On Unix this already consults $HOME before the passwd entry.
+        var home = Input.Named
+        (
+            "runner home directory",
+            () => new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
+        );
+        return new AgentHomeInfo(repo, sourcePath, home);
     }
 }

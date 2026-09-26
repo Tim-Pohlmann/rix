@@ -118,25 +118,23 @@ internal sealed record RepoIdentifier
     public override string ToString() => Value;
 }
 
-/// <summary>A repo-relative directory path: forward-slash separated, never rooted, never
-/// containing a <c>..</c> segment — the constructor throws <see cref="InvalidInputException"/>
-/// otherwise. Any <c>RepoRelativePath</c> that exists is therefore safe to
-/// <see cref="System.IO.Path.Combine(string, string)"/> onto a trusted base directory and to hand
-/// to <c>git sparse-checkout set</c>.</summary>
-internal sealed record RepoRelativePath
+/// <summary>A relative path to a directory strictly below some base directory: never rooted, never
+/// containing a <c>..</c> segment and never naming the base itself — the constructor throws
+/// <see cref="InvalidInputException"/> otherwise. Any <c>SubDirectoryPath</c> that exists is
+/// therefore safe to <see cref="System.IO.Path.Combine(string, string)"/> onto a trusted base
+/// directory without escaping it. Stored with <c>/</c> separators, which both .NET and git
+/// accept.</summary>
+internal sealed record SubDirectoryPath
 {
     internal string Value { get; }
 
-    /// <summary>The single source of truth for the format rule. Normalises separators to <c>/</c>,
-    /// strips a leading <c>./</c>, collapses repeated slashes and trims leading/trailing ones, then
-    /// rejects anything rooted or containing a <c>..</c> segment (path traversal).</summary>
-    internal RepoRelativePath(string path)
+    /// <summary>The single source of truth for the format rule. Rejects rooted paths, normalises
+    /// separators to <c>/</c>, drops the empty and <c>.</c> segments a leading <c>./</c> or
+    /// repeated/trailing slashes leave, then rejects what remains if it is empty (the base itself)
+    /// or contains a <c>..</c> segment (path traversal).</summary>
+    internal SubDirectoryPath(string path)
     {
-        var trimmed = (path ?? string.Empty).Trim();
-        if (trimmed.Length == 0)
-            throw new InvalidInputException("must not be empty");
-
-        var normalised = trimmed.Replace('\\', '/');
+        var normalised = path.Trim().Replace('\\', '/');
         if (Path.IsPathRooted(normalised))
             throw new InvalidInputException($"must be repo-relative, not rooted: '{path}'");
 
@@ -147,7 +145,7 @@ internal sealed record RepoRelativePath
 
         if (segments.Length == 0)
             throw new InvalidInputException($"does not name a directory inside the repo: '{path}'");
-        if (Array.IndexOf(segments, "..") >= 0)
+        if (segments.Contains(".."))
             throw new InvalidInputException($"must not contain a '..' segment: '{path}'");
 
         Value = string.Join('/', segments);

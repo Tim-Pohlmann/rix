@@ -43,23 +43,7 @@ internal static class ProcessWrapper
         CancellationToken cancellationToken = default
     )
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = fileName,
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-
-        foreach (var arg in arguments)
-            startInfo.ArgumentList.Add(arg);
-
-        if (environmentOverrides is not null)
-        {
-            foreach (var (key, value) in environmentOverrides)
-                startInfo.Environment[key] = value;
-        }
+        var startInfo = BuildStartInfo(fileName, arguments, workingDirectory, environmentOverrides);
 
         using var process = new System.Diagnostics.Process { StartInfo = startInfo };
         try { process.Start(); }
@@ -109,6 +93,49 @@ internal static class ProcessWrapper
         if (process.ExitCode == 0)
             return new ProcessSuccess(lastLine);
         return new ProcessFailure($"exited with code {process.ExitCode}", Diagnostic: lastErrLine ?? lastLine);
+    }
+
+    /// <summary>Builds the child's start info: its executable, argument list, working directory and
+    /// environment. Internal (rather than inlined into <see cref="RunAsync"/>) so the PWD guarantee
+    /// below can be pinned down directly and deterministically, on every platform - a real child
+    /// can't be used to observe it, because a POSIX shell overwrites PWD from getcwd() on startup
+    /// and so reports the right answer either way.</summary>
+    internal static ProcessStartInfo BuildStartInfo
+    (
+        string fileName,
+        IEnumerable<string> arguments,
+        string workingDirectory,
+        IReadOnlyDictionary<string, string>? environmentOverrides
+    )
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        foreach (var arg in arguments)
+            startInfo.ArgumentList.Add(arg);
+
+        if (environmentOverrides is not null)
+        {
+            foreach (var (key, value) in environmentOverrides)
+                startInfo.Environment[key] = value;
+        }
+
+        // WorkingDirectory sets the child's real cwd but leaves the PWD it inherits pointing at
+        // rix's own, and a tool that trusts PWD over getcwd() then works in an entirely different
+        // directory. opencode does exactly that: the coding agent edited and committed in whatever
+        // directory rix was launched from rather than the clone it was handed - on CI, the runner's
+        // own checkout - which only ever surfaced because POST /pr rejects a branch that is missing
+        // from the clone. A POSIX shell keeps the two in step on every cd; so does this, once here
+        // instead of per-caller. Applied after the overrides because the invariant is that PWD and
+        // the working directory never disagree, not something a caller should be able to desync.
+        startInfo.Environment["PWD"] = Path.GetFullPath(workingDirectory);
+        return startInfo;
     }
 
     /// <summary>Wraps <paramref name="callback"/> so calls through the returned delegate never

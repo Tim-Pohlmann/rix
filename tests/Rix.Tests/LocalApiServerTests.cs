@@ -50,10 +50,10 @@ public class LocalApiServerTests
     => JsonSerializer.Deserialize<T>(await response.Content.ReadAsStringAsync(), JsonOpts)!;
 
     private static async Task<string> ReadErrorAsync(HttpResponseMessage response)
-    => (await ReadJsonAsync<Dictionary<string, string>>(response))["error"];
+    => (await ReadJsonAsync<ErrorResponse>(response)).Error;
 
     private static async Task<string> ReadStatusAsync(HttpResponseMessage response)
-    => (await ReadJsonAsync<Dictionary<string, string>>(response))["status"];
+    => (await ReadJsonAsync<QueuedResponse>(response)).Status;
 
     [TestMethod]
     public async Task GetHealth_Returns200()
@@ -431,6 +431,20 @@ public class LocalApiServerTests
         Assert.AreEqual(1, result.Count);
         Assert.AreEqual("rix/feat", result[0]["branch"]);
         Assert.AreEqual("main", result[0]["baseBranch"]);
+    }
+
+    [TestMethod]
+    public async Task GetPush_ListsPushesInQueuedOrder()
+    {
+        string[] branches = ["rix/zeta", "rix/alpha", "rix/mid"];
+        await using var server = await StartAsync(FakeHost(true), [.. branches.Select(b => new BranchName(b))]);
+
+        foreach (var branch in branches)
+            await PostPushAsync(server, branch);
+
+        var listed = await ReadJsonAsync<List<Dictionary<string, string>>>(await GetAsync(server, "/push"));
+        CollectionAssert.AreEqual(branches, listed.Select(push => push["branch"]).ToArray());
+        CollectionAssert.AreEqual(branches, server.GetQueuedPushRequests().Select(push => push.Branch.Value).ToArray());
     }
 
     [TestMethod]

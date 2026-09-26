@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The result rix ci-failure prints: a check that never reached the agent, or the job it ran.",
+  "type": "object",
+  "required": [
+    "status"
+  ],
+  "anyOf": [
+    {
+      "properties": {
+        "status": {
+          "const": "skipped"
+        },
+        "outcome": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "outcome"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "loopGuarded"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "rixCommits": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "branch",
+        "rixCommits"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "untrustedRun"
+        },
+        "headRepo": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "headRepo",
+        "branch"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "error"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "success"
+        },
+        "pendingPrRequests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "branch": {
+                "type": "string"
+              },
+              "baseBranch": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "bundleFile": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "branch",
+              "baseBranch",
+              "title",
+              "body",
+              "bundleFile"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "pendingPushRequests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "branch": {
+                "type": "string"
+              },
+              "baseBranch": {
+                "type": "string"
+              },
+              "bundleFile": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "branch",
+              "baseBranch",
+              "bundleFile"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "costUsd": {
+          "type": "number"
+        },
+        "durationSeconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "pendingPrRequests",
+        "pendingPushRequests",
+        "costUsd",
+        "durationSeconds"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "failure"
+        },
+        "error": {
+          "type": "string"
+        },
+        "costUsd": {
+          "type": "number"
+        },
+        "durationSeconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "error",
+        "costUsd",
+        "durationSeconds"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "setupFailure"
+        },
+        "error": {
+          "type": "string"
+        },
+        "costUsd": {
+          "type": "number"
+        },
+        "durationSeconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "error",
+        "costUsd",
+        "durationSeconds"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

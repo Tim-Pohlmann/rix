@@ -37,6 +37,7 @@
 # and network access to install/run the real agent CLIs via npm.
 
 setup() {
+  load ../scripts/result-schema
   : "${RIX_BIN:?RIX_BIN must point at a built rix binary}"
   : "${RIX_REPO:?RIX_REPO must name a real GitHub repo to clone (e.g. Tim-Pohlmann/rix)}"
   : "${RIX_READ_TOKEN:?RIX_READ_TOKEN must be a GitHub token with read access to RIX_REPO}"
@@ -44,10 +45,33 @@ setup() {
   export RIX_OUTPUT_DIR="$BATS_TEST_TMPDIR/out"
   export RIX_WORK_DIR="$BATS_TEST_TMPDIR/work"
   mkdir -p "$RIX_OUTPUT_DIR" "$RIX_WORK_DIR"
+
+  # Made absolute while the caller's directory is still the current one, so a relative RIX_BIN -
+  # ./rix-bin/rix is the layout the e2e workflow job produces, and the obvious thing to type when
+  # running these by hand - names the same binary after the cd below. A bare command name is left
+  # alone: that one is for $PATH to resolve, not this.
+  case "$RIX_BIN" in
+    /*) ;;
+    */*) RIX_BIN="$PWD/$RIX_BIN" ;;
+  esac
+  export RIX_BIN
+
+  # rix is launched from a directory of this test's own, never from wherever bats was started. rix
+  # hands the agent its clone as a working directory, but an agent CLI that resolves its directory
+  # some other way (opencode reads PWD - see ProcessWrapper.BuildStartInfo) would otherwise act on
+  # the caller's checkout, and the tests below have the agent commit and write files. This keeps
+  # that blast radius inside $BATS_TEST_TMPDIR whatever the CLI does with the directory it is given.
+  cd "$BATS_TEST_TMPDIR" || return 1
 }
 
 teardown() {
   unset RIX_AGENT RIX_MODEL OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY
+}
+
+# The real binary's output is the one thing the schema can be checked against that nobody wrote by
+# hand - fixtures elsewhere only prove the bash agrees with the schema.
+assert_result_matches_schema() {
+  assert_matches_schema job-result.schema.json "$(cat "$RIX_OUTPUT_DIR/result.json")"
 }
 
 result_field() {
@@ -64,6 +88,7 @@ diagnostic_of() {
   export RIX_AGENT=opencode
   run "$RIX_BIN" job
   [ "$status" -eq 0 ]
+  assert_result_matches_schema
   [ "$(result_field status)" = success ]
 }
 
@@ -71,6 +96,7 @@ diagnostic_of() {
   export RIX_AGENT=claude RIX_MODEL=claude-opus-4-1
   run "$RIX_BIN" job
   [ "$status" -eq 1 ]
+  assert_result_matches_schema
   [ "$(result_field status)" = failure ]
   diagnostic="$(result_field error | diagnostic_of)"
   echo "$diagnostic" | jq empty
@@ -81,6 +107,7 @@ diagnostic_of() {
   export RIX_AGENT=pi
   run "$RIX_BIN" job
   [ "$status" -eq 1 ]
+  assert_result_matches_schema
   [ "$(result_field status)" = failure ]
   # See the file header for why this is a .md path rather than JSON, and why it needs trimming.
   diagnostic="$(result_field error | diagnostic_of | xargs)"
@@ -94,6 +121,46 @@ diagnostic_of() {
   run "$RIX_BIN" job
   # See the file header: pi swallows a per-turn auth error into its JSON stream and still exits 0.
   [ "$status" -eq 0 ]
+  assert_result_matches_schema
   [ "$(result_field status)" = success ]
   [ "$(result_field pendingPrRequests | jq 'length')" = 0 ]
+}
+
+# Every test above tells the agent *not* to call /pr, so nothing here had ever exercised the one
+# path the whole job exists for: the agent commits work, POSTs it, and rix turns that into a bundle
+# on disk. That path spans the local API server, the /pr guards, and JobRunner's delivery step, and
+# until now only in-process tests (JobRunnerTests) covered it - with a fake agent POSTing on the
+# real agent's behalf, so nothing proved a real agent can drive it from the system prompt alone.
+#
+# opencode is the agent used because it is the only one that runs here without a key (see the first
+# test above). The prompt is deliberately step-by-step, naming the exact git commands and the exact
+# JSON body: this asserts that the endpoint and the delivery path work, not that a free default
+# model can plan a PR unaided - that would make the test a model-quality benchmark and fail for
+# reasons that are nothing to do with rix.
+@test "opencode can commit a branch and queue a PR that rix bundles" {
+  export RIX_AGENT=opencode
+  # rix/e2e-pr-check must not exist on the remote or POST /pr answers 409 (see HandlePrAsync).
+  # Nothing in the job path pushes, so running this test never creates it.
+  export RIX_PROMPT='Do exactly these four steps in your working directory, then stop.
+1. Run: git checkout -b rix/e2e-pr-check
+2. Run: printf "rix e2e\n" > rix-e2e-check.txt
+3. Run: git add rix-e2e-check.txt && git commit -m "rix e2e check"
+4. POST to the pull request endpoint of the local API with exactly this JSON body:
+   {"branch":"rix/e2e-pr-check","baseBranch":"main","title":"rix e2e check","body":"queued by the rix job e2e test"}
+Make no other changes and run no other commands.'
+
+  run "$RIX_BIN" job
+  [ "$status" -eq 0 ]
+  [ "$(result_field status)" = success ]
+  [ "$(result_field pendingPrRequests | jq 'length')" = 1 ]
+  [ "$(result_field 'pendingPrRequests[0].branch')" = rix/e2e-pr-check ]
+  [ "$(result_field 'pendingPrRequests[0].baseBranch')" = main ]
+
+  # The queue entry alone would pass even if bundling silently produced nothing, so check the
+  # artifact `rix submit` would later consume: a real bundle, carrying the agent's branch.
+  bundle="$RIX_OUTPUT_DIR/$(result_field 'pendingPrRequests[0].bundleFile')"
+  [ -f "$bundle" ]
+  run git bundle list-heads "$bundle"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *refs/heads/rix/e2e-pr-check* ]]
 }

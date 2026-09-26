@@ -5,6 +5,7 @@
 # cases - no network.
 
 setup() {
+  load result-schema
   source "${BATS_TEST_DIRNAME}/../../.github/actions/post-job-summary/post-job-summary.sh"
   export GITHUB_STEP_SUMMARY="$BATS_TEST_TMPDIR/step-summary.md"
   RESULT="$BATS_TEST_TMPDIR/result.json"
@@ -22,10 +23,12 @@ summary() {
 }
 
 write_result() {
+  assert_matches_schema job-result.schema.json "$1"
   printf '%s' "$1" > "$RESULT"
 }
 
 write_submit() {
+  assert_matches_schema submit-result.schema.json "$1"
   printf '%s' "$1" > "$SUBMIT"
 }
 
@@ -36,8 +39,8 @@ write_submit() {
 }
 
 @test "success renders status, cost, duration and created pull requests" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0.42,"durationSeconds":372}'
-  write_submit '{"status":"success","createdPrs":[{"branch":"rix/my-fix","url":"https://github.com/owner/repo/pull/12"}]}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0.42,"durationSeconds":372}'
+  write_submit '{"status":"success","createdPrs":[{"branch":"rix/my-fix","url":"https://github.com/owner/repo/pull/12"}],"pushedBranches":[]}'
 
   run rix_post_job_summary "$RESULT" "$SUBMIT"
 
@@ -51,8 +54,8 @@ write_submit() {
 }
 
 @test "success with no pull requests omits the pull-request section" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
-  write_submit '{"status":"success","createdPrs":[]}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_submit '{"status":"success","createdPrs":[],"pushedBranches":[]}'
 
   run rix_post_job_summary "$RESULT" "$SUBMIT"
 
@@ -73,8 +76,8 @@ write_submit() {
 }
 
 @test "success with no pushed branches omits the pushed-branches section" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
-  write_submit '{"status":"success","createdPrs":[]}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_submit '{"status":"success","createdPrs":[],"pushedBranches":[]}'
 
   run rix_post_job_summary "$RESULT" "$SUBMIT"
 
@@ -93,7 +96,7 @@ write_submit() {
 }
 
 @test "submit failure is rendered from the error log when no submit result exists" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
   printf 'branch already exists on remote: rix/my-fix' > "$ERROR_LOG"
 
   run rix_post_job_summary "$RESULT" "" "$ERROR_LOG"
@@ -105,7 +108,7 @@ write_submit() {
 }
 
 @test "submit failure is rendered from a present submit result" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
   write_submit '{"status":"failure","error":"creating PR for rix/my-fix failed"}'
 
   run rix_post_job_summary "$RESULT" "$SUBMIT"
@@ -117,7 +120,7 @@ write_submit() {
 }
 
 @test "submit failure is rendered from the error log when submit result is empty" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
   : > "$SUBMIT"
   printf 'panic: rix submit crashed' > "$ERROR_LOG"
 
@@ -130,7 +133,7 @@ write_submit() {
 }
 
 @test "transcript renders as a collapsible details section" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
   write_transcript '# Session transcript
 
 assistant: explored the codebase and applied the fix
@@ -146,7 +149,7 @@ assistant: explored the codebase and applied the fix
 }
 
 @test "transcript with HTML-sensitive characters is escaped so it can't break the details block" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
   write_transcript 'a </details> <script>alert(1)</script> & b'
 
   run rix_post_job_summary "$RESULT" "" "" "$TRANSCRIPT"
@@ -157,7 +160,7 @@ assistant: explored the codebase and applied the fix
 }
 
 @test "transcript is omitted when the arg is empty, missing, or the file is empty" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
 
   run rix_post_job_summary "$RESULT" "" "" ""
 
@@ -177,7 +180,7 @@ assistant: explored the codebase and applied the fix
 }
 
 @test "transcript larger than 900000 bytes is truncated and points at the rix-output artifact" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
   # First 900000 bytes are 'a's, the overflowing tail is 'b's, so the summary's truncated content
   # and the cut-off tail are distinguishable from each other.
   head -c 900000 /dev/zero | tr '\0' 'a' > "$TRANSCRIPT"
@@ -192,7 +195,7 @@ assistant: explored the codebase and applied the fix
 }
 
 @test "transcript of at most 900000 bytes renders in full with no artifact pointer" {
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
   head -c 900000 /dev/zero | tr '\0' 'a' > "$TRANSCRIPT"
 
   run rix_post_job_summary "$RESULT" "" "" "$TRANSCRIPT"
@@ -207,7 +210,7 @@ assistant: explored the codebase and applied the fix
   # can't catch a local left unbound on some code path. Invoke the real script as a subprocess,
   # exactly like the composite action does for a plain `rix job` run (no submit step, so both
   # submit args are ""), to reproduce that class of bug.
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
 
   run bash "${BATS_TEST_DIRNAME}/../../.github/actions/post-job-summary/post-job-summary.sh" "$RESULT" "" ""
 
@@ -225,7 +228,7 @@ assistant: explored the codebase and applied the fix
 
 @test "without GITHUB_STEP_SUMMARY exits 0 and writes nothing" {
   unset GITHUB_STEP_SUMMARY
-  write_result '{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}'
+  write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
 
   run rix_post_job_summary "$RESULT"
 

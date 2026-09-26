@@ -45,9 +45,11 @@ jobs:
         run: shellcheck .github/scripts/*.sh .github/actions/*/*.sh
 
       - name: Run bats tests
+        # python3-jsonschema checks every hand-written rix result fixture against schemas/ (see
+        # tests/scripts/result-schema.bash).
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats python3-jsonschema
           bats tests/scripts
 
       - name: Check the workflow binary pin matches the version
@@ -57,7 +59,7 @@ jobs:
         # still parses these actions' arguments) rather than loudly, hence a check here.
         run: |
           csproj="v$(grep -oPm1 '(?<=<Version>)[^<]+' src/Rix/Rix.csproj)"
-          pin="$(grep -oPm1 '(?<=^    default: ).+' .github/actions/download-rix/action.yml)"
+          pin="$(grep -oPm1 "(?<=inputs\.rix-version \|\| ')[^']+" .github/actions/download-rix/action.yml)"
           if [[ "$csproj" != "$pin" ]]; then
             echo "download-rix rix-version default ($pin) does not match src/Rix/Rix.csproj ($csproj)" >&2
             exit 1
@@ -159,6 +161,233 @@ jobs:
           input-dir: out
           rix-bin: ${{ env.RIX_BIN_PATH }}
 
+  ci-failure-plumbing:
+    name: CI-failure plumbing
+    runs-on: ubuntu-latest
+    needs: build-rix
+    permissions:
+      contents: read
+      # run-ci-failure reads the workflow run's metadata through the Actions API, which
+      # contents:read does not cover.
+      actions: read
+    env:
+      RIX_BIN_PATH: ${{ github.workspace }}/rix-bin/rix
+
+    # agent-plumbing's counterpart for the other composite action: runs the real
+    # .github/actions/run-ci-failure (the one on-ci-failure.yml drives) against this very run,
+    # using the binary build-rix published from this PR's own source. This run has not concluded
+    # while it is checking itself, so rix stops at `skipped` well before the agent - which is the
+    # point. What is covered here is the layer above the agent: the inputs every caller leaves
+    # alone, resolved and forwarded for real. Nothing else in CI calls this action, which is how a
+    # max-rix-commits default that failed 100% of unconfigured runs got as far as review.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
+
+      - name: Run rix ci-failure against this in-progress run
+        id: ci-failure
+        uses: ./.github/actions/run-ci-failure
+        with:
+          repo: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          read-token: ${{ github.token }}
+          agent: opencode
+          # All three are 0 rather than omitted, for the reason spelled out on agent-plumbing's
+          # max-tokens above: 0 is what on-ci-failure.yml's workflow_call inputs resolve to for a
+          # caller who leaves them alone, and rix rejects an explicit 0 for every one of them. A
+          # regression that forwards it therefore fails here - "--max-rix-commits must be between
+          # 1 and 100, got '0'" - instead of in every unconfigured production run. Omitting them
+          # would only exercise the empty-string path, which never reaches that validation.
+          max-rix-commits: 0
+          max-tokens: 0
+          timeout: 0
+          rix-bin: ${{ env.RIX_BIN_PATH }}
+
+      - name: Assert the unfinished run was skipped, not answered
+        env:
+          HAS_RESULT: ${{ steps.ci-failure.outputs.has-result }}
+        run: |
+          # The step above already fails on a rejected input or an API error, so this only pins
+          # down the decision: a run with no conclusion yet is not a failure to answer, and a
+          # has-result of true would mean rix had started an agent against one.
+          [[ "$HAS_RESULT" == "false" ]] || { echo "expected has-result=false, got '$HAS_RESULT'" >&2; exit 1; }
+
+  ci-failure-statuses:
+    name: CI-failure status (${{ matrix.case.name }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Read by the stub below, which the action invokes as its rix binary. Job-level env reaches
+      # a composite action's own run steps, so the stub sees these without run-ci-failure having
+      # to forward anything.
+      STUB_STDOUT: ${{ matrix.case.stdout }}
+      STUB_EXIT: ${{ matrix.case.exit }}
+      STUB_WRITES_RESULT: ${{ matrix.case.writes-result }}
+
+    # ci-failure-plumbing above drives the real binary, which - checking the run it is part of -
+    # can only ever reach `skipped`. Every other arm of run-ci-failure's `case` needs rix to print
+    # a result no workflow can arrange for real: a branch already carrying rix's own commits, an
+    # Actions API error, a status a newer release invented. The action already accepts a `rix-bin`
+    # path, so each case here points it at a stub that prints one canned result and exits with a
+    # chosen code - no token, no agent, no network, no clone. What that buys over
+    # ci-failure-result-fields-style extraction of the bash out of the YAML is that the decision is
+    # read back through the action's real interface: the `has-result` output on-ci-failure.yml
+    # gates create-pr with, and whether the step fails at all.
+    #
+    # Not covered here: the ::notice::/::error:: text itself, and so escape_workflow_command. A
+    # step's annotations are not readable by a later step in the same job, so pinning that would
+    # mean fetching this run's own log back through the API.
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          # `outcome` is the run step's own result, read through continue-on-error below; the
+          # `case` arms that only annotate leave rix's exit code alone, so the step passes.
+          - name: skipped
+            stdout: '{"status":"skipped","outcome":"succeeded"}'
+            exit: 0
+            has-result: 'false'
+            outcome: success
+            writes-result: 'false'
+
+          - name: loopGuarded
+            stdout: '{"status":"loopGuarded","rixCommits":5,"branch":"rix/fix-the-thing"}'
+            exit: 0
+            has-result: 'false'
+            outcome: success
+            writes-result: 'false'
+
+          # rix reports an API/setup problem of its own and exits non-zero; the action turns that
+          # into an ::error:: and passes the code through.
+          - name: error
+            stdout: '{"status":"error","error":"read token lacks actions:read"}'
+            exit: 1
+            has-result: 'false'
+            outcome: failure
+            writes-result: 'false'
+
+          # The agent ran and the job failed. No annotation of its own - rix's non-zero exit is
+          # what fails the step, and has-result stays false so create-pr is skipped.
+          - name: failure
+            stdout: '{"status":"failure","error":"agent failed: exited with code 1","costUsd":0.0123,"durationSeconds":42}'
+            exit: 1
+            has-result: 'false'
+            outcome: failure
+            writes-result: 'false'
+
+          - name: setupFailure
+            stdout: '{"status":"setupFailure","error":"--max-tokens must be a positive integer","costUsd":0,"durationSeconds":0}'
+            exit: 1
+            has-result: 'false'
+            outcome: failure
+            writes-result: 'false'
+
+          # The one arm that sets has-result=true, and so the only one create-pr would run after.
+          - name: success
+            stdout: '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0.0123,"durationSeconds":42}'
+            exit: 0
+            has-result: 'true'
+            outcome: success
+            writes-result: 'true'
+
+          # The `*)` arm, and the reason it overrides rix's exit code: a binary newer than this
+          # action emits a status it has no arm for, having succeeded on its own terms and exited
+          # 0. Inheriting that 0 would leave a green job that submitted nothing, so the step must
+          # fail even though the stub exits 0. Nothing else in CI covers this.
+          - name: unrecognized status, rix exited 0
+            stdout: '{"status":"inventedByANewerRelease"}'
+            exit: 0
+            has-result: 'false'
+            outcome: failure
+            writes-result: 'false'
+            # Off the schema on purpose - it stands in for a release this repo hasn't seen.
+            off-schema: true
+
+    steps:
+      # Only the composite actions, plus the schema check below - no rix source, and no binary to
+      # download.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions
+            tests/scripts/result-schema.bash
+            schemas
+          sparse-checkout-cone-mode: false
+
+      # A canned result that has drifted from what rix prints would keep passing here while
+      # proving nothing about the real one, so each is checked against the schema generated from
+      # rix's result types first.
+      - name: Check the canned result is one rix could print
+        if: ${{ !matrix.case.off-schema }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-jsonschema
+          source tests/scripts/result-schema.bash
+          assert_matches_schema ci-failure-output.schema.json "$STUB_STDOUT"
+
+      - name: Write the stub rix binary
+        run: |
+          cat > stub-rix <<'STUB'
+          #!/usr/bin/env bash
+          # Stands in for the rix binary: ignores its arguments, prints one canned ci-failure
+          # result on stdout the way rix does on every exit code, and exits with the code the
+          # matrix asked for.
+          set -euo pipefail
+          # Only a run that got as far as the agent leaves a result.json behind, so write one
+          # just where rix would have - the action reads it back in its post-job-summary step.
+          if [[ "${STUB_WRITES_RESULT:-}" == "true" ]]; then
+            mkdir -p out
+            printf '%s' "$STUB_STDOUT" > out/result.json
+          fi
+          printf '%s\n' "$STUB_STDOUT"
+          exit "$STUB_EXIT"
+          STUB
+          chmod +x stub-rix
+
+      - name: Run rix ci-failure with the stub binary
+        id: ci-failure
+        # Several cases expect this step to fail; the assertion below reads the real result out of
+        # steps.ci-failure.outcome rather than letting it end the job.
+        continue-on-error: true
+        uses: ./.github/actions/run-ci-failure
+        with:
+          repo: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          # The stub makes no API call, so this only has to be non-empty.
+          read-token: ${{ github.token }}
+          agent: opencode
+          rix-bin: ${{ github.workspace }}/stub-rix
+
+      - name: Assert the action's decision matches the result it was handed
+        env:
+          EXPECTED_HAS_RESULT: ${{ matrix.case.has-result }}
+          EXPECTED_OUTCOME: ${{ matrix.case.outcome }}
+          ACTUAL_HAS_RESULT: ${{ steps.ci-failure.outputs.has-result }}
+          ACTUAL_OUTCOME: ${{ steps.ci-failure.outcome }}
+        run: |
+          failed=0
+          if [[ "$ACTUAL_HAS_RESULT" != "$EXPECTED_HAS_RESULT" ]]; then
+            echo "has-result: expected '$EXPECTED_HAS_RESULT', got '$ACTUAL_HAS_RESULT'" >&2
+            failed=1
+          fi
+          if [[ "$ACTUAL_OUTCOME" != "$EXPECTED_OUTCOME" ]]; then
+            echo "step outcome: expected '$EXPECTED_OUTCOME', got '$ACTUAL_OUTCOME'" >&2
+            failed=1
+          fi
+          exit "$failed"
+
   rix-job-e2e:
     name: rix job e2e
     runs-on: ubuntu-latest
@@ -177,7 +406,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: tests/e2e
+          # schemas/ and the helper that reads it, so the real binary's result.json is checked
+          # against the same schema the hand-written fixtures are.
+          sparse-checkout: |
+            tests/e2e
+            tests/scripts/result-schema.bash
+            schemas
           sparse-checkout-cone-mode: false
 
       - name: Setup Node (rix installs the coding agent CLI via npm)
@@ -197,7 +431,7 @@ jobs:
       - name: Install bats
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats python3-jsonschema
 
       - name: Run rix job e2e tests
         # rix forwards every line the agent CLI prints to stderr (see JobRunner.ForwardLine), and
@@ -205,6 +439,215 @@ jobs:
         # so a failing assertion here comes with the agent's actual raw output instead of just the
         # failed jq/status check.
         run: bats --print-output-on-failure tests/e2e
+
+  download-rix:
+    name: Download rix (release path)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    # The only job that exercises download-rix's actual download. agent-plumbing and rix-job-e2e
+    # both hand the actions a locally built binary via rix-bin - which is exactly what
+    # download-rix's steps are gated against - so its version resolution, checksum verification
+    # and extraction otherwise run nowhere in CI. That gap is why an empty rix-version silently
+    # resolving to "latest" survived: the one action that was broken is the one CI never ran.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Check whether the pinned release is published yet
+        id: pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pin="$(grep -oPm1 "(?<=inputs\.rix-version \|\| ')[^']+" .github/actions/download-rix/action.yml)"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+          # A version-bump PR names a release that Release only cuts after that PR has merged, so
+          # between the two the pin legitimately points at nothing. Skip there rather than fail
+          # every bump PR - the explicit-version step below still covers the download itself.
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$pin" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Pinned release $pin is not published yet - skipped the default-version download."
+          fi
+
+      # No `with:` at all - the path every caller takes, and the one that used to reach for
+      # whatever release was newest instead of this action's own.
+      - name: Download the pinned release (rix-version omitted)
+        if: steps.pin.outputs.published == 'true'
+        uses: ./.github/actions/download-rix
+
+      - name: Assert the pinned binary landed
+        if: steps.pin.outputs.published == 'true'
+        env:
+          PIN: ${{ steps.pin.outputs.pin }}
+        run: |
+          [[ -n "${RIX_BIN:-}" ]] || { echo "download-rix exported no RIX_BIN" >&2; exit 1; }
+          [[ -x "$RIX_BIN" ]] || { echo "RIX_BIN=$RIX_BIN is not executable" >&2; exit 1; }
+          echo "Pinned ($PIN) download OK: $RIX_BIN"
+
+      - name: Clear the first download
+        run: rm -rf rix-bin rix-archive.*
+
+      # Covers the download, checksum and extraction unconditionally, including on the bump PRs
+      # where the step above skips.
+      - name: Download an explicitly requested release
+        uses: ./.github/actions/download-rix
+        with:
+          rix-version: latest
+
+      - name: Assert the explicitly requested binary landed
+        run: |
+          [[ -n "${RIX_BIN:-}" ]] || { echo "download-rix exported no RIX_BIN" >&2; exit 1; }
+          [[ -x "$RIX_BIN" ]] || { echo "RIX_BIN=$RIX_BIN is not executable" >&2; exit 1; }
+          echo "Explicit download OK: $RIX_BIN"
+
+  initialize-templates:
+    name: Initialize templates (actionlint)
+    runs-on: ubuntu-latest
+    needs: build-rix
+    permissions:
+      contents: read
+
+    # `rix initialize` writes caller workflows into someone else's repo, and nothing checked that
+    # what it writes is valid GitHub Actions YAML, or that it still fits the reusable workflows it
+    # calls. InitializeRunnerTests covers which files land and where, and WorkflowTemplatesTests
+    # that the ref placeholder is substituted, but the templates are embedded resources - no C# test
+    # can tell whether Actions would accept them. A broken one is invisible here and surfaces in a
+    # consumer repo at the moment they adopt rix, which is the worst place to find out.
+    steps:
+      # Only the reusable workflows, which the contract check below reads as the callee side.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/workflows
+          sparse-checkout-cone-mode: false
+
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
+
+      - name: Write the caller workflows into an empty target
+        run: |
+          # --dir must already exist (DirectoryPath rejects a missing one); the .github/workflows
+          # path under it is rix's to create.
+          mkdir -p init-out
+          ./rix-bin/rix initialize --dir init-out
+
+          # Compared as a set, not file by file: the steps below glob whatever is there, so a new
+          # template would otherwise sail through them without anyone deciding what else it needs.
+          # Every path, not just the names, so a template written somewhere unexpected fails too.
+          # LC_ALL=C because a locale that ignores punctuation while sorting orders rix.yml and
+          # rix-on-ci-failure.yml the other way round.
+          expected=$'init-out/.github/workflows/rix-on-ci-failure.yml\ninit-out/.github/workflows/rix.yml'
+          actual="$(find init-out -type f | LC_ALL=C sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "rix initialize wrote a different set of files than this job expects (< expected, > actual):" >&2
+            diff <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") >&2 || true
+            exit 1
+          fi
+
+          # A template that failed to substitute would still be valid YAML, so actionlint below
+          # would pass it - and every `uses:` in it would resolve to a ref that cannot exist.
+          if grep -rn '__RIX_REF__' init-out; then
+            echo "a template reached the target repo with its ref placeholder unsubstituted" >&2
+            exit 1
+          fi
+
+      - name: Ensure the contract check has a YAML parser
+        # ubuntu-latest ships python3-yaml today (this job's first run proved it), so this is
+        # normally a no-op that costs nothing. It's here so the check below depends on a package it
+        # asked for rather than on an image detail: an image that stopped shipping it would
+        # otherwise fail on the import, with neither template checked and nothing saying why.
+        run: |
+          python3 -c 'import yaml' || {
+            sudo apt-get update
+            sudo apt-get install -y python3-yaml
+          }
+
+      # actionlint checks each file on its own; nothing checks that what a caller passes is what
+      # the workflow it calls accepts. That pairing is only broken by editing one side - rename an
+      # input, or make a new one required - and the templates are re-emitted at each release
+      # pointing at that release's own workflows, so the drift ships to consumers as a workflow
+      # that fails on its first run. Compared against the reusable workflows in this checkout
+      # rather than the published ones the `uses:` ref names, because this commit is what the next
+      # release will tag: the drift has to fail here, where it was introduced.
+      - name: Check each caller against the reusable workflow it calls
+        run: |
+          python3 - <<'PY'
+          import glob
+          import sys
+          import yaml
+
+
+          def triggers(workflow):
+              # yaml reads an unquoted `on:` key as the boolean True.
+              return workflow.get(True, workflow.get("on"))
+
+
+          def declared(workflow_path):
+              call = triggers(yaml.safe_load(open(workflow_path)))["workflow_call"]
+              return (call.get("inputs") or {}), (call.get("secrets") or {})
+
+
+          def required(declarations):
+              return {name for name, spec in declarations.items() if (spec or {}).get("required")}
+
+
+          errors = []
+          for caller_path in sorted(glob.glob("init-out/.github/workflows/*.yml")):
+              caller = yaml.safe_load(open(caller_path))
+              for job_name, job in caller["jobs"].items():
+                  uses = job.get("uses")
+                  if uses is None:
+                      errors.append(f"{caller_path}: job {job_name} calls no reusable workflow")
+                      continue
+                  repo_and_path, _, ref = uses.partition("@")
+                  owner, repo, callee_path = repo_and_path.split("/", 2)
+                  if f"{owner}/{repo}" != "Tim-Pohlmann/rix":
+                      errors.append(f"{caller_path}: job {job_name} calls {owner}/{repo}, not this repository")
+                      continue
+                  if not ref:
+                      errors.append(f"{caller_path}: job {job_name} calls {callee_path} with no ref")
+                      continue
+
+                  inputs, secrets = declared(callee_path)
+                  passed_inputs = job.get("with") or {}
+                  passed_secrets = job.get("secrets") or {}
+                  # `secrets: inherit` passes everything and names nothing, so there is no pairing
+                  # left to check on that side.
+                  inherited = passed_secrets == "inherit"
+
+                  for name in sorted(set(passed_inputs) - set(inputs)):
+                      errors.append(f"{caller_path}: passes input '{name}', which {callee_path} does not declare")
+                  for name in sorted(required(inputs) - set(passed_inputs)):
+                      errors.append(f"{caller_path}: does not pass '{name}', a required input of {callee_path}")
+                  if not inherited:
+                      for name in sorted(set(passed_secrets) - set(secrets)):
+                          errors.append(f"{caller_path}: passes secret '{name}', which {callee_path} does not declare")
+                      for name in sorted(required(secrets) - set(passed_secrets)):
+                          errors.append(f"{caller_path}: does not pass '{name}', a required secret of {callee_path}")
+
+          for error in errors:
+              print(error, file=sys.stderr)
+          sys.exit(1 if errors else 0)
+          PY
+
+      - name: Lint the written workflows (actionlint)
+        uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
+        with:
+          files: init-out/.github/workflows/*.yml
+          # The matcher annotates a PR's changed lines, which these files are not - they are
+          # generated into a scratch directory, so annotations would point at paths that do not
+          # exist in the repo.
+          matcher: false
 
   test:
     name: Test (${{ matrix.os }})

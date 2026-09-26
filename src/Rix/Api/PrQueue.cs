@@ -6,21 +6,18 @@ namespace Rix.Api;
 /// to submit as-is.</summary>
 internal sealed class PrQueue() : BranchQueue<QueuedPr>("PR", pr => pr.Branch)
 {
-    protected override string? Admit(List<QueuedPr> items, QueuedPr pr)
+    protected override IReadOnlyList<QueuedPr> Order(IReadOnlyList<QueuedPr> candidate)
     {
-        // pr can create a transitive dependency between two already-queued items that were
-        // previously unrelated (e.g. pr's base is one item and another item depends on pr),
+        // The new PR can create a transitive dependency between two already-queued items that were
+        // previously unrelated (e.g. its base is one item and another item depends on it),
         // which can require reordering those existing items relative to each other - not
-        // just placing pr among them. So the whole order has to be re-derived from all the
-        // constraints together, rather than only checking pr's own immediate bounds.
-        var ordered = TryOrder([.. items, pr]);
-
-        if (ordered is null)
-            return $"Branch {pr.Branch.Value} would create a cyclic base-branch dependency among queued PRs.";
-
-        items.Clear();
-        items.AddRange(ordered);
-        return null;
+        // just placing the new PR among them. So the whole order has to be re-derived from all the
+        // constraints together, rather than only checking the new PR's own immediate bounds.
+        return TryOrder([.. candidate])
+            ?? throw new InvalidInputException
+            (
+                $"Branch {candidate[^1].Branch.Value} would create a cyclic base-branch dependency among queued PRs."
+            );
     }
 
     /// <summary>Orders items by branch/base-branch dependency so an item whose base branch is

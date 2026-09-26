@@ -21,49 +21,28 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultContext
-    (
-        config.Agent.Kind,
-        new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
-        config.ReadToken,
-        config.WorkDir
-    );
+    => DefaultJobContext(new GitHubApi(config.Repo, config.ReadToken), config.Agent.Kind, config.ReadToken);
 
-    /// <summary>Overload for callers that already have a repo host to reuse rather than a second,
-    /// redundant connection — and that know which agent to run before they have a
-    /// <see cref="JobConfig"/> to read it from, as <see cref="ExecuteCiFailureAsync"/> does: a
-    /// ci-failure run's job config only exists once a failure has supplied the prompt, but the
-    /// agent it will run is configured up front. The read token and work dir come in separately for
-    /// the same reason: the factory context is fetched from a second repo, so it needs a credential
-    /// and somewhere to clone into whether or not a <see cref="JobConfig"/> exists yet.</summary>
-    internal static JobContext DefaultContext
-    (
-        AgentKind agent, IJobRepoHost host, GitReadToken readToken, DirectoryPath workDir
-    )
-    => new
-    (
-        host,
-        ProcessWrapper.RunAsync,
-        SelectAgent(agent),
-        // Named because LogLine and TranscriptLine are the same delegate type: transposing them
-        // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
-        LogLine: Console.Error.WriteLine,
-        TranscriptLine: _ => { },
-        FactoryContextLoader: new GitHubFactoryContextLoader
-        (
-            readToken, ProcessWrapper.RunAsync, workDir.Value, RunnerHomeDirectory()
-        )
-    );
-
-    /// <summary>The runner user's home directory, where the coding agent CLIs read their config and
-    /// where <see cref="GitHubFactoryContextLoader"/> lays the factory context. Falls back to
-    /// <c>$HOME</c> if <see cref="Environment.SpecialFolder.UserProfile"/> resolves empty.</summary>
-    private static string RunnerHomeDirectory()
+    /// <summary>Builds the <see cref="JobContext"/> for both <c>rix job</c> and
+    /// <see cref="DefaultCiFailureContext"/>. It takes the pieces separately instead of a
+    /// <see cref="JobConfig"/> because a ci-failure run only has a job config once a failure has
+    /// supplied the prompt. The agent and credential are configured up front, and the caller's
+    /// <paramref name="api"/> is shared rather than opening a second connection. The agent
+    /// home files are fetched through the same git client as the repo host's.</summary>
+    private static JobContext DefaultJobContext(GitHubApi api, AgentKind agent, GitReadToken readToken)
     {
-        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (string.IsNullOrEmpty(profile))
-            return Environment.GetEnvironmentVariable("HOME") ?? profile;
-        return profile;
+        var git = new GitCli(readToken, ProcessWrapper.RunAsync);
+        return new
+        (
+            new GitHubJobRepoHost(git, api),
+            ProcessWrapper.RunAsync,
+            SelectAgent(agent),
+            // Named because LogLine and TranscriptLine are the same delegate type: transposing them
+            // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
+            LogLine: Console.Error.WriteLine,
+            TranscriptLine: _ => { },
+            AgentHomeFetcher: new GitHubAgentHomeFetcher(git)
+        );
     }
 
     private static ICodingAgent SelectAgent(AgentKind agent)
@@ -85,8 +64,7 @@ internal static class Startup
     internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
-        var host = new GitHubJobRepoHost(new GitCli(config.ReadToken, ProcessWrapper.RunAsync), api);
-        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultContext(config.Agent, host, config.ReadToken, config.WorkDir));
+        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), DefaultJobContext(api, config.Agent, config.ReadToken));
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the
@@ -324,7 +302,7 @@ internal static class Startup
                 await Console.Error.WriteLineAsync(NextStepsGuidance);
                 return ExitCodes.Success;
             case InitializeFailure failure:
-                await Console.Error.WriteLineAsync($"error: {failure.Message}");
+                await Console.Error.WriteLineAsync($"error: {failure.Error}");
                 return ExitCodes.SetupFailed;
             default:
                 throw new NotSupportedException($"Unexpected initialize result type: {result.GetType()}");

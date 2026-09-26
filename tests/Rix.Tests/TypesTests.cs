@@ -61,8 +61,8 @@ public class TypesTests
     [DataRow("./x/y", "x/y")]
     [DataRow("x//y///z", "x/y/z")]
     [DataRow(" .rix/agent-home ", ".rix/agent-home")]
-    public void RepoRelativePath_Normalises(string raw, string expected)
-    => Assert.AreEqual(expected, new RepoRelativePath(raw).Value);
+    public void SubDirectoryPath_Normalises(string raw, string expected)
+    => Assert.AreEqual(expected, new SubDirectoryPath(raw).Value);
 
     [TestMethod]
     [DataRow("")]
@@ -70,8 +70,8 @@ public class TypesTests
     [DataRow("..")]
     [DataRow("foo/../bar")]
     [DataRow("/rooted")]
-    public void RepoRelativePath_RejectsInvalid(string raw)
-    => Assert.ThrowsExactly<InvalidInputException>(() => _ = new RepoRelativePath(raw));
+    public void SubDirectoryPath_RejectsInvalid(string raw)
+    => Assert.ThrowsExactly<InvalidInputException>(() => _ = new SubDirectoryPath(raw));
 
     [TestMethod]
     public void DirectoryPath_NormalisesRelativeToAbsolute()

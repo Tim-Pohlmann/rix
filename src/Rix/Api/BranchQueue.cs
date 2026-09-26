@@ -17,12 +17,13 @@ internal class BranchQueue<T>(string noun, Func<T, BranchName> branchOf)
         var branch = branchOf(item);
         lock (_lock)
         {
-            if (_items.Exists(queued => branchOf(queued).Value == branch.Value))
+            if (IndexOf(branch) >= 0)
                 return Results.Conflict(new ErrorResponse($"Branch {branch.Value} is already queued."));
 
-            if (Admit(_items, item) is { } rejection)
-                return Results.BadRequest(new ErrorResponse(rejection));
-
+            // Ordered before _items is touched, so a refused item leaves the queue as it was.
+            var ordered = Order([.. _items, item]);
+            _items.Clear();
+            _items.AddRange(ordered);
             return Results.Ok(new QueuedResponse("queued"));
         }
     }
@@ -33,7 +34,7 @@ internal class BranchQueue<T>(string noun, Func<T, BranchName> branchOf)
     {
         lock (_lock)
         {
-            var index = _items.FindIndex(item => branchOf(item).Value == branch.Value);
+            var index = IndexOf(branch);
             if (index < 0)
                 return Results.NotFound(new ErrorResponse($"No queued {noun} for branch {branch.Value}."));
 
@@ -49,13 +50,12 @@ internal class BranchQueue<T>(string noun, Func<T, BranchName> branchOf)
         lock (_lock) { return _items.ToArray(); }
     }
 
-    /// <summary>Adds <paramref name="item"/> (whose branch is not yet queued) to
-    /// <paramref name="items"/>, keeping them in delivery order, or leaves <paramref name="items"/>
-    /// untouched and returns why the item is refused. Called under the queue's lock. By default
-    /// requests are delivered in the order they were queued.</summary>
-    protected virtual string? Admit(List<T> items, T item)
-    {
-        items.Add(item);
-        return null;
-    }
+    // Compared by value, not record equality: a RixBranchName and a BranchName with the same name
+    // are different records, but DELETE looks /pr's rix/* branches up by a plain BranchName.
+    private int IndexOf(BranchName branch) => _items.FindIndex(item => branchOf(item).Value == branch.Value);
+
+    /// <summary>Puts <paramref name="candidate"/> — the queue with the new item appended — into
+    /// delivery order, throwing <see cref="InvalidInputException"/> (a 400) if no valid order
+    /// exists. By default requests are delivered in the order they were queued.</summary>
+    protected virtual IReadOnlyList<T> Order(IReadOnlyList<T> candidate) => candidate;
 }
