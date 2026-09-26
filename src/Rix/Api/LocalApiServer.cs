@@ -36,7 +36,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// by the agent.</param>
     internal static async Task<LocalApiServer> StartAsync
     (
-        IJobRepoHost host,
+        IGit git,
         string cloneDir,
         CancellationToken cancellationToken,
         Action<string>? logLine = null,
@@ -44,7 +44,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     )
     {
         var allowed = allowedPushBranches ?? [];
-        var delivery = new DeliveryEndpoints(host, cloneDir, allowed);
+        var delivery = new DeliveryEndpoints(git, cloneDir, allowed);
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
@@ -164,7 +164,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     /// every branch.</param>
     private sealed class DeliveryEndpoints
     (
-        IJobRepoHost host,
+        IGit git,
         string cloneDir,
         IReadOnlyList<BranchName> allowedPushBranches
     )
@@ -230,7 +230,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 Input.Required("body", req.Body, value => new PrBody(value))
             );
 
-            if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
+            if (await git.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
                 return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
 
             return await CheckCommittedLocallyAsync(queuedPr.Branch, PrPath, ct)
@@ -263,7 +263,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             // The point of /push is delivering to a branch that already exists on the remote, so the
             // opposite guard from /pr: if the branch does not exist there, the agent should have used
             // /pr instead.
-            if (!await host.BranchExistsOnRemoteAsync(queuedPush.Branch, ct))
+            if (!await git.BranchExistsOnRemoteAsync(queuedPush.Branch, ct))
                 return Results.Conflict(new ErrorResponse($"Branch {queuedPush.Branch.Value} does not exist on the remote. Use /pr to create a new branch."));
 
             return await CheckCommittedLocallyAsync(queuedPush.Branch, PushPath, ct)
@@ -276,7 +276,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         // already ended and it's too late to retry. Returns null when the branch is there.
         private async Task<IResult?> CheckCommittedLocallyAsync(BranchName branch, string endpoint, CancellationToken ct)
         {
-            if (await host.BranchExistsLocallyAsync(cloneDir, branch, ct))
+            if (await git.BranchExistsLocallyAsync(cloneDir, branch, ct))
                 return null;
 
             var message = $"Branch {branch.Value} was not found in your working directory. " +

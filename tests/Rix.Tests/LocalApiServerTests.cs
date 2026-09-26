@@ -16,10 +16,10 @@ public class LocalApiServerTests
     private static readonly string[] BaseThenStacked = ["rix/base", "rix/stacked"];
     private static readonly string[] ReorderedCbA = ["rix/c", "rix/b", "rix/a"];
 
-    private static StubJobRepoHost FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
+    private static StubGit FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
 
-    private static Task<LocalApiServer> StartAsync(IJobRepoHost host, IReadOnlyList<BranchName>? allowedPushBranches = null)
-    => LocalApiServer.StartAsync(host, Path.GetTempPath(), CancellationToken.None, allowedPushBranches: allowedPushBranches);
+    private static Task<LocalApiServer> StartAsync(IGit git, IReadOnlyList<BranchName>? allowedPushBranches = null)
+    => LocalApiServer.StartAsync(git, Path.GetTempPath(), CancellationToken.None, allowedPushBranches: allowedPushBranches);
 
     private static Task<HttpResponseMessage> GetAsync(LocalApiServer server, string path)
     => Client.GetAsync(new Uri(server.BaseUrl, path));
@@ -249,7 +249,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPr_Returns400_WhenBranchNotFoundLocally()
     {
-        await using var server = await StartAsync(new StubJobRepoHost(branchExistsLocally: _ => Task.FromResult(false)));
+        await using var server = await StartAsync(new StubGit(branchExistsLocally: _ => Task.FromResult(false)));
 
         var response = await PostPrAsync(server, "rix/ghost");
 
@@ -265,7 +265,7 @@ public class LocalApiServerTests
         // The remote-branch check calls the GitHub API; when that transport fails the request
         // can't be judged either way, so the middleware maps the one exception those checks throw
         // to a 502 rather than letting it leak out of the handler as an unhandled 500.
-        var host = new StubJobRepoHost(
+        var host = new StubGit(
             branchExists: _ => throw new RepoHostException("check branch rix/my-fix on remote failed: 503"));
         await using var server = await StartAsync(host);
 
@@ -281,7 +281,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPush_Returns502_WhenRepositoryHostThrows()
     {
-        var host = new StubJobRepoHost(
+        var host = new StubGit(
             branchExists: _ => throw new RepoHostException("check branch rix/my-fix on remote failed: 503"));
         await using var server = await StartAsync(host, [new BranchName("rix/my-fix")]);
 
@@ -375,7 +375,7 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPush_Returns400_WhenBranchNotFoundLocally()
     {
-        var host = new StubJobRepoHost(
+        var host = new StubGit(
             branchExists: _ => Task.FromResult(true),
             branchExistsLocally: _ => Task.FromResult(false));
         await using var server = await StartAsync(host, [new BranchName("rix/ghost")]);
