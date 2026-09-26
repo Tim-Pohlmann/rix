@@ -45,9 +45,11 @@ jobs:
         run: shellcheck .github/scripts/*.sh .github/actions/*/*.sh
 
       - name: Run bats tests
+        # python3-jsonschema checks every hand-written rix result fixture against schemas/ (see
+        # tests/scripts/result-schema.bash).
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats python3-jsonschema
           bats tests/scripts
 
       - name: Check the workflow binary pin matches the version
@@ -279,14 +281,14 @@ jobs:
           # The agent ran and the job failed. No annotation of its own - rix's non-zero exit is
           # what fails the step, and has-result stays false so create-pr is skipped.
           - name: failure
-            stdout: '{"status":"failure","error":"agent failed: exited with code 1"}'
+            stdout: '{"status":"failure","error":"agent failed: exited with code 1","costUsd":0.0123,"durationSeconds":42}'
             exit: 1
             has-result: 'false'
             outcome: failure
             writes-result: 'false'
 
           - name: setupFailure
-            stdout: '{"status":"setupFailure","error":"--max-tokens must be a positive integer"}'
+            stdout: '{"status":"setupFailure","error":"--max-tokens must be a positive integer","costUsd":0,"durationSeconds":0}'
             exit: 1
             has-result: 'false'
             outcome: failure
@@ -294,7 +296,7 @@ jobs:
 
           # The one arm that sets has-result=true, and so the only one create-pr would run after.
           - name: success
-            stdout: '{"status":"success","costUsd":0.0123,"durationSeconds":42}'
+            stdout: '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0.0123,"durationSeconds":42}'
             exit: 0
             has-result: 'true'
             outcome: success
@@ -310,13 +312,30 @@ jobs:
             has-result: 'false'
             outcome: failure
             writes-result: 'false'
+            # Off the schema on purpose - it stands in for a release this repo hasn't seen.
+            off-schema: true
 
     steps:
-      # Only the composite actions are needed - no rix source, and no binary to download.
+      # Only the composite actions, plus the schema check below - no rix source, and no binary to
+      # download.
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: .github/actions
+          sparse-checkout: |
+            .github/actions
+            tests/scripts/result-schema.bash
+            schemas
           sparse-checkout-cone-mode: false
+
+      # A canned result that has drifted from what rix prints would keep passing here while
+      # proving nothing about the real one, so each is checked against the schema generated from
+      # rix's result types first.
+      - name: Check the canned result is one rix could print
+        if: ${{ !matrix.case.off-schema }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-jsonschema
+          source tests/scripts/result-schema.bash
+          assert_matches_schema ci-failure-output.schema.json "$STUB_STDOUT"
 
       - name: Write the stub rix binary
         run: |
@@ -432,12 +451,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # tests/fixtures as well as the test files: agent-home-e2e.bats asks the factory repo for
-          # tests/fixtures/agent-home, and reads the same path here to tell a fixture that is not on
-          # main yet (skip) from one that was deleted (fail).
+          # schemas/ and the helper that reads it, so the real binary's result.json is checked
+          # against the same schema the hand-written fixtures are. tests/fixtures as well:
+          # agent-home-e2e.bats asks the factory repo for tests/fixtures/agent-home, and reads the
+          # same path here to tell a fixture that is not on main yet (skip) from one that was
+          # deleted (fail).
           sparse-checkout: |
             tests/e2e
             tests/fixtures
+            tests/scripts/result-schema.bash
+            schemas
           sparse-checkout-cone-mode: false
 
       - name: Setup Node (rix installs the coding agent CLI via npm)
@@ -457,7 +480,7 @@ jobs:
       - name: Install bats
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats python3-jsonschema
 
       - name: Run rix job e2e tests
         # rix forwards every line the agent CLI prints to stderr (see JobRunner.ForwardLine), and
@@ -533,6 +556,150 @@ jobs:
           [[ -n "${RIX_BIN:-}" ]] || { echo "download-rix exported no RIX_BIN" >&2; exit 1; }
           [[ -x "$RIX_BIN" ]] || { echo "RIX_BIN=$RIX_BIN is not executable" >&2; exit 1; }
           echo "Explicit download OK: $RIX_BIN"
+
+  initialize-templates:
+    name: Initialize templates (actionlint)
+    runs-on: ubuntu-latest
+    needs: build-rix
+    permissions:
+      contents: read
+
+    # `rix initialize` writes caller workflows into someone else's repo, and nothing checked that
+    # what it writes is valid GitHub Actions YAML, or that it still fits the reusable workflows it
+    # calls. InitializeRunnerTests covers which files land and where, and WorkflowTemplatesTests
+    # that the ref placeholder is substituted, but the templates are embedded resources - no C# test
+    # can tell whether Actions would accept them. A broken one is invisible here and surfaces in a
+    # consumer repo at the moment they adopt rix, which is the worst place to find out.
+    steps:
+      # Only the reusable workflows, which the contract check below reads as the callee side.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/workflows
+          sparse-checkout-cone-mode: false
+
+      - name: Download rix binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-bin
+          path: rix-bin
+
+      - name: Make rix binary executable
+        run: chmod +x rix-bin/rix
+
+      - name: Write the caller workflows into an empty target
+        run: |
+          # --dir must already exist (DirectoryPath rejects a missing one); the .github/workflows
+          # path under it is rix's to create.
+          mkdir -p init-out
+          ./rix-bin/rix initialize --dir init-out
+
+          # Compared as a set, not file by file: the steps below glob whatever is there, so a new
+          # template would otherwise sail through them without anyone deciding what else it needs.
+          # Every path, not just the names, so a template written somewhere unexpected fails too.
+          # LC_ALL=C because a locale that ignores punctuation while sorting orders rix.yml and
+          # rix-on-ci-failure.yml the other way round.
+          expected=$'init-out/.github/workflows/rix-on-ci-failure.yml\ninit-out/.github/workflows/rix.yml'
+          actual="$(find init-out -type f | LC_ALL=C sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "rix initialize wrote a different set of files than this job expects (< expected, > actual):" >&2
+            diff <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") >&2 || true
+            exit 1
+          fi
+
+          # A template that failed to substitute would still be valid YAML, so actionlint below
+          # would pass it - and every `uses:` in it would resolve to a ref that cannot exist.
+          if grep -rn '__RIX_REF__' init-out; then
+            echo "a template reached the target repo with its ref placeholder unsubstituted" >&2
+            exit 1
+          fi
+
+      - name: Ensure the contract check has a YAML parser
+        # ubuntu-latest ships python3-yaml today (this job's first run proved it), so this is
+        # normally a no-op that costs nothing. It's here so the check below depends on a package it
+        # asked for rather than on an image detail: an image that stopped shipping it would
+        # otherwise fail on the import, with neither template checked and nothing saying why.
+        run: |
+          python3 -c 'import yaml' || {
+            sudo apt-get update
+            sudo apt-get install -y python3-yaml
+          }
+
+      # actionlint checks each file on its own; nothing checks that what a caller passes is what
+      # the workflow it calls accepts. That pairing is only broken by editing one side - rename an
+      # input, or make a new one required - and the templates are re-emitted at each release
+      # pointing at that release's own workflows, so the drift ships to consumers as a workflow
+      # that fails on its first run. Compared against the reusable workflows in this checkout
+      # rather than the published ones the `uses:` ref names, because this commit is what the next
+      # release will tag: the drift has to fail here, where it was introduced.
+      - name: Check each caller against the reusable workflow it calls
+        run: |
+          python3 - <<'PY'
+          import glob
+          import sys
+          import yaml
+
+
+          def triggers(workflow):
+              # yaml reads an unquoted `on:` key as the boolean True.
+              return workflow.get(True, workflow.get("on"))
+
+
+          def declared(workflow_path):
+              call = triggers(yaml.safe_load(open(workflow_path)))["workflow_call"]
+              return (call.get("inputs") or {}), (call.get("secrets") or {})
+
+
+          def required(declarations):
+              return {name for name, spec in declarations.items() if (spec or {}).get("required")}
+
+
+          errors = []
+          for caller_path in sorted(glob.glob("init-out/.github/workflows/*.yml")):
+              caller = yaml.safe_load(open(caller_path))
+              for job_name, job in caller["jobs"].items():
+                  uses = job.get("uses")
+                  if uses is None:
+                      errors.append(f"{caller_path}: job {job_name} calls no reusable workflow")
+                      continue
+                  repo_and_path, _, ref = uses.partition("@")
+                  owner, repo, callee_path = repo_and_path.split("/", 2)
+                  if f"{owner}/{repo}" != "Tim-Pohlmann/rix":
+                      errors.append(f"{caller_path}: job {job_name} calls {owner}/{repo}, not this repository")
+                      continue
+                  if not ref:
+                      errors.append(f"{caller_path}: job {job_name} calls {callee_path} with no ref")
+                      continue
+
+                  inputs, secrets = declared(callee_path)
+                  passed_inputs = job.get("with") or {}
+                  passed_secrets = job.get("secrets") or {}
+                  # `secrets: inherit` passes everything and names nothing, so there is no pairing
+                  # left to check on that side.
+                  inherited = passed_secrets == "inherit"
+
+                  for name in sorted(set(passed_inputs) - set(inputs)):
+                      errors.append(f"{caller_path}: passes input '{name}', which {callee_path} does not declare")
+                  for name in sorted(required(inputs) - set(passed_inputs)):
+                      errors.append(f"{caller_path}: does not pass '{name}', a required input of {callee_path}")
+                  if not inherited:
+                      for name in sorted(set(passed_secrets) - set(secrets)):
+                          errors.append(f"{caller_path}: passes secret '{name}', which {callee_path} does not declare")
+                      for name in sorted(required(secrets) - set(passed_secrets)):
+                          errors.append(f"{caller_path}: does not pass '{name}', a required secret of {callee_path}")
+
+          for error in errors:
+              print(error, file=sys.stderr)
+          sys.exit(1 if errors else 0)
+          PY
+
+      - name: Lint the written workflows (actionlint)
+        uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
+        with:
+          files: init-out/.github/workflows/*.yml
+          # The matcher annotates a PR's changed lines, which these files are not - they are
+          # generated into a scratch directory, so annotations would point at paths that do not
+          # exist in the repo.
+          matcher: false
 
   test:
     name: Test (${{ matrix.os }})
