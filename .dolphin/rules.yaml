@@ -78,6 +78,18 @@ rules:
           - pattern: new DirectoryInfo(...)
           - pattern: new FileStream(...)
 
+  - id: cli-without-file-system
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      The CLI commands only turn text into values and never see the file
+      system. Take the locations they need as strings, and hand directories
+      that must exist to the handler as RequiredDirectory for Startup to check.
+    paths:
+      include:
+        - src/Rix/Cli/**
+    pattern-regex: \b(IFileSystem|LocalFileSystem)\b
+
   - id: raw-process-outside-wrapper
     languages: [csharp]
     severity: ERROR
