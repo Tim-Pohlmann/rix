@@ -37,6 +37,7 @@
 # and network access to install/run the real agent CLIs via npm.
 
 setup() {
+  load ../scripts/result-schema
   : "${RIX_BIN:?RIX_BIN must point at a built rix binary}"
   : "${RIX_REPO:?RIX_REPO must name a real GitHub repo to clone (e.g. Tim-Pohlmann/rix)}"
   : "${RIX_READ_TOKEN:?RIX_READ_TOKEN must be a GitHub token with read access to RIX_REPO}"
@@ -67,6 +68,12 @@ teardown() {
   unset RIX_AGENT RIX_MODEL OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY
 }
 
+# The real binary's output is the one thing the schema can be checked against that nobody wrote by
+# hand - fixtures elsewhere only prove the bash agrees with the schema.
+assert_result_matches_schema() {
+  assert_matches_schema job-result.schema.json "$(cat "$RIX_OUTPUT_DIR/result.json")"
+}
+
 result_field() {
   jq -r ".$1" "$RIX_OUTPUT_DIR/result.json"
 }
@@ -81,6 +88,7 @@ diagnostic_of() {
   export RIX_AGENT=opencode
   run "$RIX_BIN" job
   [ "$status" -eq 0 ]
+  assert_result_matches_schema
   [ "$(result_field status)" = success ]
 }
 
@@ -88,6 +96,7 @@ diagnostic_of() {
   export RIX_AGENT=claude RIX_MODEL=claude-opus-4-1
   run "$RIX_BIN" job
   [ "$status" -eq 1 ]
+  assert_result_matches_schema
   [ "$(result_field status)" = failure ]
   diagnostic="$(result_field error | diagnostic_of)"
   echo "$diagnostic" | jq empty
@@ -98,6 +107,7 @@ diagnostic_of() {
   export RIX_AGENT=pi
   run "$RIX_BIN" job
   [ "$status" -eq 1 ]
+  assert_result_matches_schema
   [ "$(result_field status)" = failure ]
   # See the file header for why this is a .md path rather than JSON, and why it needs trimming.
   diagnostic="$(result_field error | diagnostic_of | xargs)"
@@ -111,6 +121,7 @@ diagnostic_of() {
   run "$RIX_BIN" job
   # See the file header: pi swallows a per-turn auth error into its JSON stream and still exits 0.
   [ "$status" -eq 0 ]
+  assert_result_matches_schema
   [ "$(result_field status)" = success ]
   [ "$(result_field pendingPrRequests | jq 'length')" = 0 ]
 }
