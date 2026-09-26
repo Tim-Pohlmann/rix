@@ -11,6 +11,10 @@
 
 ACTION="${BATS_TEST_DIRNAME}/../../.github/actions/run-ci-failure/action.yml"
 
+setup() {
+  load result-schema
+}
+
 # Takes the read command whole, following backslash continuations, so it extracts the same thing
 # whether the action writes it on one line or several.
 extract_parse() {
@@ -19,6 +23,7 @@ extract_parse() {
 
 parse_result() {
   local result="$1"
+  assert_matches_schema ci-failure-output.schema.json "$result"
   eval "$(extract_parse)"
 }
 
