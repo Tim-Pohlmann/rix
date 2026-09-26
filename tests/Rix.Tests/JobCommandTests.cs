@@ -20,6 +20,8 @@ public class JobCommandTests
 
     private const string UserHome = "/the/user/home";
 
+    private static readonly string[] ExpectedDirectoriesWithoutAgentHome = ["--work-dir", "--output-dir"];
+
     [TestMethod]
     public async Task Command_PassesEnvVarFallbacks_WhenFlagsAbsent()
     {
@@ -95,7 +97,7 @@ public class JobCommandTests
         await parser.InvokeAsync(["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r", "--output-dir", Path.GetTempPath()]);
 
         Assert.IsNotNull(required);
-        CollectionAssert.AreEqual(new[] { "--work-dir", "--output-dir" }, required.Select(directory => directory.Name).ToArray());
+        CollectionAssert.AreEqual(ExpectedDirectoriesWithoutAgentHome, required.Select(directory => directory.Name).ToArray());
     }
 
     [TestMethod]
