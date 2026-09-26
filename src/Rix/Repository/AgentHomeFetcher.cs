@@ -15,6 +15,6 @@ internal sealed class AgentHomeFetcher(Func<RepoIdentifier, IGit> gitFor, IFileS
         var source = Path.Combine(checkoutDir.Value, sourcePath.Value);
         if (!fileSystem.DirectoryExists(source))
             throw new RepoHostException($"agent home path not found in {repo.Value}: {sourcePath.Value}");
-        return new DirectoryPath(source, fileSystem);
+        return new DirectoryPath(source);
     }
 }

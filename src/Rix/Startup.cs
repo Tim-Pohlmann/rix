@@ -112,17 +112,58 @@ internal static class Startup
             using var onSigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, HandleSigterm(cts));
 
             var fileSystem = new LocalFileSystem();
+            var temp = fileSystem.SystemTempDirectory;
             var rootCommand = new RootCommand("RIX - AI-powered code automation");
-            rootCommand.AddCommand(JobCommand.Build(fileSystem, config => ExecuteJobAsync(config, cts.Token)));
-            rootCommand.AddCommand(SubmitCommand.Build(fileSystem, config => ExecuteSubmitAsync(config, cts.Token)));
-            rootCommand.AddCommand(CiFailureCommand.Build(fileSystem, config => ExecuteCiFailureAsync(config, cts.Token)));
-            rootCommand.AddCommand(InitializeCommand.Build(fileSystem, config => ExecuteInitializeAsync(config, cts.Token)));
+            rootCommand.AddCommand
+            (
+                JobCommand.Build
+                (
+                    temp,
+                    fileSystem.UserHomeDirectory,
+                    (config, directories) => RunIfDirectoriesExist(fileSystem, directories, () => ExecuteJobAsync(config, cts.Token))
+                )
+            );
+            rootCommand.AddCommand
+            (
+                SubmitCommand.Build
+                (
+                    temp, (config, directories) => RunIfDirectoriesExist(fileSystem, directories, () => ExecuteSubmitAsync(config, cts.Token))
+                )
+            );
+            rootCommand.AddCommand
+            (
+                CiFailureCommand.Build
+                (
+                    temp, (config, directories) => RunIfDirectoriesExist(fileSystem, directories, () => ExecuteCiFailureAsync(config, cts.Token))
+                )
+            );
+            rootCommand.AddCommand
+            (
+                InitializeCommand.Build
+                (
+                    (config, directories) => RunIfDirectoriesExist(fileSystem, directories, () => ExecuteInitializeAsync(config, cts.Token))
+                )
+            );
             return await CliPipeline.Build(rootCommand).InvokeAsync(args);
         }
         finally
         {
             Console.CancelKeyPress -= onCancelKeyPress;
         }
+    }
+
+    /// <summary>Runs <paramref name="run"/> once every directory the command was given exists: the
+    /// check the commands leave to the caller, since they never see the file system. A missing one
+    /// is an <see cref="InvalidInputException"/>, reported like any other bad flag.</summary>
+    internal static Task<int> RunIfDirectoriesExist
+    (
+        IFileSystem fileSystem, IReadOnlyList<RequiredDirectory> directories, Func<Task<int>> run
+    )
+    {
+        var missing = directories.FirstOrDefault(directory => !fileSystem.DirectoryExists(directory.Path.Value));
+        if (missing is not null)
+            throw new InvalidInputException($"{missing.Name}: directory does not exist: {missing.Path}");
+        return run();
     }
 
     /// <summary>Cancels <paramref name="cts"/> and suppresses the runtime's default termination so

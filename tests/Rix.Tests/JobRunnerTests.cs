@@ -876,7 +876,7 @@ public class JobRunnerTests
     (
         string repo, string home, string sourcePath = JobConfig.DefaultAgentHomePath
     )
-    => new(new RepoIdentifier(repo), new SubDirectoryPath(sourcePath), new DirectoryPath(home, new LocalFileSystem()));
+    => new(new RepoIdentifier(repo), new SubDirectoryPath(sourcePath), new DirectoryPath(home));
 
     /// <summary>A process runner that succeeds at everything and calls <paramref name="onAgent"/>
     /// when the agent is started.</summary>

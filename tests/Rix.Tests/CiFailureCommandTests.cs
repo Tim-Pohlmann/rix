@@ -11,9 +11,12 @@ namespace Rix.Tests;
 public class CiFailureCommandTests
 {
     private static Parser BuildParser(Func<CiFailureConfig, Task<int>> handler)
+    => BuildParser((config, _) => handler(config));
+
+    private static Parser BuildParser(Func<CiFailureConfig, IReadOnlyList<RequiredDirectory>, Task<int>> handler)
     {
         var root = new RootCommand();
-        root.AddCommand(CiFailureCommand.Build(new LocalFileSystem(), handler));
+        root.AddCommand(CiFailureCommand.Build(Path.GetTempPath(), handler));
         return CliPipeline.Build(root);
     }
 
@@ -21,6 +24,33 @@ public class CiFailureCommandTests
     /// supply stubbed out — these tests assert on what came off the command line, not on those.</summary>
     private static JobConfig Job(CiFailureConfig config)
     => config.ToJobConfig("fix it", new BranchName("rix/fix"));
+
+    /// <summary>Whether they exist is left to the handler, so the command accepts directories that
+    /// don't and names each one after its flag for the handler to check.</summary>
+    [TestMethod]
+    public async Task Command_HandsItsDirectoriesToTheHandler_ToCheckTheyExist()
+    {
+        IReadOnlyList<RequiredDirectory>? required = null;
+        var parser = BuildParser((_, directories) =>
+        {
+            required = directories;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
+             "--work-dir", "/nonexistent/work", "--output-dir", "/nonexistent/out"]);
+
+        CollectionAssert.AreEqual
+        (
+            new[]
+            {
+                new RequiredDirectory("--work-dir", new DirectoryPath("/nonexistent/work")),
+                new RequiredDirectory("--output-dir", new DirectoryPath("/nonexistent/out")),
+            },
+            required?.ToArray()
+        );
+    }
 
     [TestMethod]
     public async Task Command_PassesEnvVarFallbacks_WhenFlagsAbsent()

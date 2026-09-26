@@ -55,10 +55,11 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Access files and directories, and look up the current, temp and home
-      directories, through IFileSystem, whose only implementation
-      (LocalFileSystem) may do so directly, so the calling code stays testable
-      without touching the disk or depending on where the process runs.
+      Access files and directories, and look up the temp and home directories,
+      through IFileSystem, whose only implementation (LocalFileSystem) may do so
+      directly, so the calling code stays testable without touching the disk or
+      depending on where the process runs. For the current directory, use a
+      relative path: DirectoryPath resolves "." to it.
     # Tests arrange and inspect real directories.
     paths:
       exclude:

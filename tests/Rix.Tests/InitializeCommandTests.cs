@@ -8,10 +8,13 @@ namespace Rix.Tests;
 [TestClass]
 public class InitializeCommandTests
 {
-    private static Parser BuildParser(Func<InitializeConfig, Task<int>> handler, IFileSystem? fileSystem = null)
+    private static Parser BuildParser(Func<InitializeConfig, Task<int>> handler)
+    => BuildParser((config, _) => handler(config));
+
+    private static Parser BuildParser(Func<InitializeConfig, IReadOnlyList<RequiredDirectory>, Task<int>> handler)
     {
         var root = new RootCommand();
-        root.AddCommand(InitializeCommand.Build(fileSystem ?? new LocalFileSystem(), handler));
+        root.AddCommand(InitializeCommand.Build(handler));
         return CliPipeline.Build(root);
     }
 
@@ -38,21 +41,16 @@ public class InitializeCommandTests
     public async Task Command_DefaultsDirToCurrentDirectory_WhenFlagAbsent()
     {
         InitializeConfig? captured = null;
-        var currentDirectory = Path.GetTempPath();
-        var parser = BuildParser
-        (
-            config =>
-            {
-                captured = config;
-                return Task.FromResult(0);
-            },
-            new StubFileSystem(currentDirectory: currentDirectory)
-        );
+        var parser = BuildParser(config =>
+        {
+            captured = config;
+            return Task.FromResult(0);
+        });
 
         await parser.InvokeAsync("initialize");
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual(Path.GetFullPath(currentDirectory), captured.TargetDir.Value);
+        Assert.AreEqual(Path.GetFullPath("."), captured.TargetDir.Value);
     }
 
     [TestMethod]
@@ -107,21 +105,19 @@ public class InitializeCommandTests
     }
 
     [TestMethod]
-    public async Task Command_Returns2_WhenDirDoesNotExist()
+    public async Task Command_HandsTheDirToTheHandler_ToCheckItExists()
     {
-        InitializeConfig? captured = null;
-        var parser = BuildParser(config =>
+        IReadOnlyList<RequiredDirectory>? required = null;
+        var parser = BuildParser((_, directories) =>
         {
-            captured = config;
+            required = directories;
             return Task.FromResult(0);
         });
 
-        using var stderr = new ConsoleErrorScope();
         var exitCode = await parser.InvokeAsync(["initialize", "--dir", "/nonexistent/path/xyz"]);
 
-        Assert.IsNull(captured);
-        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
-        StringAssert.Contains(stderr.Text, "error: --dir: directory does not exist: /nonexistent/path/xyz");
+        Assert.AreEqual(0, exitCode);
+        Assert.AreEqual(new RequiredDirectory("--dir", new DirectoryPath("/nonexistent/path/xyz")), required?.Single());
     }
 
     [TestMethod]

@@ -28,14 +28,14 @@ internal static class CommonOptions
     internal static RepoIdentifier ReadRepo(ParseResult parsed)
     => parsed.Required(RepoOption, "RIX_REPO", value => new RepoIdentifier(value));
 
-    /// <summary>The system temp directory is the fallback, built lazily so an explicitly supplied
-    /// <c>--work-dir</c> never pays for a <see cref="DirectoryPath"/> it won't use.</summary>
-    internal static DirectoryPath ReadWorkDir(ParseResult parsed, IFileSystem fileSystem)
+    /// <summary><paramref name="systemTempDirectory"/> is the fallback, built through the lazy
+    /// overload so an unusable one is reported as the <c>--work-dir</c> default it stood in for.</summary>
+    internal static DirectoryPath ReadWorkDir(ParseResult parsed, string systemTempDirectory)
     => parsed.Optional
     (
         WorkDirOption,
         "RIX_WORK_DIR",
-        path => new DirectoryPath(path, fileSystem),
-        () => new DirectoryPath(fileSystem.SystemTempDirectory, fileSystem)
+        path => new DirectoryPath(path),
+        () => new DirectoryPath(systemTempDirectory)
     );
 }

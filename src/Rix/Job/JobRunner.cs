@@ -110,7 +110,7 @@ internal static class JobRunner
         using var checkout = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-agent-home");
         try
         {
-            var source = await context.AgentHomeFetcher.FetchAsync(agentHome.Repo, agentHome.SourcePath, new DirectoryPath(checkout.Path, context.FileSystem), ct);
+            var source = await context.AgentHomeFetcher.FetchAsync(agentHome.Repo, agentHome.SourcePath, new DirectoryPath(checkout.Path), ct);
             DirectoryMerge.CopySkippingExisting(context.FileSystem, source.Value, agentHome.Home.Value);
             return null;
         }

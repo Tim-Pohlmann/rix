@@ -159,8 +159,8 @@ internal static class JobOptions
         new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes)
     );
 
-    internal static DirectoryPath ReadOutputDir(ParseResult parsed, IFileSystem fileSystem)
-    => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path, fileSystem));
+    internal static DirectoryPath ReadOutputDir(ParseResult parsed)
+    => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path));
 
     internal static string? ReadModel(ParseResult parsed)
     => parsed.OptionalText(ModelOption, "RIX_MODEL");
@@ -179,11 +179,19 @@ internal static class JobOptions
     internal static AgentCredential? ReadAgentCredential(ParseResult parsed, AgentKind agent, string? apiKey)
     => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.Resolve(agent, apiKey, raw));
 
+    /// <summary>What the runner's home directory is called in errors: it comes from the environment,
+    /// not from a flag.</summary>
+    internal const string RunnerHomeName = "runner home directory";
+
+    /// <summary>The directories <c>job</c> and <c>ci-failure</c> both need to exist.</summary>
+    internal static List<RequiredDirectory> RequiredDirectories(DirectoryPath workDir, DirectoryPath outputDir)
+    => [RequiredDirectory.For(CommonOptions.WorkDirOption, workDir), RequiredDirectory.For(OutputDirOption, outputDir)];
+
     /// <summary>Reads <c>--factory-repo</c>/<c>--agent-home-path</c> as a pair, because whether
     /// the path means anything depends on the repo — a path without a repo is reported, not
     /// ignored. The runner home is resolved only when a repo is given, so a job that doesn't use
     /// the feature never depends on having one.</summary>
-    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed, IFileSystem fileSystem)
+    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed, string userHomeDirectory)
     {
         var repo = parsed.Optional<RepoIdentifier?>(FactoryRepoOption, "RIX_FACTORY_REPO", raw => new RepoIdentifier(raw), () => null);
         if (repo is null)
@@ -200,7 +208,7 @@ internal static class JobOptions
             raw => new SubDirectoryPath(raw),
             new SubDirectoryPath(JobConfig.DefaultAgentHomePath)
         );
-        var home = Input.Named("runner home directory", () => new DirectoryPath(fileSystem.UserHomeDirectory, fileSystem));
+        var home = Input.Named(RunnerHomeName, () => new DirectoryPath(userHomeDirectory));
         return new AgentHomeInfo(repo, sourcePath, home);
     }
 }

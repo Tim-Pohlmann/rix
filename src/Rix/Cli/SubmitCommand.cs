@@ -19,7 +19,7 @@ internal static class SubmitCommand
     )
     { IsRequired = false };
 
-    internal static Command Build(IFileSystem fileSystem, Func<SubmitConfig, Task<int>> handler)
+    internal static Command Build(string systemTempDirectory, Func<SubmitConfig, IReadOnlyList<RequiredDirectory>, Task<int>> handler)
     {
         var command = new Command("submit", "Push the branches from a `rix job` result and open their pull requests");
 
@@ -40,14 +40,18 @@ internal static class SubmitCommand
                 (
                     CommonOptions.ReadRepo(parsed),
                     parsed.Required(WriteTokenOption, "RIX_WRITE_TOKEN", value => new GitToken(value)),
-                    InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path, fileSystem)),
-                    WorkDir: CommonOptions.ReadWorkDir(parsed, fileSystem),
+                    InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path)),
+                    WorkDir: CommonOptions.ReadWorkDir(parsed, systemTempDirectory),
                     // Unparseable input is impossible: every branch name is acceptable, and a blank
                     // value means the empty list, which is the safe end of the range rather than an
                     // error.
                     BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"))
                 );
-                ctx.ExitCode = await handler(config);
+                ctx.ExitCode = await handler
+                (
+                    config,
+                    [RequiredDirectory.For(InputDirOption, config.InputDir), RequiredDirectory.For(CommonOptions.WorkDirOption, config.WorkDir)]
+                );
             }
         );
 
