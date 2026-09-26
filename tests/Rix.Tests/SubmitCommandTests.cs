@@ -15,7 +15,7 @@ public class SubmitCommandTests
     private static Parser BuildParser(Func<SubmitConfig, Task<int>> handler)
     {
         var root = new RootCommand();
-        root.AddCommand(SubmitCommand.Build(handler));
+        root.AddCommand(SubmitCommand.Build(new LocalFileSystem(), handler));
         return CliPipeline.Build(root);
     }
 

@@ -28,14 +28,14 @@ internal static class JobRunner
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
 
-        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, ct) is InstallFailed installFailed)
+        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, config.WorkDir.Value, ct) is InstallFailed installFailed)
         {
             return new SetupFailure($"agent install failed: {installFailed.Reason}");
         }
 
         var stopwatch = Stopwatch.StartNew();
 
-        using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-clone");
+        using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-clone");
 
         try
         {
@@ -49,7 +49,7 @@ internal static class JobRunner
             return new SetupFailure(ex.Message);
         }
 
-        if (await CopyAgentHomeAsync(config, context.AgentHomeFetcher, ct) is { } agentHomeFailure)
+        if (await CopyAgentHomeAsync(config, context, ct) is { } agentHomeFailure)
             return agentHomeFailure;
 
         await using var apiServer = await LocalApiServer.StartAsync
@@ -101,17 +101,17 @@ internal static class JobRunner
     /// in place or when the run has none configured.</summary>
     private static async Task<SetupFailure?> CopyAgentHomeAsync
     (
-        JobConfig config, IAgentHomeFetcher fetcher, CancellationToken ct
+        JobConfig config, JobContext context, CancellationToken ct
     )
     {
         if (config.AgentHome is not { } agentHome)
             return null;
 
-        using var checkout = TempDirectory.Create(config.WorkDir.Value, "rix-agent-home");
+        using var checkout = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-agent-home");
         try
         {
-            var source = await fetcher.FetchAsync(agentHome.Repo, agentHome.SourcePath, new DirectoryPath(checkout.Path), ct);
-            DirectoryMerge.CopySkippingExisting(source.Value, agentHome.Home.Value);
+            var source = await context.AgentHomeFetcher.FetchAsync(agentHome.Repo, agentHome.SourcePath, new DirectoryPath(checkout.Path, context.FileSystem), ct);
+            DirectoryMerge.CopySkippingExisting(context.FileSystem, source.Value, agentHome.Home.Value);
             return null;
         }
         catch (RepoHostException ex)

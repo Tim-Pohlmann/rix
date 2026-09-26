@@ -78,7 +78,7 @@ public class SharedJobOptionsTests
     {
         JobConfig? captured = null;
         var root = new RootCommand();
-        root.AddCommand(JobCommand.Build(config =>
+        root.AddCommand(JobCommand.Build(new LocalFileSystem(), config =>
         {
             captured = config;
             return Task.FromResult(0);
@@ -99,7 +99,7 @@ public class SharedJobOptionsTests
         // can supply are stubbed out here.
         CiFailureConfig? captured = null;
         var root = new RootCommand();
-        root.AddCommand(CiFailureCommand.Build(config =>
+        root.AddCommand(CiFailureCommand.Build(new LocalFileSystem(), config =>
         {
             captured = config;
             return Task.FromResult(0);

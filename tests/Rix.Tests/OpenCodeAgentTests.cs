@@ -22,7 +22,7 @@ public class OpenCodeAgentTests
             Runner((f, _) => Task.FromResult<ProcessResult>(f == "opencode"
                 ? new ProcessSuccess()
                 : new ProcessFailure("exited with code 1"))),
-            CancellationToken.None);
+            "/tmp/work", CancellationToken.None);
 
         Assert.IsInstanceOfType<Installed>(result);
     }
@@ -40,7 +40,7 @@ public class OpenCodeAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
             }),
-            CancellationToken.None);
+            "/tmp/work", CancellationToken.None);
 
         Assert.IsInstanceOfType<Installed>(result);
     }
@@ -50,7 +50,7 @@ public class OpenCodeAgentTests
     {
         var result = await Agent.EnsureInstalledAsync(
             Runner((_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"))),
-            CancellationToken.None);
+            "/tmp/work", CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "npm");
@@ -67,7 +67,7 @@ public class OpenCodeAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
                 _ => throw new NotSupportedException(f),
             }),
-            CancellationToken.None);
+            "/tmp/work", CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "npm install");
@@ -93,7 +93,7 @@ public class OpenCodeAgentTests
                     _ => throw new NotSupportedException(f),
                 };
             }),
-            CancellationToken.None);
+            "/tmp/work", CancellationToken.None);
 
         Assert.AreEqual("opencode-ai", installedPackage);
     }
@@ -108,7 +108,7 @@ public class OpenCodeAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
             }),
-            CancellationToken.None);
+            "/tmp/work", CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "could not be verified");

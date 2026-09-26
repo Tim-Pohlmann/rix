@@ -76,7 +76,7 @@ public class TypesTests
     [TestMethod]
     public void DirectoryPath_NormalisesRelativeToAbsolute()
     {
-        var path = new DirectoryPath(".");
+        var path = new DirectoryPath(".", new LocalFileSystem());
         Assert.IsTrue(Path.IsPathRooted(path.Value), $"expected an absolute path, got: {path.Value}");
         Assert.AreEqual(Path.GetFullPath("."), path.Value);
     }
@@ -84,8 +84,18 @@ public class TypesTests
     [TestMethod]
     public void DirectoryPath_RejectsNonExistent()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new DirectoryPath("/nonexistent/path/xyz"));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new DirectoryPath("/nonexistent/path/xyz", new LocalFileSystem()));
         Assert.AreEqual("directory does not exist: /nonexistent/path/xyz", ex.Message);
+    }
+
+    [TestMethod]
+    public void DirectoryPath_AsksTheFileSystemWhetherTheDirectoryExists()
+    {
+        var missing = new StubFileSystem(directoryExists: _ => false);
+        var present = new StubFileSystem(directoryExists: _ => true);
+
+        Assert.ThrowsExactly<InvalidInputException>(() => _ = new DirectoryPath(Path.GetTempPath(), missing));
+        Assert.AreEqual(Path.GetFullPath("/only/on/the/stub"), new DirectoryPath("/only/on/the/stub", present).Value);
     }
 
     [TestMethod]

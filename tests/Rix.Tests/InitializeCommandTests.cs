@@ -8,10 +8,10 @@ namespace Rix.Tests;
 [TestClass]
 public class InitializeCommandTests
 {
-    private static Parser BuildParser(Func<InitializeConfig, Task<int>> handler)
+    private static Parser BuildParser(Func<InitializeConfig, Task<int>> handler, IFileSystem? fileSystem = null)
     {
         var root = new RootCommand();
-        root.AddCommand(InitializeCommand.Build(handler));
+        root.AddCommand(InitializeCommand.Build(fileSystem ?? new LocalFileSystem(), handler));
         return CliPipeline.Build(root);
     }
 
@@ -38,16 +38,21 @@ public class InitializeCommandTests
     public async Task Command_DefaultsDirToCurrentDirectory_WhenFlagAbsent()
     {
         InitializeConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
+        var currentDirectory = Path.GetTempPath();
+        var parser = BuildParser
+        (
+            config =>
+            {
+                captured = config;
+                return Task.FromResult(0);
+            },
+            new StubFileSystem(currentDirectory: currentDirectory)
+        );
 
         await parser.InvokeAsync("initialize");
 
         Assert.IsNotNull(captured);
-        Assert.AreEqual(Path.GetFullPath(Directory.GetCurrentDirectory()), captured.TargetDir.Value);
+        Assert.AreEqual(Path.GetFullPath(currentDirectory), captured.TargetDir.Value);
     }
 
     [TestMethod]

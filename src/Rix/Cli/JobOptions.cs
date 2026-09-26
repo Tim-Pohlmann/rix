@@ -159,8 +159,8 @@ internal static class JobOptions
         new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes)
     );
 
-    internal static DirectoryPath ReadOutputDir(ParseResult parsed)
-    => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path));
+    internal static DirectoryPath ReadOutputDir(ParseResult parsed, IFileSystem fileSystem)
+    => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path, fileSystem));
 
     internal static string? ReadModel(ParseResult parsed)
     => parsed.OptionalText(ModelOption, "RIX_MODEL");
@@ -183,7 +183,7 @@ internal static class JobOptions
     /// the path means anything depends on the repo — a path without a repo is reported, not
     /// ignored. The runner home is resolved only when a repo is given, so a job that doesn't use
     /// the feature never depends on having one.</summary>
-    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed)
+    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed, IFileSystem fileSystem)
     {
         var repo = parsed.Optional<RepoIdentifier?>(FactoryRepoOption, "RIX_FACTORY_REPO", raw => new RepoIdentifier(raw), () => null);
         if (repo is null)
@@ -200,12 +200,7 @@ internal static class JobOptions
             raw => new SubDirectoryPath(raw),
             new SubDirectoryPath(JobConfig.DefaultAgentHomePath)
         );
-        // On Unix this already consults $HOME before the passwd entry.
-        var home = Input.Named
-        (
-            "runner home directory",
-            () => new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
-        );
+        var home = Input.Named("runner home directory", () => new DirectoryPath(fileSystem.UserHomeDirectory, fileSystem));
         return new AgentHomeInfo(repo, sourcePath, home);
     }
 }

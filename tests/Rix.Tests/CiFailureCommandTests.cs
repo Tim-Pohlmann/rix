@@ -13,7 +13,7 @@ public class CiFailureCommandTests
     private static Parser BuildParser(Func<CiFailureConfig, Task<int>> handler)
     {
         var root = new RootCommand();
-        root.AddCommand(CiFailureCommand.Build(handler));
+        root.AddCommand(CiFailureCommand.Build(new LocalFileSystem(), handler));
         return CliPipeline.Build(root);
     }
 

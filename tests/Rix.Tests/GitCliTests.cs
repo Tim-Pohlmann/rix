@@ -22,6 +22,8 @@ public class GitCliTests
     private static readonly string[] ExpectedConfigureUserEmailArgs =
         ["config", "user.email", "rix@noreply.invalid"];
 
+    private static readonly string[] ExpectedWorkingDirs = ["/tmp/work", "/tmp/work", "/tmp/checkout", "/tmp/work"];
+
     private static readonly string[] ExpectedLsRemoteArgs =
         ["ls-remote", "--exit-code", "https://github.com/owner/repo.git", "refs/heads/rix/fix"];
 
@@ -31,7 +33,25 @@ public class GitCliTests
     private static readonly string[] ExpectedSparseCheckoutArgs = ["sparse-checkout", "set", "nested/agent-home"];
 
     private static GitCli Build(string readToken = "read-tok", RunProcessAsync? gitRunner = null)
-    => new(new Uri("https://github.com/owner/repo.git"), new GitReadToken(readToken), gitRunner ?? SuccessGitRunner);
+    => new(new Uri("https://github.com/owner/repo.git"), new GitReadToken(readToken), gitRunner ?? SuccessGitRunner, "/tmp/work");
+
+    [TestMethod]
+    public async Task CommandsWithoutALocalRepo_RunFromTheWorkingDirectoryGivenAtCreation()
+    {
+        var workingDirs = new List<string>();
+        var git = Build(
+            gitRunner: (_, _, workingDir, _, _, _) =>
+            {
+                workingDirs.Add(workingDir);
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await git.CloneAsync("/tmp/clone", CancellationToken.None);
+        await git.SparseCloneAsync("/tmp/checkout", new SubDirectoryPath("agent-home"), CancellationToken.None);
+        await git.BranchExistsOnRemoteAsync(new BranchName("rix/fix"), CancellationToken.None);
+
+        CollectionAssert.AreEqual(ExpectedWorkingDirs, workingDirs);
+    }
 
     [TestMethod]
     public async Task BranchExistsOnRemoteAsync_RunsLsRemote_AgainstTheRemote_WithAuthEnv()

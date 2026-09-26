@@ -5,7 +5,7 @@ namespace Rix.Cli;
 
 internal static class JobCommand
 {
-    internal static Command Build(Func<JobConfig, Task<int>> handler)
+    internal static Command Build(IFileSystem fileSystem, Func<JobConfig, Task<int>> handler)
     {
         var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
 
@@ -28,13 +28,13 @@ internal static class JobCommand
                 var agent = JobOptions.ReadAgent(parsed);
                 var maxTokens = JobOptions.ReadMaxTokens(parsed);
                 var timeout = JobOptions.ReadTimeout(parsed);
-                var workDir = CommonOptions.ReadWorkDir(parsed);
-                var outputDir = JobOptions.ReadOutputDir(parsed);
+                var workDir = CommonOptions.ReadWorkDir(parsed, fileSystem);
+                var outputDir = JobOptions.ReadOutputDir(parsed, fileSystem);
                 var model = JobOptions.ReadModel(parsed);
                 var apiKey = JobOptions.ReadAgentApiKey(parsed);
                 var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
                 var allowedPushBranches = BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
-                var agentHome = JobOptions.ReadAgentHome(parsed);
+                var agentHome = JobOptions.ReadAgentHome(parsed, fileSystem);
 
                 var config = new JobConfig
                 (

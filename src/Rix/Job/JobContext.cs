@@ -16,5 +16,6 @@ internal sealed record JobContext
     ICodingAgent Agent,
     LogLine LogLine,
     LogLine TranscriptLine,
-    IAgentHomeFetcher AgentHomeFetcher
+    IAgentHomeFetcher AgentHomeFetcher,
+    IFileSystem FileSystem
 );
