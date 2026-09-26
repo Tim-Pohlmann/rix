@@ -181,15 +181,26 @@ internal static class JobOptions
 
     /// <summary>What the runner's home directory is called in errors: it comes from the environment,
     /// not from a flag.</summary>
-    internal const string RunnerHomeName = "runner home directory";
+    private const string RunnerHomeName = "runner home directory";
 
-    /// <summary>The directories <c>job</c> and <c>ci-failure</c> both need to exist.</summary>
-    internal static List<RequiredDirectory> RequiredDirectories(DirectoryPath workDir, DirectoryPath outputDir)
-    => [RequiredDirectory.For(CommonOptions.WorkDirOption, workDir), RequiredDirectory.For(OutputDirOption, outputDir)];
+    /// <summary>The directories <c>job</c> and <c>ci-failure</c> need to exist: the work and output
+    /// dirs, plus the runner home when there's an agent home to install into it.</summary>
+    internal static IReadOnlyList<RequiredDirectory> RequiredDirectories
+    (
+        DirectoryPath workDir, DirectoryPath outputDir, AgentHomeInfo? agentHome = null
+    )
+    => [RequiredDirectory.For(CommonOptions.WorkDirOption, workDir), RequiredDirectory.For(OutputDirOption, outputDir), .. RunnerHome(agentHome)];
+
+    private static IEnumerable<RequiredDirectory> RunnerHome(AgentHomeInfo? agentHome)
+    => agentHome switch
+    {
+        null => [],
+        _ => [new RequiredDirectory(RunnerHomeName, agentHome.Home)],
+    };
 
     /// <summary>Reads <c>--factory-repo</c>/<c>--agent-home-path</c> as a pair, because whether
     /// the path means anything depends on the repo — a path without a repo is reported, not
-    /// ignored. The runner home is resolved only when a repo is given, so a job that doesn't use
+    /// ignored. The runner home is only validated when a repo is given, so a job that doesn't use
     /// the feature never depends on having one.</summary>
     internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed, string userHomeDirectory)
     {

@@ -111,35 +111,36 @@ public class StartupTests
     }
 
     [TestMethod]
-    public async Task RunIfDirectoriesExist_Runs_WhenEveryDirectoryExists()
+    public async Task WhenDirectoriesExist_Runs_WhenEveryDirectoryExists()
     {
-        var exitCode = await Startup.RunIfDirectoriesExist
-        (
-            new StubFileSystem(directoryExists: _ => true),
-            [new RequiredDirectory("--work-dir", new DirectoryPath("/only/on/the/stub"))],
-            () => Task.FromResult(7)
-        );
+        var handler = Startup.WhenDirectoriesExist<int>(new StubFileSystem(directoryExists: _ => true), config => Task.FromResult(config));
+
+        var exitCode = await handler(7, [new RequiredDirectory("--work-dir", new DirectoryPath("/only/on/the/stub"))]);
 
         Assert.AreEqual(7, exitCode);
     }
 
     [TestMethod]
-    public void RunIfDirectoriesExist_ReportsTheFirstMissingDirectory_WithoutRunning()
+    public void WhenDirectoriesExist_ReportsTheFirstMissingDirectory_WithoutRunning()
     {
         var ran = false;
         var present = new DirectoryPath("/present");
         var missing = new DirectoryPath("/missing");
 
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = Startup.RunIfDirectoriesExist
+        var handler = Startup.WhenDirectoriesExist<int>
         (
             new StubFileSystem(directoryExists: path => path == present.Value),
-            [new RequiredDirectory("--work-dir", present), new RequiredDirectory("--output-dir", missing), new RequiredDirectory("--dir", missing)],
-            () =>
+            _ =>
             {
                 ran = true;
                 return Task.FromResult(0);
             }
-        ));
+        );
+
+        var ex = Assert.ThrowsExactly<InvalidInputException>
+        (
+            () => _ = handler(0, [new RequiredDirectory("--work-dir", present), new RequiredDirectory("--output-dir", missing), new RequiredDirectory("--dir", missing)])
+        );
 
         Assert.AreEqual($"--output-dir: directory does not exist: {missing.Value}", ex.Message);
         Assert.IsFalse(ran);

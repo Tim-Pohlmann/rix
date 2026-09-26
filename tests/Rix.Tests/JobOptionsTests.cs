@@ -16,8 +16,6 @@ namespace Rix.Tests;
 [TestClass]
 public class JobOptionsTests
 {
-    private static readonly string ExistingDir = Path.GetTempPath();
-
     /// <summary>The locations <c>Startup</c> would look up. Neither exists: the readers only turn
     /// text into paths, and whether a directory exists is <c>Startup</c>'s to check.</summary>
     private const string SystemTemp = "/the/system/temp";
@@ -104,16 +102,8 @@ public class JobOptionsTests
     => Assert.AreEqual("--work-dir default: must name a directory, got a blank path", ErrorOf(() => CommonOptions.ReadWorkDir(Parse(), "")));
 
     [TestMethod]
-    public void ReadWorkDir_UsesExistingDirectory()
-    => Assert.AreEqual(Path.GetFullPath(ExistingDir), CommonOptions.ReadWorkDir(Parse("--work-dir", ExistingDir), SystemTemp).Value);
-
-    [TestMethod]
     public void ReadWorkDir_LeavesWhetherItExistsToTheCaller()
     => Assert.AreEqual(Path.GetFullPath("/nonexistent/path/xyz"), CommonOptions.ReadWorkDir(Parse("--work-dir", "/nonexistent/path/xyz"), SystemTemp).Value);
-
-    [TestMethod]
-    public void ReadOutputDir_UsesExistingDirectory()
-    => Assert.AreEqual(Path.GetFullPath(ExistingDir), JobOptions.ReadOutputDir(Parse("--output-dir", ExistingDir)).Value);
 
     [TestMethod]
     public void ReadOutputDir_RejectsEmpty()

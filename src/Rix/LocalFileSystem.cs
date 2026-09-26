@@ -2,12 +2,15 @@ namespace Rix;
 
 /// <summary>The production <see cref="IFileSystem"/>: the local disk. The one type allowed to touch
 /// <see cref="File"/> and <see cref="Directory"/> directly, or to look up where the temp files and
-/// the user's home are.</summary>
+/// the user's home are. Those two are looked up once, by <see cref="Startup"/>, and handed down as
+/// plain paths, so they aren't part of the interface.</summary>
 internal sealed class LocalFileSystem : IFileSystem
 {
+    /// <summary>The system's directory for temporary files.</summary>
     public string SystemTempDirectory => Path.GetTempPath();
 
-    // On Unix this already consults $HOME before the passwd entry.
+    /// <summary>The current user's home directory. On Unix this already consults $HOME before the
+    /// passwd entry.</summary>
     public string UserHomeDirectory => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     public bool FileExists(string path) => File.Exists(path);

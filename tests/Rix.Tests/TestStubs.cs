@@ -196,10 +196,6 @@ internal sealed class StubFileSystem(
 {
     private readonly LocalFileSystem _real = new();
 
-    public string SystemTempDirectory => _real.SystemTempDirectory;
-
-    public string UserHomeDirectory => _real.UserHomeDirectory;
-
     public bool FileExists(string path) => _real.FileExists(path);
 
     public bool DirectoryExists(string path)

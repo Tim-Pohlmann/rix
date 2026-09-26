@@ -118,32 +118,14 @@ internal static class Startup
             (
                 JobCommand.Build
                 (
-                    temp,
-                    fileSystem.UserHomeDirectory,
-                    (config, directories) => RunIfDirectoriesExist(fileSystem, directories, () => ExecuteJobAsync(config, cts.Token))
+                    systemTempDirectory: temp,
+                    userHomeDirectory: fileSystem.UserHomeDirectory,
+                    WhenDirectoriesExist<JobConfig>(fileSystem, config => ExecuteJobAsync(config, cts.Token))
                 )
             );
-            rootCommand.AddCommand
-            (
-                SubmitCommand.Build
-                (
-                    temp, (config, directories) => RunIfDirectoriesExist(fileSystem, directories, () => ExecuteSubmitAsync(config, cts.Token))
-                )
-            );
-            rootCommand.AddCommand
-            (
-                CiFailureCommand.Build
-                (
-                    temp, (config, directories) => RunIfDirectoriesExist(fileSystem, directories, () => ExecuteCiFailureAsync(config, cts.Token))
-                )
-            );
-            rootCommand.AddCommand
-            (
-                InitializeCommand.Build
-                (
-                    (config, directories) => RunIfDirectoriesExist(fileSystem, directories, () => ExecuteInitializeAsync(config, cts.Token))
-                )
-            );
+            rootCommand.AddCommand(SubmitCommand.Build(temp, WhenDirectoriesExist<SubmitConfig>(fileSystem, config => ExecuteSubmitAsync(config, cts.Token))));
+            rootCommand.AddCommand(CiFailureCommand.Build(temp, WhenDirectoriesExist<CiFailureConfig>(fileSystem, config => ExecuteCiFailureAsync(config, cts.Token))));
+            rootCommand.AddCommand(InitializeCommand.Build(WhenDirectoriesExist<InitializeConfig>(fileSystem, config => ExecuteInitializeAsync(config, cts.Token))));
             return await CliPipeline.Build(rootCommand).InvokeAsync(args);
         }
         finally
@@ -152,19 +134,21 @@ internal static class Startup
         }
     }
 
-    /// <summary>Runs <paramref name="run"/> once every directory the command was given exists: the
-    /// check the commands leave to the caller, since they never see the file system. A missing one
-    /// is an <see cref="InvalidInputException"/>, reported like any other bad flag.</summary>
-    internal static Task<int> RunIfDirectoriesExist
+    /// <summary>A command handler that runs <paramref name="run"/> once every directory the command
+    /// was given exists: the check the commands leave to the caller, since they never see the file
+    /// system. A missing one is an <see cref="InvalidInputException"/>, reported like any other bad
+    /// flag.</summary>
+    internal static Func<TConfig, IReadOnlyList<RequiredDirectory>, Task<int>> WhenDirectoriesExist<TConfig>
     (
-        IFileSystem fileSystem, IReadOnlyList<RequiredDirectory> directories, Func<Task<int>> run
+        IFileSystem fileSystem, Func<TConfig, Task<int>> run
     )
+    => (config, directories) =>
     {
         var missing = directories.FirstOrDefault(directory => !fileSystem.DirectoryExists(directory.Path.Value));
         if (missing is not null)
             throw new InvalidInputException($"{missing.Name}: directory does not exist: {missing.Path}");
-        return run();
-    }
+        return run(config);
+    };
 
     /// <summary>Cancels <paramref name="cts"/> and suppresses the runtime's default termination so
     /// the in-flight run unwinds gracefully. Extracted from <see cref="RunAsync"/> so the SIGTERM

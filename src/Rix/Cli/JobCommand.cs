@@ -50,10 +50,7 @@ internal static class JobCommand
                     allowedPushBranches,
                     agentHome
                 );
-                var directories = JobOptions.RequiredDirectories(workDir, outputDir);
-                if (agentHome is not null)
-                    directories.Add(new RequiredDirectory(JobOptions.RunnerHomeName, agentHome.Home));
-                ctx.ExitCode = await handler(config, directories);
+                ctx.ExitCode = await handler(config, JobOptions.RequiredDirectories(workDir, outputDir, agentHome));
             }
         );
 
