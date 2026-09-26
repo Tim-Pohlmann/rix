@@ -111,11 +111,12 @@ internal static class Startup
         {
             using var onSigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, HandleSigterm(cts));
 
+            var fileSystem = new LocalFileSystem();
             var rootCommand = new RootCommand("RIX - AI-powered code automation");
-            rootCommand.AddCommand(JobCommand.Build(config => ExecuteJobAsync(config, cts.Token)));
-            rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, cts.Token)));
-            rootCommand.AddCommand(CiFailureCommand.Build(config => ExecuteCiFailureAsync(config, cts.Token)));
-            rootCommand.AddCommand(InitializeCommand.Build(config => ExecuteInitializeAsync(config, cts.Token)));
+            rootCommand.AddCommand(JobCommand.Build(fileSystem, config => ExecuteJobAsync(config, cts.Token)));
+            rootCommand.AddCommand(SubmitCommand.Build(fileSystem, config => ExecuteSubmitAsync(config, cts.Token)));
+            rootCommand.AddCommand(CiFailureCommand.Build(fileSystem, config => ExecuteCiFailureAsync(config, cts.Token)));
+            rootCommand.AddCommand(InitializeCommand.Build(fileSystem, config => ExecuteInitializeAsync(config, cts.Token)));
             return await CliPipeline.Build(rootCommand).InvokeAsync(args);
         }
         finally

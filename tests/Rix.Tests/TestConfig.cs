@@ -37,8 +37,8 @@ internal static class TestConfig
             new RepoIdentifier(repo),
             new GitReadToken(readToken),
             new TimeoutMinutes(timeoutMinutes),
-            WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
-            OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
+            WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath(), new LocalFileSystem()),
+            OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath(), new LocalFileSystem()),
             new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, credential),
             allowedPushBranches ?? [],
             agentHome
@@ -57,8 +57,8 @@ internal static class TestConfig
     (
         new RepoIdentifier(repo),
         new GitToken(writeToken),
-        InputDir: new DirectoryPath(inputDir ?? Path.GetTempPath()),
-        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
+        InputDir: new DirectoryPath(inputDir ?? Path.GetTempPath(), new LocalFileSystem()),
+        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath(), new LocalFileSystem()),
         BranchName.ParseAllowList(allowedPushBranches)
     );
 
@@ -78,13 +78,13 @@ internal static class TestConfig
         new RepoIdentifier(repo),
         new GitReadToken(readToken),
         new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes),
-        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
-        OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
+        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath(), new LocalFileSystem()),
+        OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath(), new LocalFileSystem()),
         agent,
         new MaxTokens(JobConfig.DefaultMaxTokens),
         new MaxRixCommits(maxRixCommits)
     );
 
     internal static InitializeConfig ValidInitialize(string? dir = null, string? workflowRef = null)
-    => new(new DirectoryPath(dir ?? Path.GetTempPath()), new WorkflowRef(workflowRef ?? "v0"));
+    => new(new DirectoryPath(dir ?? Path.GetTempPath(), new LocalFileSystem()), new WorkflowRef(workflowRef ?? "v0"));
 }

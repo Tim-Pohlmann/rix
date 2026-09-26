@@ -11,7 +11,7 @@ public class JobCommandTests
     private static Parser BuildParser(Func<JobConfig, Task<int>> handler)
     {
         var root = new RootCommand();
-        root.AddCommand(JobCommand.Build(handler));
+        root.AddCommand(JobCommand.Build(new LocalFileSystem(), handler));
         return CliPipeline.Build(root);
     }
 

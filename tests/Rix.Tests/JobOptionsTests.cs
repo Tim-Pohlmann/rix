@@ -17,11 +17,12 @@ namespace Rix.Tests;
 public class JobOptionsTests
 {
     private static readonly string ExistingDir = Path.GetTempPath();
+    private static readonly LocalFileSystem Disk = new();
 
     private static ParseResult Parse(params string[] args)
     {
         var root = new RootCommand();
-        root.AddCommand(JobCommand.Build(_ => Task.FromResult(0)));
+        root.AddCommand(JobCommand.Build(Disk, _ => Task.FromResult(0)));
         return root.Parse(["job", .. args]);
     }
 
@@ -89,30 +90,30 @@ public class JobOptionsTests
     [TestMethod]
     public void ReadWorkDir_DefaultsToTemp_WhenBlank()
     {
-        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse()).Value);
-        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse("--work-dir", "")).Value);
-        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse("--work-dir", "   ")).Value);
+        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse(), Disk).Value);
+        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse("--work-dir", ""), Disk).Value);
+        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse("--work-dir", "   "), Disk).Value);
     }
 
     [TestMethod]
     public void ReadWorkDir_UsesExistingDirectory()
-    => Assert.AreEqual(Path.GetFullPath(ExistingDir), CommonOptions.ReadWorkDir(Parse("--work-dir", ExistingDir)).Value);
+    => Assert.AreEqual(Path.GetFullPath(ExistingDir), CommonOptions.ReadWorkDir(Parse("--work-dir", ExistingDir), Disk).Value);
 
     [TestMethod]
     public void ReadWorkDir_RejectsNonExistent()
-    => Assert.AreEqual("--work-dir: directory does not exist: /nonexistent/path/xyz", ErrorOf(() => CommonOptions.ReadWorkDir(Parse("--work-dir", "/nonexistent/path/xyz"))));
+    => Assert.AreEqual("--work-dir: directory does not exist: /nonexistent/path/xyz", ErrorOf(() => CommonOptions.ReadWorkDir(Parse("--work-dir", "/nonexistent/path/xyz"), Disk)));
 
     [TestMethod]
     public void ReadOutputDir_UsesExistingDirectory()
-    => Assert.AreEqual(Path.GetFullPath(ExistingDir), JobOptions.ReadOutputDir(Parse("--output-dir", ExistingDir)).Value);
+    => Assert.AreEqual(Path.GetFullPath(ExistingDir), JobOptions.ReadOutputDir(Parse("--output-dir", ExistingDir), Disk).Value);
 
     [TestMethod]
     public void ReadOutputDir_RejectsEmpty()
-    => Assert.AreEqual("--output-dir is required", ErrorOf(() => JobOptions.ReadOutputDir(Parse("--output-dir", ""))));
+    => Assert.AreEqual("--output-dir is required", ErrorOf(() => JobOptions.ReadOutputDir(Parse("--output-dir", ""), Disk)));
 
     [TestMethod]
     public void ReadOutputDir_RejectsNonExistent()
-    => Assert.AreEqual("--output-dir: directory does not exist: /nonexistent/out", ErrorOf(() => JobOptions.ReadOutputDir(Parse("--output-dir", "/nonexistent/out"))));
+    => Assert.AreEqual("--output-dir: directory does not exist: /nonexistent/out", ErrorOf(() => JobOptions.ReadOutputDir(Parse("--output-dir", "/nonexistent/out"), Disk)));
 
     [TestMethod]
     public void ReadAgent_DefaultsToOpenCode()
@@ -200,23 +201,23 @@ public class JobOptionsTests
 
     [TestMethod]
     public void ReadAgentHome_IsNull_WhenNoFactoryRepo()
-    => Assert.IsNull(JobOptions.ReadAgentHome(Parse()));
+    => Assert.IsNull(JobOptions.ReadAgentHome(Parse(), Disk));
 
     [TestMethod]
     public void ReadAgentHome_DefaultsPath_WhenOnlyRepoSupplied()
     {
-        var factory = JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory"));
+        var factory = JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory"), Disk);
 
         Assert.IsNotNull(factory);
         Assert.AreEqual("acme/factory", factory.Repo.Value);
         Assert.AreEqual(JobConfig.DefaultAgentHomePath, factory.SourcePath.Value);
-        Assert.AreEqual(new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), factory.Home);
+        Assert.AreEqual(new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Disk), factory.Home);
     }
 
     [TestMethod]
     public void ReadAgentHome_NormalisesExplicitPath()
     {
-        var factory = JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "./config/home/"));
+        var factory = JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "./config/home/"), Disk);
 
         Assert.IsNotNull(factory);
         Assert.AreEqual("config/home", factory.SourcePath.Value);
@@ -230,7 +231,7 @@ public class JobOptionsTests
     => Assert.AreEqual
     (
         JobConfig.DefaultAgentHomePath,
-        JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "   "))!.SourcePath.Value
+        JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "   "), Disk)!.SourcePath.Value
     );
 
     [TestMethod]
@@ -238,13 +239,13 @@ public class JobOptionsTests
     => Assert.AreEqual
     (
         "--agent-home-path requires --factory-repo",
-        ErrorOf(() => JobOptions.ReadAgentHome(Parse("--agent-home-path", ".rix/agent-home")))
+        ErrorOf(() => JobOptions.ReadAgentHome(Parse("--agent-home-path", ".rix/agent-home"), Disk))
     );
 
     [TestMethod]
     public void ReadAgentHome_RejectsMalformedRepo()
     {
-        var error = ErrorOf(() => JobOptions.ReadAgentHome(Parse("--factory-repo", "not-a-repo")));
+        var error = ErrorOf(() => JobOptions.ReadAgentHome(Parse("--factory-repo", "not-a-repo"), Disk));
         StringAssert.StartsWith(error, "--factory-repo: ");
     }
 
@@ -254,7 +255,7 @@ public class JobOptionsTests
     [DataRow("a/../../b")]
     public void ReadAgentHome_RejectsMalformedPath(string path)
     {
-        var error = ErrorOf(() => JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", path)));
+        var error = ErrorOf(() => JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", path), Disk));
         StringAssert.StartsWith(error, "--agent-home-path: ");
     }
 }

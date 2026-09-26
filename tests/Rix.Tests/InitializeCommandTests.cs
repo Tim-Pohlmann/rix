@@ -11,7 +11,7 @@ public class InitializeCommandTests
     private static Parser BuildParser(Func<InitializeConfig, Task<int>> handler)
     {
         var root = new RootCommand();
-        root.AddCommand(InitializeCommand.Build(handler));
+        root.AddCommand(InitializeCommand.Build(new LocalFileSystem(), handler));
         return CliPipeline.Build(root);
     }
 

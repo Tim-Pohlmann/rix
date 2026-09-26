@@ -58,13 +58,10 @@ rules:
       Access files and directories through IFileSystem, whose only
       implementation (LocalFileSystem) may call File/Directory directly, so
       the calling code stays testable without touching the disk.
-    # Tests arrange and inspect real directories. DirectoryPath checks that its directory exists
-    # when constructed, like every value object validates its input, and is built from parsed
-    # options with no seam to hand it.
+    # Tests arrange and inspect real directories.
     paths:
       exclude:
         - src/Rix/LocalFileSystem.cs
-        - src/Rix/ValueObjects.cs
         - tests/**
     patterns:
       - pattern-either:

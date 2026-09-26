@@ -25,7 +25,7 @@ internal static class CiFailureCommand
     )
     { IsRequired = false };
 
-    internal static Command Build(Func<CiFailureConfig, Task<int>> handler)
+    internal static Command Build(IFileSystem fileSystem, Func<CiFailureConfig, Task<int>> handler)
     {
         var command = new Command
         (
@@ -49,8 +49,8 @@ internal static class CiFailureCommand
                 var agent = JobOptions.ReadAgent(parsed);
                 var maxTokens = JobOptions.ReadMaxTokens(parsed);
                 var timeout = JobOptions.ReadTimeout(parsed);
-                var workDir = CommonOptions.ReadWorkDir(parsed);
-                var outputDir = JobOptions.ReadOutputDir(parsed);
+                var workDir = CommonOptions.ReadWorkDir(parsed, fileSystem);
+                var outputDir = JobOptions.ReadOutputDir(parsed, fileSystem);
                 var model = JobOptions.ReadModel(parsed);
                 var apiKey = JobOptions.ReadAgentApiKey(parsed);
                 var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);

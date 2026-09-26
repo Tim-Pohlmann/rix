@@ -187,16 +187,23 @@ internal sealed class StubAgentHomeFetcher(Func<DirectoryPath, DirectoryPath>? o
 }
 
 /// <summary>The local disk, except for the operations a test overrides — to make a write or a
-/// cleanup fail the way a full disk or a locked file would, without arranging one.</summary>
+/// cleanup fail the way a full disk or a locked file would, or to decide what exists, without
+/// arranging it on disk.</summary>
 internal sealed class StubFileSystem(
     Func<string, Task>? writeAllText = null,
-    Action<string>? deleteDirectory = null) : IFileSystem
+    Action<string>? deleteDirectory = null,
+    Func<string, bool>? directoryExists = null) : IFileSystem
 {
     private readonly LocalFileSystem _real = new();
 
     public bool FileExists(string path) => _real.FileExists(path);
 
-    public bool DirectoryExists(string path) => _real.DirectoryExists(path);
+    public bool DirectoryExists(string path)
+    => directoryExists switch
+    {
+        { } exists => exists(path),
+        _ => _real.DirectoryExists(path),
+    };
 
     public bool PathExists(string path) => _real.PathExists(path);
 

@@ -19,7 +19,7 @@ internal static class InitializeCommand
     )
     { IsRequired = false };
 
-    internal static Command Build(Func<InitializeConfig, Task<int>> handler)
+    internal static Command Build(IFileSystem fileSystem, Func<InitializeConfig, Task<int>> handler)
     {
         var command = new Command("initialize", "Write the rix caller workflows into a cloned repo's .github/workflows/");
         // `init` alias: the short form nearly everyone reaches for first.
@@ -36,7 +36,7 @@ internal static class InitializeCommand
                 var dir = ctx.ParseResult.GetValueForOption(DirOption) ?? Directory.GetCurrentDirectory();
                 var config = new InitializeConfig
                 (
-                    Input.Required("--dir", dir, path => new DirectoryPath(path)),
+                    Input.Required("--dir", dir, path => new DirectoryPath(path, fileSystem)),
                     Input.Optional("--ref", ctx.ParseResult.GetValueForOption(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild)
                 );
                 ctx.ExitCode = await handler(config);

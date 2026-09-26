@@ -30,6 +30,12 @@ internal static class CommonOptions
 
     /// <summary>The system temp directory is the fallback, built lazily so an explicitly supplied
     /// <c>--work-dir</c> never pays for a <see cref="DirectoryPath"/> it won't use.</summary>
-    internal static DirectoryPath ReadWorkDir(ParseResult parsed)
-    => parsed.Optional(WorkDirOption, "RIX_WORK_DIR", path => new DirectoryPath(path), () => new DirectoryPath(Path.GetTempPath()));
+    internal static DirectoryPath ReadWorkDir(ParseResult parsed, IFileSystem fileSystem)
+    => parsed.Optional
+    (
+        WorkDirOption,
+        "RIX_WORK_DIR",
+        path => new DirectoryPath(path, fileSystem),
+        () => new DirectoryPath(Path.GetTempPath(), fileSystem)
+    );
 }
