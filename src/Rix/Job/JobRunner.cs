@@ -28,7 +28,7 @@ internal static class JobRunner
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
 
-        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, ct) is InstallFailed installFailed)
+        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, config.WorkDir.Value, ct) is InstallFailed installFailed)
         {
             return new SetupFailure($"agent install failed: {installFailed.Reason}");
         }

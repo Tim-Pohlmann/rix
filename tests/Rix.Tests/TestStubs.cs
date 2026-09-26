@@ -192,9 +192,18 @@ internal sealed class StubAgentHomeFetcher(Func<DirectoryPath, DirectoryPath>? o
 internal sealed class StubFileSystem(
     Func<string, Task>? writeAllText = null,
     Action<string>? deleteDirectory = null,
-    Func<string, bool>? directoryExists = null) : IFileSystem
+    Func<string, bool>? directoryExists = null,
+    string? currentDirectory = null,
+    string? systemTempDirectory = null,
+    string? userHomeDirectory = null) : IFileSystem
 {
     private readonly LocalFileSystem _real = new();
+
+    public string CurrentDirectory => currentDirectory ?? _real.CurrentDirectory;
+
+    public string SystemTempDirectory => systemTempDirectory ?? _real.SystemTempDirectory;
+
+    public string UserHomeDirectory => userHomeDirectory ?? _real.UserHomeDirectory;
 
     public bool FileExists(string path) => _real.FileExists(path);
 
@@ -242,7 +251,7 @@ internal sealed class StubAgent(Func<CancellationToken, Task<InstallResult>> ins
 {
     private readonly ClaudeAgent _real = new();
 
-    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync _, CancellationToken cancellationToken)
+    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync _, string workingDirectory, CancellationToken cancellationToken)
     => install(cancellationToken);
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)

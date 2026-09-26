@@ -36,6 +36,6 @@ internal static class CommonOptions
         WorkDirOption,
         "RIX_WORK_DIR",
         path => new DirectoryPath(path, fileSystem),
-        () => new DirectoryPath(Path.GetTempPath(), fileSystem)
+        () => new DirectoryPath(fileSystem.SystemTempDirectory, fileSystem)
     );
 }

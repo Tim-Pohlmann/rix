@@ -33,7 +33,7 @@ internal static class InitializeCommand
             {
                 // Unlike the CI-run commands, `initialize` is a local dev step - no RIX_* env
                 // fallback; an absent --dir just means "this repo".
-                var dir = ctx.ParseResult.GetValueForOption(DirOption) ?? Directory.GetCurrentDirectory();
+                var dir = ctx.ParseResult.GetValueForOption(DirOption) ?? fileSystem.CurrentDirectory;
                 var config = new InitializeConfig
                 (
                     Input.Required("--dir", dir, path => new DirectoryPath(path, fileSystem)),

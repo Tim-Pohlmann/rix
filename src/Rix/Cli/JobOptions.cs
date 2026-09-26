@@ -200,12 +200,7 @@ internal static class JobOptions
             raw => new SubDirectoryPath(raw),
             new SubDirectoryPath(JobConfig.DefaultAgentHomePath)
         );
-        // On Unix this already consults $HOME before the passwd entry.
-        var home = Input.Named
-        (
-            "runner home directory",
-            () => new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), fileSystem)
-        );
+        var home = Input.Named("runner home directory", () => new DirectoryPath(fileSystem.UserHomeDirectory, fileSystem));
         return new AgentHomeInfo(repo, sourcePath, home);
     }
 }

@@ -5,6 +5,15 @@ namespace Rix;
 /// disk — the way <see cref="Repository.IGit"/> stands in for git.</summary>
 internal interface IFileSystem
 {
+    /// <summary>The process's working directory.</summary>
+    string CurrentDirectory { get; }
+
+    /// <summary>The system's directory for temporary files.</summary>
+    string SystemTempDirectory { get; }
+
+    /// <summary>The current user's home directory.</summary>
+    string UserHomeDirectory { get; }
+
     bool FileExists(string path);
 
     /// <summary>Whether <paramref name="path"/> is a directory or a symlink to one.</summary>

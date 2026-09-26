@@ -21,7 +21,7 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultJobContext(config.Repo, config.Agent.Kind, config.ReadToken);
+    => DefaultJobContext(config.Repo, config.Agent.Kind, config.ReadToken, config.WorkDir);
 
     /// <summary>Builds the <see cref="JobContext"/> for both <c>rix job</c> and
     /// <see cref="DefaultCiFailureContext"/>. It takes the pieces separately instead of a
@@ -29,27 +29,27 @@ internal static class Startup
     /// supplied the prompt; the repo, agent and credential are configured up front. The agent home
     /// files are fetched from a second repo, so the fetcher gets its own git client for that repo
     /// under the same <paramref name="readToken"/>.</summary>
-    private static JobContext DefaultJobContext(RepoIdentifier repo, AgentKind agent, GitReadToken readToken)
+    private static JobContext DefaultJobContext(RepoIdentifier repo, AgentKind agent, GitReadToken readToken, DirectoryPath workDir)
     {
         var fileSystem = new LocalFileSystem();
         return new JobContext
         (
-            GitHubGit(repo, readToken),
+            GitHubGit(repo, readToken, workDir),
             ProcessWrapper.RunAsync,
             SelectAgent(agent),
             // Named because LogLine and TranscriptLine are the same delegate type: transposing them
             // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
             LogLine: Console.Error.WriteLine,
             TranscriptLine: _ => { },
-            AgentHomeFetcher: new AgentHomeFetcher(factoryRepo => GitHubGit(factoryRepo, readToken), fileSystem),
+            AgentHomeFetcher: new AgentHomeFetcher(factoryRepo => GitHubGit(factoryRepo, readToken, workDir), fileSystem),
             FileSystem: fileSystem
         );
     }
 
     /// <summary>Git against <paramref name="repo"/> on GitHub, authenticated with
     /// <paramref name="token"/> — the one place the GitHub clone URL is spelled out.</summary>
-    private static GitCli GitHubGit(RepoIdentifier repo, GitReadToken token)
-    => new(new Uri($"https://github.com/{repo.Value}.git"), token, ProcessWrapper.RunAsync);
+    private static GitCli GitHubGit(RepoIdentifier repo, GitReadToken token, DirectoryPath workDir)
+    => new(new Uri($"https://github.com/{repo.Value}.git"), token, ProcessWrapper.RunAsync, workDir.Value);
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
@@ -74,7 +74,7 @@ internal static class Startup
         (
             new GitHubActionsCiHost(api),
             new GitHubCiFailureRepoHost(api),
-            DefaultJobContext(config.Repo, config.Agent, config.ReadToken)
+            DefaultJobContext(config.Repo, config.Agent, config.ReadToken, config.WorkDir)
         );
     }
 
@@ -84,7 +84,7 @@ internal static class Startup
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        GitHubGit(config.Repo, config.WriteToken),
+        GitHubGit(config.Repo, config.WriteToken, config.WorkDir),
         new GitHubSubmitRepoHost(config.Repo, config.WriteToken),
         ProcessWrapper.RunAsync,
         Console.Error.WriteLine,

@@ -19,6 +19,10 @@ public class JobOptionsTests
     private static readonly string ExistingDir = Path.GetTempPath();
     private static readonly LocalFileSystem Disk = new();
 
+    /// <summary>A real directory other than the system temp dir or the user's home, so a default
+    /// can only resolve to it by coming from the stubbed file system.</summary>
+    private static readonly string ExistingSubDir = Directory.CreateTempSubdirectory("rix-options-").FullName;
+
     private static ParseResult Parse(params string[] args)
     {
         var root = new RootCommand();
@@ -90,9 +94,11 @@ public class JobOptionsTests
     [TestMethod]
     public void ReadWorkDir_DefaultsToTemp_WhenBlank()
     {
-        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse(), Disk).Value);
-        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse("--work-dir", ""), Disk).Value);
-        Assert.AreEqual(Path.GetTempPath(), CommonOptions.ReadWorkDir(Parse("--work-dir", "   "), Disk).Value);
+        var fileSystem = new StubFileSystem(systemTempDirectory: ExistingSubDir);
+
+        Assert.AreEqual(ExistingSubDir, CommonOptions.ReadWorkDir(Parse(), fileSystem).Value);
+        Assert.AreEqual(ExistingSubDir, CommonOptions.ReadWorkDir(Parse("--work-dir", ""), fileSystem).Value);
+        Assert.AreEqual(ExistingSubDir, CommonOptions.ReadWorkDir(Parse("--work-dir", "   "), fileSystem).Value);
     }
 
     [TestMethod]
@@ -206,12 +212,15 @@ public class JobOptionsTests
     [TestMethod]
     public void ReadAgentHome_DefaultsPath_WhenOnlyRepoSupplied()
     {
-        var factory = JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory"), Disk);
+        var factory = JobOptions.ReadAgentHome
+        (
+            Parse("--factory-repo", "acme/factory"), new StubFileSystem(userHomeDirectory: ExistingSubDir)
+        );
 
         Assert.IsNotNull(factory);
         Assert.AreEqual("acme/factory", factory.Repo.Value);
         Assert.AreEqual(JobConfig.DefaultAgentHomePath, factory.SourcePath.Value);
-        Assert.AreEqual(new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Disk), factory.Home);
+        Assert.AreEqual(ExistingSubDir, factory.Home.Value);
     }
 
     [TestMethod]
