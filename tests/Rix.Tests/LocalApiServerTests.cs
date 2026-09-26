@@ -78,8 +78,10 @@ public class LocalApiServerTests
         StringAssert.StartsWith(root.GetProperty("openapi").GetString(), "3.");
         var paths = root.GetProperty("paths");
         Assert.IsTrue(paths.TryGetProperty("/pr", out var pr), "spec must document /pr");
-        Assert.IsTrue(pr.TryGetProperty("post", out _), "spec must document POST /pr");
-        Assert.IsTrue(paths.TryGetProperty("/push", out _), "spec must document /push");
+        Assert.IsTrue(pr.TryGetProperty("post", out var postPr), "spec must document POST /pr");
+        Assert.IsTrue(paths.TryGetProperty("/push", out var push), "spec must document /push");
+        Assert.AreEqual("delivery", postPr.GetProperty("tags")[0].GetString());
+        Assert.AreEqual("delivery", push.GetProperty("delete").GetProperty("tags")[0].GetString());
 
         // The POST /pr request body schema is derived from PrRequest, so its fields must show up.
         var rawText = root.GetRawText();
