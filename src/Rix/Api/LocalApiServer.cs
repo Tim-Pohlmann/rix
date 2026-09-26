@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -13,25 +12,17 @@ namespace Rix.Api;
 internal sealed class LocalApiServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
-    private readonly PrQueue _pendingPrRequests;
-    private readonly ConcurrentDictionary<string, QueuedPush> _pendingPushRequests;
+    private readonly DeliveryEndpoints _delivery;
 
     internal Uri BaseUrl { get; }
-    internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => _pendingPrRequests.Snapshot();
-    internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => _pendingPushRequests.Values.ToArray();
+    internal IReadOnlyList<QueuedPr> GetQueuedPrRequests() => _delivery.PendingPrRequests.Snapshot();
+    internal IReadOnlyList<QueuedPush> GetQueuedPushRequests() => _delivery.PendingPushRequests.Snapshot();
 
-    private LocalApiServer
-    (
-        WebApplication app,
-        Uri baseUrl,
-        PrQueue pendingPrRequests,
-        ConcurrentDictionary<string, QueuedPush> pendingPushRequests
-    )
+    private LocalApiServer(WebApplication app, Uri baseUrl, DeliveryEndpoints delivery)
     {
         _app = app;
         BaseUrl = baseUrl;
-        _pendingPrRequests = pendingPrRequests;
-        _pendingPushRequests = pendingPushRequests;
+        _delivery = delivery;
     }
 
     /// <param name="logLine">Sink for the server's own diagnostic log lines, forwarded live so they
@@ -52,8 +43,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
         IReadOnlyList<BranchName>? allowedPushBranches = null
     )
     {
-        var pendingPrRequests = new PrQueue();
-        var pendingPushRequests = new ConcurrentDictionary<string, QueuedPush>();
+        var allowed = allowedPushBranches ?? [];
+        var delivery = new DeliveryEndpoints(host, cloneDir, allowed);
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
@@ -72,7 +63,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         // descriptions, request shapes) is the single source of truth the agent actually reads.
         builder.Services.AddOpenApi
         (
-            options => options.AddDocumentTransformer(new ApiInfoTransformer(BuildApiDescription(allowedPushBranches)))
+            options => options.AddDocumentTransformer(new ApiInfoTransformer(BuildApiDescription(allowed)))
         );
 
         var app = builder.Build();
@@ -109,73 +100,23 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 }
             }
         );
-        MapEndpoints(app, host, cloneDir, pendingPrRequests, pendingPushRequests, allowedPushBranches);
+        app.MapGet("/health", () => Results.Ok())
+            .WithTags("meta")
+            .WithSummary("Liveness check")
+            .WithDescription("Returns 200 once the API is ready to accept requests.");
+        delivery.Map(app);
         app.MapOpenApi("/openapi.json");
 
         await app.StartAsync(cancellationToken);
 
         var baseUrl = new Uri(app.Urls.First());
-        return new LocalApiServer(app, baseUrl, pendingPrRequests, pendingPushRequests);
-    }
-
-    private static void MapEndpoints
-    (
-        WebApplication app,
-        IJobRepoHost host,
-        string cloneDir,
-        PrQueue pendingPrRequests,
-        ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
-        IReadOnlyList<BranchName>? allowedPushBranches
-    )
-    {
-        const string deliveryTag = "delivery";
-
-        var prDescription =
-            "Call this once a rix/<short-description> branch is committed locally in your working " +
-            "directory and you are satisfied with it. The branch must not already exist on the remote. " +
-            "baseBranch is the branch the PR targets; stacked PRs are allowed as long as the queued base " +
-            "branches form no cycle. The pull request is opened after the job ends, not immediately.";
-
-        app.MapGet("/health", () => Results.Ok())
-            .WithTags("meta")
-            .WithSummary("Liveness check")
-            .WithDescription("Returns 200 once the API is ready to accept requests.");
-
-        app.MapPost("/pr", (PrRequest req, CancellationToken ct) => HandlePrAsync(req, host, cloneDir, pendingPrRequests, ct))
-            .WithTags(deliveryTag)
-            .WithSummary("Queue a branch to be opened as a pull request")
-            .WithDescription(prDescription);
-
-        app.MapGet("/pr", () => Results.Ok(pendingPrRequests.Snapshot()))
-            .WithTags(deliveryTag)
-            .WithSummary("List queued pull requests")
-            .WithDescription("Returns the pull requests queued so far this run, in the order they will be opened.");
-
-        app.MapDelete("/pr", ([FromBody] DeleteRequest req) => HandleDelete(req, pendingPrRequests.TryRemove))
-            .WithTags(deliveryTag)
-            .WithSummary("Cancel a queued pull request")
-            .WithDescription("Removes the queued pull request for the given branch. 404 if nothing is queued for it.");
-
-        app.MapPost("/push", (PushRequest req, CancellationToken ct) => HandlePushAsync(req, host, cloneDir, pendingPushRequests, allowedPushBranches, ct))
-            .WithTags(deliveryTag)
-            .WithSummary("Queue new commits onto a branch that already exists on the remote")
-            .WithDescription(BuildPushEndpointDescription(allowedPushBranches));
-
-        app.MapGet("/push", () => Results.Ok(pendingPushRequests.Values.ToArray()))
-            .WithTags(deliveryTag)
-            .WithSummary("List queued pushes")
-            .WithDescription("Returns the pushes queued so far this run.");
-
-        app.MapDelete("/push", ([FromBody] DeleteRequest req) => HandleDelete(req, branch => RemoveFromDictionary(pendingPushRequests, branch)))
-            .WithTags(deliveryTag)
-            .WithSummary("Cancel a queued push")
-            .WithDescription("Removes the queued push for the given branch. 404 if nothing is queued for it.");
+        return new LocalApiServer(app, baseUrl, delivery);
     }
 
     /// <summary>The human-readable overview served as the OpenAPI document's <c>info.description</c> —
     /// the agent reads this instead of a hand-maintained endpoint list in its system prompt, so the
     /// push allow-list for this specific run is folded in here too.</summary>
-    private static string BuildApiDescription(IReadOnlyList<BranchName>? allowedPushBranches)
+    private static string BuildApiDescription(IReadOnlyList<BranchName> allowedPushBranches)
     {
         const string overview =
             "Local delivery API for a `rix job` coding-agent run. Hand finished work back to rix by " +
@@ -188,27 +129,14 @@ internal sealed class LocalApiServer : IAsyncDisposable
         return overview + "\n\n" + PushPolicySentence(allowedPushBranches);
     }
 
-    /// <summary>The <c>/push</c> endpoint description, including this run's allow-list so the agent
-    /// sees what <c>/push</c> will accept without having to trigger a rejection first.</summary>
-    private static string BuildPushEndpointDescription(IReadOnlyList<BranchName>? allowedPushBranches)
+    // Shared by the OpenAPI text and the 403, so the agent is told the same policy up front as when
+    // a push is refused.
+    private static string PushPolicySentence(IReadOnlyList<BranchName> allowedPushBranches)
+    => allowedPushBranches.Count switch
     {
-        const string overview =
-            "Deliver new commits to a branch that already exists on the remote, for instance when " +
-            "resuming a previous run. Commit them locally on that branch first. The branch must exist " +
-            "on the remote — use /pr to create a new one. ";
-
-        return overview + PushPolicySentence(allowedPushBranches);
-    }
-
-    private static string PushPolicySentence(IReadOnlyList<BranchName>? allowedPushBranches)
-    {
-        var allowed = allowedPushBranches ?? [];
-        return allowed.Count switch
-        {
-            0 => "This run has allowed no push branches, so /push rejects every request; use /pr for all changes.",
-            _ => $"This run's /push is restricted to these branches: {string.Join(", ", allowed.Select(b => b.Value))}.",
-        };
-    }
+        0 => "This run has allowed no push branches, so /push rejects every request; use /pr for all changes.",
+        _ => $"This run's /push is restricted to these branches: {string.Join(", ", allowedPushBranches.Select(b => b.Value))}.",
+    };
 
     private sealed class ApiInfoTransformer(string description) : IOpenApiDocumentTransformer
     {
@@ -225,122 +153,147 @@ internal sealed class LocalApiServer : IAsyncDisposable
         }
     }
 
-    private static async Task<IResult> HandlePrAsync
-    (
-        PrRequest req,
-        IJobRepoHost host,
-        string cloneDir,
-        PrQueue pendingPrRequests,
-        CancellationToken ct
-    )
-    {
-        var queuedPr = new QueuedPr
-        (
-            Input.Required("branch", req.Branch, value => new RixBranchName(value)),
-            Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value)),
-            Input.Required("title", req.Title, value => new PrTitle(value)),
-            Input.Required("body", req.Body, value => new PrBody(value))
-        );
-
-        if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
-            return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
-
-        // Catches an agent that queues a branch it never actually committed into its assigned
-        // working directory (e.g. because it made the change somewhere else on the runner) — without
-        // this, the mistake surfaces only later, as an opaque git-bundle failure after the agent's
-        // session has already ended and it's too late to retry.
-        if (!await host.BranchExistsLocallyAsync(cloneDir, queuedPr.Branch, ct))
-        {
-            var message = $"Branch {queuedPr.Branch.Value} was not found in your working directory. " +
-                "Make sure you committed it there (not in a different directory) before calling /pr.";
-            return Results.BadRequest(new ErrorResponse(message));
-        }
-
-        return pendingPrRequests.TryEnqueue(queuedPr);
-    }
-
-    private static async Task<IResult> HandlePushAsync
-    (
-        PushRequest req,
-        IJobRepoHost host,
-        string cloneDir,
-        ConcurrentDictionary<string, QueuedPush> pendingPushRequests,
-        IReadOnlyList<BranchName>? allowedPushBranches,
-        CancellationToken ct
-    )
-    {
-        // Unlike /pr, the branch here already exists on the remote (checked below), so it isn't a
-        // name the agent is inventing - any branch name is acceptable, not just rix/*.
-        // Named because both are BranchName: transposing them compiles, and would check the push
-        // allow-list against the base branch instead of the one being pushed.
-        var queuedPush = new QueuedPush
-        (
-            Branch: Input.Required("branch", req.Branch, value => new BranchName(value)),
-            BaseBranch: Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value))
-        );
-
-        // The job's configuration names the only branches /push may deliver to (e.g. just the branch
-        // this run is resuming); an empty/unset list means none are allowed. Enforced here, before
-        // any remote/local checks, so a push the operator never allowed is refused regardless of
-        // where the branch lives.
-        var allowed = allowedPushBranches ?? [];
-        if (!allowed.Contains(queuedPush.Branch))
-        {
-            var message = allowed.Count switch
-            {
-                0 => $"Push to branch {queuedPush.Branch.Value} is not allowed. This job does not permit pushing to any branch.",
-                _ => $"Push to branch {queuedPush.Branch.Value} is not allowed. " +
-                    $"This job permits pushes only to: {string.Join(", ", allowed.Select(b => b.Value))}.",
-            };
-            return Results.Json(new ErrorResponse(message), statusCode: StatusCodes.Status403Forbidden);
-        }
-
-        // The point of /push is delivering to a branch that already exists on the remote, so the
-        // opposite guard from /pr: if the branch does not exist there, the agent should have used
-        // /pr instead.
-        if (!await host.BranchExistsOnRemoteAsync(queuedPush.Branch, ct))
-            return Results.Conflict(new ErrorResponse($"Branch {queuedPush.Branch.Value} does not exist on the remote. Use /pr to create a new branch."));
-
-        // Same "committed it into your assigned working directory" guard as /pr — a queued push for
-        // a branch the agent never actually committed would otherwise fail much later, as an opaque
-        // git-bundle failure after the session has ended.
-        if (!await host.BranchExistsLocallyAsync(cloneDir, queuedPush.Branch, ct))
-            return Results.BadRequest(new ErrorResponse($"Branch {queuedPush.Branch.Value} was not found in your working directory. Make sure you committed it there before calling /push."));
-
-        return Enqueue(pendingPushRequests, queuedPush.Branch.Value, queuedPush);
-    }
-
-    // A branch already queued keeps its slot: without this, a second POST for the same branch would
-    // report 200 "queued" while silently overwriting the first request, so the caller would have no
-    // way to tell its first call never went through.
-    private static IResult Enqueue<T>(ConcurrentDictionary<string, T> pendingRequests, string branch, T item)
-    {
-        if (!pendingRequests.TryAdd(branch, item))
-            return Results.Conflict(new ErrorResponse($"Branch {branch} is already queued."));
-        return Results.Ok(new QueuedResponse("queued"));
-    }
-
-    /// <summary>Cancels the queued request for <paramref name="req"/>'s branch by dispatching to
-    /// <paramref name="remove"/> once the branch is known non-empty — shared by /pr and /push,
-    /// which differ only in where the branch is actually removed from. So the branch can't be
-    /// restricted to rix/* here: only /pr's own POST enforces that when it queues the branch in the
-    /// first place; deleting a queued push must accept whatever name was queued.</summary>
-    private static IResult HandleDelete(DeleteRequest req, Func<BranchName, IResult> remove)
-    => remove(Input.Required("branch", req.Branch, value => new BranchName(value)));
-
-    // A branch name with nothing queued is a 404 so the agent learns its cancel was a no-op
-    // rather than assuming it took.
-    private static IResult RemoveFromDictionary(ConcurrentDictionary<string, QueuedPush> pendingRequests, BranchName branch)
-    {
-        if (pendingRequests.TryRemove(branch.Value, out _))
-            return Results.Ok(new QueuedResponse("deleted"));
-        return Results.NotFound(new ErrorResponse($"No queued push for branch {branch.Value}."));
-    }
-
     public async ValueTask DisposeAsync()
     {
         await _app.StopAsync();
         await _app.DisposeAsync();
+    }
+
+    /// <summary>The /pr and /push endpoints, and the requests the agent has queued through them.</summary>
+    /// <param name="allowedPushBranches">See <see cref="StartAsync"/>; empty means /push rejects
+    /// every branch.</param>
+    private sealed class DeliveryEndpoints
+    (
+        IJobRepoHost host,
+        string cloneDir,
+        IReadOnlyList<BranchName> allowedPushBranches
+    )
+    {
+        private const string PrPath = "/pr";
+        private const string PushPath = "/push";
+
+        internal PrQueue PendingPrRequests { get; } = new();
+        internal BranchQueue<QueuedPush> PendingPushRequests { get; } = new("push", push => push.Branch);
+
+        internal void Map(WebApplication app)
+        {
+            const string deliveryTag = "delivery";
+
+            var prDescription =
+                "Call this once a rix/<short-description> branch is committed locally in your working " +
+                "directory and you are satisfied with it. The branch must not already exist on the remote. " +
+                "baseBranch is the branch the PR targets; stacked PRs are allowed as long as the queued base " +
+                "branches form no cycle. The pull request is opened after the job ends, not immediately.";
+
+            // Includes this run's allow-list so the agent sees what /push will accept without having
+            // to trigger a rejection first.
+            var pushDescription =
+                "Deliver new commits to a branch that already exists on the remote, for instance when " +
+                "resuming a previous run. Commit them locally on that branch first. The branch must exist " +
+                "on the remote — use /pr to create a new one. " +
+                PushPolicySentence(allowedPushBranches);
+
+            app.MapPost(PrPath, (PrRequest req, CancellationToken ct) => HandlePrAsync(req, ct))
+                .WithTags(deliveryTag)
+                .WithSummary("Queue a branch to be opened as a pull request")
+                .WithDescription(prDescription);
+
+            app.MapGet(PrPath, () => Results.Ok(PendingPrRequests.Snapshot()))
+                .WithTags(deliveryTag)
+                .WithSummary("List queued pull requests")
+                .WithDescription("Returns the pull requests queued so far this run, in the order they will be opened.");
+
+            app.MapDelete(PrPath, ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPrRequests))
+                .WithTags(deliveryTag)
+                .WithSummary("Cancel a queued pull request")
+                .WithDescription("Removes the queued pull request for the given branch. 404 if nothing is queued for it.");
+
+            app.MapPost(PushPath, (PushRequest req, CancellationToken ct) => HandlePushAsync(req, ct))
+                .WithTags(deliveryTag)
+                .WithSummary("Queue new commits onto a branch that already exists on the remote")
+                .WithDescription(pushDescription);
+
+            app.MapGet(PushPath, () => Results.Ok(PendingPushRequests.Snapshot()))
+                .WithTags(deliveryTag)
+                .WithSummary("List queued pushes")
+                .WithDescription("Returns the pushes queued so far this run.");
+
+            app.MapDelete(PushPath, ([FromBody] DeleteRequest req) => HandleDelete(req, PendingPushRequests))
+                .WithTags(deliveryTag)
+                .WithSummary("Cancel a queued push")
+                .WithDescription("Removes the queued push for the given branch. 404 if nothing is queued for it.");
+        }
+
+        private async Task<IResult> HandlePrAsync(PrRequest req, CancellationToken ct)
+        {
+            var queuedPr = new QueuedPr
+            (
+                Input.Required("branch", req.Branch, value => new RixBranchName(value)),
+                Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value)),
+                Input.Required("title", req.Title, value => new PrTitle(value)),
+                Input.Required("body", req.Body, value => new PrBody(value))
+            );
+
+            if (await host.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
+                return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
+
+            return await CheckCommittedLocallyAsync(queuedPr.Branch, PrPath, ct)
+                ?? PendingPrRequests.TryEnqueue(queuedPr);
+        }
+
+        private async Task<IResult> HandlePushAsync(PushRequest req, CancellationToken ct)
+        {
+            // Unlike /pr, the branch here already exists on the remote (checked below), so it isn't a
+            // name the agent is inventing - any branch name is acceptable, not just rix/*.
+            // Named because both are BranchName: transposing them compiles, and would check the push
+            // allow-list against the base branch instead of the one being pushed.
+            var queuedPush = new QueuedPush
+            (
+                Branch: Input.Required("branch", req.Branch, value => new BranchName(value)),
+                BaseBranch: Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value))
+            );
+
+            // The job's configuration names the only branches /push may deliver to (e.g. just the branch
+            // this run is resuming); an empty/unset list means none are allowed. Enforced here, before
+            // any remote/local checks, so a push the operator never allowed is refused regardless of
+            // where the branch lives.
+            if (!allowedPushBranches.Contains(queuedPush.Branch))
+            {
+                var message = $"Push to branch {queuedPush.Branch.Value} is not allowed. " +
+                    PushPolicySentence(allowedPushBranches);
+                return Results.Json(new ErrorResponse(message), statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            // The point of /push is delivering to a branch that already exists on the remote, so the
+            // opposite guard from /pr: if the branch does not exist there, the agent should have used
+            // /pr instead.
+            if (!await host.BranchExistsOnRemoteAsync(queuedPush.Branch, ct))
+                return Results.Conflict(new ErrorResponse($"Branch {queuedPush.Branch.Value} does not exist on the remote. Use /pr to create a new branch."));
+
+            return await CheckCommittedLocallyAsync(queuedPush.Branch, PushPath, ct)
+                ?? PendingPushRequests.TryEnqueue(queuedPush);
+        }
+
+        // Catches an agent that queues a branch it never actually committed into its assigned working
+        // directory (e.g. because it made the change somewhere else on the runner) — without this, the
+        // mistake surfaces only later, as an opaque git-bundle failure after the agent's session has
+        // already ended and it's too late to retry. Returns null when the branch is there.
+        private async Task<IResult?> CheckCommittedLocallyAsync(BranchName branch, string endpoint, CancellationToken ct)
+        {
+            if (await host.BranchExistsLocallyAsync(cloneDir, branch, ct))
+                return null;
+
+            var message = $"Branch {branch.Value} was not found in your working directory. " +
+                $"Make sure you committed it there (not in a different directory) before calling {endpoint}.";
+            return Results.BadRequest(new ErrorResponse(message));
+        }
+
+        /// <summary>Cancels the queued request for <paramref name="req"/>'s branch — shared by /pr and
+        /// /push. So the branch can't be restricted to rix/* here: only /pr's own POST enforces that
+        /// when it queues the branch in the first place; deleting a queued push must accept whatever
+        /// name was queued.</summary>
+        private static IResult HandleDelete<T>(DeleteRequest req, BranchQueue<T> pendingRequests)
+        => pendingRequests.TryRemove(Input.Required("branch", req.Branch, value => new BranchName(value)));
     }
 
     private sealed class LogForwarder(Action<string> sink) : ILoggerProvider
