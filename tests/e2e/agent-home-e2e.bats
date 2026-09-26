@@ -27,6 +27,7 @@
 AGENT_HOME_PATH=tests/fixtures/agent-home
 
 setup() {
+  load ../scripts/result-schema
   : "${RIX_BIN:?RIX_BIN must point at a built rix binary}"
   : "${RIX_REPO:?RIX_REPO must name a real GitHub repo to clone (e.g. Tim-Pohlmann/rix)}"
   : "${RIX_READ_TOKEN:?RIX_READ_TOKEN must be a GitHub token with read access to RIX_REPO}"
@@ -61,6 +62,13 @@ setup() {
   # too and "nothing else is in HOME" is not something these tests can assert.
   export HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$HOME"
+}
+
+# Same check rix-job-e2e.bats makes for the same reason, and for one this file has to itself: it is
+# the only place a real binary prints a setupFailure, so the schema's setupFailure variant would
+# otherwise only ever be checked against results written by hand.
+assert_result_matches_schema() {
+  assert_matches_schema job-result.schema.json "$(cat "$RIX_OUTPUT_DIR/result.json")"
 }
 
 result_field() {
@@ -104,6 +112,7 @@ fixture_status_on_default_branch() {
   export RIX_AGENT_HOME_PATH="$AGENT_HOME_PATH"
   run "$RIX_BIN" job
   [ "$status" -eq 0 ]
+  assert_result_matches_schema
   [ "$(result_field status)" = success ]
 
   [ "$(cat "$HOME/.rix-e2e-marker")" = runner ]
@@ -121,6 +130,7 @@ fixture_status_on_default_branch() {
   # 2 rather than 1: the operator's configuration is wrong, which is a different thing from the
   # agent's work failing (see ExitCodes.SetupFailed), and job.yml reports the two differently.
   [ "$status" -eq 2 ]
+  assert_result_matches_schema
   [ "$(result_field status)" = setupFailure ]
   local error
   error="$(result_field error)"
