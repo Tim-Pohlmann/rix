@@ -9,11 +9,18 @@ namespace Rix.Tests;
 public class JobCommandTests
 {
     private static Parser BuildParser(Func<JobConfig, Task<int>> handler)
+    => BuildParser((config, _) => handler(config));
+
+    private static Parser BuildParser(Func<JobConfig, IReadOnlyList<RequiredDirectory>, Task<int>> handler)
     {
         var root = new RootCommand();
-        root.AddCommand(JobCommand.Build(new LocalFileSystem(), handler));
+        root.AddCommand(JobCommand.Build(Path.GetTempPath(), UserHome, handler));
         return CliPipeline.Build(root);
     }
+
+    private const string UserHome = "/the/user/home";
+
+    private static readonly string[] ExpectedDirectoriesWithoutAgentHome = ["--work-dir", "--output-dir"];
 
     [TestMethod]
     public async Task Command_PassesEnvVarFallbacks_WhenFlagsAbsent()
@@ -47,6 +54,50 @@ public class JobCommandTests
         CollectionAssert.AreEqual(
             new[] { "rix/env-a", "rix/env-b" },
             captured.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
+
+    /// <summary>Whether they exist is left to the handler, so the command accepts directories that
+    /// don't and names each one after where it came from for the handler to check.</summary>
+    [TestMethod]
+    public async Task Command_HandsItsDirectoriesToTheHandler_ToCheckTheyExist()
+    {
+        IReadOnlyList<RequiredDirectory>? required = null;
+        var parser = BuildParser((_, directories) =>
+        {
+            required = directories;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(
+            ["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r",
+             "--work-dir", "/nonexistent/work", "--output-dir", "/nonexistent/out", "--factory-repo", "acme/factory"]);
+
+        CollectionAssert.AreEqual
+        (
+            new[]
+            {
+                new RequiredDirectory("--work-dir", new DirectoryPath("/nonexistent/work")),
+                new RequiredDirectory("--output-dir", new DirectoryPath("/nonexistent/out")),
+                new RequiredDirectory("runner home directory", new DirectoryPath(UserHome)),
+            },
+            required?.ToArray()
+        );
+    }
+
+    [TestMethod]
+    public async Task Command_LeavesTheRunnerHomeUnchecked_WithoutAFactoryRepo()
+    {
+        IReadOnlyList<RequiredDirectory>? required = null;
+        var parser = BuildParser((_, directories) =>
+        {
+            required = directories;
+            return Task.FromResult(0);
+        });
+
+        await parser.InvokeAsync(["job", "--repo", "o/r", "--prompt", "p", "--read-token", "r", "--output-dir", Path.GetTempPath()]);
+
+        Assert.IsNotNull(required);
+        CollectionAssert.AreEqual(ExpectedDirectoriesWithoutAgentHome, required.Select(directory => directory.Name).ToArray());
     }
 
     [TestMethod]

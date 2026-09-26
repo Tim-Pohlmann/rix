@@ -23,7 +23,7 @@ public class AgentHomeFetcherTests
             onGitFor?.Invoke(repo);
             return git;
         }, new LocalFileSystem())
-        .FetchAsync(new RepoIdentifier("acme/factory"), new SubDirectoryPath(sourcePath), new DirectoryPath(_checkoutDir, new LocalFileSystem()), CancellationToken.None);
+        .FetchAsync(new RepoIdentifier("acme/factory"), new SubDirectoryPath(sourcePath), new DirectoryPath(_checkoutDir), CancellationToken.None);
 
     /// <summary>A git that mimics a sparse clone by creating <paramref name="contextDir"/> with one
     /// file in the clone target, and records the directory it was asked to check out.</summary>
@@ -42,7 +42,7 @@ public class AgentHomeFetcherTests
     {
         var source = await Fetch(FakeGit("nested/agent-home"), "nested/agent-home");
 
-        Assert.AreEqual(new DirectoryPath(Path.Combine(_checkoutDir, "nested/agent-home"), new LocalFileSystem()), source);
+        Assert.AreEqual(new DirectoryPath(Path.Combine(_checkoutDir, "nested/agent-home")), source);
         Assert.IsTrue(File.Exists(Path.Combine(source.Value, "a.txt")));
     }
 

@@ -12,10 +12,10 @@ public class SubmitCommandTests
     private static readonly string[] ExpectedTrimmedBranches = ["main", "release/1"];
     private static readonly string[] ExpectedUnusualBranches = ["--not-a-flag", "feature/ünïcode"];
 
-    private static Parser BuildParser(Func<SubmitConfig, Task<int>> handler)
+    private static Parser BuildParser(Func<SubmitConfig, IReadOnlyList<RequiredDirectory>, Task<int>> handler)
     {
         var root = new RootCommand();
-        root.AddCommand(SubmitCommand.Build(new LocalFileSystem(), handler));
+        root.AddCommand(SubmitCommand.Build(Path.GetTempPath(), handler));
         return CliPipeline.Build(root);
     }
 
@@ -31,7 +31,7 @@ public class SubmitCommandTests
     )
     {
         SubmitConfig? captured = null;
-        var parser = BuildParser(config =>
+        var parser = BuildParser((config, _) =>
         {
             captured = config;
             return Task.FromResult(0);
@@ -63,7 +63,7 @@ public class SubmitCommandTests
     public async Task Command_PassesEnvVarFallbacks_WhenFlagsAbsent()
     {
         SubmitConfig? captured = null;
-        var parser = BuildParser(config =>
+        var parser = BuildParser((config, _) =>
         {
             captured = config;
             return Task.FromResult(0);
@@ -93,7 +93,6 @@ public class SubmitCommandTests
     [DataRow("owner/repo/extra", "write-tok", null, "--repo: 'owner/repo/extra' is not a valid repo identifier")]
     [DataRow("owner/repo", "", null, "--write-token is required")]
     [DataRow("owner/repo", "write-tok", "", "--input-dir is required")]
-    [DataRow("owner/repo", "write-tok", "/nonexistent/in", "--input-dir: directory does not exist: /nonexistent/in")]
     public async Task Command_Returns2_AndReportsTheFlag_WhenInputInvalid(string repo, string writeToken, string? inputDir, string expectedError)
     {
         var (config, exitCode, stderr) = await RunAsync(repo: repo, writeToken: writeToken, inputDir: inputDir);
@@ -103,14 +102,33 @@ public class SubmitCommandTests
         StringAssert.Contains(stderr, $"error: {expectedError}");
     }
 
+    /// <summary>Whether they exist is left to the handler, so the command accepts directories that
+    /// don't and names each one after its flag for the handler to check.</summary>
     [TestMethod]
-    public async Task Command_Returns2_WhenWorkDirDoesNotExist()
+    public async Task Command_HandsTheInputAndWorkDirsToTheHandler_ToCheckTheyExist()
     {
-        var (config, exitCode, stderr) = await RunAsync(workDir: "/nonexistent/path/xyz");
+        IReadOnlyList<RequiredDirectory>? required = null;
+        var parser = BuildParser((_, directories) =>
+        {
+            required = directories;
+            return Task.FromResult(0);
+        });
 
-        Assert.IsNull(config);
-        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
-        StringAssert.Contains(stderr, "error: --work-dir: directory does not exist: /nonexistent/path/xyz");
+        var exitCode = await parser.InvokeAsync
+        (
+            ["submit", "--repo", "owner/repo", "--write-token", "write-tok", "--input-dir", "/nonexistent/in", "--work-dir", "/nonexistent/work"]
+        );
+
+        Assert.AreEqual(0, exitCode);
+        CollectionAssert.AreEqual
+        (
+            new[]
+            {
+                new RequiredDirectory("--input-dir", new DirectoryPath("/nonexistent/in")),
+                new RequiredDirectory("--work-dir", new DirectoryPath("/nonexistent/work")),
+            },
+            required?.ToArray()
+        );
     }
 
     [TestMethod]

@@ -5,7 +5,10 @@ namespace Rix.Cli;
 
 internal static class JobCommand
 {
-    internal static Command Build(IFileSystem fileSystem, Func<JobConfig, Task<int>> handler)
+    internal static Command Build
+    (
+        string systemTempDirectory, string userHomeDirectory, Func<JobConfig, IReadOnlyList<RequiredDirectory>, Task<int>> handler
+    )
     {
         var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
 
@@ -28,13 +31,13 @@ internal static class JobCommand
                 var agent = JobOptions.ReadAgent(parsed);
                 var maxTokens = JobOptions.ReadMaxTokens(parsed);
                 var timeout = JobOptions.ReadTimeout(parsed);
-                var workDir = CommonOptions.ReadWorkDir(parsed, fileSystem);
-                var outputDir = JobOptions.ReadOutputDir(parsed, fileSystem);
+                var workDir = CommonOptions.ReadWorkDir(parsed, systemTempDirectory);
+                var outputDir = JobOptions.ReadOutputDir(parsed);
                 var model = JobOptions.ReadModel(parsed);
                 var apiKey = JobOptions.ReadAgentApiKey(parsed);
                 var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
                 var allowedPushBranches = BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
-                var agentHome = JobOptions.ReadAgentHome(parsed, fileSystem);
+                var agentHome = JobOptions.ReadAgentHome(parsed, userHomeDirectory);
 
                 var config = new JobConfig
                 (
@@ -47,7 +50,10 @@ internal static class JobCommand
                     allowedPushBranches,
                     agentHome
                 );
-                ctx.ExitCode = await handler(config);
+                var directories = JobOptions.RequiredDirectories(workDir, outputDir);
+                if (agentHome is not null)
+                    directories.Add(new RequiredDirectory(JobOptions.RunnerHomeName, agentHome.Home));
+                ctx.ExitCode = await handler(config, directories);
             }
         );
 

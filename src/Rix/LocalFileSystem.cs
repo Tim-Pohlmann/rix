@@ -1,12 +1,10 @@
 namespace Rix;
 
 /// <summary>The production <see cref="IFileSystem"/>: the local disk. The one type allowed to touch
-/// <see cref="File"/> and <see cref="Directory"/> directly, or to look up where the process, the
-/// temp files and the user's home are.</summary>
+/// <see cref="File"/> and <see cref="Directory"/> directly, or to look up where the temp files and
+/// the user's home are.</summary>
 internal sealed class LocalFileSystem : IFileSystem
 {
-    public string CurrentDirectory => Directory.GetCurrentDirectory();
-
     public string SystemTempDirectory => Path.GetTempPath();
 
     // On Unix this already consults $HOME before the passwd entry.

@@ -55,10 +55,11 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Access files and directories, and look up the current, temp and home
-      directories, through IFileSystem, whose only implementation
-      (LocalFileSystem) may do so directly, so the calling code stays testable
-      without touching the disk or depending on where the process runs.
+      Access files and directories, and look up the temp and home directories,
+      through IFileSystem, whose only implementation (LocalFileSystem) may do so
+      directly, so the calling code stays testable without touching the disk or
+      depending on where the process runs. For the current directory, use a
+      relative path: DirectoryPath resolves "." to it.
     # Tests arrange and inspect real directories.
     paths:
       exclude:
@@ -76,6 +77,18 @@ rules:
           - pattern: new FileInfo(...)
           - pattern: new DirectoryInfo(...)
           - pattern: new FileStream(...)
+
+  - id: cli-without-file-system
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      The CLI commands only turn text into values and never see the file
+      system. Take the locations they need as strings, and hand directories
+      that must exist to the handler as RequiredDirectory for Startup to check.
+    paths:
+      include:
+        - src/Rix/Cli/**
+    pattern-regex: \b(IFileSystem|LocalFileSystem)\b
 
   - id: raw-process-outside-wrapper
     languages: [csharp]
