@@ -1,6 +1,5 @@
 using Rix.CiFailure;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
@@ -9,22 +8,18 @@ internal static class CiFailureCommand
     /// <summary>The two options this command adds on top of <see cref="JobOptions"/>, kept private
     /// for the same reason <c>job</c> keeps <c>--prompt</c> to itself: no other command takes
     /// them.</summary>
-    private static readonly Option<string> RunIdOption = new
-    (
-        name: "--run-id",
-        description: "ID of the (possibly failed) workflow run to inspect"
-    )
-    { IsRequired = false };
+    private static readonly Option<string> RunIdOption = new("--run-id")
+    {
+        Description = "ID of the (possibly failed) workflow run to inspect"
+    };
 
-    private static readonly Option<string> MaxRixCommitsOption = new
-    (
-        name: "--max-rix-commits",
-        description: "How many of rix's own commits may already sit at the failing branch's tip before " +
+    private static readonly Option<string> MaxRixCommitsOption = new("--max-rix-commits")
+    {
+        Description = "How many of rix's own commits may already sit at the failing branch's tip before " +
             "the failure is left alone instead of answered. Stops rix from answering its own output " +
             "indefinitely; any commit by someone else at the tip clears the count. Defaults to " +
             $"{CiFailureConfig.DefaultMaxRixCommits}, at most {MaxRixCommits.MaxValue}."
-    )
-    { IsRequired = false };
+    };
 
     internal static Command Build()
     {
@@ -35,8 +30,8 @@ internal static class CiFailureCommand
         );
 
         JobOptions.AddTo(command);
-        command.AddOption(RunIdOption);
-        command.AddOption(MaxRixCommitsOption);
+        command.Options.Add(RunIdOption);
+        command.Options.Add(MaxRixCommitsOption);
 
         return command;
     }
