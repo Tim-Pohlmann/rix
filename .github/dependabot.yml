@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directories:
+      - "/src/*"
+      - "/tests/*"
+    schedule:
+      interval: weekly
+    # Minor and patch bumps land together; a major version gets a PR of its own, since that is
+    # where the breaking changes (and the code changes they need) are.
+    groups:
+      nuget-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    # "/" only covers .github/workflows; the composite actions reference actions of their own.
+    # The workflow templates under src/Rix/Cli/Templates are not scanned: their refs are
+    # placeholders `rix initialize` fills in.
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
