@@ -3,15 +3,15 @@ using Rix.CiFailure;
 using Rix.Cli;
 using Rix.Job;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
 
 /// <summary><see cref="JobOptions.AddTo"/> registers the shared flags once, but each command reads
-/// them back one call at a time in its own handler, so a flag can be registered - and documented,
-/// and accepted on the command line without complaint - while one of the two commands never reads
-/// it. Nothing but these tests connects the two halves: a flag dropped from <c>ci-failure</c>'s
-/// handler is silently ignored at runtime, taking the default instead of what the caller asked for.
+/// them back one call at a time in its own <c>ReadConfig</c>, so a flag can be registered - and
+/// documented, and accepted on the command line without complaint - while one of the two commands
+/// never reads it. Nothing but these tests connects the two halves: a flag dropped from
+/// <c>ci-failure</c>'s <c>ReadConfig</c> is silently ignored at runtime, taking the default instead
+/// of what the caller asked for.
 ///
 /// So every flag is listed exactly once below, with the value it's invoked with and the assertion
 /// that it reached its own slot in the resulting config, and both commands are then driven with
@@ -21,7 +21,7 @@ namespace Rix.Tests;
 public class SharedJobOptionsTests
 {
     // Two distinct directories that really exist, rather than Path.GetTempPath() for both:
-    // DirectoryPath rejects a path that isn't there, and a handler reading --work-dir into
+    // DirectoryPath rejects a path that isn't there, and a ReadConfig reading --work-dir into
     // OutputDir (or vice versa) is only visible if the two values differ.
     private string _workDir = string.Empty;
     private string _outputDir = string.Empty;
@@ -34,8 +34,8 @@ public class SharedJobOptionsTests
     }
 
     /// <summary>Every flag <see cref="JobOptions.AddTo"/> registers, each with a value that differs
-    /// both from that option's default (so a handler that never reads it can't accidentally pass)
-    /// and from every other value here (so a handler reading one option into another's slot can't
+    /// both from that option's default (so a ReadConfig that never reads it can't accidentally pass)
+    /// and from every other value here (so a ReadConfig reading one option into another's slot can't
     /// either).</summary>
     private (string Flag, string Value, Action<JobConfig> AssertArrived)[] SharedFlags =>
     [
@@ -74,41 +74,21 @@ public class SharedJobOptionsTests
     }
 
     [TestMethod]
-    public async Task JobCommand_ReadsEverySharedFlag()
+    public void JobCommand_ReadsEverySharedFlag()
     {
-        JobConfig? captured = null;
-        var root = new RootCommand();
-        root.AddCommand(JobCommand.Build(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        }));
+        var parsed = CommandArgs.Parse(JobCommand.Build(), ["job", "--prompt", "shared prompt", .. SharedArgs]);
 
-        string[] args = ["job", "--prompt", "shared prompt", .. SharedArgs];
-        await CliPipeline.Build(root).InvokeAsync(args);
-
-        Assert.IsNotNull(captured);
-        AssertEveryFlagArrived(captured);
+        AssertEveryFlagArrived(JobCommand.ReadConfig(parsed));
     }
 
     [TestMethod]
-    public async Task CiFailureCommand_ReadsEverySharedFlag()
+    public void CiFailureCommand_ReadsEverySharedFlag()
     {
         // Read back through ToJobConfig for the same reason CiFailureCommandTests does: the shared
         // flags end up in the job half of the config, and the two values only a detected failure
         // can supply are stubbed out here.
-        CiFailureConfig? captured = null;
-        var root = new RootCommand();
-        root.AddCommand(CiFailureCommand.Build(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        }));
+        var parsed = CommandArgs.Parse(CiFailureCommand.Build(), ["ci-failure", "--run-id", "1", .. SharedArgs]);
 
-        string[] args = ["ci-failure", "--run-id", "1", .. SharedArgs];
-        await CliPipeline.Build(root).InvokeAsync(args);
-
-        Assert.IsNotNull(captured);
-        AssertEveryFlagArrived(captured.ToJobConfig("fix it", new BranchName("rix/fix")));
+        AssertEveryFlagArrived(CiFailureCommand.ReadConfig(parsed).ToJobConfig("fix it", new BranchName("rix/fix")));
     }
 }
