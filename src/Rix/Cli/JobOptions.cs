@@ -129,6 +129,8 @@ internal static class JobOptions
         command.AddOption(ModelOption);
         command.AddOption(AgentApiKeyOption);
         command.AddOption(AgentApiKeyEnvOption);
+        command.AddOption(FactoryRepoOption);
+        command.AddOption(AgentHomePathOption);
     }
 
     internal static GitReadToken ReadReadToken(ParseResult parsed)

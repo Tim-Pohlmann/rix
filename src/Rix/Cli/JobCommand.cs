@@ -12,8 +12,6 @@ internal static class JobCommand
         JobOptions.AddTo(command);
         command.AddOption(JobOptions.PromptOption);
         command.AddOption(JobOptions.AllowedPushBranchesOption);
-        command.AddOption(JobOptions.FactoryRepoOption);
-        command.AddOption(JobOptions.AgentHomePathOption);
 
         command.SetHandler
         (

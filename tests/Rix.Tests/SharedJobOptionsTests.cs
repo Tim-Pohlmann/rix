@@ -16,7 +16,7 @@ namespace Rix.Tests;
 /// So every flag is listed exactly once below, with the value it's invoked with and the assertion
 /// that it reached its own slot in the resulting config, and both commands are then driven with
 /// that whole set. <see cref="AddTo_RegistersExactlyTheFlagsCoveredHere"/> keeps the list honest:
-/// registering an eleventh option without adding a row here fails rather than going uncovered.</summary>
+/// registering another option without adding a row here fails rather than going uncovered.</summary>
 [TestClass]
 public class SharedJobOptionsTests
 {
@@ -49,6 +49,8 @@ public class SharedJobOptionsTests
         ("--model", "vendor/shared-model", job => Assert.AreEqual("vendor/shared-model", job.Agent.Model)),
         ("--agent-api-key", "shared-api-key", job => Assert.AreEqual("shared-api-key", job.Agent.Credential?.Key)),
         ("--agent-api-key-env", "SHARED_API_KEY", job => Assert.AreEqual("SHARED_API_KEY", job.Agent.Credential?.EnvName)),
+        ("--factory-repo", "shared/factory", job => Assert.AreEqual("shared/factory", job.AgentHome?.Repo.Value)),
+        ("--agent-home-path", "shared/home", job => Assert.AreEqual("shared/home", job.AgentHome?.SourcePath.Value)),
     ];
 
     private string[] SharedArgs

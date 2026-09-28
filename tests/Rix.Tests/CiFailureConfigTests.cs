@@ -7,7 +7,7 @@ namespace Rix.Tests;
 [TestClass]
 public class CiFailureConfigTests
 {
-    /// <summary>ToJobConfig copies nine values between two records whose fields are mostly the same
+    /// <summary>ToJobConfig copies ten values between two records whose fields are mostly the same
     /// shape - two directory paths side by side among them - by name, with nothing checking that
     /// each one lands in the slot it was read from. Two swapped arguments compile, pass every other
     /// test, and only show up as an agent run configured with someone else's values. So every value
@@ -21,6 +21,12 @@ public class CiFailureConfigTests
     {
         var workDir = Directory.CreateTempSubdirectory("rix-tojob-work-").FullName;
         var outputDir = Directory.CreateTempSubdirectory("rix-tojob-out-").FullName;
+        var agentHome = new AgentHomeInfo
+        (
+            new RepoIdentifier("owner/factory"),
+            new SubDirectoryPath("the/home"),
+            new DirectoryPath(Path.GetTempPath())
+        );
         var config = new CiFailureConfig
         (
             RunId: new RunId(7),
@@ -33,7 +39,8 @@ public class CiFailureConfigTests
             MaxTokens: new MaxTokens(4321),
             MaxRixCommits: new MaxRixCommits(3),
             Model: "vendor/the-model",
-            Credential: new AgentCredential("THE_API_KEY", "the-api-key")
+            Credential: new AgentCredential("THE_API_KEY", "the-api-key"),
+            AgentHome: agentHome
         );
 
         var job = config.ToJobConfig("the prompt", new BranchName("rix/the-branch"));
@@ -49,5 +56,6 @@ public class CiFailureConfigTests
         Assert.AreEqual(new AgentCredential("THE_API_KEY", "the-api-key"), job.Agent.Credential);
         Assert.AreEqual("the prompt", job.Agent.Prompt);
         Assert.AreEqual("rix/the-branch", job.AllowedPushBranches.Single().Value);
+        Assert.AreEqual(agentHome, job.AgentHome);
     }
 }
