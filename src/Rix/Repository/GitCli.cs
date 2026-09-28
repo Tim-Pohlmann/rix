@@ -124,6 +124,17 @@ internal sealed class GitCli : IGit
         cancellationToken
     );
 
+    /// <summary>Purely local, so no auth env is needed.</summary>
+    public Task FetchBundleAsync(string repoDirectory, string bundlePath, BranchName branch, CancellationToken cancellationToken)
+    => RunAsync
+    (
+        // --end-of-options: see CreateBundleAsync.
+        ["fetch", bundlePath, "--end-of-options", $"{branch.Value}:{branch.Value}"],
+        repoDirectory,
+        authenticated: false,
+        cancellationToken
+    );
+
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
     => RunAsync
     (

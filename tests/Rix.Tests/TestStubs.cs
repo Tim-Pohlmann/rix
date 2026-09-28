@@ -101,8 +101,10 @@ internal sealed class StubGit(
     Func<BranchName, Task<bool>>? branchExistsLocally = null,
     Func<string, Task>? configureIdentity = null,
     Func<BranchName, Task>? pushBranch = null,
-    Func<string, SubDirectoryPath, Task>? sparseClone = null) : IGit
+    Func<string, SubDirectoryPath, Task>? sparseClone = null,
+    Func<BranchName, Task>? fetchBundle = null) : IGit
 {
+    public List<BranchName> FetchedBranches { get; } = [];
     public List<BranchName> PushedBranches { get; } = [];
     public bool CloneCalled { get; private set; }
 
@@ -145,6 +147,12 @@ internal sealed class StubGit(
         { } check => check(bundlePath),
         _ => File.WriteAllTextAsync(bundlePath, "fake-bundle", cancellationToken),
     };
+
+    public Task FetchBundleAsync(string repoDirectory, string bundlePath, BranchName branch, CancellationToken cancellationToken)
+    {
+        FetchedBranches.Add(branch);
+        return fetchBundle switch { { } check => check(branch), _ => Task.CompletedTask };
+    }
 
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
     {

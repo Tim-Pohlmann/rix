@@ -12,6 +12,9 @@ public class GitCliTests
     private static readonly string[] ExpectedBundleArgs =
         ["bundle", "create", "/tmp/out/fix.bundle", "--end-of-options", "main..rix/fix"];
 
+    private static readonly string[] ExpectedFetchBundleArgs =
+        ["fetch", "/tmp/in/fix.bundle", "--end-of-options", "rix/fix:rix/fix"];
+
     private static readonly string[] ExpectedPushArgs = ["push", "origin", "--end-of-options", "rix/fix"];
 
     private static readonly string[] ExpectedBranchExistsLocallyArgs =
@@ -208,6 +211,39 @@ public class GitCliTests
         Assert.IsNotNull(capturedArgs);
         Assert.AreEqual("/tmp/clone", capturedWorkingDir);
         CollectionAssert.AreEqual(ExpectedBundleArgs, capturedArgs);
+    }
+
+    [TestMethod]
+    public async Task FetchBundleAsync_FetchesTheBranch_InRepoDirectory_WithoutAuthEnv()
+    {
+        string[]? capturedArgs = null;
+        string? capturedWorkingDir = null;
+        IReadOnlyDictionary<string, string>? capturedEnv = null;
+        var git = Build(
+            gitRunner: (_, args, workingDir, env, _, _) =>
+            {
+                capturedArgs = args.ToArray();
+                capturedWorkingDir = workingDir;
+                capturedEnv = env;
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await git.FetchBundleAsync("/tmp/clone", "/tmp/in/fix.bundle", new BranchName("rix/fix"), CancellationToken.None);
+
+        CollectionAssert.AreEqual(ExpectedFetchBundleArgs, capturedArgs);
+        Assert.AreEqual("/tmp/clone", capturedWorkingDir);
+        Assert.IsNull(capturedEnv, "fetching from a local bundle must not receive the credential env");
+    }
+
+    [TestMethod]
+    public async Task FetchBundleAsync_Throws_WhenGitFails()
+    {
+        var git = Build(
+            gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
+
+        var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
+            () => git.FetchBundleAsync("/tmp/clone", "/tmp/in/fix.bundle", new BranchName("rix/fix"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "fetch");
     }
 
     [TestMethod]
