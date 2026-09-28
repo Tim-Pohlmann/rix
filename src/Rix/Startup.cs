@@ -273,11 +273,9 @@ internal static class Startup
     /// </summary>
     internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, CiFailureContext? context = null)
     {
+        context ??= DefaultCiFailureContext(config);
         var transcriptLines = new List<string>();
-        var collaborators = context ?? DefaultCiFailureContext(config);
-        var teed = collaborators with { Job = Teeing(collaborators.Job, transcriptLines) };
-
-        var outcome = await CiFailureRunner.RunAsync(config, teed, cancellationToken);
+        var outcome = await CiFailureRunner.RunAsync(config, context with { Job = Teeing(context.Job, transcriptLines) }, cancellationToken);
         return outcome switch
         {
             CiFailureNotRun(var reason) => WriteCiFailureResult(reason),
