@@ -43,7 +43,7 @@ internal static class Startup
     /// <summary>Git against repos on GitHub, authenticated with <paramref name="token"/> — the one
     /// place the GitHub host is spelled out.</summary>
     private static GitCli GitHubGit(GitReadToken token)
-    => new(new Uri("https://github.com/"), token, ProcessWrapper.RunAsync);
+    => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessWrapper.RunAsync);
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
