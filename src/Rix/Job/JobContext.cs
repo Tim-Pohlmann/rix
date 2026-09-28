@@ -15,6 +15,5 @@ internal sealed record JobContext
     RunProcessAsync RunProcess,
     ICodingAgent Agent,
     LogLine LogLine,
-    LogLine TranscriptLine,
-    IAgentHomeFetcher AgentHomeFetcher
+    LogLine TranscriptLine
 );
