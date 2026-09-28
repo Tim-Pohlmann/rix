@@ -16,7 +16,8 @@ internal static class Startup
 {
     /// <summary>The production <see cref="JobContext"/>: git against GitHub, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
-    /// from <paramref name="config"/>. <see cref="JobContext.TranscriptLine"/> is a no-op here;
+    /// from <paramref name="config"/>. The one git client reads both the job's repo and the factory
+    /// repo holding the agent home files. <see cref="JobContext.TranscriptLine"/> is a no-op here;
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
@@ -34,7 +35,7 @@ internal static class Startup
     /// <summary>Git against repos on GitHub, authenticated with <paramref name="token"/> — the one
     /// place the GitHub host is spelled out.</summary>
     private static GitCli GitHubGit(GitReadToken token)
-    => new(new Uri("https://github.com/"), token, ProcessWrapper.RunAsync);
+    => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessWrapper.RunAsync);
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
