@@ -33,8 +33,10 @@ public class GitCliTests
 
     private static readonly string[] ExpectedSparseCheckoutArgs = ["sparse-checkout", "set", "nested/agent-home"];
 
-    private static GitCli Build(string readToken = "read-tok", RunProcessAsync? gitRunner = null)
-    => new(new Uri("https://github.com/owner/repo.git"), new GitReadToken(readToken), gitRunner ?? SuccessGitRunner);
+    private static readonly RepoIdentifier Repo = new("owner/repo");
+
+    private static GitCli Build(string readToken = "read-tok", RunProcessAsync? gitRunner = null, string host = "https://github.com/")
+    => new(new Uri(host), new GitReadToken(readToken), gitRunner ?? SuccessGitRunner);
 
     [TestMethod]
     public async Task BranchExistsOnRemoteAsync_RunsLsRemote_AgainstTheRemote_WithAuthEnv()
@@ -50,7 +52,7 @@ public class GitCliTests
                 return Task.FromResult<ProcessResult>(new ProcessSuccess());
             });
 
-        Assert.IsTrue(await git.BranchExistsOnRemoteAsync(new BranchName("rix/fix"), CancellationToken.None));
+        Assert.IsTrue(await git.BranchExistsOnRemoteAsync(Repo, new BranchName("rix/fix"), CancellationToken.None));
         CollectionAssert.AreEqual(ExpectedLsRemoteArgs, capturedArgs);
         Assert.IsNotNull(capturedEnv);
         Assert.AreEqual("1", capturedEnv["GIT_CONFIG_COUNT"]);
@@ -62,7 +64,7 @@ public class GitCliTests
         var git = Build(
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 2")));
 
-        Assert.IsFalse(await git.BranchExistsOnRemoteAsync(new BranchName("rix/missing"), CancellationToken.None));
+        Assert.IsFalse(await git.BranchExistsOnRemoteAsync(Repo, new BranchName("rix/missing"), CancellationToken.None));
     }
 
     /// <summary>ls-remote patterns are globs, so a branch named with a <c>*</c> lists other
@@ -77,7 +79,7 @@ public class GitCliTests
                 return Task.FromResult<ProcessResult>(new ProcessSuccess());
             });
 
-        Assert.IsFalse(await git.BranchExistsOnRemoteAsync(new BranchName("rix/*"), CancellationToken.None));
+        Assert.IsFalse(await git.BranchExistsOnRemoteAsync(Repo, new BranchName("rix/*"), CancellationToken.None));
     }
 
     [TestMethod]
@@ -87,7 +89,7 @@ public class GitCliTests
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
         var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
-            () => git.BranchExistsOnRemoteAsync(new BranchName("rix/fix"), CancellationToken.None));
+            () => git.BranchExistsOnRemoteAsync(Repo, new BranchName("rix/fix"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "ls-remote");
     }
 
@@ -149,7 +151,7 @@ public class GitCliTests
             readToken: "my-read-token",
             gitRunner: (_, args, _, _, _, _) => { capturedArgs = args.ToArray(); return Task.FromResult<ProcessResult>(new ProcessSuccess()); });
 
-        await git.CloneAsync("/tmp/target", CancellationToken.None);
+        await git.CloneAsync(Repo, "/tmp/target", CancellationToken.None);
 
         Assert.IsNotNull(capturedArgs);
         Assert.AreEqual("clone", capturedArgs[0]);
@@ -167,7 +169,7 @@ public class GitCliTests
             readToken: "my-read-token",
             gitRunner: (_, _, _, env, _, _) => { capturedEnv = env; return Task.FromResult<ProcessResult>(new ProcessSuccess()); });
 
-        await git.CloneAsync("/tmp/target", CancellationToken.None);
+        await git.CloneAsync(Repo, "/tmp/target", CancellationToken.None);
 
         Assert.IsNotNull(capturedEnv);
         Assert.AreEqual("1", capturedEnv["GIT_CONFIG_COUNT"]);
@@ -175,6 +177,24 @@ public class GitCliTests
         var expected = "Authorization: Basic " +
             Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("x-access-token:my-read-token"));
         Assert.AreEqual(expected, capturedEnv["GIT_CONFIG_VALUE_0"]);
+    }
+
+    /// <summary>One instance serves every repo on its host - a job reads its target and the factory
+    /// repo with the same client - so each call's URL comes from that call's repo.</summary>
+    [TestMethod]
+    public async Task CloneAsync_ClonesTheRepoItIsGiven_UnderTheSameCredential()
+    {
+        var runs = new List<(string Url, IReadOnlyDictionary<string, string>? Env)>();
+        var git = Build(
+            host: "https://github.com",
+            gitRunner: (_, args, _, env, _, _) => { runs.Add((args.ElementAt(1), env)); return Task.FromResult<ProcessResult>(new ProcessSuccess()); });
+
+        await git.CloneAsync(Repo, "/tmp/a", CancellationToken.None);
+        await git.CloneAsync(new RepoIdentifier("acme/factory"), "/tmp/b", CancellationToken.None);
+
+        string[] expectedUrls = ["https://github.com/owner/repo.git", "https://github.com/acme/factory.git"];
+        CollectionAssert.AreEqual(expectedUrls, runs.Select(run => run.Url).ToArray());
+        Assert.AreEqual(runs[0].Env?["GIT_CONFIG_VALUE_0"], runs[1].Env?["GIT_CONFIG_VALUE_0"]);
     }
 
     [TestMethod]
@@ -332,7 +352,7 @@ public class GitCliTests
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
         var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
-            () => git.CloneAsync("/tmp/target", CancellationToken.None));
+            () => git.CloneAsync(Repo, "/tmp/target", CancellationToken.None));
         StringAssert.Contains(ex.Message, "clone");
     }
 
@@ -347,7 +367,7 @@ public class GitCliTests
                 return Task.FromResult<ProcessResult>(new ProcessSuccess());
             });
 
-        await git.SparseCloneAsync("/tmp/checkout", new SubDirectoryPath("nested/agent-home"), CancellationToken.None);
+        await git.SparseCloneAsync(Repo, "/tmp/checkout", new SubDirectoryPath("nested/agent-home"), CancellationToken.None);
 
         Assert.AreEqual(2, runs.Count);
         CollectionAssert.AreEqual(ExpectedSparseCloneArgs, runs[0].Args);
@@ -366,7 +386,7 @@ public class GitCliTests
             gitRunner: (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 128")));
 
         var ex = await Assert.ThrowsExactlyAsync<RepoHostException>(
-            () => git.SparseCloneAsync("/tmp/checkout", new SubDirectoryPath("agent-home"), CancellationToken.None));
+            () => git.SparseCloneAsync(Repo, "/tmp/checkout", new SubDirectoryPath("agent-home"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "git clone failed");
     }
 }

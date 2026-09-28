@@ -19,7 +19,7 @@ public class LocalApiServerTests
     private static StubGit FakeHost(bool branchExists) => new(_ => Task.FromResult(branchExists));
 
     private static Task<LocalApiServer> StartAsync(IGit git, IReadOnlyList<BranchName>? allowedPushBranches = null)
-    => LocalApiServer.StartAsync(git, Path.GetTempPath(), CancellationToken.None, allowedPushBranches: allowedPushBranches);
+    => LocalApiServer.StartAsync(git, new RepoIdentifier("owner/repo"), Path.GetTempPath(), CancellationToken.None, allowedPushBranches: allowedPushBranches);
 
     private static Task<HttpResponseMessage> GetAsync(LocalApiServer server, string path)
     => Client.GetAsync(new Uri(server.BaseUrl, path));
@@ -168,11 +168,13 @@ public class LocalApiServerTests
     [TestMethod]
     public async Task PostPr_Returns409_WhenBranchAlreadyExists()
     {
-        await using var server = await StartAsync(FakeHost(true));
+        var git = FakeHost(true);
+        await using var server = await StartAsync(git);
 
         var response = await PostPrAsync(server, "rix/existing");
 
         Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.AreEqual((new RepoIdentifier("owner/repo"), "rix/existing"), git.RemoteBranchChecks.Select(c => (c.Repo, c.Branch.Value)).Single());
     }
 
     [TestMethod]

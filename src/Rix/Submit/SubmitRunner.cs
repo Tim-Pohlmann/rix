@@ -81,7 +81,7 @@ internal static class SubmitRunner
     {
         using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-submit");
 
-        await context.Git.CloneAsync(cloneDir.Path, cancellationToken);
+        await context.Git.CloneAsync(config.Repo, cloneDir.Path, cancellationToken);
 
         var created = new List<CreatedPr>();
         var pushed = new List<string>();
@@ -132,7 +132,7 @@ internal static class SubmitRunner
         CancellationToken cancellationToken
     )
     {
-        if (await context.Git.BranchExistsOnRemoteAsync(pr.Branch, cancellationToken))
+        if (await context.Git.BranchExistsOnRemoteAsync(config.Repo, pr.Branch, cancellationToken))
             return new SubmitOneFailed(new SubmitFailure($"branch already exists on remote: {pr.Branch.Value}"));
 
         if (await DeliverBranchAsync(config, context, cloneDir, pr.Branch, pr.BundleFile, cancellationToken) is { } deliverFailure)

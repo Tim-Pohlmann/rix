@@ -15,37 +15,35 @@ namespace Rix;
 
 internal static class Startup
 {
-    /// <summary>The production <see cref="JobContext"/>: git against the GitHub repo, process runner,
+    /// <summary>The production <see cref="JobContext"/>: git against GitHub, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
     /// from <paramref name="config"/>. <see cref="JobContext.TranscriptLine"/> is a no-op here;
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultJobContext(config.Repo, config.Agent.Kind, config.ReadToken);
+    => DefaultJobContext(config.Agent.Kind, config.ReadToken);
 
     /// <summary>Builds the <see cref="JobContext"/> for both <c>rix job</c> and
     /// <see cref="DefaultCiFailureContext"/>. It takes the pieces separately instead of a
     /// <see cref="JobConfig"/> because a ci-failure run only has a job config once a failure has
-    /// supplied the prompt; the repo, agent and credential are configured up front. The agent home
-    /// files are fetched from a second repo, so the fetcher gets its own git client for that repo
-    /// under the same <paramref name="readToken"/>.</summary>
-    private static JobContext DefaultJobContext(RepoIdentifier repo, AgentKind agent, GitReadToken readToken)
+    /// supplied the prompt; the agent and credential are configured up front. The one git client
+    /// reads both the job's repo and the factory repo holding the agent home files.</summary>
+    private static JobContext DefaultJobContext(AgentKind agent, GitReadToken readToken)
     => new
     (
-        GitHubGit(repo, readToken),
+        GitHubGit(readToken),
         ProcessWrapper.RunAsync,
         SelectAgent(agent),
         // Named because LogLine and TranscriptLine are the same delegate type: transposing them
         // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
-        TranscriptLine: _ => { },
-        AgentHomeFetcher: new AgentHomeFetcher(factoryRepo => GitHubGit(factoryRepo, readToken))
+        TranscriptLine: _ => { }
     );
 
-    /// <summary>Git against <paramref name="repo"/> on GitHub, authenticated with
-    /// <paramref name="token"/> — the one place the GitHub clone URL is spelled out.</summary>
-    private static GitCli GitHubGit(RepoIdentifier repo, GitReadToken token)
-    => new(new Uri($"https://github.com/{repo.Value}.git"), token, ProcessWrapper.RunAsync);
+    /// <summary>Git against repos on GitHub, authenticated with <paramref name="token"/> — the one
+    /// place the GitHub host is spelled out.</summary>
+    private static GitCli GitHubGit(GitReadToken token)
+    => new(new Uri("https://github.com/"), token, ProcessWrapper.RunAsync);
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
@@ -70,7 +68,7 @@ internal static class Startup
         (
             new GitHubActionsCiHost(api),
             new GitHubCiFailureRepoHost(api),
-            DefaultJobContext(config.Repo, config.Agent, config.ReadToken)
+            DefaultJobContext(config.Agent, config.ReadToken)
         );
     }
 
@@ -79,7 +77,7 @@ internal static class Startup
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        GitHubGit(config.Repo, config.WriteToken),
+        GitHubGit(config.WriteToken),
         new GitHubSubmitRepoHost(config.Repo, config.WriteToken),
         Console.Error.WriteLine
     );
