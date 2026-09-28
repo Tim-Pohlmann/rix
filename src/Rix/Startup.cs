@@ -75,13 +75,12 @@ internal static class Startup
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: git and the GitHub repo host, both
-    /// authenticated with the write token, the default process runner, and a stderr log sink.</summary>
+    /// authenticated with the write token, and a stderr log sink.</summary>
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
         GitHubGit(config.Repo, config.WriteToken),
         new GitHubSubmitRepoHost(config.Repo, config.WriteToken),
-        ProcessWrapper.RunAsync,
         Console.Error.WriteLine
     );
 
