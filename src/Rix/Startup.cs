@@ -147,9 +147,7 @@ internal static class Startup
     /// Writes a job's outcome the same way regardless of what led to it: the result JSON to
     /// stdout, <c>result.json</c> to <paramref name="config"/>'s output dir (even on failure, so
     /// downstream tooling has one reliable place to read the outcome from), and
-    /// <c>transcript.md</c> if the agent said anything worth keeping. Shared by
-    /// <see cref="ExecuteJobAsync"/> and <see cref="ExecuteCiFailureAsync"/>, which only differ
-    /// in how they arrive at <paramref name="result"/>.
+    /// <c>transcript.md</c> if the agent said anything worth keeping.
     /// </summary>
     private static async Task<int> WriteJobResultAsync(JobConfig config, IJobResult result, List<string> transcriptLines)
     {
