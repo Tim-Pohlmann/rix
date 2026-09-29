@@ -1,4 +1,3 @@
-using Rix.Process;
 using Rix.Repository;
 
 namespace Rix.Submit;
@@ -12,7 +11,6 @@ internal sealed record SubmitContext
 (
     IGit Git,
     ISubmitRepoHost RepoHost,
-    RunProcessAsync RunProcess,
     LogLine LogLine,
     IFileSystem FileSystem
 );
