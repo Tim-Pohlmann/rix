@@ -1,7 +1,7 @@
 using Rix.Agents;
 using Rix.Cli;
 using Rix.Job;
-using System.CommandLine.Parsing;
+using System.CommandLine;
 
 namespace Rix.Tests;
 

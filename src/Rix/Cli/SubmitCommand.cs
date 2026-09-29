@@ -1,36 +1,31 @@
 using Rix.Submit;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
 internal static class SubmitCommand
 {
-    private static readonly Option<string> WriteTokenOption = new
-    (
-        name: "--write-token",
-        description: "GitHub PAT with contents:write and pull-requests:write access"
-    )
-    { IsRequired = false };
+    private static readonly Option<string> WriteTokenOption = new("--write-token")
+    {
+        Description = "GitHub PAT with contents:write and pull-requests:write access"
+    };
 
-    private static readonly Option<string> InputDirOption = new
-    (
-        name: "--input-dir",
-        description: "Directory holding result.json and the git bundles produced by `rix job`"
-    )
-    { IsRequired = false };
+    private static readonly Option<string> InputDirOption = new("--input-dir")
+    {
+        Description = "Directory holding result.json and the git bundles produced by `rix job`"
+    };
 
     internal static Command Build()
     {
         var command = new Command("submit", "Push the branches from a `rix job` result and open their pull requests");
 
-        command.AddOption(CommonOptions.RepoOption);
-        command.AddOption(WriteTokenOption);
-        command.AddOption(InputDirOption);
-        command.AddOption(CommonOptions.WorkDirOption);
+        command.Options.Add(CommonOptions.RepoOption);
+        command.Options.Add(WriteTokenOption);
+        command.Options.Add(InputDirOption);
+        command.Options.Add(CommonOptions.WorkDirOption);
         // The same Option instance job registers, so neither command can drift into a different
         // flag name or a different environment variable for the same list.
-        command.AddOption(JobOptions.AllowedPushBranchesOption);
+        command.Options.Add(JobOptions.AllowedPushBranchesOption);
 
         return command;
     }

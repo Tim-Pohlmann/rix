@@ -71,7 +71,7 @@ public class SharedJobOptionsTests
 
         CollectionAssert.AreEquivalent(
             SharedFlags.Select(flag => flag.Flag).ToArray(),
-            command.Options.Select(option => option.Aliases.Single()).ToArray());
+            command.Options.Select(option => option.Name).ToArray());
     }
 
     [TestMethod]

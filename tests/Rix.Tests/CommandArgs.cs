@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
 
@@ -10,8 +9,7 @@ internal static class CommandArgs
 {
     internal static ParseResult Parse(Command command, params string[] args)
     {
-        var root = new RootCommand();
-        root.AddCommand(command);
+        var root = new RootCommand { command };
         return root.Parse(args);
     }
 }
