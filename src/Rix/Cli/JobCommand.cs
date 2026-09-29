@@ -50,5 +50,5 @@ internal static class JobCommand
     }
 
     internal static IReadOnlyList<RequiredDirectory> RequiredDirectories(JobConfig config)
-    => JobOptions.RequiredDirectories(config.WorkDir, config.OutputDir, config.AgentHome);
+    => [RequiredDirectory.For(CommonOptions.WorkDirOption, config.WorkDir), RequiredDirectory.For(JobOptions.OutputDirOption, config.OutputDir), .. JobOptions.RunnerHome(config.AgentHome)];
 }

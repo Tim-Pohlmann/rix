@@ -35,7 +35,7 @@ internal static class InitializeCommand
         return new InitializeConfig
         (
             Input.Required(DirOption.Name, dir, path => new DirectoryPath(path)),
-            Input.Optional("--ref", parsed.GetValue(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild)
+            Input.Optional(RefOption.Name, parsed.GetValue(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild)
         );
     }
 

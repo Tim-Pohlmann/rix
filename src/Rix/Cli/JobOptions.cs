@@ -157,15 +157,8 @@ internal static class JobOptions
     /// not from a flag.</summary>
     private const string RunnerHomeName = "runner home directory";
 
-    /// <summary>The directories <c>job</c> and <c>ci-failure</c> need to exist: the work and output
-    /// dirs, plus the runner home when there's an agent home to install into it.</summary>
-    internal static IReadOnlyList<RequiredDirectory> RequiredDirectories
-    (
-        DirectoryPath workDir, DirectoryPath outputDir, AgentHomeInfo? agentHome = null
-    )
-    => [RequiredDirectory.For(CommonOptions.WorkDirOption, workDir), RequiredDirectory.For(OutputDirOption, outputDir), .. RunnerHome(agentHome)];
-
-    private static IEnumerable<RequiredDirectory> RunnerHome(AgentHomeInfo? agentHome)
+    /// <summary>The runner home, when there's an agent home to install into it.</summary>
+    internal static IEnumerable<RequiredDirectory> RunnerHome(AgentHomeInfo? agentHome)
     => agentHome switch
     {
         null => [],

@@ -99,27 +99,35 @@ internal static class Startup
             {
                 Runs
                 (
+                    fileSystem,
                     JobCommand.Build(),
                     parsed => JobCommand.ReadConfig(parsed, temp, home),
-                    WhenDirectoriesExist<JobConfig>(fileSystem, JobCommand.RequiredDirectories, config => ExecuteJobAsync(config, cts.Token))
+                    JobCommand.RequiredDirectories,
+                    config => ExecuteJobAsync(config, cts.Token)
                 ),
                 Runs
                 (
+                    fileSystem,
                     SubmitCommand.Build(),
                     parsed => SubmitCommand.ReadConfig(parsed, temp),
-                    WhenDirectoriesExist<SubmitConfig>(fileSystem, SubmitCommand.RequiredDirectories, config => ExecuteSubmitAsync(config, cts.Token))
+                    SubmitCommand.RequiredDirectories,
+                    config => ExecuteSubmitAsync(config, cts.Token)
                 ),
                 Runs
                 (
+                    fileSystem,
                     CiFailureCommand.Build(),
                     CiFailureCommand.ReadConfig,
-                    WhenDirectoriesExist<CiFailureConfig>(fileSystem, CiFailureCommand.RequiredDirectories, config => ExecuteCiFailureAsync(config, cts.Token))
+                    CiFailureCommand.RequiredDirectories,
+                    config => ExecuteCiFailureAsync(config, cts.Token)
                 ),
                 Runs
                 (
+                    fileSystem,
                     InitializeCommand.Build(),
                     InitializeCommand.ReadConfig,
-                    WhenDirectoriesExist<InitializeConfig>(fileSystem, InitializeCommand.RequiredDirectories, config => ExecuteInitializeAsync(config, cts.Token))
+                    InitializeCommand.RequiredDirectories,
+                    config => ExecuteInitializeAsync(config, cts.Token)
                 ),
             };
             return await CliPipeline.InvokeAsync(rootCommand, args);
@@ -130,12 +138,20 @@ internal static class Startup
         }
     }
 
-    /// <summary>Makes invoking <paramref name="command"/> read its config and run it. The read happens
-    /// inside the action so an <see cref="InvalidInputException"/> it throws is reported like any
-    /// other (see <see cref="CliPipeline.ReportingInvalidInput"/>).</summary>
-    private static Command Runs<TConfig>(Command command, Func<ParseResult, TConfig> read, Func<TConfig, Task<int>> execute)
+    /// <summary>Makes invoking <paramref name="command"/> read its config, check the directories it
+    /// names exist, and run it. Both happen inside the action so an <see cref="InvalidInputException"/>
+    /// either throws is reported like any other (see <see cref="CliPipeline.ReportingInvalidInput"/>).</summary>
+    private static Command Runs<TConfig>
+    (
+        IFileSystem fileSystem,
+        Command command,
+        Func<ParseResult, TConfig> read,
+        Func<TConfig, IReadOnlyList<RequiredDirectory>> requiredDirectories,
+        Func<TConfig, Task<int>> execute
+    )
     {
-        command.SetAction(CliPipeline.ReportingInvalidInput(parsed => execute(read(parsed))));
+        var run = WhenDirectoriesExist(fileSystem, requiredDirectories, execute);
+        command.SetAction(CliPipeline.ReportingInvalidInput(parsed => run(read(parsed))));
         return command;
     }
 
