@@ -2,7 +2,6 @@ using Rix.Agents;
 using Rix.Cli;
 using Rix.Job;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
 
@@ -19,11 +18,7 @@ public class JobOptionsTests
     private static readonly string ExistingDir = Path.GetTempPath();
 
     private static ParseResult Parse(params string[] args)
-    {
-        var root = new RootCommand();
-        root.AddCommand(JobCommand.Build(_ => Task.FromResult(0)));
-        return root.Parse(["job", .. args]);
-    }
+    => CommandArgs.Parse(JobCommand.Build(), ["job", .. args]);
 
     private static string ErrorOf(Action read) => Assert.ThrowsExactly<InvalidInputException>(read).Message;
 

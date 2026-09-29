@@ -4,6 +4,14 @@ name: Rix On CI Failure
 # the coding agent against a prompt built from the failure (PR, run URL, failing step logs),
 # turning its output into PRs.
 #
+# Three jobs, because the middle one is hostile. `detect` decides whether to act and on which
+# branch, holding only a read token; `run` starts the coding agent, which executes code from the
+# failing branch and so must be assumed to own that machine outright; `create-pr` holds the write
+# token and never shares a machine with the agent. Everything `run` produces - its result.json, its
+# bundles, its step outputs - is therefore attacker-controlled, and the only thing `create-pr`
+# trusts is what `detect` said before the agent existed. A job cannot write a completed prior job's
+# outputs, which is what makes that boundary hold.
+#
 # Shared by both integration patterns in the README:
 #   - a project repo calling it directly from its own workflow_run trigger
 #   - a central "factory" repo calling it from a repository_dispatch fired by many project repos
@@ -71,7 +79,7 @@ on:
         required: false
         type: number
       runner:
-        description: runs-on label for both jobs (e.g. a self-hosted runner label)
+        description: runs-on label for all three jobs (e.g. a self-hosted runner label)
         required: false
         type: string
         default: ubuntu-latest
@@ -91,21 +99,21 @@ on:
           lets opencode pick its own free default model, needing no key.
         required: false
 
-# Both jobs only need read access via GITHUB_TOKEN (the sparse-checkout of the public rix repo).
+# Every job only needs read access via GITHUB_TOKEN (the sparse-checkout of the public rix repo).
 # All writes to the target repo go through the write-token PAT, never GITHUB_TOKEN — so deny it
 # write access explicitly, keeping the untrusted agent run unable to push using the caller token.
 permissions:
   contents: read
 
 jobs:
-  run:
-    name: Check run and run rix job
-    # inputs.runner (not a fixed cheap runner): unlike the old detect+rix split, this single job
-    # both checks the run and - if it failed - runs the agent, so it needs whatever runner the
-    # agent itself requires from the start.
+  detect:
+    name: Check run
+    # inputs.runner like the others: rix-bin is a path on the runner's filesystem, and the release
+    # binary is picked per OS/arch, so all three jobs have to land on the same kind of machine.
     runs-on: ${{ inputs.runner }}
     outputs:
-      has-result: ${{ steps.run.outputs.has-result }}
+      should-run: ${{ steps.detect.outputs.should-run }}
+      branch: ${{ steps.detect.outputs.branch }}
     steps:
       # A local `uses: ./...` action reference resolves against whatever is already checked out
       # at github.workspace, so this checkout is required before the composite action below (and
@@ -125,28 +133,79 @@ jobs:
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
-      - name: Run rix ci-failure
-        id: run
-        uses: ./.github/actions/run-ci-failure
+      - name: Detect CI failure
+        id: detect
+        uses: ./.github/actions/detect-ci-failure
         with:
           repo: ${{ inputs.repo || github.repository }}
           run-id: ${{ inputs.run-id }}
+          read-token: ${{ secrets.read-token }}
+          # Forwarded raw, 0 and all: detect-ci-failure normalizes the omitted-number-input 0 the
+          # same way prepare-rix-env does for max-tokens/timeout, so it holds for every caller of
+          # that action rather than only for this workflow.
+          max-rix-commits: ${{ inputs.max-rix-commits }}
+          rix-version: ${{ inputs.rix-version }}
+          rix-bin: ${{ inputs.rix-bin }}
+
+      # The prompt travels as a file rather than a job output for two reasons: it is built from the
+      # failing run's log output, so it has no size bound a job output could honour, and keeping it
+      # out of $GITHUB_OUTPUT leaves that channel carrying only the short values rix validated -
+      # nothing long enough or arbitrary enough to forge a second output alongside it.
+      - name: Upload prompt
+        if: steps.detect.outputs.should-run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rix-prompt
+          path: out/prompt.md
+
+  run:
+    name: Run rix job
+    needs: detect
+    if: needs.detect.outputs.should-run == 'true'
+    runs-on: ${{ inputs.runner }}
+    steps:
+      # See the comment on the equivalent step in the `detect` job above - same reasoning applies
+      # to every job here.
+      - name: Get rix repo (for local composite actions)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Download prompt
+        uses: actions/download-artifact@v4
+        with:
+          name: rix-prompt
+          path: prompt
+
+      - name: Run rix job
+        uses: ./.github/actions/run-rix-job
+        with:
+          repo: ${{ inputs.repo || github.repository }}
+          prompt-file: prompt/prompt.md
           read-token: ${{ secrets.read-token }}
           agent: ${{ inputs.agent }}
           model: ${{ inputs.model }}
           agent-api-key: ${{ secrets.agent-api-key }}
           agent-api-key-env: ${{ inputs.agent-api-key-env }}
-          # Forwarded raw, 0 and all: run-ci-failure normalizes the omitted-number-input 0 the
-          # same way prepare-rix-env does for the two below, so it holds for every caller of that
-          # action rather than only for this workflow.
-          max-rix-commits: ${{ inputs.max-rix-commits }}
+          # The failing run's own branch, and nothing else: rix is answering a failure there, so
+          # that is the only place its answer belongs. Taken from `detect` rather than from
+          # anything this job can see, since this job is the one running the untrusted code.
+          #
+          # This input is a comma-separated list, so a branch whose name contains a comma arrives
+          # as two names and rix can't fix it. A functionality gap rather than a hole: getting such
+          # a branch into the watched repo takes write access, which is already more than this
+          # boundary defends against. The list is due to become a permission file, which is where
+          # it will be fixed once rather than patched here.
+          allowed-push-branches: ${{ needs.detect.outputs.branch }}
           max-tokens: ${{ inputs.max-tokens }}
           timeout: ${{ inputs.timeout }}
           rix-version: ${{ inputs.rix-version }}
           rix-bin: ${{ inputs.rix-bin }}
 
       - name: Upload job output
-        if: steps.run.outputs.has-result == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: rix-output
@@ -154,15 +213,13 @@ jobs:
 
   create-pr:
     name: Create PRs
-    needs: run
-    if: needs.run.outputs.has-result == 'true'
-    # Same label as `run`: inputs.runner is documented as covering both jobs, and rix-bin below is
-    # a path on the runner's filesystem, so submit can only find the binary that `run` used if it
-    # lands on the same kind of machine.
+    # Both, not just `run`: the branch this is allowed to push to has to come from `detect`, and a
+    # job can only read the outputs of jobs it declares as needs.
+    needs: [detect, run]
     runs-on: ${{ inputs.runner }}
     steps:
-      # See the comment on the equivalent step in the `run` job above - same reasoning applies
-      # here for submit-rix-job.
+      # See the comment on the equivalent step in the `detect` job above - same reasoning applies
+      # to every job here.
       - name: Get rix repo (for local composite actions)
         uses: actions/checkout@v4
         with:
@@ -182,6 +239,12 @@ jobs:
         with:
           repo: ${{ inputs.repo || github.repository }}
           write-token: ${{ secrets.write-token }}
+          # The same branch the `run` job bounded the agent with, read from `detect` rather than
+          # from the artifact - which the agent could have rewritten before it was uploaded. This
+          # is the one thing the job holding the write token checks, and the only reason the agent
+          # getting its own machine is survivable: it may push to the branch whose failure it was
+          # answering, and to nothing else.
+          allowed-push-branches: ${{ needs.detect.outputs.branch }}
           input-dir: out
           rix-version: ${{ inputs.rix-version }}
           rix-bin: ${{ inputs.rix-bin }}

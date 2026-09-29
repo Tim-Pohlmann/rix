@@ -1,134 +1,108 @@
 using Rix.Agents;
 using Rix.Job;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
-/// <summary>The CLI options shared by <c>job</c> and <c>ci-failure</c>, which both run the coding
-/// agent and so take the same execution parameters, plus one reader per option that turns its
-/// flag-or-environment text into the value the command's config takes — the first missing or
-/// malformed value throws <see cref="InvalidInputException"/> naming the flag, which
-/// <see cref="CliPipeline"/> reports. Each command assembles its own config from these at the
-/// call site, in the order it wants problems reported. <see cref="PromptOption"/> and
-/// <see cref="AllowedPushBranchesOption"/> are the exception: <c>ci-failure</c> derives both from
-/// the failure it detects rather than accepting them as inputs, so <see cref="AddTo"/> leaves
-/// those two to <c>job</c>. <c>--repo</c> and <c>--work-dir</c> live in <see cref="CommonOptions"/>
-/// instead, since <c>submit</c> takes them too without taking anything else here;
-/// <see cref="AddTo"/> still registers them, so a command accepting the agent-running set keeps
-/// getting the whole flag surface from one call.</summary>
+/// <summary>The CLI options a command that runs the coding agent takes, plus one reader per option
+/// that turns its flag-or-environment text into the value the command's config takes — the first
+/// missing or malformed value throws <see cref="InvalidInputException"/> naming the flag, which
+/// <see cref="CliPipeline"/> reports. The command assembles its config from these at the call site,
+/// in the order it wants problems reported. <c>--repo</c> and <c>--work-dir</c> live in
+/// <see cref="CommonOptions"/> instead, since <c>submit</c> takes them too without taking anything
+/// else here; <see cref="AddTo"/> still registers them, so one call yields the whole flag surface.
+///
+/// <c>ci-failure</c> used to share this set, back when it ran the agent itself. It now reports a
+/// verdict and stops, so it borrows only <see cref="ReadTokenOption"/> and
+/// <see cref="OutputDirOption"/> by name — see <see cref="CiFailureCommand"/>.</summary>
 internal static class JobOptions
 {
-    internal static readonly Option<string> ReadTokenOption = new
-    (
-        name: "--read-token",
-        description: "GitHub PAT with read access to the repo, including Actions:read"
-    )
-    { IsRequired = false };
+    internal static readonly Option<string> ReadTokenOption = new("--read-token")
+    {
+        Description = "GitHub PAT with read access to the repo, including Actions:read"
+    };
 
-    internal static readonly Option<string> PromptOption = new
-    (
-        name: "--prompt",
-        description: "Task prompt passed to the coding agent"
-    )
-    { IsRequired = false };
+    internal static readonly Option<string> PromptOption = new("--prompt")
+    {
+        Description = "Task prompt passed to the coding agent"
+    };
 
-    internal static readonly Option<string> MaxTokensOption = new
-    (
-        name: "--max-tokens",
-        description: $"Coding agent token budget cap (default: {JobConfig.DefaultMaxTokens})"
-    )
-    { IsRequired = false };
+    internal static readonly Option<string> MaxTokensOption = new("--max-tokens")
+    {
+        Description = $"Coding agent token budget cap (default: {JobConfig.DefaultMaxTokens})"
+    };
 
-    internal static readonly Option<string> TimeoutOption = new
-    (
-        name: "--timeout",
-        description: $"Wall-clock timeout in minutes (default: {JobConfig.DefaultTimeoutMinutes})"
-    )
-    { IsRequired = false };
+    internal static readonly Option<string> TimeoutOption = new("--timeout")
+    {
+        Description = $"Wall-clock timeout in minutes (default: {JobConfig.DefaultTimeoutMinutes})"
+    };
 
-    internal static readonly Option<string> OutputDirOption = new
-    (
-        name: "--output-dir",
-        description: "Directory where result.json and git bundles are written"
-    )
-    { IsRequired = false };
+    internal static readonly Option<string> OutputDirOption = new("--output-dir")
+    {
+        Description = "Directory where result.json and git bundles are written"
+    };
 
-    internal static readonly Option<string> AgentOption = new
-    (
-        name: "--agent",
-        description: "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
-    )
-    { IsRequired = false };
+    internal static readonly Option<string> AgentOption = new("--agent")
+    {
+        Description = "Coding agent to run: 'opencode' (default), 'claude', or 'pi'"
+    };
 
-    internal static readonly Option<string> ModelOption = new
-    (
-        name: "--model",
-        description: "Model identifier passed to the agent CLI (e.g. 'openai/gpt-4o' for opencode). " +
+    internal static readonly Option<string> ModelOption = new("--model")
+    {
+        Description = "Model identifier passed to the agent CLI (e.g. 'openai/gpt-4o' for opencode). " +
             "Provider-specific; forwarded verbatim. Omit to use the agent CLI's own default model."
-    )
-    { IsRequired = false };
+    };
 
-    internal static readonly Option<string> AgentApiKeyOption = new
-    (
-        name: "--agent-api-key",
-        description: "API key for the selected agent's model provider; optional (opencode's free default model needs none)"
-    )
-    { IsRequired = false };
+    internal static readonly Option<string> AgentApiKeyOption = new("--agent-api-key")
+    {
+        Description = "API key for the selected agent's model provider; optional (opencode's free default model needs none)"
+    };
 
-    internal static readonly Option<string> AgentApiKeyEnvOption = new
-    (
-        name: "--agent-api-key-env",
-        description: "Name of the environment variable agent-api-key is exported as to the agent CLI " +
+    internal static readonly Option<string> AgentApiKeyEnvOption = new("--agent-api-key-env")
+    {
+        Description = "Name of the environment variable agent-api-key is exported as to the agent CLI " +
             "(e.g. OPENCODE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_ACCESS_KEY_ID) — whatever the " +
             "selected provider/model expects. Must end in a credential-shaped suffix (_API_KEY, _TOKEN, _ACCESS_KEY_ID, etc). " +
             "Omit to use a default based on agent: OPENCODE_API_KEY for opencode, ANTHROPIC_API_KEY for claude. " +
             "Required for pi whenever agent-api-key is set, since pi has no single default provider to fall back on."
-    )
-    { IsRequired = false };
+    };
 
     /// <summary>Shared with <c>submit</c> rather than redeclared there, so the flag the agent is
     /// bounded by and the flag the write credential is bounded by can never name different
     /// branches. Both commands read it from the same <c>RIX_ALLOWED_PUSH_BRANCHES</c>.</summary>
-    internal static readonly Option<string> AllowedPushBranchesOption = new
-    (
-        name: "--allowed-push-branches",
-        description: "Comma-separated list of branches rix may push onto. Defaults to none, which " +
+    internal static readonly Option<string> AllowedPushBranchesOption = new("--allowed-push-branches")
+    {
+        Description = "Comma-separated list of branches rix may push onto. Defaults to none, which " +
             "refuses every push onto an already-existing branch. Enforced twice: by `job`, which " +
             "turns down the agent's /push request, and again by `submit`, which does the pushing"
-    )
-    { IsRequired = false };
+    };
 
-    internal static readonly Option<string> FactoryRepoOption = new
-    (
-        name: "--factory-repo",
-        description: "Optional repo (owner/name) holding agent config/context files to copy into the runner's " +
+    internal static readonly Option<string> FactoryRepoOption = new("--factory-repo")
+    {
+        Description = "Optional repo (owner/name) holding agent config/context files to copy into the runner's " +
             "home directory. Read with --read-token, which must also grant read access to this repo."
-    )
-    { IsRequired = false };
+    };
 
-    internal static readonly Option<string> AgentHomePathOption = new
-    (
-        name: "--agent-home-path",
-        description: "Directory inside --factory-repo whose contents are copied into the runner's home " +
+    internal static readonly Option<string> AgentHomePathOption = new("--agent-home-path")
+    {
+        Description = "Directory inside --factory-repo whose contents are copied into the runner's home " +
             $"directory, skipping files that already exist. Requires --factory-repo (default: {JobConfig.DefaultAgentHomePath})"
-    )
-    { IsRequired = false };
+    };
 
     /// <summary>Registers every shared option, so a new one is added here once and both commands
-    /// accept it — each command's handler then reads it via the matching reader below.</summary>
+    /// accept it — each command's <c>ReadConfig</c> then reads it via the matching reader below.</summary>
     internal static void AddTo(Command command)
     {
-        command.AddOption(CommonOptions.RepoOption);
-        command.AddOption(ReadTokenOption);
-        command.AddOption(MaxTokensOption);
-        command.AddOption(TimeoutOption);
-        command.AddOption(CommonOptions.WorkDirOption);
-        command.AddOption(OutputDirOption);
-        command.AddOption(AgentOption);
-        command.AddOption(ModelOption);
-        command.AddOption(AgentApiKeyOption);
-        command.AddOption(AgentApiKeyEnvOption);
+        command.Options.Add(CommonOptions.RepoOption);
+        command.Options.Add(ReadTokenOption);
+        command.Options.Add(MaxTokensOption);
+        command.Options.Add(TimeoutOption);
+        command.Options.Add(CommonOptions.WorkDirOption);
+        command.Options.Add(OutputDirOption);
+        command.Options.Add(AgentOption);
+        command.Options.Add(ModelOption);
+        command.Options.Add(AgentApiKeyOption);
+        command.Options.Add(AgentApiKeyEnvOption);
     }
 
     internal static GitReadToken ReadReadToken(ParseResult parsed)
@@ -189,7 +163,7 @@ internal static class JobOptions
         if (repo is null)
         {
             if (parsed.OptionalText(AgentHomePathOption, "RIX_AGENT_HOME_PATH") is not null)
-                throw new InvalidInputException($"{ParseResultExtensions.Flag(AgentHomePathOption)} requires {ParseResultExtensions.Flag(FactoryRepoOption)}");
+                throw new InvalidInputException($"{AgentHomePathOption.Name} requires {FactoryRepoOption.Name}");
             return null;
         }
 
