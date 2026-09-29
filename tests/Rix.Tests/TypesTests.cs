@@ -82,10 +82,16 @@ public class TypesTests
     }
 
     [TestMethod]
-    public void DirectoryPath_RejectsNonExistent()
+    public void DirectoryPath_LeavesWhetherTheDirectoryExistsToTheCaller()
+    => Assert.AreEqual(Path.GetFullPath("/nonexistent/path/xyz"), new DirectoryPath("/nonexistent/path/xyz").Value);
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("   ")]
+    public void DirectoryPath_RejectsABlankPath(string raw)
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new DirectoryPath("/nonexistent/path/xyz"));
-        Assert.AreEqual("directory does not exist: /nonexistent/path/xyz", ex.Message);
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new DirectoryPath(raw));
+        Assert.AreEqual("must name a directory, got a blank path", ex.Message);
     }
 
     [TestMethod]
@@ -236,7 +242,7 @@ public class TypesTests
         StringAssert.Contains(error, "must be between 1 and 100");
     }
 
-    /// <summary>run-ci-failure/action.yml reads `.outcome` to say which non-failure ending the run
+    /// <summary>detect-ci-failure/action.yml reads `.outcome` to say which non-failure ending the run
     /// had, so the field name is as much a contract as the status discriminator is.</summary>
     [TestMethod]
     public void CiFailureSkipped_SerializesWithSkippedStatus_AndTheOutcomeWord()
@@ -249,7 +255,7 @@ public class TypesTests
         Assert.AreEqual("timed_out", root.GetProperty("outcome").GetString());
     }
 
-    /// <summary>The discriminator the composite action switches on: run-ci-failure/action.yml reads
+    /// <summary>The discriminator the composite action switches on: detect-ci-failure/action.yml reads
     /// `.status` and treats anything it doesn't recognize as a broken result, so renaming this
     /// silently turns a guarded run into a reported error.</summary>
     [TestMethod]
@@ -264,7 +270,7 @@ public class TypesTests
         Assert.AreEqual(5, root.GetProperty("rixCommits").GetInt32());
     }
 
-    /// <summary>Same contract as the loop guard's discriminator above: run-ci-failure/action.yml
+    /// <summary>Same contract as the loop guard's discriminator above: detect-ci-failure/action.yml
     /// reports an unrecognized status as a broken result, so a fork's failure turning up as an
     /// error in the Actions tab is one rename away.</summary>
     [TestMethod]

@@ -1,4 +1,3 @@
-using Rix.Process;
 using Rix.Repository;
 using Rix.Submit;
 
@@ -63,15 +62,14 @@ public class SubmitRunnerTests
     {
         WriteOnePendingPush();
         var git = new StubGit();
-        var commands = new List<string>();
 
-        var result = await Run(git, GitRunner(commands));
+        var result = await Run(git);
 
         var success = AssertSuccess(result);
         Assert.AreEqual(0, success.CreatedPrs.Count, "a push must not open a PR");
         CollectionAssert.AreEqual(ExpectedPushedBranches, success.PushedBranches.ToArray());
         CollectionAssert.AreEqual(ExpectedPushedBranches, git.PushedBranches.Select(b => b.Value).ToArray());
-        CollectionAssert.Contains(commands, "fetch");
+        CollectionAssert.AreEqual(ExpectedPushedBranches, git.FetchedBranches.Select(b => b.Value).ToArray());
     }
 
     [TestMethod]
@@ -128,14 +126,26 @@ public class SubmitRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_Fails_WithoutPushing_WhenBundleFetchFails()
+    {
+        WriteOnePendingPush();
+        var git = new StubGit(
+            fetchBundle: _ => throw new RepoHostException("git fetch failed: exited with code 128"));
+
+        var result = await Run(git);
+
+        AssertFailure(result, "git fetch failed");
+        Assert.AreEqual(0, git.PushedBranches.Count);
+    }
+
+    [TestMethod]
     public async Task RunAsync_PushesAndOpensPr_ForEachPending()
     {
         WriteOnePendingPr();
         var git = new StubGit();
         var host = new StubSubmitRepoHost();
-        var commands = new List<string>();
 
-        var result = await Run(git, GitRunner(commands), host);
+        var result = await Run(git, host);
 
         var success = AssertSuccess(result);
         Assert.AreEqual(1, host.CreatedPrs.Count);
@@ -143,9 +153,12 @@ public class SubmitRunnerTests
         Assert.AreEqual(1, success.CreatedPrs.Count);
         Assert.AreEqual("rix/my-fix", success.CreatedPrs[0].Branch);
         Assert.AreEqual("https://github.com/owner/repo/pull/1", success.CreatedPrs[0].Url);
-        CollectionAssert.Contains(commands, "fetch");
+        CollectionAssert.AreEqual(ExpectedPushedBranches, git.FetchedBranches.Select(b => b.Value).ToArray());
         CollectionAssert.AreEqual(
             ExpectedPushedBranches, git.PushedBranches.Select(b => b.Value).ToArray());
+        var repo = new RepoIdentifier("owner/repo");
+        CollectionAssert.AreEqual(new[] { repo }, git.ClonedRepos);
+        Assert.AreEqual((repo, "rix/my-fix"), git.RemoteBranchChecks.Select(c => (c.Repo, c.Branch.Value)).Single());
     }
 
     [TestMethod]
@@ -153,13 +166,14 @@ public class SubmitRunnerTests
     {
         WriteOnePendingPr();
         var host = new StubSubmitRepoHost();
-        var commands = new List<string>();
+        var git = new StubGit(branchExists: _ => Task.FromResult(true));
 
-        var result = await Run(new StubGit(branchExists: _ => Task.FromResult(true)), GitRunner(commands), host);
+        var result = await Run(git, host);
 
         AssertFailure(result, "branch already exists on remote");
         Assert.AreEqual(0, host.CreatedPrs.Count);
-        Assert.AreEqual(0, commands.Count, "must not touch git when the branch already exists");
+        Assert.AreEqual(0, git.FetchedBranches.Count, "must not fetch when the branch already exists");
+        Assert.AreEqual(0, git.PushedBranches.Count, "must not push when the branch already exists");
     }
 
     [TestMethod]
@@ -217,12 +231,12 @@ public class SubmitRunnerTests
     public async Task RunAsync_RefusesTheDisallowedPush_BeforeTouchingItsBundle()
     {
         WriteResultJson(OnePendingPushJson(bundleFile: "missing.bundle"));
-        var gitCommands = new List<string>();
+        var git = new StubGit();
 
-        var result = await Run(new StubGit(), GitRunner(gitCommands), allowedPushBranches: "main");
+        var result = await Run(git, allowedPushBranches: "main");
 
         AssertFailure(result, "branch is not allowed to be pushed to: rix/my-fix");
-        Assert.AreEqual(0, gitCommands.Count, "nothing may be fetched from a bundle for a refused push");
+        Assert.AreEqual(0, git.FetchedBranches.Count, "nothing may be fetched from a bundle for a refused push");
     }
 
     /// <summary>The allow-list bounds pushes onto existing branches only. A pending PR names a
@@ -249,26 +263,15 @@ public class SubmitRunnerTests
     private Task<ISubmitResult> Run
     (
         StubGit git,
-        RunProcessAsync? runner = null,
         StubSubmitRepoHost? host = null,
         string? allowedPushBranches = "rix/my-fix"
     )
     => SubmitRunner.RunAsync
     (
         TestConfig.ValidSubmit(inputDir: _inputDir, workDir: _workDir, allowedPushBranches: allowedPushBranches),
-        new SubmitContext(git, host ?? new StubSubmitRepoHost(), runner ?? OkGit, _ => { }),
+        new SubmitContext(git, host ?? new StubSubmitRepoHost(), _ => { }, new LocalFileSystem()),
         CancellationToken.None
     );
-
-    private static readonly RunProcessAsync OkGit =
-        (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
-
-    private static RunProcessAsync GitRunner(List<string> commands) =>
-        (_, args, _, _, _, _) =>
-        {
-            commands.Add(args.ElementAt(2)); // git -C <dir> <verb> ...
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
 
     private static SubmitSuccess AssertSuccess(ISubmitResult result)
     {

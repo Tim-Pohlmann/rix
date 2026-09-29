@@ -1,135 +1,70 @@
 using Rix.Cli;
 using Rix.Initialize;
-using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
 
 [TestClass]
 public class InitializeCommandTests
 {
-    private static Parser BuildParser(Func<InitializeConfig, Task<int>> handler)
-    {
-        var root = new RootCommand();
-        root.AddCommand(InitializeCommand.Build(handler));
-        return CliPipeline.Build(root);
-    }
+    private static InitializeConfig Read(params string[] args)
+    => InitializeCommand.ReadConfig(CommandArgs.Parse(InitializeCommand.Build(), args));
 
     [TestMethod]
     [DataRow("initialize")]
     [DataRow("init")]
-    public async Task Command_PassesDirFlag_ToConfig(string verb)
+    public void Command_PassesDirFlag_ToConfig(string verb)
     {
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
-        InitializeConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
 
-        await parser.InvokeAsync([verb, "--dir", dir]);
+        var config = Read(verb, "--dir", dir);
 
-        Assert.IsNotNull(captured);
-        Assert.AreEqual(Path.GetFullPath(dir), captured.TargetDir.Value);
+        Assert.AreEqual(Path.GetFullPath(dir), config.TargetDir.Value);
     }
 
     [TestMethod]
-    public async Task Command_DefaultsDirToCurrentDirectory_WhenFlagAbsent()
+    public void Command_DefaultsDirToCurrentDirectory_WhenFlagAbsent()
     {
-        InitializeConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
+        var config = Read("initialize");
 
-        await parser.InvokeAsync("initialize");
-
-        Assert.IsNotNull(captured);
-        Assert.AreEqual(Path.GetFullPath(Directory.GetCurrentDirectory()), captured.TargetDir.Value);
+        Assert.AreEqual(Path.GetFullPath("."), config.TargetDir.Value);
     }
 
     [TestMethod]
-    public async Task Command_DefaultsRefToThisBuildsMajorTag_WhenFlagAbsentOrBlank()
+    public void Command_DefaultsRefToThisBuildsMajorTag_WhenFlagAbsentOrBlank()
     {
-        InitializeConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
-
-        await parser.InvokeAsync("initialize");
-        Assert.AreEqual(WorkflowRef.ForThisBuild, captured?.Ref);
-
-        captured = null;
-        await parser.InvokeAsync(["initialize", "--ref", "  "]);
-        Assert.AreEqual(WorkflowRef.ForThisBuild, captured?.Ref);
+        Assert.AreEqual(WorkflowRef.ForThisBuild, Read("initialize").Ref);
+        Assert.AreEqual(WorkflowRef.ForThisBuild, Read("initialize", "--ref", "  ").Ref);
     }
 
     [TestMethod]
-    public async Task Command_PassesRefFlag_ToConfig()
+    public void Command_PassesRefFlag_ToConfig()
     {
-        InitializeConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
-
-        await parser.InvokeAsync(["initialize", "--ref", "v1.2.3"]);
-
-        Assert.AreEqual("v1.2.3", captured?.Ref.Value);
+        Assert.AreEqual("v1.2.3", Read("initialize", "--ref", "v1.2.3").Ref.Value);
     }
 
     [TestMethod]
-    public async Task Command_Returns2_WhenRefIsMalformed()
+    public void Command_ReportsTheFlag_WhenRefIsMalformed()
     {
-        InitializeConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("initialize", "--ref", "main branch"));
 
-        using var stderr = new ConsoleErrorScope();
-        var exitCode = await parser.InvokeAsync(["initialize", "--ref", "main branch"]);
-
-        Assert.IsNull(captured);
-        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
-        StringAssert.Contains(stderr.Text, "error: --ref: 'main branch' is not a valid workflow ref");
+        StringAssert.StartsWith(ex.Message, "--ref: 'main branch' is not a valid workflow ref");
     }
 
     [TestMethod]
-    public async Task Command_Returns2_WhenDirDoesNotExist()
+    public void RequiredDirectories_NamesTheDirAfterItsFlag()
     {
-        InitializeConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
+        var config = Read("initialize", "--dir", "/nonexistent/path/xyz");
 
-        using var stderr = new ConsoleErrorScope();
-        var exitCode = await parser.InvokeAsync(["initialize", "--dir", "/nonexistent/path/xyz"]);
-
-        Assert.IsNull(captured);
-        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
-        StringAssert.Contains(stderr.Text, "error: --dir: directory does not exist: /nonexistent/path/xyz");
+        Assert.AreEqual(new RequiredDirectory("--dir", new DirectoryPath("/nonexistent/path/xyz")), InitializeCommand.RequiredDirectories(config).Single());
     }
 
     [TestMethod]
     [DataRow("")]
     [DataRow("   ")]
-    public async Task Command_Returns2_WhenDirIsBlank(string dir)
+    public void Command_ReportsTheFlag_WhenDirIsBlank(string dir)
     {
-        var parser = BuildParser(_ => Task.FromResult(0));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("initialize", "--dir", dir));
 
-        using var stderr = new ConsoleErrorScope();
-        var exitCode = await parser.InvokeAsync(["initialize", "--dir", dir]);
-
-        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
-        StringAssert.Contains(stderr.Text, "error: --dir is required");
+        Assert.AreEqual("--dir is required", ex.Message);
     }
 }

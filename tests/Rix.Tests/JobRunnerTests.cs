@@ -111,13 +111,12 @@ public class JobRunnerTests
     [TestMethod]
     public async Task ExecuteJobAsync_StillReturnsExitCode_WhenResultJsonCannotBeWritten()
     {
-        // Forces the write to fail with UnauthorizedAccessException: "result.json" already exists
-        // as a directory at that path, so it can't be opened as a file.
-        Directory.CreateDirectory(Path.Combine(_outputDir, "result.json"));
+        using var stderr = new ConsoleErrorScope();
 
-        var result = await Run();
+        var result = await Run(fileSystem: new StubFileSystem(writeAllText: _ => throw new IOException("disk full")));
 
         Assert.AreEqual(0, result);
+        StringAssert.Contains(stderr.Text, "warning: failed to write result.json: disk full");
     }
 
     [TestMethod]
@@ -229,7 +228,7 @@ public class JobRunnerTests
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
-        Assert.IsTrue(host.CloneCalled);
+        CollectionAssert.AreEqual(new[] { new RepoIdentifier("owner/repo") }, host.ClonedRepos);
     }
 
     [TestMethod]
@@ -784,48 +783,53 @@ public class JobRunnerTests
     public async Task RunAsync_CopiesAgentHomeFiles_BeforeAgentRuns_WhenConfigured()
     {
         var home = Directory.CreateDirectory(Path.Combine(_workDir, "home")).FullName;
-        var fetcher = new StubAgentHomeFetcher(checkoutDir =>
-        {
-            File.WriteAllText(Path.Combine(checkoutDir.Value, "agent.md"), "from-factory");
-            return checkoutDir;
-        });
+        var git = SparseCloneLayingOut("config/home");
         var homeHadFileWhenAgentRan = false;
 
         await JobRunner.RunAsync(
             MakeConfig(agentHome: AgentHome("acme/factory", home, "config/home")),
-            Context(new StubGit(),
+            Context(git,
                 OnAgent(() => homeHadFileWhenAgentRan = File.Exists(Path.Combine(home, "agent.md"))),
-                _ => Task.FromResult<InstallResult>(new Installed()),
-                agentHomeFetcher: fetcher),
+                _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
-        (RepoIdentifier, SubDirectoryPath)[] expectedFetches = [(new("acme/factory"), new("config/home"))];
-        CollectionAssert.AreEqual(expectedFetches, fetcher.Fetches);
+        (RepoIdentifier, SubDirectoryPath)[] expectedSparseClones = [(new("acme/factory"), new("config/home"))];
+        CollectionAssert.AreEqual(expectedSparseClones, git.SparseClones);
         Assert.IsTrue(homeHadFileWhenAgentRan, "the agent home files must be in the home before the agent starts");
     }
 
     [TestMethod]
     public async Task RunAsync_DoesNotFetchAgentHomeFiles_WhenNotConfigured()
     {
-        var fetcher = new StubAgentHomeFetcher();
+        var git = new StubGit();
 
         await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()),
-                agentHomeFetcher: fetcher),
+            Context(git, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
-        Assert.AreEqual(0, fetcher.Fetches.Count);
+        Assert.AreEqual(0, git.SparseClones.Count);
     }
 
     [TestMethod]
     public async Task RunAsync_ReturnsSetupFailure_AndSkipsAgent_WhenAgentHomeFetchFails()
     {
-        var fetcher = new StubAgentHomeFetcher(_ => throw new RepoHostException("git clone failed: exited with code 128"));
+        var git = new StubGit(sparseClone: (_, _) => throw new RepoHostException("git clone failed: exited with code 128"));
 
-        var (failure, agentRan) = await RunExpectingSetupFailure(AgentHome("acme/factory", _workDir), fetcher);
+        var (failure, agentRan) = await RunExpectingSetupFailure(AgentHome("acme/factory", _workDir), git);
 
         StringAssert.Contains(failure.Error, "agent home fetch failed: git clone failed");
         Assert.IsFalse(agentRan, "the agent must not run when the agent home files could not be fetched");
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsSetupFailure_AndSkipsAgent_WhenAgentHomePathAbsentFromRepo()
+    {
+        var git = SparseCloneLayingOut("some-other-dir");
+
+        var (failure, agentRan) = await RunExpectingSetupFailure(AgentHome("acme/factory", _workDir, "config/home"), git);
+
+        Assert.AreEqual("agent home fetch failed: agent home path not found in acme/factory: config/home", failure.Error);
+        Assert.IsFalse(agentRan, "the agent must not run when the agent home path is missing");
     }
 
     [TestMethod]
@@ -837,7 +841,7 @@ public class JobRunnerTests
         Directory.Delete(home);
         await File.WriteAllTextAsync(home, "not a directory");
 
-        var (failure, agentRan) = await RunExpectingSetupFailure(agentHome, new StubAgentHomeFetcher());
+        var (failure, agentRan) = await RunExpectingSetupFailure(agentHome, SparseCloneLayingOut(JobConfig.DefaultAgentHomePath));
 
         StringAssert.Contains(failure.Error, "agent home copy into");
         Assert.IsFalse(agentRan, "the agent must not run when the agent home files could not be copied");
@@ -851,15 +855,15 @@ public class JobRunnerTests
         Func<CancellationToken, Task<InstallResult>> install,
         LogLine? logLine = null,
         LogLine? transcriptLine = null,
-        IAgentHomeFetcher? agentHomeFetcher = null)
-    => new(git, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }),
-        agentHomeFetcher ?? new StubAgentHomeFetcher());
+        IFileSystem? fileSystem = null)
+    => new(git, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }), fileSystem ?? new LocalFileSystem());
 
-    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null)
+    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null)
     => Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
         Context(new StubGit(),
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
-            _ => Task.FromResult<InstallResult>(new Installed())));
+            _ => Task.FromResult<InstallResult>(new Installed()),
+            fileSystem: fileSystem));
 
     private JobConfig MakeConfig(
         string[]? allowedPushBranches = null,
@@ -870,6 +874,16 @@ public class JobRunnerTests
         prompt: "Do something", workDir: _workDir, outputDir: _outputDir,
         allowedPushBranches: (allowedPushBranches ?? []).Select(b => new BranchName(b)).ToList(),
         agentApiKey: agentApiKey, agentApiKeyEnv: agentApiKeyEnv, agentHome: agentHome);
+
+    /// <summary>A git whose sparse clone lays out <paramref name="directory"/> holding one file,
+    /// <c>agent.md</c>, in the checkout - whatever directory it was asked for.</summary>
+    private static StubGit SparseCloneLayingOut(string directory)
+    => new(sparseClone: (target, _) =>
+    {
+        var root = Directory.CreateDirectory(Path.Combine(target, directory)).FullName;
+        File.WriteAllText(Path.Combine(root, "agent.md"), "from-factory");
+        return Task.CompletedTask;
+    });
 
     private static AgentHomeInfo AgentHome
     (
@@ -888,14 +902,14 @@ public class JobRunnerTests
 
     private async Task<(SetupFailure Failure, bool AgentRan)> RunExpectingSetupFailure
     (
-        AgentHomeInfo agentHome, StubAgentHomeFetcher fetcher
+        AgentHomeInfo agentHome, StubGit git
     )
     {
         var agentRan = false;
         var result = await JobRunner.RunAsync(
             MakeConfig(agentHome: agentHome),
-            Context(new StubGit(), OnAgent(() => agentRan = true),
-                _ => Task.FromResult<InstallResult>(new Installed()), agentHomeFetcher: fetcher),
+            Context(git, OnAgent(() => agentRan = true),
+                _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         var failure = result switch

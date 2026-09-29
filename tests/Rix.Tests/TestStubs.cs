@@ -101,27 +101,41 @@ internal sealed class StubGit(
     Func<BranchName, Task<bool>>? branchExistsLocally = null,
     Func<string, Task>? configureIdentity = null,
     Func<BranchName, Task>? pushBranch = null,
-    Func<string, SubDirectoryPath, Task>? sparseClone = null) : IGit
+    Func<string, SubDirectoryPath, Task>? sparseClone = null,
+    Func<BranchName, Task>? fetchBundle = null) : IGit
 {
+    public List<BranchName> FetchedBranches { get; } = [];
     public List<BranchName> PushedBranches { get; } = [];
-    public bool CloneCalled { get; private set; }
+    public List<RepoIdentifier> ClonedRepos { get; } = [];
+    public List<(RepoIdentifier Repo, SubDirectoryPath Directory)> SparseClones { get; } = [];
+    public List<(RepoIdentifier Repo, BranchName Branch)> RemoteBranchChecks { get; } = [];
+    public bool CloneCalled => ClonedRepos.Count > 0;
 
     /// <summary>Succeeds by default; override via the <c>clone</c> constructor parameter to
     /// simulate a git clone failure (e.g. throwing <see cref="RepoHostException"/>, as the
     /// real <see cref="GitCli.CloneAsync"/> does).</summary>
-    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
+    public Task CloneAsync(RepoIdentifier repo, string targetDirectory, CancellationToken cancellationToken)
     {
-        CloneCalled = true;
+        ClonedRepos.Add(repo);
         return clone switch { { } check => check(), _ => Task.CompletedTask };
     }
 
     /// <summary>Succeeds without creating anything by default; override via the
     /// <c>sparseClone</c> constructor parameter to lay out the checkout or to simulate a failure.</summary>
-    public Task SparseCloneAsync(string targetDirectory, SubDirectoryPath directory, CancellationToken cancellationToken)
-    => sparseClone switch { { } check => check(targetDirectory, directory), _ => Task.CompletedTask };
+    public Task SparseCloneAsync
+    (
+        RepoIdentifier repo, string targetDirectory, SubDirectoryPath directory, CancellationToken cancellationToken
+    )
+    {
+        SparseClones.Add((repo, directory));
+        return sparseClone switch { { } check => check(targetDirectory, directory), _ => Task.CompletedTask };
+    }
 
-    public Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
-    => branchExists switch { { } check => check(branch), _ => Task.FromResult(false) };
+    public Task<bool> BranchExistsOnRemoteAsync(RepoIdentifier repo, BranchName branch, CancellationToken cancellationToken)
+    {
+        RemoteBranchChecks.Add((repo, branch));
+        return branchExists switch { { } check => check(branch), _ => Task.FromResult(false) };
+    }
 
     /// <summary>Exists by default, since most tests care about simulating the agent's own
     /// process/git behaviour rather than this guard; override via <c>branchExistsLocally</c> to
@@ -146,6 +160,12 @@ internal sealed class StubGit(
         _ => File.WriteAllTextAsync(bundlePath, "fake-bundle", cancellationToken),
     };
 
+    public Task FetchBundleAsync(string repoDirectory, string bundlePath, BranchName branch, CancellationToken cancellationToken)
+    {
+        FetchedBranches.Add(branch);
+        return fetchBundle switch { { } check => check(branch), _ => Task.CompletedTask };
+    }
+
     public Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken)
     {
         PushedBranches.Add(branch);
@@ -168,22 +188,51 @@ internal sealed class StubSubmitRepoHost(Func<PendingPr, Task<string>>? createPu
     }
 }
 
-/// <summary>Records each fetch so tests can assert the agent home files were requested with the
-/// configured repo and path. <c>onFetch</c> gets the checkout dir and returns the directory to merge
-/// into the home, or throws <see cref="Rix.Repository.RepoHostException"/> to simulate a fetch
-/// failure; by default the empty checkout dir itself is returned, so nothing is copied.</summary>
-internal sealed class StubAgentHomeFetcher(Func<DirectoryPath, DirectoryPath>? onFetch = null) : IAgentHomeFetcher
+/// <summary>The local disk, except for the operations a test overrides — to make a write or a
+/// cleanup fail the way a full disk or a locked file would, or to decide what exists, without
+/// arranging it on disk.</summary>
+internal sealed class StubFileSystem(
+    Func<string, Task>? writeAllText = null,
+    Action<string>? deleteDirectory = null,
+    Func<string, bool>? directoryExists = null) : IFileSystem
 {
-    public List<(RepoIdentifier Repo, SubDirectoryPath SourcePath)> Fetches { get; } = [];
+    private readonly LocalFileSystem _real = new();
 
-    public Task<DirectoryPath> FetchAsync
-    (
-        RepoIdentifier repo, SubDirectoryPath sourcePath, DirectoryPath checkoutDir, CancellationToken cancellationToken
-    )
+    public bool FileExists(string path) => _real.FileExists(path);
+
+    public bool DirectoryExists(string path)
+    => directoryExists switch
     {
-        Fetches.Add((repo, sourcePath));
-        return Task.FromResult(onFetch?.Invoke(checkoutDir) ?? checkoutDir);
+        { } exists => exists(path),
+        _ => _real.DirectoryExists(path),
+    };
+
+    public bool PathExists(string path) => _real.PathExists(path);
+
+    public void CreateDirectory(string path) => _real.CreateDirectory(path);
+
+    public void DeleteDirectory(string path)
+    {
+        if (deleteDirectory is { } delete)
+            delete(path);
+        else
+            _real.DeleteDirectory(path);
     }
+
+    public IEnumerable<FileSystemEntry> EnumerateEntries(string directory) => _real.EnumerateEntries(directory);
+
+    public void CopyFile(string source, string destination) => _real.CopyFile(source, destination);
+
+    public void CreateSymbolicLink(string path, string target) => _real.CreateSymbolicLink(path, target);
+
+    public Stream OpenRead(string path) => _real.OpenRead(path);
+
+    public Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken)
+    => writeAllText switch
+    {
+        { } write => write(path),
+        _ => _real.WriteAllTextAsync(path, content, cancellationToken),
+    };
 }
 
 /// <summary>
@@ -195,7 +244,7 @@ internal sealed class StubAgent(Func<CancellationToken, Task<InstallResult>> ins
 {
     private readonly ClaudeAgent _real = new();
 
-    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync _, CancellationToken cancellationToken)
+    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync _, string workingDirectory, CancellationToken cancellationToken)
     => install(cancellationToken);
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)

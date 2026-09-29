@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
 # End-to-end tests for `rix job`'s factory-repo agent home (--factory-repo/--agent-home-path): the
 # files an operator keeps in one repo and wants in place in the runner's home before the agent
-# starts. The pieces are unit tested separately - GitHubAgentHomeFetcherTests against a local git
-# repo, DirectoryMergeTests against a temp tree - so what is only observable here is the two
-# meeting for real: a sparse clone of a real GitHub repo, merged into the home the agent actually
-# reads, in a job that still succeeds afterwards.
+# starts. The pieces are unit tested separately - GitCliTests for the sparse clone's git commands,
+# JobRunnerTests against a stubbed git, DirectoryMergeTests against a temp tree - so what is only
+# observable here is them meeting for real: a sparse clone of a real GitHub repo, merged into the
+# home the agent actually reads, in a job that still succeeds afterwards.
 #
 # HOME is redirected per test. rix resolves the runner home via
 # Environment.GetFolderPath(UserProfile), which consults $HOME on Unix (see JobOptions.ReadAgentHome

@@ -1,5 +1,4 @@
 using Rix.Job;
-using Rix.Process;
 using Rix.Repository;
 using System.Text.Json;
 
@@ -29,13 +28,13 @@ internal static class SubmitRunner
     )
     {
         var resultPath = Path.Combine(config.InputDir.Value, "result.json");
-        if (!File.Exists(resultPath))
+        if (!context.FileSystem.FileExists(resultPath))
             return new SubmitFailure($"result.json not found in {config.InputDir.Value}");
 
         IJobResult? jobResult;
         try
         {
-            await using var stream = File.OpenRead(resultPath);
+            await using var stream = context.FileSystem.OpenRead(resultPath);
             jobResult = await JsonSerializer.DeserializeAsync
             (
                 stream, JobJsonContext.Default.IJobResult, cancellationToken
@@ -54,9 +53,9 @@ internal static class SubmitRunner
         if (success.PendingPrRequests.Count == 0 && pendingPushes.Count == 0)
             return new SubmitSuccess([], []);
 
-        // Every host failure (clone, remote branch check, push, open PR) is terminal for the whole
-        // run and maps to the same SubmitFailure, so DeliverAllAsync lets them throw and they're
-        // caught once here rather than at each call — the message thrown already names the operation.
+        // Every git or host failure (clone, remote branch check, fetch, push, open PR) is terminal
+        // for the whole run and maps to the same SubmitFailure, so DeliverAllAsync lets them throw
+        // and they're caught once here rather than at each call — the message thrown already names the operation.
         try
         {
             return await DeliverAllAsync(config, context, success.PendingPrRequests, pendingPushes, cancellationToken);
@@ -68,8 +67,8 @@ internal static class SubmitRunner
     }
 
     /// <summary>Clones the target, then delivers every pending PR and push in dependency order.
-    /// Non-host problems (missing bundle file, a failed local <c>git fetch</c>) short-circuit as a
-    /// returned <see cref="SubmitFailure"/>; host failures throw <see cref="RepoHostException"/>
+    /// Non-host problems (a branch already on the remote, a disallowed push, a missing bundle file)
+    /// short-circuit as a returned <see cref="SubmitFailure"/>; git and host failures throw <see cref="RepoHostException"/>
     /// straight through to the single catch in <see cref="RunAsync"/>.</summary>
     private static async Task<ISubmitResult> DeliverAllAsync
     (
@@ -80,9 +79,9 @@ internal static class SubmitRunner
         CancellationToken cancellationToken
     )
     {
-        using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-submit");
+        using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-submit");
 
-        await context.Git.CloneAsync(cloneDir.Path, cancellationToken);
+        await context.Git.CloneAsync(config.Repo, cloneDir.Path, cancellationToken);
 
         var created = new List<CreatedPr>();
         var pushed = new List<string>();
@@ -121,8 +120,8 @@ internal static class SubmitRunner
 
     /// <summary>Fetches one PR's bundle, pushes its branch, and opens the PR. Returns the opened
     /// PR's URL on success, or a <see cref="SubmitFailure"/> (nested in <see cref="SubmitOneFailed"/>)
-    /// for a non-host problem — branch already on the remote, missing bundle, failed local fetch.
-    /// A host failure (the remote-branch check or opening the PR) instead throws
+    /// for a non-host problem — branch already on the remote, missing bundle. A git or host failure
+    /// (the remote-branch check, the fetch or push, opening the PR) instead throws
     /// <see cref="RepoHostException"/> past this method to <see cref="RunAsync"/>'s catch.</summary>
     private static async Task<SubmitOneOutcome> SubmitPrAsync
     (
@@ -133,7 +132,7 @@ internal static class SubmitRunner
         CancellationToken cancellationToken
     )
     {
-        if (await context.Git.BranchExistsOnRemoteAsync(pr.Branch, cancellationToken))
+        if (await context.Git.BranchExistsOnRemoteAsync(config.Repo, pr.Branch, cancellationToken))
             return new SubmitOneFailed(new SubmitFailure($"branch already exists on remote: {pr.Branch.Value}"));
 
         if (await DeliverBranchAsync(config, context, cloneDir, pr.Branch, pr.BundleFile, cancellationToken) is { } deliverFailure)
@@ -177,9 +176,8 @@ internal static class SubmitRunner
 
     /// <summary>Unbundles <paramref name="branch"/> from <paramref name="bundleFile"/> in the input
     /// dir and pushes it to the remote - shared by both PR and push delivery (see the two callers
-    /// above). Returns a <see cref="SubmitFailure"/> if the bundle is missing or the local
-    /// <c>git fetch</c> fails, or <c>null</c> once the branch is pushed; a push failure throws
-    /// <see cref="RepoHostException"/> instead.</summary>
+    /// above). Returns a <see cref="SubmitFailure"/> if the bundle is missing, or <c>null</c> once
+    /// the branch is pushed; a fetch or push failure throws <see cref="RepoHostException"/> instead.</summary>
     private static async Task<SubmitFailure?> DeliverBranchAsync
     (
         SubmitConfig config,
@@ -191,30 +189,13 @@ internal static class SubmitRunner
     )
     {
         var bundlePath = Path.Combine(config.InputDir.Value, bundleFile);
-        if (!File.Exists(bundlePath))
+        if (!context.FileSystem.FileExists(bundlePath))
             return new SubmitFailure($"bundle file not found: {bundleFile}");
 
-        // --end-of-options stops git from reading a branch name starting with "-" as an option —
-        // see GitCli.CreateBundleAsync for why it's this flag and not "--".
-        var fetch = await Git
-        (
-            context, cloneDir, ["fetch", bundlePath, "--end-of-options", $"{branch.Value}:{branch.Value}"], cancellationToken
-        );
-        if (fetch is ProcessFailure fetchFailure)
-            return new SubmitFailure($"git fetch failed for {branch.Value}: {fetchFailure.Reason}");
-
+        await context.Git.FetchBundleAsync(cloneDir, bundlePath, branch, cancellationToken);
         await context.Git.PushBranchAsync(cloneDir, branch, cancellationToken);
         return null;
     }
-
-    private static Task<ProcessResult> Git
-    (
-        SubmitContext context,
-        string repoDir,
-        IEnumerable<string> args,
-        CancellationToken cancellationToken
-    )
-    => context.RunProcess("git", ["-C", repoDir, .. args], repoDir, null, null, cancellationToken);
 
     /// <summary>The result of submitting one pending PR: either the opened PR's URL, or a failure
     /// (nested so the caller keeps the typed <see cref="SubmitFailure"/> rather than re-deriving it).

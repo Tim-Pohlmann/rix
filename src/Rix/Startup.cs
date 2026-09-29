@@ -7,7 +7,6 @@ using Rix.Process;
 using Rix.Repository;
 using Rix.Submit;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 
@@ -15,37 +14,30 @@ namespace Rix;
 
 internal static class Startup
 {
-    /// <summary>The production <see cref="JobContext"/>: git against the GitHub repo, process runner,
+    /// <summary>The production <see cref="JobContext"/>: git against GitHub, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
-    /// from <paramref name="config"/>. <see cref="JobContext.TranscriptLine"/> is a no-op here;
+    /// from <paramref name="config"/>. The one git client reads both the job's repo and the factory
+    /// repo holding the agent home files. <see cref="JobContext.TranscriptLine"/> is a no-op here;
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
-    => DefaultJobContext(config.Repo, config.Agent.Kind, config.ReadToken);
-
-    /// <summary>Builds the <see cref="JobContext"/> for both <c>rix job</c> and
-    /// <see cref="DefaultCiFailureContext"/>. It takes the pieces separately instead of a
-    /// <see cref="JobConfig"/> because a ci-failure run only has a job config once a failure has
-    /// supplied the prompt; the repo, agent and credential are configured up front. The agent home
-    /// files are fetched from a second repo, so the fetcher gets its own git client for that repo
-    /// under the same <paramref name="readToken"/>.</summary>
-    private static JobContext DefaultJobContext(RepoIdentifier repo, AgentKind agent, GitReadToken readToken)
     => new
     (
-        GitHubGit(repo, readToken),
+        GitHubGit(config.ReadToken, config.WorkDir),
         ProcessWrapper.RunAsync,
-        SelectAgent(agent),
+        SelectAgent(config.Agent.Kind),
         // Named because LogLine and TranscriptLine are the same delegate type: transposing them
         // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
         TranscriptLine: _ => { },
-        AgentHomeFetcher: new AgentHomeFetcher(factoryRepo => GitHubGit(factoryRepo, readToken))
+        FileSystem: new LocalFileSystem()
     );
 
-    /// <summary>Git against <paramref name="repo"/> on GitHub, authenticated with
-    /// <paramref name="token"/> — the one place the GitHub clone URL is spelled out.</summary>
-    private static GitCli GitHubGit(RepoIdentifier repo, GitReadToken token)
-    => new(new Uri($"https://github.com/{repo.Value}.git"), token, ProcessWrapper.RunAsync);
+    /// <summary>Git against repos on GitHub, authenticated with <paramref name="token"/> — the one
+    /// place the GitHub host is spelled out. Commands that need no local repo run from
+    /// <paramref name="workDir"/>.</summary>
+    private static GitCli GitHubGit(GitReadToken token, DirectoryPath workDir)
+    => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessWrapper.RunAsync, workDir.Value);
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
@@ -56,33 +48,28 @@ internal static class Startup
         _ => throw new NotSupportedException($"Unsupported agent: {agent}"),
     };
 
-    /// <summary>The production <see cref="CiFailureContext"/>: reading the run and judging its branch
-    /// are two roles against the same GitHub account under the same credential, so they are two
-    /// hosts over one shared <see cref="GitHubApi"/> transport rather than two independently
-    /// connected ones. This is where GitHub-hosting-its-own-CI is asserted
-    /// — the seams themselves don't require it, and pointing <see cref="CiFailureContext.Ci"/> at
-    /// another CI provider is a change to this method alone. Built only when no context was
-    /// supplied, so a test that brings its own stubs opens no connection at all.</summary>
+    /// <summary>The production <see cref="CiFailureContext"/>: reading the run and judging its
+    /// branch are two roles against the same GitHub account under the same credential, so they are
+    /// two hosts over one shared <see cref="GitHubApi"/> transport rather than two independently
+    /// connected ones. This is where GitHub-hosting-its-own-CI is asserted — the seams themselves
+    /// don't require it, and pointing <see cref="CiFailureContext.Ci"/> at another CI provider is a
+    /// change to this method alone. Built only when no context was supplied, so a test that brings
+    /// its own stubs opens no connection at all.</summary>
     internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
-        return new CiFailureContext
-        (
-            new GitHubActionsCiHost(api),
-            new GitHubCiFailureRepoHost(api),
-            DefaultJobContext(config.Repo, config.Agent, config.ReadToken)
-        );
+        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), new LocalFileSystem());
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: git and the GitHub repo host, both
-    /// authenticated with the write token, the default process runner, and a stderr log sink.</summary>
+    /// authenticated with the write token, a stderr log sink and the local disk.</summary>
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        GitHubGit(config.Repo, config.WriteToken),
+        GitHubGit(config.WriteToken, config.WorkDir),
         new GitHubSubmitRepoHost(config.Repo, config.WriteToken),
-        ProcessWrapper.RunAsync,
-        Console.Error.WriteLine
+        Console.Error.WriteLine,
+        new LocalFileSystem()
     );
 
     /// <summary>
@@ -105,18 +92,68 @@ internal static class Startup
         {
             using var onSigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, HandleSigterm(cts));
 
-            var rootCommand = new RootCommand("RIX - AI-powered code automation");
-            rootCommand.AddCommand(JobCommand.Build(config => ExecuteJobAsync(config, cts.Token)));
-            rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, cts.Token)));
-            rootCommand.AddCommand(CiFailureCommand.Build(config => ExecuteCiFailureAsync(config, cts.Token)));
-            rootCommand.AddCommand(InitializeCommand.Build(config => ExecuteInitializeAsync(config, cts.Token)));
-            return await CliPipeline.Build(rootCommand).InvokeAsync(args);
+            var fileSystem = new LocalFileSystem();
+            var temp = fileSystem.SystemTempDirectory;
+            var home = fileSystem.UserHomeDirectory;
+            var rootCommand = new RootCommand("RIX - AI-powered code automation")
+            {
+                Runs
+                (
+                    JobCommand.Build(),
+                    parsed => JobCommand.ReadConfig(parsed, temp, home),
+                    WhenDirectoriesExist<JobConfig>(fileSystem, JobCommand.RequiredDirectories, config => ExecuteJobAsync(config, cts.Token))
+                ),
+                Runs
+                (
+                    SubmitCommand.Build(),
+                    parsed => SubmitCommand.ReadConfig(parsed, temp),
+                    WhenDirectoriesExist<SubmitConfig>(fileSystem, SubmitCommand.RequiredDirectories, config => ExecuteSubmitAsync(config, cts.Token))
+                ),
+                Runs
+                (
+                    CiFailureCommand.Build(),
+                    CiFailureCommand.ReadConfig,
+                    WhenDirectoriesExist<CiFailureConfig>(fileSystem, CiFailureCommand.RequiredDirectories, config => ExecuteCiFailureAsync(config, cts.Token))
+                ),
+                Runs
+                (
+                    InitializeCommand.Build(),
+                    InitializeCommand.ReadConfig,
+                    WhenDirectoriesExist<InitializeConfig>(fileSystem, InitializeCommand.RequiredDirectories, config => ExecuteInitializeAsync(config, cts.Token))
+                ),
+            };
+            return await CliPipeline.InvokeAsync(rootCommand, args);
         }
         finally
         {
             Console.CancelKeyPress -= onCancelKeyPress;
         }
     }
+
+    /// <summary>Makes invoking <paramref name="command"/> read its config and run it. The read happens
+    /// inside the action so an <see cref="InvalidInputException"/> it throws is reported like any
+    /// other (see <see cref="CliPipeline.ReportingInvalidInput"/>).</summary>
+    private static Command Runs<TConfig>(Command command, Func<ParseResult, TConfig> read, Func<TConfig, Task<int>> execute)
+    {
+        command.SetAction(CliPipeline.ReportingInvalidInput(parsed => execute(read(parsed))));
+        return command;
+    }
+
+    /// <summary>Runs <paramref name="run"/> once every directory <paramref name="requiredDirectories"/>
+    /// lists for the config exists: the check the commands leave to the caller, since they never see
+    /// the file system. A missing one is an <see cref="InvalidInputException"/>, reported like any
+    /// other bad flag.</summary>
+    internal static Func<TConfig, Task<int>> WhenDirectoriesExist<TConfig>
+    (
+        IFileSystem fileSystem, Func<TConfig, IReadOnlyList<RequiredDirectory>> requiredDirectories, Func<TConfig, Task<int>> run
+    )
+    => config =>
+    {
+        var missing = requiredDirectories(config).FirstOrDefault(directory => !fileSystem.DirectoryExists(directory.Path.Value));
+        if (missing is not null)
+            throw new InvalidInputException($"{missing.Name}: directory does not exist: {missing.Path}");
+        return run(config);
+    };
 
     /// <summary>Cancels <paramref name="cts"/> and suppresses the runtime's default termination so
     /// the in-flight run unwinds gracefully. Extracted from <see cref="RunAsync"/> so the SIGTERM
@@ -143,8 +180,9 @@ internal static class Startup
     internal static async Task<int> ExecuteJobAsync(JobConfig config, CancellationToken cancellationToken, JobContext? context = null)
     {
         var transcriptLines = new List<string>();
-        var result = await JobRunner.RunAsync(config, Teeing(context ?? DefaultContext(config), transcriptLines), cancellationToken);
-        return await WriteJobResultAsync(config, result, transcriptLines);
+        context ??= DefaultContext(config);
+        var result = await JobRunner.RunAsync(config, Teeing(context, transcriptLines), cancellationToken);
+        return await WriteJobResultAsync(config, context.FileSystem, result, transcriptLines);
     }
 
     /// <summary>Wraps <paramref name="context"/>'s transcript sink so every line it emits is also
@@ -165,26 +203,18 @@ internal static class Startup
     /// <see cref="ExecuteJobAsync"/> and <see cref="ExecuteCiFailureAsync"/>, which only differ
     /// in how they arrive at <paramref name="result"/>.
     /// </summary>
-    private static async Task<int> WriteJobResultAsync(JobConfig config, IJobResult result, List<string> transcriptLines)
+    private static async Task<int> WriteJobResultAsync
+    (
+        JobConfig config, IFileSystem fileSystem, IJobResult result, List<string> transcriptLines
+    )
     {
         var json = JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
         // Best-effort: once the job outcome above is decided, a broken/closed stdout pipe must not
         // stop the correct exit code from being returned any more than a result.json write failure
         // does below.
         await WriteBestEffortAsync(Console.Out, json);
-        // Best-effort and uncancellable: this runs after the job itself is already decided, so a
-        // cancellation requested in this narrow window (or a transient disk error) must not stop
-        // the correct exit code from being returned - only the result.json copy would be lost.
-        try
-        {
-            await File.WriteAllTextAsync(Path.Combine(config.OutputDir.Value, "result.json"), json, CancellationToken.None);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Also best-effort: a closed/broken stderr must not defeat the exit-code guarantee above.
-            await WriteBestEffortAsync(Console.Error, $"warning: failed to write result.json: {ex.Message}");
-        }
-        await WriteTranscriptAsync(config, transcriptLines);
+        await WriteOutputFileBestEffortAsync(fileSystem, config.OutputDir, "result.json", json);
+        await WriteTranscriptAsync(config, fileSystem, transcriptLines);
         return result switch
         {
             JobSuccess => ExitCodes.Success,
@@ -200,21 +230,28 @@ internal static class Startup
     /// <c>result.json</c> write above: a disk error must never affect the exit code. Skipped
     /// entirely when nothing was extracted, so the artifact only exists when there is content.
     /// </summary>
-    private static async Task WriteTranscriptAsync(JobConfig config, List<string> transcriptLines)
+    private static async Task WriteTranscriptAsync(JobConfig config, IFileSystem fileSystem, List<string> transcriptLines)
     {
         if (transcriptLines.Count == 0) return;
+        await WriteOutputFileBestEffortAsync(fileSystem, config.OutputDir, "transcript.md", string.Join("\n\n", transcriptLines));
+    }
+
+    /// <summary>Writes <paramref name="content"/> to <paramref name="name"/> in
+    /// <paramref name="outputDir"/>, reporting a failure to stderr instead of raising it.
+    /// Best-effort and uncancellable: every caller runs after the outcome it is recording has
+    /// already been decided, so a cancellation requested in that narrow window - or a transient
+    /// disk error - must not stop the correct exit code from being returned. Only the file is
+    /// lost, and the same JSON has already gone to stdout.</summary>
+    private static async Task WriteOutputFileBestEffortAsync(IFileSystem fileSystem, DirectoryPath outputDir, string name, string content)
+    {
         try
         {
-            await File.WriteAllTextAsync
-            (
-                Path.Combine(config.OutputDir.Value, "transcript.md"),
-                string.Join("\n\n", transcriptLines),
-                CancellationToken.None
-            );
+            await fileSystem.WriteAllTextAsync(Path.Combine(outputDir.Value, name), content, CancellationToken.None);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await WriteBestEffortAsync(Console.Error, $"warning: failed to write transcript.md: {ex.Message}");
+            // Also best-effort: a closed/broken stderr must not defeat the exit-code guarantee.
+            await WriteBestEffortAsync(Console.Error, $"warning: failed to write {name}: {ex.Message}");
         }
     }
 
@@ -247,16 +284,35 @@ internal static class Startup
         };
     }
 
-    /// <summary>Writes the outcome of a check that never reached the agent: the result JSON to
-    /// stdout, mapped to an exit code. <see cref="CiFailureSkipped"/> and
-    /// <see cref="CiFailureUntrustedRun"/> exit successfully (there was simply nothing to do, or
-    /// nothing rix is allowed to do); only <see cref="CiFailureError"/> — a problem talking to the
-    /// API, not the run itself failing — is treated as a job failure. <see cref="CiFailureDetected"/> never
-    /// arrives here: it always leads to <see cref="WriteJobResultAsync"/> instead.</summary>
-    private static int WriteCiFailureResult(ICiFailureResult result)
+    /// <summary>
+    /// Imperative shell around <see cref="CiFailureDetector.DetectAsync"/>: reports what the check
+    /// found and stops. No agent runs here, and nothing is cloned — whoever answers the failure
+    /// does so from a <see cref="CiFailureDetected.Prompt"/> this wrote, on a machine this one
+    /// never touches.
+    ///
+    /// The verdict goes to three places: stdout (for a caller reading the JSON directly),
+    /// <c>result.json</c> (for one that would rather read a file), and — only when a failure was
+    /// detected — <c>prompt.md</c>. The prompt gets its own file rather than being read back out of
+    /// the JSON because it is the one field carrying arbitrary text from the failing run's logs:
+    /// keeping it out of whatever parses the verdict means no caller has to quote it correctly.
+    /// </summary>
+    internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, CiFailureContext? context = null)
     {
+        context ??= DefaultCiFailureContext(config);
+        var result = await CiFailureDetector.DetectAsync
+        (
+            config.Repo, config.RunId, context.Ci, context.RepoHost, config.MaxRixCommits, cancellationToken
+        );
+
         var json = JsonSerializer.Serialize(result, CiFailureJsonContext.Default.ICiFailureResult);
-        Console.WriteLine(json);
+        await WriteBestEffortAsync(Console.Out, json);
+        await WriteOutputFileBestEffortAsync(context.FileSystem, config.OutputDir, "result.json", json);
+        if (result is CiFailureDetected detected)
+            await WriteOutputFileBestEffortAsync(context.FileSystem, config.OutputDir, "prompt.md", detected.Prompt);
+
+        // A detected failure exits successfully like the rest: it is a verdict, not an outcome, and
+        // the caller decides what to do with it. Only CiFailureError - a problem talking to the API,
+        // rather than the run itself having failed - is a failure of this command.
         return result switch
         {
             CiFailureDetected or CiFailureSkipped or CiFailureLoopGuarded or CiFailureUntrustedRun => ExitCodes.Success,
@@ -265,31 +321,12 @@ internal static class Startup
         };
     }
 
-    /// <summary>
-    /// Imperative shell around <see cref="CiFailureRunner.RunAsync"/>: checks whether the run
-    /// failed and, only if it did, runs the agent — reusing <see cref="WriteCiFailureResult"/> and
-    /// <see cref="WriteJobResultAsync"/> so each outcome is reported identically to its <c>rix
-    /// job</c> counterpart.
-    /// </summary>
-    internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, CiFailureContext? context = null)
-    {
-        context ??= DefaultCiFailureContext(config);
-        var transcriptLines = new List<string>();
-        var outcome = await CiFailureRunner.RunAsync(config, context with { Job = Teeing(context.Job, transcriptLines) }, cancellationToken);
-        return outcome switch
-        {
-            CiFailureNotRun(var reason) => WriteCiFailureResult(reason),
-            CiFailureRan(var job, var result) => await WriteJobResultAsync(job, result, transcriptLines),
-            _ => throw new NotSupportedException($"Unexpected ci-failure outcome: {outcome.GetType()}"),
-        };
-    }
-
     /// <summary>The production <see cref="InitializeContext"/>: writes each template to disk via
-    /// <see cref="FileWriter"/> (creating any missing parent directory), and logs to stderr.</summary>
+    /// <see cref="LocalFileSystem"/> (creating any missing parent directory), and logs to stderr.</summary>
     private static InitializeContext DefaultInitializeContext()
     => new
     (
-        FileWriter.WriteAsync,
+        new LocalFileSystem().WriteAllTextAsync,
         Console.Error.WriteLine
     );
 

@@ -1,21 +1,26 @@
 namespace Rix.Repository;
 
-/// <summary>The git operations rix performs: against the one remote the instance was created for
-/// (clone, the remote branch check, push) and inside the local clones made from it. The seam every
+/// <summary>The git operations rix performs: against a repo on the one host the instance was
+/// created for (clone, the remote branch check), and inside the local clones made from it (push goes
+/// to the clone's <c>origin</c>). Which repo is a per-call value, since one credential reaches every
+/// repo it grants - a job reads both its target and the factory repo with the same token. The seam every
 /// git command goes through, so tests can stand in for git without a real repository or remote.
 /// Pushing only succeeds with a write-capable token behind it, which only <c>rix submit</c> is
 /// given; the job path runs with a read token, so a push from it would be refused by the remote.</summary>
 internal interface IGit
 {
-    /// <summary>Clones the remote into <paramref name="targetDirectory"/>.</summary>
-    Task CloneAsync(string targetDirectory, CancellationToken cancellationToken);
+    /// <summary>Clones <paramref name="repo"/> into <paramref name="targetDirectory"/>.</summary>
+    Task CloneAsync(RepoIdentifier repo, string targetDirectory, CancellationToken cancellationToken);
 
-    /// <summary>Clones the remote into <paramref name="targetDirectory"/> with only
+    /// <summary>Clones <paramref name="repo"/> into <paramref name="targetDirectory"/> with only
     /// <paramref name="directory"/> checked out: the latest commit alone, and only the file contents
     /// under that directory.</summary>
-    Task SparseCloneAsync(string targetDirectory, SubDirectoryPath directory, CancellationToken cancellationToken);
+    Task SparseCloneAsync
+    (
+        RepoIdentifier repo, string targetDirectory, SubDirectoryPath directory, CancellationToken cancellationToken
+    );
 
-    Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken);
+    Task<bool> BranchExistsOnRemoteAsync(RepoIdentifier repo, BranchName branch, CancellationToken cancellationToken);
 
     /// <summary>Checks whether <paramref name="branch"/> exists as a local ref inside the
     /// already-cloned <paramref name="repoDirectory"/>. Used to catch an agent that reports a branch
@@ -40,6 +45,11 @@ internal interface IGit
         BranchName branch,
         CancellationToken cancellationToken
     );
+
+    /// <summary>Fetches <paramref name="branch"/> out of the git bundle at
+    /// <paramref name="bundlePath"/> into a local branch of the same name, inside the already-cloned
+    /// <paramref name="repoDirectory"/> - the counterpart of <see cref="CreateBundleAsync"/>.</summary>
+    Task FetchBundleAsync(string repoDirectory, string bundlePath, BranchName branch, CancellationToken cancellationToken);
 
     Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken);
 }

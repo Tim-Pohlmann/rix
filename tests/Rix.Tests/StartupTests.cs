@@ -1,4 +1,5 @@
 using Rix.Agents;
+using Rix.Cli;
 using Rix.Job;
 using Rix.Repository;
 using System.Runtime.InteropServices;
@@ -25,16 +26,14 @@ public class StartupTests
         Assert.IsInstanceOfType<PiAgent>(Startup.DefaultContext(TestConfig.Valid(agent: AgentKind.Pi)).Agent);
     }
 
-    /// <summary><c>ci-failure</c> builds its job half up front, before a failure has been detected
-    /// and so before the <see cref="JobConfig"/> naming the agent exists — the agent has to come
-    /// from the ci-failure config instead. Nothing here opens a connection, which is what makes
-    /// building it before it's known to be needed free.</summary>
+    /// <summary><c>ci-failure</c> reads and judges, so its two halves are both read-only hosts —
+    /// no agent, no clone, nothing that could run what it found. Separate fields over one object
+    /// because the roles are separable even though GitHub serves both.</summary>
     [TestMethod]
-    public void DefaultCiFailureContext_RunsTheAgentTheCiFailureConfigNames()
+    public void DefaultCiFailureContext_ReadsFromTheCiHostAndJudgesAgainstTheRepoHost()
     {
-        var context = Startup.DefaultCiFailureContext(TestConfig.ValidCiFailure(agent: AgentKind.Claude));
+        var context = Startup.DefaultCiFailureContext(TestConfig.ValidCiFailure());
 
-        Assert.IsInstanceOfType<ClaudeAgent>(context.Job.Agent);
         Assert.IsInstanceOfType<GitHubActionsCiHost>(context.Ci);
         Assert.IsInstanceOfType<GitHubCiFailureRepoHost>(context.RepoHost);
     }
@@ -87,8 +86,68 @@ public class StartupTests
     [TestMethod]
     public async Task RunInitializeAsync_Returns2_WhenTargetDirDoesNotExist()
     {
+        using var stderr = new ConsoleErrorScope();
         var exitCode = await Startup.RunAsync(["initialize", "--dir", "/nonexistent/path/xyz"]);
+
         Assert.AreEqual(2, exitCode);
+        StringAssert.Contains(stderr.Text, $"error: --dir: directory does not exist: {Path.GetFullPath("/nonexistent/path/xyz")}");
+    }
+
+    /// <summary>The check runs before the command does, so a missing directory costs no clone and no
+    /// connection: the tokens here would be refused by GitHub if they ever got that far.</summary>
+    [TestMethod]
+    public async Task RunSubmitAsync_Returns2_WhenInputDirDoesNotExist()
+    {
+        using var stderr = new ConsoleErrorScope();
+        var exitCode = await Startup.RunAsync
+        (
+            ["submit", "--repo", "owner/repo", "--write-token", "not-a-token", "--input-dir", "/nonexistent/in"]
+        );
+
+        Assert.AreEqual(2, exitCode);
+        StringAssert.Contains(stderr.Text, $"error: --input-dir: directory does not exist: {Path.GetFullPath("/nonexistent/in")}");
+    }
+
+    [TestMethod]
+    public async Task WhenDirectoriesExist_Runs_WhenEveryDirectoryExists()
+    {
+        var run = Startup.WhenDirectoriesExist<int>
+        (
+            new StubFileSystem(directoryExists: _ => true),
+            _ => [new RequiredDirectory("--work-dir", new DirectoryPath("/only/on/the/stub"))],
+            config => Task.FromResult(config)
+        );
+
+        var exitCode = await run(7);
+
+        Assert.AreEqual(7, exitCode);
+    }
+
+    [TestMethod]
+    public void WhenDirectoriesExist_ReportsTheFirstMissingDirectory_WithoutRunning()
+    {
+        var ran = false;
+        var present = new DirectoryPath("/present");
+        var missing = new DirectoryPath("/missing");
+
+        var run = Startup.WhenDirectoriesExist<int>
+        (
+            new StubFileSystem(directoryExists: path => path == present.Value),
+            _ => [new RequiredDirectory("--work-dir", present), new RequiredDirectory("--output-dir", missing), new RequiredDirectory("--dir", missing)],
+            _ =>
+            {
+                ran = true;
+                return Task.FromResult(0);
+            }
+        );
+
+        var ex = Assert.ThrowsExactly<InvalidInputException>
+        (
+            () => _ = run(0)
+        );
+
+        Assert.AreEqual($"--output-dir: directory does not exist: {missing.Value}", ex.Message);
+        Assert.IsFalse(ran);
     }
 
     [TestMethod]
