@@ -15,7 +15,7 @@ namespace Rix;
 
 internal static class Startup
 {
-    /// <summary>The production <see cref="JobContext"/>: real GitHub repo host, process runner,
+    /// <summary>The production <see cref="JobContext"/>: git against the GitHub repo, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
     /// from <paramref name="config"/>. <see cref="JobContext.TranscriptLine"/> is a no-op here;
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
@@ -23,17 +23,20 @@ internal static class Startup
     internal static JobContext DefaultContext(JobConfig config)
     => new
     (
-        new GitHubJobRepoHost(config.Repo, config.ReadToken, ProcessWrapper.RunAsync),
+        GitHubGit(config.Repo, config.ReadToken),
         ProcessWrapper.RunAsync,
         SelectAgent(config.Agent.Kind),
         // Named because LogLine and TranscriptLine are the same delegate type: transposing them
         // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
         TranscriptLine: _ => { },
-        // The agent home files come from a second repo, so the fetcher gets its own git client
-        // rather than the host's.
-        AgentHomeFetcher: new GitHubAgentHomeFetcher(new GitCli(config.ReadToken, ProcessWrapper.RunAsync))
+        AgentHomeFetcher: new AgentHomeFetcher(factoryRepo => GitHubGit(factoryRepo, config.ReadToken))
     );
+
+    /// <summary>Git against <paramref name="repo"/> on GitHub, authenticated with
+    /// <paramref name="token"/> — the one place the GitHub clone URL is spelled out.</summary>
+    private static GitCli GitHubGit(RepoIdentifier repo, GitReadToken token)
+    => new(new Uri($"https://github.com/{repo.Value}.git"), token, ProcessWrapper.RunAsync);
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
@@ -57,12 +60,13 @@ internal static class Startup
         return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api));
     }
 
-    /// <summary>The production <see cref="SubmitContext"/>: a GitHub repo host authenticated with the
-    /// write token, the default process runner, and a stderr log sink.</summary>
+    /// <summary>The production <see cref="SubmitContext"/>: git and the GitHub repo host, both
+    /// authenticated with the write token, the default process runner, and a stderr log sink.</summary>
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        new GitHubSubmitRepoHost(config.Repo, config.WriteToken, ProcessWrapper.RunAsync),
+        GitHubGit(config.Repo, config.WriteToken),
+        new GitHubSubmitRepoHost(config.Repo, config.WriteToken),
         ProcessWrapper.RunAsync,
         Console.Error.WriteLine
     );
@@ -286,7 +290,7 @@ internal static class Startup
                 await Console.Error.WriteLineAsync(NextStepsGuidance);
                 return ExitCodes.Success;
             case InitializeFailure failure:
-                await Console.Error.WriteLineAsync($"error: {failure.Message}");
+                await Console.Error.WriteLineAsync($"error: {failure.Error}");
                 return ExitCodes.SetupFailed;
             default:
                 throw new NotSupportedException($"Unexpected initialize result type: {result.GetType()}");

@@ -24,7 +24,7 @@ public class InitializeRunnerTests
     private static InitializeSuccess AssertSuccess(IInitializeResult result) => result switch
     {
         InitializeSuccess s => s,
-        InitializeFailure f => throw new AssertFailedException($"expected success, got failure: {f.Message}"),
+        InitializeFailure f => throw new AssertFailedException($"expected success, got failure: {f.Error}"),
         _ => throw new AssertFailedException($"unexpected result: {result.GetType().Name}"),
     };
 
@@ -84,7 +84,7 @@ public class InitializeRunnerTests
         // Names whichever template the runner reached first rather than a literal, so the
         // assertion keeps testing "the message says which file failed" if the discovered
         // order of WorkflowTemplates.All changes.
-        StringAssert.Contains(failure.Message, WorkflowTemplates.All[0].RelativePath);
-        StringAssert.Contains(failure.Message, "disk full");
+        StringAssert.Contains(failure.Error, WorkflowTemplates.All[0].RelativePath);
+        StringAssert.Contains(failure.Error, "disk full");
     }
 }

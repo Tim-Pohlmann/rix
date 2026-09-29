@@ -82,7 +82,7 @@ internal static class SubmitRunner
     {
         using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-submit");
 
-        await context.RepoHost.CloneAsync(cloneDir.Path, cancellationToken);
+        await context.Git.CloneAsync(cloneDir.Path, cancellationToken);
 
         var created = new List<CreatedPr>();
         var pushed = new List<string>();
@@ -133,14 +133,10 @@ internal static class SubmitRunner
         CancellationToken cancellationToken
     )
     {
-        if (await context.RepoHost.BranchExistsOnRemoteAsync(pr.Branch, cancellationToken))
+        if (await context.Git.BranchExistsOnRemoteAsync(pr.Branch, cancellationToken))
             return new SubmitOneFailed(new SubmitFailure($"branch already exists on remote: {pr.Branch.Value}"));
 
-        var bundlePath = Path.Combine(config.InputDir.Value, pr.BundleFile);
-        if (!File.Exists(bundlePath))
-            return new SubmitOneFailed(new SubmitFailure($"bundle file not found: {pr.BundleFile}"));
-
-        if (await DeliverBranchAsync(context, cloneDir, bundlePath, pr.Branch, cancellationToken) is { } deliverFailure)
+        if (await DeliverBranchAsync(config, context, cloneDir, pr.Branch, pr.BundleFile, cancellationToken) is { } deliverFailure)
             return new SubmitOneFailed(deliverFailure);
 
         var url = await context.RepoHost.CreatePullRequestAsync(pr, cancellationToken);
@@ -172,28 +168,34 @@ internal static class SubmitRunner
         if (!config.AllowedPushBranches.Contains(push.Branch))
             return new SubmitOneFailed(new SubmitFailure($"branch is not allowed to be pushed to: {push.Branch.Value}"));
 
-        var bundlePath = Path.Combine(config.InputDir.Value, push.BundleFile);
-        if (!File.Exists(bundlePath))
-            return new SubmitOneFailed(new SubmitFailure($"bundle file not found: {push.BundleFile}"));
-
-        if (await DeliverBranchAsync(context, cloneDir, bundlePath, push.Branch, cancellationToken) is { } deliverFailure)
+        if (await DeliverBranchAsync(config, context, cloneDir, push.Branch, push.BundleFile, cancellationToken) is { } deliverFailure)
             return new SubmitOneFailed(deliverFailure);
 
         context.LogLine($"pushed commits to {push.Branch.Value}");
         return new SubmitOnePushed(push.Branch.Value);
     }
 
-    /// <summary>Unbundles <paramref name="branch"/> from its local bundle and pushes it to the
-    /// remote - shared by both PR and push delivery (see the two callers above). Returns a
-    /// <see cref="SubmitFailure"/> if the local <c>git fetch</c> fails, or <c>null</c> once the
-    /// branch is pushed; a push failure throws <see cref="RepoHostException"/> instead.</summary>
+    /// <summary>Unbundles <paramref name="branch"/> from <paramref name="bundleFile"/> in the input
+    /// dir and pushes it to the remote - shared by both PR and push delivery (see the two callers
+    /// above). Returns a <see cref="SubmitFailure"/> if the bundle is missing or the local
+    /// <c>git fetch</c> fails, or <c>null</c> once the branch is pushed; a push failure throws
+    /// <see cref="RepoHostException"/> instead.</summary>
     private static async Task<SubmitFailure?> DeliverBranchAsync
     (
-        SubmitContext context, string cloneDir, string bundlePath, BranchName branch, CancellationToken cancellationToken
+        SubmitConfig config,
+        SubmitContext context,
+        string cloneDir,
+        BranchName branch,
+        string bundleFile,
+        CancellationToken cancellationToken
     )
     {
+        var bundlePath = Path.Combine(config.InputDir.Value, bundleFile);
+        if (!File.Exists(bundlePath))
+            return new SubmitFailure($"bundle file not found: {bundleFile}");
+
         // --end-of-options stops git from reading a branch name starting with "-" as an option —
-        // see GitHubJobRepoHost.CreateBundleAsync for why it's this flag and not "--".
+        // see GitCli.CreateBundleAsync for why it's this flag and not "--".
         var fetch = await Git
         (
             context, cloneDir, ["fetch", bundlePath, "--end-of-options", $"{branch.Value}:{branch.Value}"], cancellationToken
@@ -201,7 +203,7 @@ internal static class SubmitRunner
         if (fetch is ProcessFailure fetchFailure)
             return new SubmitFailure($"git fetch failed for {branch.Value}: {fetchFailure.Reason}");
 
-        await context.RepoHost.PushBranchAsync(cloneDir, branch, cancellationToken);
+        await context.Git.PushBranchAsync(cloneDir, branch, cancellationToken);
         return null;
     }
 

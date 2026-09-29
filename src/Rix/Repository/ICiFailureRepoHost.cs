@@ -3,8 +3,7 @@ namespace Rix.Repository;
 /// <summary>The read-only repository operations needed to judge a CI failure, as opposed to reading
 /// the failure itself: whether a pull request is open for the failing branch, and how much of that
 /// branch's tip rix wrote. Both are questions about the repo's contents, so they live here rather
-/// than on <see cref="ICiHost"/>, which covers the run. Kept separate from <see cref="IJobRepoHost"/>
-/// so <c>rix job</c>'s stub host isn't forced to implement operations it never uses.</summary>
+/// than on <see cref="ICiHost"/>, which covers the run.</summary>
 internal interface ICiFailureRepoHost
 {
     Task<int?> FindOpenPullRequestNumberAsync(BranchName branch, CancellationToken cancellationToken);

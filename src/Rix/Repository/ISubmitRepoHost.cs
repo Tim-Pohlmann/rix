@@ -1,11 +1,8 @@
 namespace Rix.Repository;
 
-/// <summary>A full repository host: every read operation from <see cref="IJobRepoHost"/> plus
-/// the write operations <c>rix submit</c> needs against a target it can write to — push a branch and
-/// open a pull request. Requires a write credential; the read-only job path depends only on the
-/// narrower <see cref="IJobRepoHost"/>.</summary>
-internal interface ISubmitRepoHost : IJobRepoHost
+/// <summary>The host operation <c>rix submit</c> needs beyond git itself: opening a pull request,
+/// which is a host concept rather than a git one. Requires a write credential.</summary>
+internal interface ISubmitRepoHost
 {
-    Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken);
     Task<string> CreatePullRequestAsync(PendingPr pullRequest, CancellationToken cancellationToken);
 }

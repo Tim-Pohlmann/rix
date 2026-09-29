@@ -29,7 +29,7 @@ public class SubmitRunnerTests
     [TestMethod]
     public async Task RunAsync_Fails_WhenResultJsonMissing()
     {
-        var result = await Run(new StubSubmitRepoHost());
+        var result = await Run(new StubGit());
 
         AssertFailure(result, "result.json not found");
     }
@@ -39,7 +39,7 @@ public class SubmitRunnerTests
     {
         WriteResultJson("""{"status":"failure","error":"boom","costUsd":0,"durationSeconds":1}""");
 
-        var result = await Run(new StubSubmitRepoHost());
+        var result = await Run(new StubGit());
 
         AssertFailure(result, "does not describe a successful job");
     }
@@ -48,29 +48,29 @@ public class SubmitRunnerTests
     public async Task RunAsync_Succeeds_WithNoPullRequests()
     {
         WriteResultJson("""{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}""");
-        var host = new StubSubmitRepoHost();
+        var git = new StubGit();
 
-        var result = await Run(host);
+        var result = await Run(git);
 
         var success = AssertSuccess(result);
         Assert.AreEqual(0, success.CreatedPrs.Count);
         Assert.AreEqual(0, success.PushedBranches.Count);
-        Assert.IsFalse(host.CloneCalled, "must not clone when there is nothing to push");
+        Assert.IsFalse(git.CloneCalled, "must not clone when there is nothing to push");
     }
 
     [TestMethod]
     public async Task RunAsync_PushesCommitsToExistingBranch_WhenOnlyPushQueued()
     {
         WriteOnePendingPush();
-        var host = new StubSubmitRepoHost();
+        var git = new StubGit();
         var commands = new List<string>();
 
-        var result = await Run(host, GitRunner(commands));
+        var result = await Run(git, GitRunner(commands));
 
         var success = AssertSuccess(result);
         Assert.AreEqual(0, success.CreatedPrs.Count, "a push must not open a PR");
         CollectionAssert.AreEqual(ExpectedPushedBranches, success.PushedBranches.ToArray());
-        CollectionAssert.AreEqual(ExpectedPushedBranches, host.PushedBranches.Select(b => b.Value).ToArray());
+        CollectionAssert.AreEqual(ExpectedPushedBranches, git.PushedBranches.Select(b => b.Value).ToArray());
         CollectionAssert.Contains(commands, "fetch");
     }
 
@@ -80,12 +80,12 @@ public class SubmitRunnerTests
         // The branch already existing on the remote is the whole point of a push, so the submit
         // guard that fails a PR for that reason must not apply here.
         WriteOnePendingPush();
-        var host = new StubSubmitRepoHost(branchExists: _ => Task.FromResult(true));
+        var git = new StubGit(branchExists: _ => Task.FromResult(true));
 
-        var result = await Run(host);
+        var result = await Run(git);
 
         AssertSuccess(result);
-        CollectionAssert.AreEqual(ExpectedPushedBranches, host.PushedBranches.Select(b => b.Value).ToArray());
+        CollectionAssert.AreEqual(ExpectedPushedBranches, git.PushedBranches.Select(b => b.Value).ToArray());
     }
 
     [TestMethod]
@@ -93,15 +93,16 @@ public class SubmitRunnerTests
     {
         WriteResultJson(OnePrAndOnePushJson());
         File.WriteAllText(Path.Combine(_inputDir, "rix_2Fmy-fix.bundle"), "fake-bundle");
+        var git = new StubGit();
         var host = new StubSubmitRepoHost();
 
-        var result = await Run(host);
+        var result = await Run(git, host: host);
 
         var success = AssertSuccess(result);
         Assert.AreEqual(1, host.CreatedPrs.Count);
         Assert.AreEqual(1, success.CreatedPrs.Count);
         CollectionAssert.AreEqual(ExpectedPushedBranches, success.PushedBranches.ToArray());
-        Assert.AreEqual(2, host.PushedBranches.Count, "both the PR branch and the pushed branch are pushed");
+        Assert.AreEqual(2, git.PushedBranches.Count, "both the PR branch and the pushed branch are pushed");
     }
 
     [TestMethod]
@@ -109,7 +110,7 @@ public class SubmitRunnerTests
     {
         WriteResultJson(OnePendingPushJson(bundleFile: "missing.bundle"));
 
-        var result = await Run(new StubSubmitRepoHost());
+        var result = await Run(new StubGit());
 
         AssertFailure(result, "bundle file not found");
     }
@@ -118,10 +119,10 @@ public class SubmitRunnerTests
     public async Task RunAsync_Fails_WhenPushGitPushFails()
     {
         WriteOnePendingPush();
-        var host = new StubSubmitRepoHost(
+        var git = new StubGit(
             pushBranch: _ => throw new RepoHostException("git push failed: exited with code 1"));
 
-        var result = await Run(host);
+        var result = await Run(git);
 
         AssertFailure(result, "git push failed");
     }
@@ -130,10 +131,11 @@ public class SubmitRunnerTests
     public async Task RunAsync_PushesAndOpensPr_ForEachPending()
     {
         WriteOnePendingPr();
+        var git = new StubGit();
         var host = new StubSubmitRepoHost();
         var commands = new List<string>();
 
-        var result = await Run(host, GitRunner(commands));
+        var result = await Run(git, GitRunner(commands), host);
 
         var success = AssertSuccess(result);
         Assert.AreEqual(1, host.CreatedPrs.Count);
@@ -143,17 +145,17 @@ public class SubmitRunnerTests
         Assert.AreEqual("https://github.com/owner/repo/pull/1", success.CreatedPrs[0].Url);
         CollectionAssert.Contains(commands, "fetch");
         CollectionAssert.AreEqual(
-            ExpectedPushedBranches, host.PushedBranches.Select(b => b.Value).ToArray());
+            ExpectedPushedBranches, git.PushedBranches.Select(b => b.Value).ToArray());
     }
 
     [TestMethod]
     public async Task RunAsync_Fails_AndDoesNotPushOrOpenPr_WhenBranchAlreadyExists()
     {
         WriteOnePendingPr();
-        var host = new StubSubmitRepoHost(branchExists: _ => Task.FromResult(true));
+        var host = new StubSubmitRepoHost();
         var commands = new List<string>();
 
-        var result = await Run(host, GitRunner(commands));
+        var result = await Run(new StubGit(branchExists: _ => Task.FromResult(true)), GitRunner(commands), host);
 
         AssertFailure(result, "branch already exists on remote");
         Assert.AreEqual(0, host.CreatedPrs.Count);
@@ -165,7 +167,7 @@ public class SubmitRunnerTests
     {
         WriteResultJson(OnePendingPrJson(bundleFile: "missing.bundle"));
 
-        var result = await Run(new StubSubmitRepoHost());
+        var result = await Run(new StubGit());
 
         AssertFailure(result, "bundle file not found");
     }
@@ -174,10 +176,11 @@ public class SubmitRunnerTests
     public async Task RunAsync_Fails_WhenGitPushFails()
     {
         WriteOnePendingPr();
-        var host = new StubSubmitRepoHost(
+        var git = new StubGit(
             pushBranch: _ => throw new RepoHostException("git push failed: exited with code 1"));
+        var host = new StubSubmitRepoHost();
 
-        var result = await Run(host);
+        var result = await Run(git, host: host);
 
         AssertFailure(result, "git push failed");
         Assert.AreEqual(0, host.CreatedPrs.Count);
@@ -187,24 +190,24 @@ public class SubmitRunnerTests
     public async Task RunAsync_RefusesThePush_WhenItsBranchIsNotInTheAllowList()
     {
         WriteOnePendingPush();
-        var host = new StubSubmitRepoHost();
+        var git = new StubGit();
 
-        var result = await Run(host, allowedPushBranches: "main,release");
+        var result = await Run(git, allowedPushBranches: "main,release");
 
         AssertFailure(result, "branch is not allowed to be pushed to: rix/my-fix");
-        Assert.AreEqual(0, host.PushedBranches.Count, "a refused push must reach the remote in no form");
+        Assert.AreEqual(0, git.PushedBranches.Count, "a refused push must reach the remote in no form");
     }
 
     [TestMethod]
     public async Task RunAsync_RefusesEveryPush_WhenTheAllowListIsEmpty()
     {
         WriteOnePendingPush();
-        var host = new StubSubmitRepoHost();
+        var git = new StubGit();
 
-        var result = await Run(host, allowedPushBranches: null);
+        var result = await Run(git, allowedPushBranches: null);
 
         AssertFailure(result, "branch is not allowed to be pushed to");
-        Assert.AreEqual(0, host.PushedBranches.Count);
+        Assert.AreEqual(0, git.PushedBranches.Count);
     }
 
     /// <summary>The allow-list decides before anything reads the bundle the agent wrote, so a
@@ -216,7 +219,7 @@ public class SubmitRunnerTests
         WriteResultJson(OnePendingPushJson(bundleFile: "missing.bundle"));
         var gitCommands = new List<string>();
 
-        var result = await Run(new StubSubmitRepoHost(), GitRunner(gitCommands), allowedPushBranches: "main");
+        var result = await Run(new StubGit(), GitRunner(gitCommands), allowedPushBranches: "main");
 
         AssertFailure(result, "branch is not allowed to be pushed to: rix/my-fix");
         Assert.AreEqual(0, gitCommands.Count, "nothing may be fetched from a bundle for a refused push");
@@ -230,13 +233,13 @@ public class SubmitRunnerTests
     public async Task RunAsync_OpensPullRequests_EvenWhenNoPushBranchIsAllowed()
     {
         WriteOnePendingPr();
-        var host = new StubSubmitRepoHost();
+        var git = new StubGit();
 
-        var result = await Run(host, allowedPushBranches: null);
+        var result = await Run(git, allowedPushBranches: null);
 
         var success = AssertSuccess(result);
         Assert.AreEqual(1, success.CreatedPrs.Count);
-        CollectionAssert.AreEqual(ExpectedPushedBranches, host.PushedBranches.Select(b => b.Value).ToArray());
+        CollectionAssert.AreEqual(ExpectedPushedBranches, git.PushedBranches.Select(b => b.Value).ToArray());
     }
 
     // ---- helpers ----
@@ -245,14 +248,15 @@ public class SubmitRunnerTests
     /// about the allow-list doesn't have to restate it. The deny cases pass their own list.</summary>
     private Task<ISubmitResult> Run
     (
-        StubSubmitRepoHost host,
+        StubGit git,
         RunProcessAsync? runner = null,
+        StubSubmitRepoHost? host = null,
         string? allowedPushBranches = "rix/my-fix"
     )
     => SubmitRunner.RunAsync
     (
         TestConfig.ValidSubmit(inputDir: _inputDir, workDir: _workDir, allowedPushBranches: allowedPushBranches),
-        new SubmitContext(host, runner ?? OkGit, _ => { }),
+        new SubmitContext(git, host ?? new StubSubmitRepoHost(), runner ?? OkGit, _ => { }),
         CancellationToken.None
     );
 

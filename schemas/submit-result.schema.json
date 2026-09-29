@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The result rix submit prints.",
+  "type": "object",
+  "required": [
+    "status"
+  ],
+  "anyOf": [
+    {
+      "properties": {
+        "status": {
+          "const": "success"
+        },
+        "createdPrs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "branch": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "branch",
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "pushedBranches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "createdPrs",
+        "pushedBranches"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "failure"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}
