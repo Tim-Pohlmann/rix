@@ -114,8 +114,8 @@ internal static class JobOptions
     )
     { IsRequired = false };
 
-    /// <summary>Registers every shared option, so a new one is added here once and both commands
-    /// accept it — each command's handler then reads it via the matching reader below.</summary>
+    /// <summary>Registers every option in this set in one call; <c>job</c>'s <c>ReadConfig</c> then
+    /// reads each via the matching reader below.</summary>
     internal static void AddTo(Command command)
     {
         command.AddOption(CommonOptions.RepoOption);
