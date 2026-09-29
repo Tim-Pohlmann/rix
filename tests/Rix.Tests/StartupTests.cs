@@ -26,16 +26,14 @@ public class StartupTests
         Assert.IsInstanceOfType<PiAgent>(Startup.DefaultContext(TestConfig.Valid(agent: AgentKind.Pi)).Agent);
     }
 
-    /// <summary><c>ci-failure</c> builds its job half up front, before a failure has been detected
-    /// and so before the <see cref="JobConfig"/> naming the agent exists — the agent has to come
-    /// from the ci-failure config instead. Nothing here opens a connection, which is what makes
-    /// building it before it's known to be needed free.</summary>
+    /// <summary><c>ci-failure</c> reads and judges, so its two halves are both read-only hosts —
+    /// no agent, no clone, nothing that could run what it found. Separate fields over one object
+    /// because the roles are separable even though GitHub serves both.</summary>
     [TestMethod]
-    public void DefaultCiFailureContext_RunsTheAgentTheCiFailureConfigNames()
+    public void DefaultCiFailureContext_ReadsFromTheCiHostAndJudgesAgainstTheRepoHost()
     {
-        var context = Startup.DefaultCiFailureContext(TestConfig.ValidCiFailure(agent: AgentKind.Claude));
+        var context = Startup.DefaultCiFailureContext(TestConfig.ValidCiFailure());
 
-        Assert.IsInstanceOfType<ClaudeAgent>(context.Job.Agent);
         Assert.IsInstanceOfType<GitHubActionsCiHost>(context.Ci);
         Assert.IsInstanceOfType<GitHubCiFailureRepoHost>(context.RepoHost);
     }
@@ -113,9 +111,14 @@ public class StartupTests
     [TestMethod]
     public async Task WhenDirectoriesExist_Runs_WhenEveryDirectoryExists()
     {
-        var handler = Startup.WhenDirectoriesExist<int>(new StubFileSystem(directoryExists: _ => true), config => Task.FromResult(config));
+        var run = Startup.WhenDirectoriesExist<int>
+        (
+            new StubFileSystem(directoryExists: _ => true),
+            _ => [new RequiredDirectory("--work-dir", new DirectoryPath("/only/on/the/stub"))],
+            config => Task.FromResult(config)
+        );
 
-        var exitCode = await handler(7, [new RequiredDirectory("--work-dir", new DirectoryPath("/only/on/the/stub"))]);
+        var exitCode = await run(7);
 
         Assert.AreEqual(7, exitCode);
     }
@@ -127,9 +130,10 @@ public class StartupTests
         var present = new DirectoryPath("/present");
         var missing = new DirectoryPath("/missing");
 
-        var handler = Startup.WhenDirectoriesExist<int>
+        var run = Startup.WhenDirectoriesExist<int>
         (
             new StubFileSystem(directoryExists: path => path == present.Value),
+            _ => [new RequiredDirectory("--work-dir", present), new RequiredDirectory("--output-dir", missing), new RequiredDirectory("--dir", missing)],
             _ =>
             {
                 ran = true;
@@ -139,7 +143,7 @@ public class StartupTests
 
         var ex = Assert.ThrowsExactly<InvalidInputException>
         (
-            () => _ = handler(0, [new RequiredDirectory("--work-dir", present), new RequiredDirectory("--output-dir", missing), new RequiredDirectory("--dir", missing)])
+            () => _ = run(0)
         );
 
         Assert.AreEqual($"--output-dir: directory does not exist: {missing.Value}", ex.Message);

@@ -1,7 +1,5 @@
 using Rix.Cli;
 using Rix.Submit;
-using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace Rix.Tests;
 
@@ -12,16 +10,12 @@ public class SubmitCommandTests
     private static readonly string[] ExpectedTrimmedBranches = ["main", "release/1"];
     private static readonly string[] ExpectedUnusualBranches = ["--not-a-flag", "feature/ünïcode"];
 
-    private static Parser BuildParser(Func<SubmitConfig, IReadOnlyList<RequiredDirectory>, Task<int>> handler)
-    {
-        var root = new RootCommand();
-        root.AddCommand(SubmitCommand.Build(Path.GetTempPath(), handler));
-        return CliPipeline.Build(root);
-    }
+    private static SubmitConfig ReadArgs(params string[] args)
+    => SubmitCommand.ReadConfig(CommandArgs.Parse(SubmitCommand.Build(), ["submit", .. args]), Path.GetTempPath());
 
-    /// <summary>Runs <c>submit</c> with the given flags; returns the config the handler received
-    /// (null when the command rejected the input before reaching it), the exit code, and stderr.</summary>
-    private static async Task<(SubmitConfig? Config, int ExitCode, string Stderr)> RunAsync
+    /// <summary>Reads <c>submit</c> with the given flags, filling in valid values for the required
+    /// ones the test doesn't care about.</summary>
+    private static SubmitConfig Read
     (
         string repo = "owner/repo",
         string writeToken = "write-tok",
@@ -30,61 +24,42 @@ public class SubmitCommandTests
         string? allowedPushBranches = null
     )
     {
-        SubmitConfig? captured = null;
-        var parser = BuildParser((config, _) =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
-        var args = new List<string> { "submit", "--repo", repo, "--write-token", writeToken, "--input-dir", inputDir ?? ExistingDir };
+        var args = new List<string> { "--repo", repo, "--write-token", writeToken, "--input-dir", inputDir ?? ExistingDir };
         if (workDir is not null)
             args.AddRange(["--work-dir", workDir]);
         if (allowedPushBranches is not null)
             args.AddRange(["--allowed-push-branches", allowedPushBranches]);
-
-        using var stderr = new ConsoleErrorScope();
-        var exitCode = await parser.InvokeAsync([.. args]);
-        return (captured, exitCode, stderr.Text);
+        return ReadArgs([.. args]);
     }
 
     [TestMethod]
-    public async Task Command_BuildsConfig_ForValidInputs()
+    public void Command_BuildsConfig_ForValidInputs()
     {
-        var (config, exitCode, _) = await RunAsync();
+        var config = Read();
 
-        Assert.AreEqual(0, exitCode);
-        Assert.IsNotNull(config);
         Assert.AreEqual("owner/repo", config.Repo.ToString());
         Assert.AreEqual("write-tok", config.WriteToken.Value);
         Assert.AreEqual(Path.GetTempPath(), config.InputDir.Value);
     }
 
     [TestMethod]
-    public async Task Command_PassesEnvVarFallbacks_WhenFlagsAbsent()
+    public void Command_PassesEnvVarFallbacks_WhenFlagsAbsent()
     {
-        SubmitConfig? captured = null;
-        var parser = BuildParser((config, _) =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
-
         using var env = new EnvScope();
         env.Set("RIX_REPO", "env/repo");
         env.Set("RIX_WRITE_TOKEN", "env-write");
         env.Set("RIX_INPUT_DIR", ExistingDir);
-        await parser.InvokeAsync("submit");
+        var config = ReadArgs();
 
-        Assert.IsNotNull(captured);
-        Assert.AreEqual("env/repo", captured.Repo.ToString());
-        Assert.AreEqual("env-write", captured.WriteToken.Value);
+        Assert.AreEqual("env/repo", config.Repo.ToString());
+        Assert.AreEqual("env-write", config.WriteToken.Value);
     }
 
     [TestMethod]
-    public async Task Command_DefaultsWorkDirToTemp_WhenAbsentOrBlank()
+    public void Command_DefaultsWorkDirToTemp_WhenAbsentOrBlank()
     {
-        Assert.AreEqual(Path.GetTempPath(), (await RunAsync()).Config?.WorkDir.Value);
-        Assert.AreEqual(Path.GetTempPath(), (await RunAsync(workDir: "   ")).Config?.WorkDir.Value);
+        Assert.AreEqual(Path.GetTempPath(), Read().WorkDir.Value);
+        Assert.AreEqual(Path.GetTempPath(), Read(workDir: "   ").WorkDir.Value);
     }
 
     [TestMethod]
@@ -93,33 +68,20 @@ public class SubmitCommandTests
     [DataRow("owner/repo/extra", "write-tok", null, "--repo: 'owner/repo/extra' is not a valid repo identifier")]
     [DataRow("owner/repo", "", null, "--write-token is required")]
     [DataRow("owner/repo", "write-tok", "", "--input-dir is required")]
-    public async Task Command_Returns2_AndReportsTheFlag_WhenInputInvalid(string repo, string writeToken, string? inputDir, string expectedError)
+    public void Command_ReportsTheFlag_WhenInputInvalid(string repo, string writeToken, string? inputDir, string expectedError)
     {
-        var (config, exitCode, stderr) = await RunAsync(repo: repo, writeToken: writeToken, inputDir: inputDir);
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read(repo: repo, writeToken: writeToken, inputDir: inputDir));
 
-        Assert.IsNull(config);
-        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
-        StringAssert.Contains(stderr, $"error: {expectedError}");
+        StringAssert.StartsWith(ex.Message, expectedError);
     }
 
-    /// <summary>Whether they exist is left to the handler, so the command accepts directories that
-    /// don't and names each one after its flag for the handler to check.</summary>
+    /// <summary>Whether they exist is left to <see cref="Startup"/>, so the command accepts
+    /// directories that don't and names each one after its flag for Startup to check.</summary>
     [TestMethod]
-    public async Task Command_HandsTheInputAndWorkDirsToTheHandler_ToCheckTheyExist()
+    public void RequiredDirectories_NamesTheInputAndWorkDirsAfterTheirFlags()
     {
-        IReadOnlyList<RequiredDirectory>? required = null;
-        var parser = BuildParser((_, directories) =>
-        {
-            required = directories;
-            return Task.FromResult(0);
-        });
+        var config = Read(inputDir: "/nonexistent/in", workDir: "/nonexistent/work");
 
-        var exitCode = await parser.InvokeAsync
-        (
-            ["submit", "--repo", "owner/repo", "--write-token", "write-tok", "--input-dir", "/nonexistent/in", "--work-dir", "/nonexistent/work"]
-        );
-
-        Assert.AreEqual(0, exitCode);
         CollectionAssert.AreEqual
         (
             new[]
@@ -127,34 +89,32 @@ public class SubmitCommandTests
                 new RequiredDirectory("--input-dir", new DirectoryPath("/nonexistent/in")),
                 new RequiredDirectory("--work-dir", new DirectoryPath("/nonexistent/work")),
             },
-            required?.ToArray()
+            SubmitCommand.RequiredDirectories(config).ToArray()
         );
     }
 
     [TestMethod]
-    public async Task Command_AllowsNoPushBranches_WhenTheListIsUnset()
+    public void Command_AllowsNoPushBranches_WhenTheListIsUnset()
     {
-        Assert.AreEqual(0, (await RunAsync()).Config?.AllowedPushBranches.Count);
-        Assert.AreEqual(0, (await RunAsync(allowedPushBranches: "   ")).Config?.AllowedPushBranches.Count);
+        Assert.AreEqual(0, Read().AllowedPushBranches.Count);
+        Assert.AreEqual(0, Read(allowedPushBranches: "   ").AllowedPushBranches.Count);
     }
 
     [TestMethod]
-    public async Task Command_SplitsAllowedPushBranches_TrimmingAndDroppingDuplicates()
+    public void Command_SplitsAllowedPushBranches_TrimmingAndDroppingDuplicates()
     {
-        var config = (await RunAsync(allowedPushBranches: " main , release/1 ,main, ")).Config;
+        var config = Read(allowedPushBranches: " main , release/1 ,main, ");
 
-        Assert.IsNotNull(config);
         CollectionAssert.AreEqual(ExpectedTrimmedBranches, config.AllowedPushBranches.Select(b => b.Value).ToArray());
     }
 
     /// <summary>An unusable entry is not an error: every string is a possible branch name, so the
     /// list can only ever be over- or under-inclusive, and the safe direction is taken silently.</summary>
     [TestMethod]
-    public async Task Command_KeepsAnyBranchName_InAllowedPushBranches()
+    public void Command_KeepsAnyBranchName_InAllowedPushBranches()
     {
-        var config = (await RunAsync(allowedPushBranches: "--not-a-flag,feature/ünïcode")).Config;
+        var config = Read(allowedPushBranches: "--not-a-flag,feature/ünïcode");
 
-        Assert.IsNotNull(config);
         CollectionAssert.AreEqual(ExpectedUnusualBranches, config.AllowedPushBranches.Select(b => b.Value).ToArray());
     }
 }

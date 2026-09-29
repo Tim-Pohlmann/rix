@@ -167,19 +167,20 @@ jobs:
     needs: build-rix
     permissions:
       contents: read
-      # run-ci-failure reads the workflow run's metadata through the Actions API, which
+      # detect-ci-failure reads the workflow run's metadata through the Actions API, which
       # contents:read does not cover.
       actions: read
     env:
       RIX_BIN_PATH: ${{ github.workspace }}/rix-bin/rix
 
     # agent-plumbing's counterpart for the other composite action: runs the real
-    # .github/actions/run-ci-failure (the one on-ci-failure.yml drives) against this very run,
-    # using the binary build-rix published from this PR's own source. This run has not concluded
-    # while it is checking itself, so rix stops at `skipped` well before the agent - which is the
-    # point. What is covered here is the layer above the agent: the inputs every caller leaves
-    # alone, resolved and forwarded for real. Nothing else in CI calls this action, which is how a
-    # max-rix-commits default that failed 100% of unconfigured runs got as far as review.
+    # .github/actions/detect-ci-failure (the one on-ci-failure.yml's `detect` job drives) against
+    # this very run, using the binary build-rix published from this PR's own source. This run has
+    # not concluded while it is checking itself, so rix answers `skipped` - which is the point.
+    # What is covered here is the layer the detect job is: the inputs every caller leaves alone,
+    # resolved and forwarded for real. No agent is involved either way now, so this exercises the
+    # whole action rather than the part in front of one. Nothing else in CI calls it, which is how
+    # a max-rix-commits default that failed 100% of unconfigured runs got as far as review.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -196,32 +197,33 @@ jobs:
         run: chmod +x rix-bin/rix
 
       - name: Run rix ci-failure against this in-progress run
-        id: ci-failure
-        uses: ./.github/actions/run-ci-failure
+        id: detect
+        uses: ./.github/actions/detect-ci-failure
         with:
           repo: ${{ github.repository }}
           run-id: ${{ github.run_id }}
           read-token: ${{ github.token }}
-          agent: opencode
-          # All three are 0 rather than omitted, for the reason spelled out on agent-plumbing's
-          # max-tokens above: 0 is what on-ci-failure.yml's workflow_call inputs resolve to for a
-          # caller who leaves them alone, and rix rejects an explicit 0 for every one of them. A
-          # regression that forwards it therefore fails here - "--max-rix-commits must be between
-          # 1 and 100, got '0'" - instead of in every unconfigured production run. Omitting them
-          # would only exercise the empty-string path, which never reaches that validation.
+          # 0 rather than omitted, for the reason spelled out on agent-plumbing's max-tokens above:
+          # 0 is what on-ci-failure.yml's workflow_call input resolves to for a caller who leaves it
+          # alone, and rix rejects an explicit 0. A regression that forwards it therefore fails here
+          # - "--max-rix-commits must be between 1 and 100, got '0'" - instead of in every
+          # unconfigured production run. Omitting it would only exercise the empty-string path,
+          # which never reaches that validation.
           max-rix-commits: 0
-          max-tokens: 0
-          timeout: 0
           rix-bin: ${{ env.RIX_BIN_PATH }}
 
       - name: Assert the unfinished run was skipped, not answered
         env:
-          HAS_RESULT: ${{ steps.ci-failure.outputs.has-result }}
+          SHOULD_RUN: ${{ steps.detect.outputs.should-run }}
+          BRANCH: ${{ steps.detect.outputs.branch }}
         run: |
           # The step above already fails on a rejected input or an API error, so this only pins
           # down the decision: a run with no conclusion yet is not a failure to answer, and a
-          # has-result of true would mean rix had started an agent against one.
-          [[ "$HAS_RESULT" == "false" ]] || { echo "expected has-result=false, got '$HAS_RESULT'" >&2; exit 1; }
+          # should-run of true would send a later job to start an agent against one.
+          [[ "$SHOULD_RUN" == "false" ]] || { echo "expected should-run=false, got '$SHOULD_RUN'" >&2; exit 1; }
+          # And that the branch output stays empty with it. It is the one value a privileged job
+          # trusts, so it must never carry a name when nothing is meant to be pushed at all.
+          [[ -z "$BRANCH" ]] || { echo "expected an empty branch, got '$BRANCH'" >&2; exit 1; }
 
   ci-failure-statuses:
     name: CI-failure status (${{ matrix.case.name }})
@@ -230,21 +232,20 @@ jobs:
       contents: read
     env:
       # Read by the stub below, which the action invokes as its rix binary. Job-level env reaches
-      # a composite action's own run steps, so the stub sees these without run-ci-failure having
+      # a composite action's own run steps, so the stub sees these without detect-ci-failure having
       # to forward anything.
       STUB_STDOUT: ${{ matrix.case.stdout }}
       STUB_EXIT: ${{ matrix.case.exit }}
-      STUB_WRITES_RESULT: ${{ matrix.case.writes-result }}
 
     # ci-failure-plumbing above drives the real binary, which - checking the run it is part of -
-    # can only ever reach `skipped`. Every other arm of run-ci-failure's `case` needs rix to print
-    # a result no workflow can arrange for real: a branch already carrying rix's own commits, an
-    # Actions API error, a status a newer release invented. The action already accepts a `rix-bin`
-    # path, so each case here points it at a stub that prints one canned result and exits with a
-    # chosen code - no token, no agent, no network, no clone. What that buys over
+    # can only ever reach `skipped`. Every other arm of detect-ci-failure's `case` needs rix to
+    # print a result no workflow can arrange for real: a failure to answer, a branch already
+    # carrying rix's own commits, an Actions API error, a status a newer release invented. The
+    # action already accepts a `rix-bin` path, so each case here points it at a stub that prints
+    # one canned result and exits with a chosen code - no token, no network. What that buys over
     # ci-failure-result-fields-style extraction of the bash out of the YAML is that the decision is
-    # read back through the action's real interface: the `has-result` output on-ci-failure.yml
-    # gates create-pr with, and whether the step fails at all.
+    # read back through the action's real interface: the `should-run` and `branch` outputs
+    # on-ci-failure.yml gates the other two jobs with, and whether the step fails at all.
     #
     # Not covered here: the ::notice::/::error:: text itself, and so escape_workflow_command. A
     # step's annotations are not readable by a later step in the same job, so pinning that would
@@ -253,65 +254,58 @@ jobs:
       fail-fast: false
       matrix:
         case:
+          # The one arm that sets should-run=true, and the only one that names a branch - the
+          # value create-pr is allowed to push to.
+          - name: detected
+            stdout: '{"status":"detected","prompt":"fix it","runUrl":"https://github.com/o/r/actions/runs/1","branch":"feature/x","prNumber":7}'
+            exit: 0
+            should-run: 'true'
+            branch: feature/x
+            outcome: success
+
           # `outcome` is the run step's own result, read through continue-on-error below; the
           # `case` arms that only annotate leave rix's exit code alone, so the step passes.
           - name: skipped
             stdout: '{"status":"skipped","outcome":"succeeded"}'
             exit: 0
-            has-result: 'false'
+            should-run: 'false'
+            branch: ''
             outcome: success
-            writes-result: 'false'
+
+          # The branch rix reports is a fork's, so it must not reach the branch output either.
+          - name: untrustedRun
+            stdout: '{"status":"untrustedRun","headRepo":"someone/fork","branch":"main"}'
+            exit: 0
+            should-run: 'false'
+            branch: ''
+            outcome: success
 
           - name: loopGuarded
             stdout: '{"status":"loopGuarded","rixCommits":5,"branch":"rix/fix-the-thing"}'
             exit: 0
-            has-result: 'false'
+            should-run: 'false'
+            branch: ''
             outcome: success
-            writes-result: 'false'
 
           # rix reports an API/setup problem of its own and exits non-zero; the action turns that
           # into an ::error:: and passes the code through.
           - name: error
             stdout: '{"status":"error","error":"read token lacks actions:read"}'
             exit: 1
-            has-result: 'false'
+            should-run: 'false'
+            branch: ''
             outcome: failure
-            writes-result: 'false'
-
-          # The agent ran and the job failed. No annotation of its own - rix's non-zero exit is
-          # what fails the step, and has-result stays false so create-pr is skipped.
-          - name: failure
-            stdout: '{"status":"failure","error":"agent failed: exited with code 1","costUsd":0.0123,"durationSeconds":42}'
-            exit: 1
-            has-result: 'false'
-            outcome: failure
-            writes-result: 'false'
-
-          - name: setupFailure
-            stdout: '{"status":"setupFailure","error":"--max-tokens must be a positive integer","costUsd":0,"durationSeconds":0}'
-            exit: 1
-            has-result: 'false'
-            outcome: failure
-            writes-result: 'false'
-
-          # The one arm that sets has-result=true, and so the only one create-pr would run after.
-          - name: success
-            stdout: '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0.0123,"durationSeconds":42}'
-            exit: 0
-            has-result: 'true'
-            outcome: success
-            writes-result: 'true'
 
           # The `*)` arm, and the reason it overrides rix's exit code: a binary newer than this
           # action emits a status it has no arm for, having succeeded on its own terms and exited
-          # 0. Inheriting that 0 would leave a green job that submitted nothing, so the step must
+          # 0. Inheriting that 0 would leave a green job that answered nothing, so the step must
           # fail even though the stub exits 0. Nothing else in CI covers this.
           - name: unrecognized status, rix exited 0
             stdout: '{"status":"inventedByANewerRelease"}'
             exit: 0
-            has-result: 'false'
+            should-run: 'false'
+            branch: ''
             outcome: failure
-            writes-result: 'false'
             # Off the schema on purpose - it stands in for a release this repo hasn't seen.
             off-schema: true
 
@@ -335,7 +329,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-jsonschema
           source tests/scripts/result-schema.bash
-          assert_matches_schema ci-failure-output.schema.json "$STUB_STDOUT"
+          assert_matches_schema ci-failure-result.schema.json "$STUB_STDOUT"
 
       - name: Write the stub rix binary
         run: |
@@ -345,41 +339,40 @@ jobs:
           # result on stdout the way rix does on every exit code, and exits with the code the
           # matrix asked for.
           set -euo pipefail
-          # Only a run that got as far as the agent leaves a result.json behind, so write one
-          # just where rix would have - the action reads it back in its post-job-summary step.
-          if [[ "${STUB_WRITES_RESULT:-}" == "true" ]]; then
-            mkdir -p out
-            printf '%s' "$STUB_STDOUT" > out/result.json
-          fi
           printf '%s\n' "$STUB_STDOUT"
           exit "$STUB_EXIT"
           STUB
           chmod +x stub-rix
 
       - name: Run rix ci-failure with the stub binary
-        id: ci-failure
+        id: detect
         # Several cases expect this step to fail; the assertion below reads the real result out of
-        # steps.ci-failure.outcome rather than letting it end the job.
+        # steps.detect.outcome rather than letting it end the job.
         continue-on-error: true
-        uses: ./.github/actions/run-ci-failure
+        uses: ./.github/actions/detect-ci-failure
         with:
           repo: ${{ github.repository }}
           run-id: ${{ github.run_id }}
           # The stub makes no API call, so this only has to be non-empty.
           read-token: ${{ github.token }}
-          agent: opencode
           rix-bin: ${{ github.workspace }}/stub-rix
 
       - name: Assert the action's decision matches the result it was handed
         env:
-          EXPECTED_HAS_RESULT: ${{ matrix.case.has-result }}
+          EXPECTED_SHOULD_RUN: ${{ matrix.case.should-run }}
+          EXPECTED_BRANCH: ${{ matrix.case.branch }}
           EXPECTED_OUTCOME: ${{ matrix.case.outcome }}
-          ACTUAL_HAS_RESULT: ${{ steps.ci-failure.outputs.has-result }}
-          ACTUAL_OUTCOME: ${{ steps.ci-failure.outcome }}
+          ACTUAL_SHOULD_RUN: ${{ steps.detect.outputs.should-run }}
+          ACTUAL_BRANCH: ${{ steps.detect.outputs.branch }}
+          ACTUAL_OUTCOME: ${{ steps.detect.outcome }}
         run: |
           failed=0
-          if [[ "$ACTUAL_HAS_RESULT" != "$EXPECTED_HAS_RESULT" ]]; then
-            echo "has-result: expected '$EXPECTED_HAS_RESULT', got '$ACTUAL_HAS_RESULT'" >&2
+          if [[ "$ACTUAL_SHOULD_RUN" != "$EXPECTED_SHOULD_RUN" ]]; then
+            echo "should-run: expected '$EXPECTED_SHOULD_RUN', got '$ACTUAL_SHOULD_RUN'" >&2
+            failed=1
+          fi
+          if [[ "$ACTUAL_BRANCH" != "$EXPECTED_BRANCH" ]]; then
+            echo "branch: expected '$EXPECTED_BRANCH', got '$ACTUAL_BRANCH'" >&2
             failed=1
           fi
           if [[ "$ACTUAL_OUTCOME" != "$EXPECTED_OUTCOME" ]]; then
@@ -445,15 +438,20 @@ jobs:
 
     # One level deeper than agent-plumbing above: invokes the built rix binary directly (bypassing
     # the composite-action/workflow layer) and does real JSON parsing on its result, so
-    # per-failure-mode assertions live in a proper, reviewable test script
-    # (tests/e2e/rix-job-e2e.bats) instead of workflow YAML.
+    # per-failure-mode assertions live in proper, reviewable test scripts
+    # (tests/e2e/rix-job-e2e.bats for the agent itself, tests/e2e/agent-home-e2e.bats for the
+    # factory-repo agent home it runs with) instead of workflow YAML.
     steps:
       - uses: actions/checkout@v4
         with:
           # schemas/ and the helper that reads it, so the real binary's result.json is checked
-          # against the same schema the hand-written fixtures are.
+          # against the same schema the hand-written fixtures are. tests/fixtures as well:
+          # agent-home-e2e.bats asks the factory repo for tests/fixtures/agent-home, and reads the
+          # same path here to tell a fixture that is not on main yet (skip) from one that was
+          # deleted (fail).
           sparse-checkout: |
             tests/e2e
+            tests/fixtures
             tests/scripts/result-schema.bash
             schemas
           sparse-checkout-cone-mode: false
@@ -482,10 +480,10 @@ jobs:
         # `run` merges that into $output - print it on failure instead of silently discarding it,
         # so a failing assertion here comes with the agent's actual raw output instead of just the
         # failed jq/status check.
-        # Named file rather than the directory: each e2e file needs its own environment (this
-        # one an agent CLI and a key, ci-failure-e2e.bats below only actions:read), so a new file
+        # Named files rather than the directory: each e2e file needs its own environment (these
+        # two an agent CLI and a key, ci-failure-e2e.bats above only actions:read), so a new file
         # here joins the job built for it instead of silently joining this one.
-        run: bats --print-output-on-failure tests/e2e/rix-job-e2e.bats
+        run: bats --print-output-on-failure tests/e2e/rix-job-e2e.bats tests/e2e/agent-home-e2e.bats
 
   download-rix:
     name: Download rix (release path)

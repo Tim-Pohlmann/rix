@@ -10,7 +10,7 @@ namespace Rix.CiFailure;
 /// one place that decides a failure is not worth answering at all — a run that didn't fail, one
 /// rix isn't allowed to answer because it came from a fork, or one whose branch rix has already
 /// been fixing on its own for too long. Deciding what to do with the
-/// outcome is <see cref="CiFailureRunner"/>'s job, not this one's.
+/// outcome is the caller's job, not this one's.
 /// </summary>
 internal static class CiFailureDetector
 {

@@ -39,7 +39,7 @@ internal static class JobRunner
 
         try
         {
-            await context.Git.CloneAsync(cloneDir.Path, ct);
+            await context.Git.CloneAsync(config.Repo, cloneDir.Path, ct);
             // Set the commit identity before the agent starts, so it can commit without guessing
             // author metadata.
             await context.Git.ConfigureIdentityAsync(cloneDir.Path, ct);
@@ -54,7 +54,7 @@ internal static class JobRunner
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
-            context.Git, cloneDir.Path, ct, context.LogLine.Invoke,
+            context.Git, config.Repo, cloneDir.Path, ct, context.LogLine.Invoke,
             allowedPushBranches: config.AllowedPushBranches
         );
 
@@ -97,8 +97,9 @@ internal static class JobRunner
 
     /// <summary>Copies the operator-supplied agent home files over the runner's user home before
     /// the agent starts, so its config/context files are in place when the agent first reads them.
-    /// Returns the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once the files are
-    /// in place or when the run has none configured.</summary>
+    /// They come from a sparse clone of just the requested directory of the factory repo, read with
+    /// the job's own credential. Returns the <see cref="SetupFailure"/> to end the run with, or
+    /// <c>null</c> once the files are in place or when the run has none configured.</summary>
     private static async Task<SetupFailure?> CopyAgentHomeAsync
     (
         JobConfig config, JobContext context, CancellationToken ct
@@ -110,13 +111,21 @@ internal static class JobRunner
         using var checkout = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-agent-home");
         try
         {
-            var source = await context.AgentHomeFetcher.FetchAsync(agentHome.Repo, agentHome.SourcePath, new DirectoryPath(checkout.Path), ct);
-            DirectoryMerge.CopySkippingExisting(context.FileSystem, source.Value, agentHome.Home.Value);
-            return null;
+            await context.Git.SparseCloneAsync(agentHome.Repo, checkout.Path, agentHome.SourcePath, ct);
         }
         catch (RepoHostException ex)
         {
             return new SetupFailure($"agent home fetch failed: {ex.Message}");
+        }
+
+        var source = Path.Combine(checkout.Path, agentHome.SourcePath.Value);
+        if (!context.FileSystem.DirectoryExists(source))
+            return new SetupFailure($"agent home fetch failed: agent home path not found in {agentHome.Repo.Value}: {agentHome.SourcePath.Value}");
+
+        try
+        {
+            DirectoryMerge.CopySkippingExisting(context.FileSystem, source, agentHome.Home.Value);
+            return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
