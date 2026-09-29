@@ -70,8 +70,8 @@ public class SharedJobOptionsTests
     [TestMethod]
     public void JobCommand_ReadsEverySharedFlag()
     {
-        var parsed = CommandArgs.Parse(JobCommand.Build(), ["job", "--prompt", "shared prompt", .. SharedArgs]);
+        var parsed = CommandArgs.Parse(JobCommand.Build(), ["job", .. SharedArgs]);
 
-        AssertEveryFlagArrived(JobCommand.ReadConfig(parsed, Path.GetTempPath(), Path.GetTempPath()));
+        AssertEveryFlagArrived(JobCommand.ReadConfig(parsed, Path.GetTempPath(), Path.GetTempPath(), "p"));
     }
 }

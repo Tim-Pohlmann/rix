@@ -117,34 +117,18 @@ internal static class JobOptions
     /// which reaches this job as an artifact: a file crosses that boundary without a size cap, and
     /// its content never has to survive being quoted through a job output or a shell. Reading it
     /// here rather than in the workflow that hands it over keeps the rule in the same place as
-    /// every other cross-flag rule, and gives every caller of the binary the same option.</summary>
-    internal static string ReadPrompt(ParseResult parsed, IFileSystem fileSystem)
+    /// every other cross-flag rule, and gives every caller of the binary the same option. The file
+    /// itself is read by <see cref="Startup.PromptText"/>.</summary>
+    internal static PromptSource ReadPrompt(ParseResult parsed)
     {
         var path = parsed.OptionalText(PromptFileOption, "RIX_PROMPT_FILE");
         if (path is null)
-            return parsed.RequiredText(PromptOption, "RIX_PROMPT");
+            return new PromptText(parsed.RequiredText(PromptOption, "RIX_PROMPT"));
 
         if (parsed.OptionalText(PromptOption, "RIX_PROMPT") is not null)
             throw new InvalidInputException($"{PromptOption.Name} and {PromptFileOption.Name} both give the prompt - supply one of them");
 
-        return Input.Named(PromptFileOption.Name, () => ReadPromptFile(path, fileSystem));
-    }
-
-    /// <summary>The file's content, whole and unmodified - no trimming, since the prompt is the
-    /// text an agent is handed. A missing or blank file is reported the way a blank
-    /// <c>--prompt</c> is: naming it was the caller asking for a prompt from it, so finding none
-    /// there is a problem to report rather than a reason to run the agent on nothing.</summary>
-    private static string ReadPromptFile(string path, IFileSystem fileSystem)
-    {
-        if (!fileSystem.FileExists(path))
-            throw new InvalidInputException($"no file at '{path}'");
-
-        using var reader = new StreamReader(fileSystem.OpenRead(path));
-        var prompt = reader.ReadToEnd();
-        if (string.IsNullOrWhiteSpace(prompt))
-            throw new InvalidInputException($"'{path}' holds no prompt");
-
-        return prompt;
+        return new PromptFile(path);
     }
 
     internal static GitReadToken ReadReadToken(ParseResult parsed)

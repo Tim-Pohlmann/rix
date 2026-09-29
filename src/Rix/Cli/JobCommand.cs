@@ -19,12 +19,13 @@ internal static class JobCommand
         return command;
     }
 
-    internal static JobConfig ReadConfig(ParseResult parsed, string systemTempDirectory, string userHomeDirectory)
+    /// <summary>Takes the prompt's text rather than reading it, since it may sit in a file: see
+    /// <see cref="JobOptions.ReadPrompt"/>.</summary>
+    internal static JobConfig ReadConfig(ParseResult parsed, string systemTempDirectory, string userHomeDirectory, string prompt)
     {
         // Read in the order problems should be reported: the first failing read is the one the
         // user sees.
         var repo = CommonOptions.ReadRepo(parsed);
-        var prompt = JobOptions.ReadPrompt(parsed, fileSystem);
         var readToken = JobOptions.ReadReadToken(parsed);
         var agent = JobOptions.ReadAgent(parsed);
         var maxTokens = JobOptions.ReadMaxTokens(parsed);

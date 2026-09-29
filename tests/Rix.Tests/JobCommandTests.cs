@@ -6,8 +6,12 @@ namespace Rix.Tests;
 [TestClass]
 public class JobCommandTests
 {
+    /// <summary>Reads <c>job</c> the way <see cref="Startup"/> does, prompt file included.</summary>
     private static JobConfig Read(params string[] args)
-    => JobCommand.ReadConfig(CommandArgs.Parse(JobCommand.Build(), ["job", .. args]), Path.GetTempPath(), UserHome);
+    {
+        var parsed = CommandArgs.Parse(JobCommand.Build(), ["job", .. args]);
+        return JobCommand.ReadConfig(parsed, Path.GetTempPath(), UserHome, Startup.PromptText(new LocalFileSystem(), JobOptions.ReadPrompt(parsed)));
+    }
 
     /// <summary>Reads <c>job</c> with valid values for every required flag, then
     /// <paramref name="extra"/>.</summary>
@@ -247,7 +251,7 @@ public class JobCommandTests
     [TestMethod]
     public void Command_ReportsOnlyTheFirstProblem()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--repo", "", "--prompt", "", "--read-token", ""));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--repo", "", "--prompt", "p", "--read-token", ""));
 
         Assert.AreEqual("--repo is required", ex.Message);
     }

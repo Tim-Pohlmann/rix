@@ -101,7 +101,7 @@ internal static class Startup
                 (
                     fileSystem,
                     JobCommand.Build(),
-                    parsed => JobCommand.ReadConfig(parsed, temp, home),
+                    parsed => JobCommand.ReadConfig(parsed, temp, home, PromptText(fileSystem, JobOptions.ReadPrompt(parsed))),
                     JobCommand.RequiredDirectories,
                     config => ExecuteJobAsync(config, cts.Token)
                 ),
@@ -153,6 +153,34 @@ internal static class Startup
         var run = WhenDirectoriesExist(fileSystem, requiredDirectories, execute);
         command.SetAction(CliPipeline.ReportingInvalidInput(parsed => run(read(parsed))));
         return command;
+    }
+
+    /// <summary>The text <paramref name="prompt"/> gives, reading it from its file if it names one:
+    /// the one flag whose value <c>job</c> can't produce itself, since the command never sees the
+    /// file system. The file's content is taken whole and unmodified - no trimming, since the
+    /// prompt is the text an agent is handed. A missing or blank file is reported under
+    /// <c>--prompt-file</c> the way a blank <c>--prompt</c> is: naming it was the caller asking for
+    /// a prompt from it, so finding none there is a problem to report rather than a reason to run
+    /// the agent on nothing.</summary>
+    internal static string PromptText(IFileSystem fileSystem, PromptSource prompt)
+    => prompt switch
+    {
+        PromptText text => text.Text,
+        PromptFile file => Input.Named(JobOptions.PromptFileOption.Name, () => ReadPromptFile(fileSystem, file.Path)),
+        _ => throw new NotSupportedException($"Unexpected prompt source: {prompt.GetType()}"),
+    };
+
+    private static string ReadPromptFile(IFileSystem fileSystem, string path)
+    {
+        if (!fileSystem.FileExists(path))
+            throw new InvalidInputException($"no file at '{path}'");
+
+        using var reader = new StreamReader(fileSystem.OpenRead(path));
+        var prompt = reader.ReadToEnd();
+        if (string.IsNullOrWhiteSpace(prompt))
+            throw new InvalidInputException($"'{path}' holds no prompt");
+
+        return prompt;
     }
 
     /// <summary>Runs <paramref name="run"/> once every directory <paramref name="requiredDirectories"/>
