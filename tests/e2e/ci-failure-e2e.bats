@@ -71,8 +71,9 @@ api() {
 
 @test "the in-progress run these tests are part of has no outcome yet" {
   # The same case ci-failure-plumbing covers through the composite action, asserted one layer down
-  # on the word rix reports rather than on the action's should-run: GitHub sends conclusion:null for
-  # a run that is still going, which is a state of its own and not an unrecognized outcome.
+  # on the word rix reports rather than on the empty branch the action turns it into: GitHub sends
+  # conclusion:null for a run that is still going, which is a state of its own and not an
+  # unrecognized outcome.
   [ -n "${GITHUB_RUN_ID:-}" ] || skip "not running inside a workflow run"
 
   ci_failure --run-id "$GITHUB_RUN_ID"

@@ -29,19 +29,20 @@ inputs:
     required: false
 
 outputs:
-  should-run:
-    description: >-
-      'true' if the run failed and rix should answer it (out/prompt.md was written), 'false'
-      otherwise — the run didn't fail, it belongs to a fork, the loop guard stood down, or the
-      check itself errored.
-    value: ${{ steps.detect.outputs.should-run }}
   branch:
     description: >-
       The failing run's branch, and the only branch the answer to this failure may be pushed to.
-      Read here rather than from anything the agent's run produces: this job holds no write token
-      and runs before the agent exists, so a later privileged job comparing a push target against
-      it is comparing against a value the agent had no way to influence. Empty unless should-run
-      is 'true'.
+      Empty in every other case — the run didn't fail, it belongs to a fork, the loop guard stood
+      down, or the check itself errored — which makes this the whole answer: a caller runs an agent
+      when there is a branch here and doesn't when there isn't, and out/prompt.md exists exactly
+      when it is set.
+
+      One output rather than a branch plus a boolean saying whether to use it, because the two
+      would be the same fact written twice and could disagree. Read here rather than from anything
+      the agent's run produces: this job holds no write token and runs before the agent exists, so
+      a later privileged job comparing a push target against it is comparing against a value the
+      agent had no way to influence — and gating the run on the same value means no agent can be
+      started without one bounding it.
     value: ${{ steps.detect.outputs.branch }}
 
 runs:
@@ -108,12 +109,12 @@ runs:
         # converted.
         IFS=$'\037' read -r status outcome error branch rix_commits head_repo \
           < <(jq -r '[.status, (.outcome // ""), (.error // ""), (.branch // ""), (.rixCommits // ""), (.headRepo // "")] | @tsv' <<<"$result" | tr '\t' '\037')
-        # Default to false so every branch below (including an unrecognized status) leaves
-        # should-run in a defined state; only the detected branch needs to override it.
-        echo "should-run=false" >> "$GITHUB_OUTPUT"
+        # Every arm below other than `detected` leaves the branch output unset, which a caller
+        # reads as the empty string - so an unrecognized status stands down by default rather than
+        # by having remembered to say so.
         case "$status" in
           detected)
-            # The one case the agent runs for. The branch goes out alongside it because the job
+            # The one case the agent runs for, and so the one case that names a branch: the job
             # that answers this failure may push nowhere else, and this is the last point at which
             # that name is known to be untouched by the answer.
             #
@@ -123,7 +124,6 @@ runs:
             # That is also why the prompt - the one field built from the failing run's own log
             # output, and therefore the one with no bound on its content - travels as a file rather
             # than through here.
-            echo "should-run=true" >> "$GITHUB_OUTPUT"
             echo "branch=$branch" >> "$GITHUB_OUTPUT"
             ;;
           skipped)
