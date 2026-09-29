@@ -17,9 +17,8 @@ namespace Rix.Tests;
 /// whole set. <see cref="AddTo_RegistersExactlyTheFlagsCoveredHere"/> keeps the list honest:
 /// registering an eleventh option without adding a row here fails rather than going uncovered.
 ///
-/// <c>ci-failure</c> used to be driven through the same set. It no longer takes these flags at all -
-/// it reports a verdict and stops, leaving the agent to another machine - so the options it does
-/// share are covered by <see cref="CiFailureCommandTests"/> alongside the ones it rejects.</summary>
+/// <c>ci-failure</c> runs no agent and takes only a few of these flags, so those are covered by
+/// <see cref="CiFailureCommandTests"/> alongside the ones it rejects.</summary>
 [TestClass]
 public class SharedJobOptionsTests
 {
