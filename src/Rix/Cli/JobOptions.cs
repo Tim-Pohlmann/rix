@@ -13,8 +13,7 @@ namespace Rix.Cli;
 /// <see cref="CommonOptions"/> instead, since <c>submit</c> takes them too without taking anything
 /// else here; <see cref="AddTo"/> still registers them, so one call yields the whole flag surface.
 ///
-/// <c>ci-failure</c> used to share this set, back when it ran the agent itself. It now reports a
-/// verdict and stops, so it borrows only <see cref="ReadTokenOption"/> and
+/// <c>ci-failure</c> runs no agent, so it borrows only <see cref="ReadTokenOption"/> and
 /// <see cref="OutputDirOption"/> by name — see <see cref="CiFailureCommand"/>.</summary>
 internal static class JobOptions
 {

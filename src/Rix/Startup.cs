@@ -200,9 +200,8 @@ internal static class Startup
 
     /// <summary>Writes <paramref name="line"/> to <paramref name="writer"/>, swallowing the ways a
     /// closed/broken console stream can fail a write (<see cref="IOException"/> for a broken pipe,
-    /// <see cref="ObjectDisposedException"/> if the stream was already disposed) - used by
-    /// <see cref="ExecuteJobAsync"/> for output that must never prevent the correct exit code from
-    /// being returned.</summary>
+    /// <see cref="ObjectDisposedException"/> if the stream was already disposed) - used for output
+    /// that must never prevent the correct exit code from being returned.</summary>
     private static async Task WriteBestEffortAsync(TextWriter writer, string line)
     {
         try { await writer.WriteLineAsync(line); }
