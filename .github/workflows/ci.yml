@@ -214,15 +214,12 @@ jobs:
 
       - name: Assert the unfinished run was skipped, not answered
         env:
-          SHOULD_RUN: ${{ steps.detect.outputs.should-run }}
           BRANCH: ${{ steps.detect.outputs.branch }}
         run: |
           # The step above already fails on a rejected input or an API error, so this only pins
           # down the decision: a run with no conclusion yet is not a failure to answer, and a
-          # should-run of true would send a later job to start an agent against one.
-          [[ "$SHOULD_RUN" == "false" ]] || { echo "expected should-run=false, got '$SHOULD_RUN'" >&2; exit 1; }
-          # And that the branch output stays empty with it. It is the one value a privileged job
-          # trusts, so it must never carry a name when nothing is meant to be pushed at all.
+          # branch here would both send a later job to start an agent against one and tell the
+          # privileged job holding the write token where its output may be pushed.
           [[ -z "$BRANCH" ]] || { echo "expected an empty branch, got '$BRANCH'" >&2; exit 1; }
 
   ci-failure-statuses:
@@ -244,8 +241,8 @@ jobs:
     # action already accepts a `rix-bin` path, so each case here points it at a stub that prints
     # one canned result and exits with a chosen code - no token, no network. What that buys over
     # ci-failure-result-fields-style extraction of the bash out of the YAML is that the decision is
-    # read back through the action's real interface: the `should-run` and `branch` outputs
-    # on-ci-failure.yml gates the other two jobs with, and whether the step fails at all.
+    # read back through the action's real interface: the `branch` output on-ci-failure.yml gates
+    # the other two jobs with, and whether the step fails at all.
     #
     # Not covered here: the ::notice::/::error:: text itself, and so escape_workflow_command. A
     # step's annotations are not readable by a later step in the same job, so pinning that would
@@ -254,12 +251,11 @@ jobs:
       fail-fast: false
       matrix:
         case:
-          # The one arm that sets should-run=true, and the only one that names a branch - the
+          # The only arm that names a branch - which is both what starts the agent and the one
           # value create-pr is allowed to push to.
           - name: detected
             stdout: '{"status":"detected","prompt":"fix it","runUrl":"https://github.com/o/r/actions/runs/1","branch":"feature/x","prNumber":7}'
             exit: 0
-            should-run: 'true'
             branch: feature/x
             outcome: success
 
@@ -268,7 +264,6 @@ jobs:
           - name: skipped
             stdout: '{"status":"skipped","outcome":"succeeded"}'
             exit: 0
-            should-run: 'false'
             branch: ''
             outcome: success
 
@@ -276,14 +271,12 @@ jobs:
           - name: untrustedRun
             stdout: '{"status":"untrustedRun","headRepo":"someone/fork","branch":"main"}'
             exit: 0
-            should-run: 'false'
             branch: ''
             outcome: success
 
           - name: loopGuarded
             stdout: '{"status":"loopGuarded","rixCommits":5,"branch":"rix/fix-the-thing"}'
             exit: 0
-            should-run: 'false'
             branch: ''
             outcome: success
 
@@ -292,7 +285,6 @@ jobs:
           - name: error
             stdout: '{"status":"error","error":"read token lacks actions:read"}'
             exit: 1
-            should-run: 'false'
             branch: ''
             outcome: failure
 
@@ -303,7 +295,6 @@ jobs:
           - name: unrecognized status, rix exited 0
             stdout: '{"status":"inventedByANewerRelease"}'
             exit: 0
-            should-run: 'false'
             branch: ''
             outcome: failure
             # Off the schema on purpose - it stands in for a release this repo hasn't seen.
@@ -359,18 +350,14 @@ jobs:
 
       - name: Assert the action's decision matches the result it was handed
         env:
-          EXPECTED_SHOULD_RUN: ${{ matrix.case.should-run }}
           EXPECTED_BRANCH: ${{ matrix.case.branch }}
           EXPECTED_OUTCOME: ${{ matrix.case.outcome }}
-          ACTUAL_SHOULD_RUN: ${{ steps.detect.outputs.should-run }}
           ACTUAL_BRANCH: ${{ steps.detect.outputs.branch }}
           ACTUAL_OUTCOME: ${{ steps.detect.outcome }}
         run: |
           failed=0
-          if [[ "$ACTUAL_SHOULD_RUN" != "$EXPECTED_SHOULD_RUN" ]]; then
-            echo "should-run: expected '$EXPECTED_SHOULD_RUN', got '$ACTUAL_SHOULD_RUN'" >&2
-            failed=1
-          fi
+          # An empty expectation is the assertion that this status starts no agent at all: the
+          # branch is what the run job is gated on, so nothing else has to say so.
           if [[ "$ACTUAL_BRANCH" != "$EXPECTED_BRANCH" ]]; then
             echo "branch: expected '$EXPECTED_BRANCH', got '$ACTUAL_BRANCH'" >&2
             failed=1

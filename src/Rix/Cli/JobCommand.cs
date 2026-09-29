@@ -11,6 +11,7 @@ internal static class JobCommand
 
         JobOptions.AddTo(command);
         command.Options.Add(JobOptions.PromptOption);
+        command.Options.Add(JobOptions.PromptFileOption);
         command.Options.Add(JobOptions.AllowedPushBranchesOption);
         command.Options.Add(JobOptions.FactoryRepoOption);
         command.Options.Add(JobOptions.AgentHomePathOption);
@@ -23,7 +24,7 @@ internal static class JobCommand
         // Read in the order problems should be reported: the first failing read is the one the
         // user sees.
         var repo = CommonOptions.ReadRepo(parsed);
-        var prompt = parsed.RequiredText(JobOptions.PromptOption, "RIX_PROMPT");
+        var prompt = JobOptions.ReadPrompt(parsed, fileSystem);
         var readToken = JobOptions.ReadReadToken(parsed);
         var agent = JobOptions.ReadAgent(parsed);
         var maxTokens = JobOptions.ReadMaxTokens(parsed);

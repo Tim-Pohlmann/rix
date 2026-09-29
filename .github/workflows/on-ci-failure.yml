@@ -126,7 +126,10 @@ jobs:
     # binary is picked per OS/arch, so all three jobs have to land on the same kind of machine.
     runs-on: ${{ inputs.runner }}
     outputs:
-      should-run: ${{ steps.detect.outputs.should-run }}
+      # The failing run's branch when there is a failure to answer and empty otherwise, so it is
+      # both the gate on the two jobs below and the only branch they may push to. One value for
+      # both because they are the same question: there is no answer to deliver without somewhere
+      # to deliver it.
       branch: ${{ steps.detect.outputs.branch }}
     steps:
       # A local `uses: ./...` action reference resolves against whatever is already checked out
@@ -166,7 +169,7 @@ jobs:
       # out of $GITHUB_OUTPUT leaves that channel carrying only the short values rix validated -
       # nothing long enough or arbitrary enough to forge a second output alongside it.
       - name: Upload prompt
-        if: steps.detect.outputs.should-run == 'true'
+        if: steps.detect.outputs.branch != ''
         uses: actions/upload-artifact@v4
         with:
           name: rix-prompt
@@ -175,7 +178,7 @@ jobs:
   run:
     name: Run rix job
     needs: detect
-    if: needs.detect.outputs.should-run == 'true'
+    if: needs.detect.outputs.branch != ''
     runs-on: ${{ inputs.runner }}
     steps:
       # See the comment on the equivalent step in the `detect` job above - same reasoning applies
