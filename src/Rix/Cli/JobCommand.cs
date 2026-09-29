@@ -24,7 +24,7 @@ internal static class JobCommand
         // Read in the order problems should be reported: the first failing read is the one the
         // user sees.
         var repo = CommonOptions.ReadRepo(parsed);
-        var prompt = JobOptions.ReadPrompt(parsed);
+        var prompt = JobOptions.ReadPrompt(parsed, fileSystem);
         var readToken = JobOptions.ReadReadToken(parsed);
         var agent = JobOptions.ReadAgent(parsed);
         var maxTokens = JobOptions.ReadMaxTokens(parsed);
