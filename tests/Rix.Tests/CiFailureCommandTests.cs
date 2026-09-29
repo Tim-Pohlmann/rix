@@ -1,7 +1,5 @@
-using Rix.Agents;
 using Rix.Cli;
 using Rix.CiFailure;
-using Rix.Job;
 
 namespace Rix.Tests;
 
@@ -16,11 +14,6 @@ public class CiFailureCommandTests
     private static CiFailureConfig ReadValid(params string[] extra)
     => Read(["--repo", "o/r", "--read-token", "r", "--run-id", "1", "--output-dir", Path.GetTempPath(), .. extra]);
 
-    /// <summary>The job half of a parsed config, with the two values only a detected failure can
-    /// supply stubbed out — these tests assert on what came off the command line, not on those.</summary>
-    private static JobConfig Job(CiFailureConfig config)
-    => config.ToJobConfig("fix it", new BranchName("rix/fix"));
-
     [TestMethod]
     public void Command_PassesEnvVarFallbacks_WhenFlagsAbsent()
     {
@@ -28,20 +21,15 @@ public class CiFailureCommandTests
         env.Set("RIX_REPO", "env/repo");
         env.Set("RIX_READ_TOKEN", "env-read");
         env.Set("RIX_RUN_ID", "42");
-        env.Set("RIX_MAX_TOKENS", "999");
-        env.Set("RIX_TIMEOUT", "15");
-        env.Set("RIX_WORK_DIR", Path.GetTempPath());
+        env.Set("RIX_MAX_RIX_COMMITS", "3");
         env.Set("RIX_OUTPUT_DIR", Path.GetTempPath());
         var config = Read();
 
-        var job = Job(config);
         Assert.AreEqual("env/repo", config.Repo.ToString());
         Assert.AreEqual("env-read", config.ReadToken.Value);
         Assert.AreEqual(42, config.RunId.Value);
-        Assert.AreEqual(999, job.Agent.MaxTokens.Value);
-        Assert.AreEqual(15, job.TimeoutMinutes.Value);
-        Assert.AreEqual(Path.GetTempPath(), job.WorkDir.Value);
-        Assert.AreEqual(Path.GetTempPath(), job.OutputDir.Value);
+        Assert.AreEqual(3, config.MaxRixCommits.Value);
+        Assert.AreEqual(Path.GetTempPath(), config.OutputDir.Value);
     }
 
     [TestMethod]
@@ -52,26 +40,6 @@ public class CiFailureCommandTests
         var config = Read("--repo", "flag/repo", "--read-token", "r", "--run-id", "1", "--output-dir", Path.GetTempPath());
 
         Assert.AreEqual("flag/repo", config.Repo.ToString());
-    }
-
-    [TestMethod]
-    public void Command_SelectsAgent_FromFlag()
-    {
-        Assert.AreEqual(AgentKind.OpenCode, Job(ReadValid("--agent", "opencode")).Agent.Kind);
-    }
-
-    [TestMethod]
-    public void Command_PassesThroughModel_FromFlag()
-    {
-        Assert.AreEqual("openai/gpt-4o", Job(ReadValid("--model", "openai/gpt-4o")).Agent.Model);
-    }
-
-    [TestMethod]
-    public void Command_PassesThroughAgentApiKeyAndEnv_FromFlags()
-    {
-        var agent = Job(ReadValid("--agent-api-key", "secret", "--agent-api-key-env", "ANTHROPIC_API_KEY")).Agent;
-
-        Assert.AreEqual(new AgentCredential("ANTHROPIC_API_KEY", "secret"), agent.Credential);
     }
 
     [TestMethod]
@@ -111,6 +79,25 @@ public class CiFailureCommandTests
     }
 
     [TestMethod]
+    [DataRow("--agent", "opencode")]
+    [DataRow("--model", "openai/gpt-4o")]
+    [DataRow("--max-tokens", "999")]
+    [DataRow("--timeout", "15")]
+    [DataRow("--work-dir", ".")]
+    [DataRow("--agent-api-key", "secret")]
+    public void Command_DoesNotTakeTheAgentRunningFlags(string flag, string value)
+    {
+        // This command detects and stops, so every flag that only means something to an agent run
+        // belongs to whoever performs that run - on another machine, from another command line.
+        var parsed = CommandArgs.Parse(
+            CiFailureCommand.Build(),
+            "ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
+            "--output-dir", Path.GetTempPath(), flag, value);
+
+        Assert.AreNotEqual(0, parsed.Errors.Count);
+    }
+
+    [TestMethod]
     [DataRow("", "r", "1", "--repo is required")]
     [DataRow("noslash", "r", "1", "--repo: 'noslash' is not a valid repo identifier")]
     [DataRow("o/r", "", "1", "--read-token is required")]
@@ -123,16 +110,6 @@ public class CiFailureCommandTests
             () => Read("--repo", repo, "--read-token", readToken, "--run-id", runId, "--output-dir", Path.GetTempPath()));
 
         StringAssert.StartsWith(ex.Message, expectedError);
-    }
-
-    [TestMethod]
-    public void Command_ReportsTheFlag_WhenASharedJobOptionIsMalformed()
-    {
-        // The shared job options are validated up front, before the run is even looked at, so a
-        // typo surfaces immediately rather than only once a failure has been detected.
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => ReadValid("--max-tokens", "abc"));
-
-        Assert.AreEqual("--max-tokens: must be a whole number, got 'abc'", ex.Message);
     }
 
     [TestMethod]

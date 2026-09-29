@@ -200,9 +200,14 @@ and Windows on x64.
 
 `rix` also ships `.github/workflows/on-ci-failure.yml`, a reusable workflow that takes a
 specific run, checks whether it actually failed, builds a prompt from the failure (PR number,
-run URL, failing step logs), and runs the agent against it via the `run-ci-failure` and
-`submit-rix-job` composite actions. It's the building block for both patterns below — write the
-"turn a failure into a prompt" logic once, reuse it either way.
+run URL, failing step logs), and runs the agent against it. It's the building block for both
+patterns below — write the "turn a failure into a prompt" logic once, reuse it either way.
+
+It runs as three jobs, one composite action each: `detect-ci-failure` decides whether to act and
+writes the prompt, `run-rix-job` runs the agent against it, and `submit-rix-job` pushes the result
+and opens the PRs. They are separate jobs rather than steps because only the middle one executes
+code from the failing branch — see [What the agent's machine is trusted
+with](#what-the-agents-machine-is-trusted-with).
 
 ### Simple: directly in a project repo
 
@@ -257,6 +262,35 @@ fetching any logs. Getting a branch into the repo requires write access to it, s
 comparison is the permission check; a maintainer's own fork PR is turned away by it too, but rix
 could not have pushed a fix onto that branch anyway. The `head_repository` condition in the `if:`
 above is the same rule applied a step earlier, so a fork's failure costs no runner minutes.
+
+### What the agent's machine is trusted with
+
+The agent runs the failing branch's own code — its tests, its build scripts, its dependencies —
+so the machine it runs on must be assumed to belong to whoever can push to that branch. That is
+why `on-ci-failure.yml` is three jobs and not one:
+
+- **`detect` holds no write token and runs before the agent exists.** It decides whether to act
+  and names the one branch the answer may be pushed to. Both travel to the later jobs as job
+  outputs, which a later job cannot rewrite — unlike a file, a step output, or anything else the
+  agent's own job produces.
+- **`run` holds no write token.** Everything it produces — `result.json`, the git bundles, its
+  step outputs — is attacker-controlled by construction. Nothing downstream treats any of it as
+  a permission.
+- **`create-pr` holds the write token and never shares a machine with the agent.** The one thing
+  it enforces is that each push goes to the branch `detect` named.
+
+Two consequences worth stating outright:
+
+- **The contents of rix's commits are attacker-controlled.** The boundary above governs *where*
+  a push may land, not what is in it — a prompt-injected agent writes whatever it likes into the
+  branch it was already allowed to fix. So the branches rix pushes to must never run privileged
+  CI: no workflow triggered by them may hold secrets, `contents: write`, or a deployment
+  environment. Review them like any other pull request from an untrusted author.
+- **`read-token` must stay read-only.** It is the one credential handed to the agent's machine,
+  and the job split is worth exactly as much as that token is limited. A fine-grained PAT with
+  `contents:read` + `actions:read` on the target repo is the whole requirement; granting it
+  `contents:write` or `actions:write`, or scoping it across other repos, extends the compromise
+  to everything it reaches.
 
 ### Advanced: a central factory repo
 
@@ -386,7 +420,9 @@ it, and both apply to either pattern above:
   and creates nothing. The default is 5 rather than 1 because rix fixing up its own previous
   attempt is the normal case — the first attempt failing is exactly why there is a second.
   Note it bounds *commits*, not attempts: one agent run can produce more than one commit, so the
-  effective number of attempts is at most this.
+  effective number of attempts is at most this. It is a bound on cost and noise, not a security
+  control — the streak is counted from commit authorship, which whoever wrote those commits
+  chose.
 - **The `concurrency` group**, keyed on the failing branch and the repository that branch lives
   in, so a branch that fails twice in quick succession queues the second run rather than
   starting a second agent from the same tip. `cancel-in-progress: false` because a run already
