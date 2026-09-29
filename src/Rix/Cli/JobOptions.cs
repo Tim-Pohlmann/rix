@@ -89,8 +89,8 @@ internal static class JobOptions
             $"directory, skipping files that already exist. Requires --factory-repo (default: {JobConfig.DefaultAgentHomePath})"
     };
 
-    /// <summary>Registers every shared option, so a new one is added here once and both commands
-    /// accept it — each command's <c>ReadConfig</c> then reads it via the matching reader below.</summary>
+    /// <summary>Registers every option in this set in one call; <c>job</c>'s <c>ReadConfig</c> then
+    /// reads each via the matching reader below.</summary>
     internal static void AddTo(Command command)
     {
         command.Options.Add(CommonOptions.RepoOption);
