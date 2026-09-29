@@ -33,7 +33,7 @@ internal static class CiFailureCommand
             "Check whether a workflow run failed and, if so, write the prompt a coding agent should answer it with"
         );
 
-        // Four options, not JobOptions.AddTo's whole agent-running set: this command decides
+        // Three shared options, not JobOptions.AddTo's whole agent-running set: this command decides
         // whether to act and stops. Whoever runs the agent takes the agent's own flags.
         command.AddOption(CommonOptions.RepoOption);
         command.AddOption(JobOptions.ReadTokenOption);
