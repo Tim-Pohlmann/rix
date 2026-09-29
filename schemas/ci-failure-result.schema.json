@@ -11,9 +11,6 @@
         "status": {
           "const": "detected"
         },
-        "prompt": {
-          "type": "string"
-        },
         "runUrl": {
           "type": "string"
         },
@@ -25,14 +22,17 @@
             "integer",
             "null"
           ]
+        },
+        "promptFile": {
+          "type": "string"
         }
       },
       "required": [
         "status",
-        "prompt",
         "runUrl",
         "branch",
-        "prNumber"
+        "prNumber",
+        "promptFile"
       ],
       "additionalProperties": false
     },
