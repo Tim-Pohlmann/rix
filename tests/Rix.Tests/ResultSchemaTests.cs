@@ -64,7 +64,7 @@ public class ResultSchemaTests
             (job, JsonSerializer.Serialize<IJobResult>(new SetupFailure("boom"), JobJsonContext.Default.IJobResult)),
             (submit, JsonSerializer.Serialize<ISubmitResult>(new SubmitSuccess([], []), SubmitJsonContext.Default.ISubmitResult)),
             (submit, JsonSerializer.Serialize<ISubmitResult>(new SubmitFailure("boom"), SubmitJsonContext.Default.ISubmitResult)),
-            (ciFailure, JsonSerializer.Serialize<ICiFailureResult>(new CiFailureDetected("fix it", "https://example.test/run", "main", 7), CiFailureJsonContext.Default.ICiFailureResult)),
+            (ciFailure, JsonSerializer.Serialize<ICiFailureResult>(new CiFailureDetected("fix it", "https://example.test/run", "main", 7) { PromptFile = "out/prompt.md" }, CiFailureJsonContext.Default.ICiFailureResult)),
             (ciFailure, JsonSerializer.Serialize<ICiFailureResult>(new CiFailureSkipped("succeeded"), CiFailureJsonContext.Default.ICiFailureResult)),
             (ciFailure, JsonSerializer.Serialize<ICiFailureResult>(new CiFailureLoopGuarded("rix/fix", 3), CiFailureJsonContext.Default.ICiFailureResult)),
             (ciFailure, JsonSerializer.Serialize<ICiFailureResult>(new CiFailureUntrustedRun("someone/fork", "main"), CiFailureJsonContext.Default.ICiFailureResult)),
