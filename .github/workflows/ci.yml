@@ -254,7 +254,7 @@ jobs:
           # The only arm that names a branch - which is both what starts the agent and the one
           # value create-pr is allowed to push to.
           - name: detected
-            stdout: '{"status":"detected","prompt":"fix it","runUrl":"https://github.com/o/r/actions/runs/1","branch":"feature/x","prNumber":7}'
+            stdout: '{"status":"detected","promptFile":"out/prompt.md","runUrl":"https://github.com/o/r/actions/runs/1","branch":"feature/x","prNumber":7}'
             exit: 0
             branch: feature/x
             outcome: success
