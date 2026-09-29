@@ -1,4 +1,4 @@
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using Rix.CiFailure;
 using Rix.Repository;
 
@@ -308,19 +308,42 @@ public class CiFailureDetectorTests
         Assert.AreEqual(0, exitCode);
         Assert.AreEqual("detected", StatusOfWrittenResult());
         // The one file carrying the failing run's own log text, kept out of the JSON's way so that
-        // whoever hands it to an agent never has to quote it back out of a parsed field.
-        var prompt = await File.ReadAllTextAsync(Path.Combine(_outputDir, "prompt.md"));
+        // whoever hands it to an agent never has to quote it back out of a parsed field. The
+        // verdict names it instead, so a caller finds the prompt without knowing the convention.
+        var promptFile = Path.Combine(_outputDir, "prompt.md");
+        Assert.AreEqual(promptFile, WrittenResult()["promptFile"]!.GetValue<string>());
+        var prompt = await File.ReadAllTextAsync(promptFile);
         StringAssert.Contains(prompt, "CI failed on branch 'rix/fix'");
         StringAssert.Contains(prompt, "boom: it broke");
     }
 
+    /// <summary>The verdict points at the prompt rather than carrying it, so a prompt that never
+    /// reached disk would leave the pointer naming a file that isn't there — and a caller acting on
+    /// `detected` would start an agent against nothing. Reported as an error instead, which leaves
+    /// no branch for anything downstream to run on. Provoked by making prompt.md a directory, the
+    /// one way to fail the write that doesn't depend on the test process's privileges.</summary>
+    [TestMethod]
+    public async Task ExecuteCiFailureAsync_ReportsAnError_WhenThePromptCannotBeWritten()
+    {
+        Directory.CreateDirectory(Path.Combine(_outputDir, "prompt.md"));
+        var ci = new StubCiHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "rix/fix")),
+            getLogs: _ => Task.FromResult("boom: it broke"));
+
+        var exitCode = await Startup.ExecuteCiFailureAsync(
+            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost()));
+
+        Assert.AreNotEqual(0, exitCode);
+        Assert.AreEqual("error", StatusOfWrittenResult());
+        StringAssert.Contains(WrittenResult()["error"]!.GetValue<string>(), "failed to write the prompt");
+    }
+
     private CiFailureConfig Config() => TestConfig.ValidCiFailure(outputDir: _outputDir);
 
-    private string? StatusOfWrittenResult()
-    {
-        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(_outputDir, "result.json")));
-        return doc.RootElement.GetProperty("status").GetString();
-    }
+    private JsonObject WrittenResult()
+    => JsonNode.Parse(File.ReadAllText(Path.Combine(_outputDir, "result.json")))!.AsObject();
+
+    private string? StatusOfWrittenResult() => WrittenResult()["status"]!.GetValue<string>();
 
     private static CiFailureDetected AssertDetected(ICiFailureResult result) => result switch
     {
