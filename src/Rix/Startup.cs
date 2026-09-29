@@ -14,28 +14,28 @@ namespace Rix;
 
 internal static class Startup
 {
-    /// <summary>The production <see cref="JobContext"/>: git against the GitHub repo, process runner,
+    /// <summary>The production <see cref="JobContext"/>: git against GitHub, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
-    /// from <paramref name="config"/>. <see cref="JobContext.TranscriptLine"/> is a no-op here;
+    /// from <paramref name="config"/>. The one git client reads both the job's repo and the factory
+    /// repo holding the agent home files. <see cref="JobContext.TranscriptLine"/> is a no-op here;
     /// <see cref="ExecuteJobAsync"/> tees in its own collecting sink regardless of which context
     /// it ends up using.</summary>
     internal static JobContext DefaultContext(JobConfig config)
     => new
     (
-        GitHubGit(config.Repo, config.ReadToken),
+        GitHubGit(config.ReadToken),
         ProcessWrapper.RunAsync,
         SelectAgent(config.Agent.Kind),
         // Named because LogLine and TranscriptLine are the same delegate type: transposing them
         // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
-        TranscriptLine: _ => { },
-        AgentHomeFetcher: new AgentHomeFetcher(factoryRepo => GitHubGit(factoryRepo, config.ReadToken))
+        TranscriptLine: _ => { }
     );
 
-    /// <summary>Git against <paramref name="repo"/> on GitHub, authenticated with
-    /// <paramref name="token"/> — the one place the GitHub clone URL is spelled out.</summary>
-    private static GitCli GitHubGit(RepoIdentifier repo, GitReadToken token)
-    => new(new Uri($"https://github.com/{repo.Value}.git"), token, ProcessWrapper.RunAsync);
+    /// <summary>Git against repos on GitHub, authenticated with <paramref name="token"/> — the one
+    /// place the GitHub host is spelled out.</summary>
+    private static GitCli GitHubGit(GitReadToken token)
+    => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessWrapper.RunAsync);
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
@@ -64,7 +64,7 @@ internal static class Startup
     internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
     => new
     (
-        GitHubGit(config.Repo, config.WriteToken),
+        GitHubGit(config.WriteToken),
         new GitHubSubmitRepoHost(config.Repo, config.WriteToken),
         Console.Error.WriteLine
     );
