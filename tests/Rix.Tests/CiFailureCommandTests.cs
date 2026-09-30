@@ -1,7 +1,5 @@
-using Rix.Agents;
 using Rix.Cli;
 using Rix.CiFailure;
-using Rix.Job;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 
@@ -17,11 +15,6 @@ public class CiFailureCommandTests
         return CliPipeline.Build(root);
     }
 
-    /// <summary>The job half of a parsed config, with the two values only a detected failure can
-    /// supply stubbed out — these tests assert on what came off the command line, not on those.</summary>
-    private static JobConfig Job(CiFailureConfig config)
-    => config.ToJobConfig("fix it", new BranchName("rix/fix"));
-
     [TestMethod]
     public async Task Command_PassesEnvVarFallbacks_WhenFlagsAbsent()
     {
@@ -36,21 +29,16 @@ public class CiFailureCommandTests
         env.Set("RIX_REPO", "env/repo");
         env.Set("RIX_READ_TOKEN", "env-read");
         env.Set("RIX_RUN_ID", "42");
-        env.Set("RIX_MAX_TOKENS", "999");
-        env.Set("RIX_TIMEOUT", "15");
-        env.Set("RIX_WORK_DIR", Path.GetTempPath());
+        env.Set("RIX_MAX_RIX_COMMITS", "3");
         env.Set("RIX_OUTPUT_DIR", Path.GetTempPath());
         await parser.InvokeAsync("ci-failure");
 
         Assert.IsNotNull(captured);
-        var job = Job(captured);
         Assert.AreEqual("env/repo", captured.Repo.ToString());
         Assert.AreEqual("env-read", captured.ReadToken.Value);
         Assert.AreEqual(42, captured.RunId.Value);
-        Assert.AreEqual(999, job.Agent.MaxTokens.Value);
-        Assert.AreEqual(15, job.TimeoutMinutes.Value);
-        Assert.AreEqual(Path.GetTempPath(), job.WorkDir.Value);
-        Assert.AreEqual(Path.GetTempPath(), job.OutputDir.Value);
+        Assert.AreEqual(3, captured.MaxRixCommits.Value);
+        Assert.AreEqual(Path.GetTempPath(), captured.OutputDir.Value);
     }
 
     [TestMethod]
@@ -71,61 +59,6 @@ public class CiFailureCommandTests
 
         Assert.IsNotNull(captured);
         Assert.AreEqual("flag/repo", captured.Repo.ToString());
-    }
-
-    [TestMethod]
-    public async Task Command_SelectsAgent_FromFlag()
-    {
-        CiFailureConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
-
-        await parser.InvokeAsync(
-            ["ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
-             "--output-dir", Path.GetTempPath(), "--agent", "opencode"]);
-
-        Assert.IsNotNull(captured);
-        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, Job(captured).Agent.Kind);
-    }
-
-    [TestMethod]
-    public async Task Command_PassesThroughModel_FromFlag()
-    {
-        CiFailureConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
-
-        await parser.InvokeAsync(
-            ["ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
-             "--output-dir", Path.GetTempPath(), "--model", "openai/gpt-4o"]);
-
-        Assert.IsNotNull(captured);
-        Assert.AreEqual("openai/gpt-4o", Job(captured).Agent.Model);
-    }
-
-    [TestMethod]
-    public async Task Command_PassesThroughAgentApiKeyAndEnv_FromFlags()
-    {
-        CiFailureConfig? captured = null;
-        var parser = BuildParser(config =>
-        {
-            captured = config;
-            return Task.FromResult(0);
-        });
-
-        await parser.InvokeAsync(
-            ["ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
-             "--output-dir", Path.GetTempPath(), "--agent-api-key", "secret", "--agent-api-key-env", "ANTHROPIC_API_KEY"]);
-
-        Assert.IsNotNull(captured);
-        var agent = Job(captured).Agent;
-        Assert.AreEqual(new AgentCredential("ANTHROPIC_API_KEY", "secret"), agent.Credential);
     }
 
     [TestMethod]
@@ -225,19 +158,24 @@ public class CiFailureCommandTests
     }
 
     [TestMethod]
-    public async Task Command_Returns2_WhenASharedJobOptionIsMalformed()
+    [DataRow("--agent", "opencode")]
+    [DataRow("--model", "openai/gpt-4o")]
+    [DataRow("--max-tokens", "999")]
+    [DataRow("--timeout", "15")]
+    [DataRow("--work-dir", ".")]
+    [DataRow("--agent-api-key", "secret")]
+    public async Task Command_DoesNotTakeTheAgentRunningFlags(string flag, string value)
     {
-        // The shared job options are validated up front, before the run is even looked at, so a
-        // typo surfaces immediately rather than only once a failure has been detected.
+        // This command detects and stops, so every flag that only means something to an agent run
+        // belongs to whoever performs that run - on another machine, from another command line.
         var parser = BuildParser(_ => Task.FromResult(0));
 
         using var stderr = new ConsoleErrorScope();
         var exitCode = await parser.InvokeAsync(
             ["ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
-             "--output-dir", Path.GetTempPath(), "--max-tokens", "abc"]);
+             "--output-dir", Path.GetTempPath(), flag, value]);
 
-        Assert.AreEqual(ExitCodes.SetupFailed, exitCode);
-        StringAssert.Contains(stderr.Text, "error: --max-tokens: must be a whole number, got 'abc'");
+        Assert.AreNotEqual(ExitCodes.Success, exitCode);
     }
 
     [TestMethod]
