@@ -224,9 +224,9 @@ internal static class Startup
     internal static async Task<int> ExecuteJobAsync(JobConfig config, CancellationToken cancellationToken, JobContext? context = null)
     {
         var transcriptLines = new List<string>();
-        var collaborators = context ?? DefaultContext(config);
-        var result = await JobRunner.RunAsync(config, Teeing(collaborators, transcriptLines), cancellationToken);
-        return await WriteJobResultAsync(config, collaborators.FileSystem, result, transcriptLines);
+        context ??= DefaultContext(config);
+        var result = await JobRunner.RunAsync(config, Teeing(context, transcriptLines), cancellationToken);
+        return await WriteJobResultAsync(config, context.FileSystem, result, transcriptLines);
     }
 
     /// <summary>Wraps <paramref name="context"/>'s transcript sink so every line it emits is also
@@ -343,18 +343,18 @@ internal static class Startup
     /// </summary>
     internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, CiFailureContext? context = null)
     {
-        var collaborators = context ?? DefaultCiFailureContext(config);
+        context ??= DefaultCiFailureContext(config);
         var result = await CiFailureDetector.DetectAsync
         (
-            config.Repo, config.RunId, collaborators.Ci, collaborators.RepoHost, config.MaxRixCommits, cancellationToken
+            config.Repo, config.RunId, context.Ci, context.RepoHost, config.MaxRixCommits, cancellationToken
         );
 
         if (result is CiFailureDetected detected)
-            result = await WritePromptAsync(detected, collaborators.FileSystem, config.OutputDir);
+            result = await WritePromptAsync(detected, context.FileSystem, config.OutputDir);
 
         var json = JsonSerializer.Serialize(result, CiFailureJsonContext.Default.ICiFailureResult);
         await WriteBestEffortAsync(Console.Out, json);
-        await WriteOutputFileBestEffortAsync(collaborators.FileSystem, config.OutputDir, "result.json", json);
+        await WriteOutputFileBestEffortAsync(context.FileSystem, config.OutputDir, "result.json", json);
 
         // A detected failure exits successfully like the rest: it is a verdict, not an outcome, and
         // the caller decides what to do with it. Only CiFailureError - a problem talking to the API,
