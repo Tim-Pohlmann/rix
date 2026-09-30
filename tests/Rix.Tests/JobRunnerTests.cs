@@ -113,7 +113,7 @@ public class JobRunnerTests
     {
         using var stderr = new ConsoleErrorScope();
 
-        var result = await Run(fileSystem: new StubFileSystem(writeAllText: _ => throw new IOException("disk full")));
+        var result = await Run(fileSystem: new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full")));
 
         Assert.AreEqual(0, result);
         StringAssert.Contains(stderr.Text, "warning: failed to write result.json: disk full");

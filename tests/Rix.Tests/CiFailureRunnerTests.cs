@@ -339,7 +339,7 @@ public class CiFailureRunnerTests
     {
         using var stderr = new ConsoleErrorScope();
         var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
-        var fullDisk = new StubFileSystem(writeAllText: _ => throw new IOException("disk full"));
+        var fullDisk = new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full"));
 
         var exitCode = await Startup.ExecuteCiFailureAsync(
             Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost(), fullDisk));

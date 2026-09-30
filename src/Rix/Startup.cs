@@ -306,12 +306,12 @@ internal static class Startup
         return detected with { PromptFile = path };
     }
 
-    /// <summary>The production <see cref="InitializeContext"/>: writes each template to disk via
-    /// <see cref="LocalFileSystem"/> (creating any missing parent directory), and logs to stderr.</summary>
+    /// <summary>The production <see cref="InitializeContext"/>: the local disk and a stderr log
+    /// sink.</summary>
     private static InitializeContext DefaultInitializeContext()
     => new
     (
-        new LocalFileSystem().WriteAllTextAsync,
+        new LocalFileSystem(),
         Console.Error.WriteLine
     );
 
