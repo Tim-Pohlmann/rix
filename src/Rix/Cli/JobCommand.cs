@@ -11,6 +11,7 @@ internal static class JobCommand
 
         JobOptions.AddTo(command);
         command.Options.Add(JobOptions.PromptOption);
+        command.Options.Add(JobOptions.PromptFileOption);
         command.Options.Add(JobOptions.AllowedPushBranchesOption);
         command.Options.Add(JobOptions.FactoryRepoOption);
         command.Options.Add(JobOptions.AgentHomePathOption);
@@ -18,12 +19,13 @@ internal static class JobCommand
         return command;
     }
 
-    internal static JobConfig ReadConfig(ParseResult parsed, string systemTempDirectory, string userHomeDirectory)
+    /// <summary>Takes the prompt's text rather than reading it, since it may sit in a file: see
+    /// <see cref="JobOptions.ReadPrompt"/>.</summary>
+    internal static JobConfig ReadConfig(ParseResult parsed, string systemTempDirectory, string userHomeDirectory, string prompt)
     {
         // Read in the order problems should be reported: the first failing read is the one the
         // user sees.
         var repo = CommonOptions.ReadRepo(parsed);
-        var prompt = parsed.RequiredText(JobOptions.PromptOption, "RIX_PROMPT");
         var readToken = JobOptions.ReadReadToken(parsed);
         var agent = JobOptions.ReadAgent(parsed);
         var maxTokens = JobOptions.ReadMaxTokens(parsed);
@@ -50,5 +52,5 @@ internal static class JobCommand
     }
 
     internal static IReadOnlyList<RequiredDirectory> RequiredDirectories(JobConfig config)
-    => JobOptions.RequiredDirectories(config.WorkDir, config.OutputDir, config.AgentHome);
+    => [RequiredDirectory.For(CommonOptions.WorkDirOption, config.WorkDir), RequiredDirectory.For(JobOptions.OutputDirOption, config.OutputDir), .. JobOptions.RunnerHome(config.AgentHome)];
 }

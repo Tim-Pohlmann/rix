@@ -84,8 +84,8 @@ rules:
     severity: ERROR
     message: >-
       The CLI commands only turn text into values and never see the file
-      system. Take the locations they need as strings, and hand directories
-      that must exist to the handler as RequiredDirectory for Startup to check.
+      system. Take the locations they need as strings, and list directories
+      that must exist in the command's RequiredDirectories for Startup to check.
     paths:
       include:
         - src/Rix/Cli/**

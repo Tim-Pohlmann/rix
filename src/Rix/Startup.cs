@@ -99,27 +99,35 @@ internal static class Startup
             {
                 Runs
                 (
+                    fileSystem,
                     JobCommand.Build(),
-                    parsed => JobCommand.ReadConfig(parsed, temp, home),
-                    WhenDirectoriesExist<JobConfig>(fileSystem, JobCommand.RequiredDirectories, config => ExecuteJobAsync(config, cts.Token))
+                    parsed => JobCommand.ReadConfig(parsed, temp, home, PromptText(fileSystem, JobOptions.ReadPrompt(parsed))),
+                    JobCommand.RequiredDirectories,
+                    config => ExecuteJobAsync(config, cts.Token)
                 ),
                 Runs
                 (
+                    fileSystem,
                     SubmitCommand.Build(),
                     parsed => SubmitCommand.ReadConfig(parsed, temp),
-                    WhenDirectoriesExist<SubmitConfig>(fileSystem, SubmitCommand.RequiredDirectories, config => ExecuteSubmitAsync(config, cts.Token))
+                    SubmitCommand.RequiredDirectories,
+                    config => ExecuteSubmitAsync(config, cts.Token)
                 ),
                 Runs
                 (
+                    fileSystem,
                     CiFailureCommand.Build(),
                     CiFailureCommand.ReadConfig,
-                    WhenDirectoriesExist<CiFailureConfig>(fileSystem, CiFailureCommand.RequiredDirectories, config => ExecuteCiFailureAsync(config, cts.Token))
+                    CiFailureCommand.RequiredDirectories,
+                    config => ExecuteCiFailureAsync(config, cts.Token)
                 ),
                 Runs
                 (
+                    fileSystem,
                     InitializeCommand.Build(),
                     InitializeCommand.ReadConfig,
-                    WhenDirectoriesExist<InitializeConfig>(fileSystem, InitializeCommand.RequiredDirectories, config => ExecuteInitializeAsync(config, cts.Token))
+                    InitializeCommand.RequiredDirectories,
+                    config => ExecuteInitializeAsync(config, cts.Token)
                 ),
             };
             return await CliPipeline.InvokeAsync(rootCommand, args);
@@ -130,13 +138,49 @@ internal static class Startup
         }
     }
 
-    /// <summary>Makes invoking <paramref name="command"/> read its config and run it. The read happens
-    /// inside the action so an <see cref="InvalidInputException"/> it throws is reported like any
-    /// other (see <see cref="CliPipeline.ReportingInvalidInput"/>).</summary>
-    private static Command Runs<TConfig>(Command command, Func<ParseResult, TConfig> read, Func<TConfig, Task<int>> execute)
+    /// <summary>Makes invoking <paramref name="command"/> read its config, check the directories it
+    /// names exist, and run it. Both happen inside the action so an <see cref="InvalidInputException"/>
+    /// either throws is reported like any other (see <see cref="CliPipeline.ReportingInvalidInput"/>).</summary>
+    private static Command Runs<TConfig>
+    (
+        IFileSystem fileSystem,
+        Command command,
+        Func<ParseResult, TConfig> read,
+        Func<TConfig, IReadOnlyList<RequiredDirectory>> requiredDirectories,
+        Func<TConfig, Task<int>> execute
+    )
     {
-        command.SetAction(CliPipeline.ReportingInvalidInput(parsed => execute(read(parsed))));
+        var run = WhenDirectoriesExist(fileSystem, requiredDirectories, execute);
+        command.SetAction(CliPipeline.ReportingInvalidInput(parsed => run(read(parsed))));
         return command;
+    }
+
+    /// <summary>The text <paramref name="prompt"/> gives, reading it from its file if it names one:
+    /// the one flag whose value <c>job</c> can't produce itself, since the command never sees the
+    /// file system. The file's content is taken whole and unmodified - no trimming, since the
+    /// prompt is the text an agent is handed. A missing or blank file is reported under
+    /// <c>--prompt-file</c> the way a blank <c>--prompt</c> is: naming it was the caller asking for
+    /// a prompt from it, so finding none there is a problem to report rather than a reason to run
+    /// the agent on nothing.</summary>
+    internal static string PromptText(IFileSystem fileSystem, PromptSource prompt)
+    => prompt switch
+    {
+        PromptText text => text.Text,
+        PromptFile file => Input.Named(JobOptions.PromptFileOption.Name, () => ReadPromptFile(fileSystem, file.Path)),
+        _ => throw new NotSupportedException($"Unexpected prompt source: {prompt.GetType()}"),
+    };
+
+    private static string ReadPromptFile(IFileSystem fileSystem, string path)
+    {
+        if (!fileSystem.FileExists(path))
+            throw new InvalidInputException($"no file at '{path}'");
+
+        using var reader = new StreamReader(fileSystem.OpenRead(path));
+        var prompt = reader.ReadToEnd();
+        if (string.IsNullOrWhiteSpace(prompt))
+            throw new InvalidInputException($"'{path}' holds no prompt");
+
+        return prompt;
     }
 
     /// <summary>Runs <paramref name="run"/> once every directory <paramref name="requiredDirectories"/>
@@ -199,9 +243,7 @@ internal static class Startup
     /// Writes a job's outcome the same way regardless of what led to it: the result JSON to
     /// stdout, <c>result.json</c> to <paramref name="config"/>'s output dir (even on failure, so
     /// downstream tooling has one reliable place to read the outcome from), and
-    /// <c>transcript.md</c> if the agent said anything worth keeping. Shared by
-    /// <see cref="ExecuteJobAsync"/> and <see cref="ExecuteCiFailureAsync"/>, which only differ
-    /// in how they arrive at <paramref name="result"/>.
+    /// <c>transcript.md</c> if the agent said anything worth keeping.
     /// </summary>
     private static async Task<int> WriteJobResultAsync
     (
@@ -257,9 +299,8 @@ internal static class Startup
 
     /// <summary>Writes <paramref name="line"/> to <paramref name="writer"/>, swallowing the ways a
     /// closed/broken console stream can fail a write (<see cref="IOException"/> for a broken pipe,
-    /// <see cref="ObjectDisposedException"/> if the stream was already disposed) - used by
-    /// <see cref="ExecuteJobAsync"/> for output that must never prevent the correct exit code from
-    /// being returned.</summary>
+    /// <see cref="ObjectDisposedException"/> if the stream was already disposed) - used for output
+    /// that must never prevent the correct exit code from being returned.</summary>
     private static async Task WriteBestEffortAsync(TextWriter writer, string line)
     {
         try { await writer.WriteLineAsync(line); }
@@ -290,11 +331,15 @@ internal static class Startup
     /// does so from a <see cref="CiFailureDetected.Prompt"/> this wrote, on a machine this one
     /// never touches.
     ///
-    /// The verdict goes to three places: stdout (for a caller reading the JSON directly),
-    /// <c>result.json</c> (for one that would rather read a file), and — only when a failure was
-    /// detected — <c>prompt.md</c>. The prompt gets its own file rather than being read back out of
-    /// the JSON because it is the one field carrying arbitrary text from the failing run's logs:
-    /// keeping it out of whatever parses the verdict means no caller has to quote it correctly.
+    /// The verdict goes to stdout (for a caller reading the JSON directly) and to
+    /// <c>result.json</c> (for one that would rather read a file); when a failure was detected the
+    /// prompt goes to <c>prompt.md</c>, and the verdict carries its path rather than its text. The
+    /// prompt is the one field built from the failing run's log output, so it is the one with no
+    /// bound on its length or its content — naming the file instead of inlining it means the
+    /// verdict stays short and validated, and nobody parsing it has to quote arbitrary log text
+    /// back out of a field. That is also why the file is written first: the verdict only points at
+    /// it once it is there, and a prompt that could not be written is reported as an error rather
+    /// than announced as a detection.
     /// </summary>
     internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, CiFailureContext? context = null)
     {
@@ -304,11 +349,12 @@ internal static class Startup
             config.Repo, config.RunId, context.Ci, context.RepoHost, config.MaxRixCommits, cancellationToken
         );
 
+        if (result is CiFailureDetected detected)
+            result = await WritePromptAsync(detected, context.FileSystem, config.OutputDir);
+
         var json = JsonSerializer.Serialize(result, CiFailureJsonContext.Default.ICiFailureResult);
         await WriteBestEffortAsync(Console.Out, json);
         await WriteOutputFileBestEffortAsync(context.FileSystem, config.OutputDir, "result.json", json);
-        if (result is CiFailureDetected detected)
-            await WriteOutputFileBestEffortAsync(context.FileSystem, config.OutputDir, "prompt.md", detected.Prompt);
 
         // A detected failure exits successfully like the rest: it is a verdict, not an outcome, and
         // the caller decides what to do with it. Only CiFailureError - a problem talking to the API,
@@ -319,6 +365,27 @@ internal static class Startup
             CiFailureError => ExitCodes.JobFailed,
             _ => throw new NotSupportedException($"Unexpected ci-failure result type: {result.GetType()}"),
         };
+    }
+
+    /// <summary>Writes the prompt beside the verdict and returns the verdict naming it. Unlike the
+    /// best-effort writes elsewhere here, a failure is turned into a <see cref="CiFailureError"/>:
+    /// this one runs before the verdict is reported rather than after, and a <c>detected</c> result
+    /// whose prompt never reached disk would send a caller to a file that isn't there. Reporting it
+    /// as an error instead leaves the caller with no branch and no agent started, which is what a
+    /// check that couldn't finish should produce.</summary>
+    private static async Task<ICiFailureResult> WritePromptAsync(CiFailureDetected detected, IFileSystem fileSystem, DirectoryPath outputDir)
+    {
+        var path = Path.Combine(outputDir.Value, "prompt.md");
+        try
+        {
+            await fileSystem.WriteAllTextAsync(path, detected.Prompt, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new CiFailureError($"failed to write the prompt to {path}: {ex.Message}");
+        }
+
+        return detected with { PromptFile = path };
     }
 
     /// <summary>The production <see cref="InitializeContext"/>: writes each template to disk via

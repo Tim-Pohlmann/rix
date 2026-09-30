@@ -1,4 +1,4 @@
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using Rix.CiFailure;
 using Rix.Repository;
 
@@ -241,8 +241,7 @@ public class CiFailureDetectorTests
     {
         var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
 
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost(), new LocalFileSystem()));
+        var exitCode = await Execute(ci);
 
         Assert.AreEqual(0, exitCode);
         // Written for every verdict, not only the actionable one: the caller gating a workflow on
@@ -259,8 +258,7 @@ public class CiFailureDetectorTests
 
         // Exit 0, like any other reason not to act: the branch being rix's own work is a decision,
         // not a failure of this run, and a non-zero exit would fail the caller's workflow for it.
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, repoHost, new LocalFileSystem()));
+        var exitCode = await Execute(ci, repoHost);
 
         Assert.AreEqual(0, exitCode);
         Assert.AreEqual("loopGuarded", StatusOfWrittenResult());
@@ -275,8 +273,7 @@ public class CiFailureDetectorTests
         var ci = new StubCiHost(
             getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), headRepo: "outsider/repo")));
 
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost(), new LocalFileSystem()));
+        var exitCode = await Execute(ci);
 
         Assert.AreEqual(0, exitCode);
         Assert.AreEqual("untrustedRun", StatusOfWrittenResult());
@@ -288,8 +285,7 @@ public class CiFailureDetectorTests
     {
         var ci = new StubCiHost(getRun: _ => throw new CiHostException("boom"));
 
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost(), new LocalFileSystem()));
+        var exitCode = await Execute(ci);
 
         Assert.AreEqual(1, exitCode);
         Assert.AreEqual("error", StatusOfWrittenResult());
@@ -302,25 +298,47 @@ public class CiFailureDetectorTests
             getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "rix/fix")),
             getLogs: _ => Task.FromResult("boom: it broke"));
 
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost(), new LocalFileSystem()));
+        var exitCode = await Execute(ci);
 
         Assert.AreEqual(0, exitCode);
         Assert.AreEqual("detected", StatusOfWrittenResult());
         // The one file carrying the failing run's own log text, kept out of the JSON's way so that
-        // whoever hands it to an agent never has to quote it back out of a parsed field.
-        var prompt = await File.ReadAllTextAsync(Path.Combine(_outputDir, "prompt.md"));
+        // whoever hands it to an agent never has to quote it back out of a parsed field. The
+        // verdict names it instead, so a caller finds the prompt without knowing the convention.
+        var promptFile = Path.Combine(_outputDir, "prompt.md");
+        Assert.AreEqual(promptFile, WrittenResult()["promptFile"]!.GetValue<string>());
+        var prompt = await File.ReadAllTextAsync(promptFile);
         StringAssert.Contains(prompt, "CI failed on branch 'rix/fix'");
         StringAssert.Contains(prompt, "boom: it broke");
     }
 
+    /// <summary>The verdict points at the prompt rather than carrying it, so a prompt that never
+    /// reached disk would leave the pointer naming a file that isn't there — and a caller acting on
+    /// `detected` would start an agent against nothing. Reported as an error instead, which leaves
+    /// no branch for anything downstream to run on. Provoked by making prompt.md a directory, the
+    /// one way to fail the write that doesn't depend on the test process's privileges.</summary>
     [TestMethod]
-    public async Task ExecuteCiFailureAsync_StillReturnsExitCode_WhenTheOutputFilesCannotBeWritten()
+    public async Task ExecuteCiFailureAsync_ReportsAnError_WhenThePromptCannotBeWritten()
+    {
+        Directory.CreateDirectory(Path.Combine(_outputDir, "prompt.md"));
+        var ci = new StubCiHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "rix/fix")),
+            getLogs: _ => Task.FromResult("boom: it broke"));
+
+        var exitCode = await Execute(ci);
+
+        Assert.AreNotEqual(0, exitCode);
+        Assert.AreEqual("error", StatusOfWrittenResult());
+        StringAssert.Contains(WrittenResult()["error"]!.GetValue<string>(), "failed to write the prompt");
+    }
+
+    /// <summary>result.json is written after the verdict is decided, so failing to write it only
+    /// warns.</summary>
+    [TestMethod]
+    public async Task ExecuteCiFailureAsync_StillReturnsExitCode_WhenTheVerdictCannotBeWritten()
     {
         using var stderr = new ConsoleErrorScope();
-        var ci = new StubCiHost(
-            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed())),
-            getLogs: _ => Task.FromResult("boom"));
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
         var fullDisk = new StubFileSystem(writeAllText: _ => throw new IOException("disk full"));
 
         var exitCode = await Startup.ExecuteCiFailureAsync(
@@ -328,16 +346,19 @@ public class CiFailureDetectorTests
 
         Assert.AreEqual(0, exitCode);
         StringAssert.Contains(stderr.Text, "warning: failed to write result.json: disk full");
-        StringAssert.Contains(stderr.Text, "warning: failed to write prompt.md: disk full");
     }
 
     private CiFailureConfig Config() => TestConfig.ValidCiFailure(outputDir: _outputDir);
 
-    private string? StatusOfWrittenResult()
-    {
-        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(_outputDir, "result.json")));
-        return doc.RootElement.GetProperty("status").GetString();
-    }
+    /// <summary>The shell's counterpart to <see cref="Detect"/>, defaulting the repo host the same
+    /// way.</summary>
+    private Task<int> Execute(StubCiHost ci, StubCiFailureRepoHost? repoHost = null)
+    => Startup.ExecuteCiFailureAsync(Config(), CancellationToken.None, new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost(), new LocalFileSystem()));
+
+    private JsonObject WrittenResult()
+    => JsonNode.Parse(File.ReadAllText(Path.Combine(_outputDir, "result.json")))!.AsObject();
+
+    private string? StatusOfWrittenResult() => WrittenResult()["status"]!.GetValue<string>();
 
     private static CiFailureDetected AssertDetected(ICiFailureResult result) => result switch
     {
