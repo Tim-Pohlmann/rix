@@ -241,8 +241,7 @@ public class CiFailureRunnerTests
     {
         var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
 
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost()));
+        var exitCode = await Execute(ci);
 
         Assert.AreEqual(0, exitCode);
         // Written for every verdict, not only the actionable one: the caller gating a workflow on
@@ -259,8 +258,7 @@ public class CiFailureRunnerTests
 
         // Exit 0, like any other reason not to act: the branch being rix's own work is a decision,
         // not a failure of this run, and a non-zero exit would fail the caller's workflow for it.
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, repoHost));
+        var exitCode = await Execute(ci, repoHost);
 
         Assert.AreEqual(0, exitCode);
         Assert.AreEqual("loopGuarded", StatusOfWrittenResult());
@@ -275,8 +273,7 @@ public class CiFailureRunnerTests
         var ci = new StubCiHost(
             getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), headRepo: "outsider/repo")));
 
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost()));
+        var exitCode = await Execute(ci);
 
         Assert.AreEqual(0, exitCode);
         Assert.AreEqual("untrustedRun", StatusOfWrittenResult());
@@ -288,8 +285,7 @@ public class CiFailureRunnerTests
     {
         var ci = new StubCiHost(getRun: _ => throw new CiHostException("boom"));
 
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost()));
+        var exitCode = await Execute(ci);
 
         Assert.AreEqual(1, exitCode);
         Assert.AreEqual("error", StatusOfWrittenResult());
@@ -302,8 +298,7 @@ public class CiFailureRunnerTests
             getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "rix/fix")),
             getLogs: _ => Task.FromResult("boom: it broke"));
 
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost()));
+        var exitCode = await Execute(ci);
 
         Assert.AreEqual(0, exitCode);
         Assert.AreEqual("detected", StatusOfWrittenResult());
@@ -330,8 +325,7 @@ public class CiFailureRunnerTests
             getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "rix/fix")),
             getLogs: _ => Task.FromResult("boom: it broke"));
 
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost()));
+        var exitCode = await Execute(ci);
 
         Assert.AreNotEqual(0, exitCode);
         Assert.AreEqual("error", StatusOfWrittenResult());
@@ -339,6 +333,11 @@ public class CiFailureRunnerTests
     }
 
     private CiFailureConfig Config() => TestConfig.ValidCiFailure(outputDir: _outputDir);
+
+    /// <summary>The shell's counterpart to <see cref="Detect"/>, defaulting the repo host the same
+    /// way.</summary>
+    private Task<int> Execute(StubCiHost ci, StubCiFailureRepoHost? repoHost = null)
+    => Startup.ExecuteCiFailureAsync(Config(), CancellationToken.None, new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost()));
 
     private JsonObject WrittenResult()
     => JsonNode.Parse(File.ReadAllText(Path.Combine(_outputDir, "result.json")))!.AsObject();
