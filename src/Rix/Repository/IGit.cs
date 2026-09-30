@@ -41,5 +41,10 @@ internal interface IGit
         CancellationToken cancellationToken
     );
 
+    /// <summary>Fetches <paramref name="branch"/> out of the git bundle at
+    /// <paramref name="bundlePath"/> into a local branch of the same name, inside the already-cloned
+    /// <paramref name="repoDirectory"/> - the counterpart of <see cref="CreateBundleAsync"/>.</summary>
+    Task FetchBundleAsync(string repoDirectory, string bundlePath, BranchName branch, CancellationToken cancellationToken);
+
     Task PushBranchAsync(string repoDirectory, BranchName branch, CancellationToken cancellationToken);
 }
