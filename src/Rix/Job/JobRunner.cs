@@ -28,29 +28,32 @@ internal static class JobRunner
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
 
-        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, config.WorkDir.Value, ct) is InstallFailed installFailed)
-        {
-            return new SetupFailure($"agent install failed: {installFailed.Reason}");
-        }
-
         var stopwatch = Stopwatch.StartNew();
 
         using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-clone");
+        using var agentHomeCheckout = CreateAgentHomeCheckout(config, context);
 
-        try
-        {
-            await context.Git.CloneAsync(config.Repo, cloneDir.Path, ct);
-            // Set the commit identity before the agent starts, so it can commit without guessing
-            // author metadata.
-            await context.Git.ConfigureIdentityAsync(cloneDir.Path, ct);
-        }
-        catch (RepoHostException ex)
-        {
-            return new SetupFailure(ex.Message);
-        }
+        // The install and both clones are mostly network waits and touch nothing the others do,
+        // so they overlap. Failures are still reported in this order, whichever finishes first.
+        var install = context.Agent.EnsureInstalledAsync(context.RunProcess, config.WorkDir.Value, ct);
+        var clone = CloneAsync(config, context, cloneDir.Path, ct);
+        var agentHomeFetch = FetchAgentHomeAsync(config, context, agentHomeCheckout, ct);
+        await Task.WhenAll(install, clone, agentHomeFetch);
 
-        if (await CopyAgentHomeAsync(config, context, ct) is { } agentHomeFailure)
-            return agentHomeFailure;
+        if (await install is InstallFailed installFailed)
+            return new SetupFailure($"agent install failed: {installFailed.Reason}");
+        if (await clone is { } cloneFailure)
+            return cloneFailure;
+        if (await agentHomeFetch is { } fetchFailure)
+            return fetchFailure;
+        // Only once the install is done, as before this overlapped: the install may write into the
+        // runner's home too, and the copy keeps whatever it finds there.
+        var copyFailure = CopyAgentHome(config, context, agentHomeCheckout);
+        // Done with it: the factory repo needn't sit in the work dir for the whole run. Disposing
+        // twice is harmless.
+        agentHomeCheckout?.Dispose();
+        if (copyFailure is not null)
+            return copyFailure;
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
@@ -95,20 +98,44 @@ internal static class JobRunner
         };
     }
 
-    /// <summary>Copies the operator-supplied agent home files over the runner's user home before
-    /// the agent starts, so its config/context files are in place when the agent first reads them.
-    /// They come from a sparse clone of just the requested directory of the factory repo, read with
-    /// the job's own credential. Returns the <see cref="SetupFailure"/> to end the run with, or
-    /// <c>null</c> once the files are in place or when the run has none configured.</summary>
-    private static async Task<SetupFailure?> CopyAgentHomeAsync
+    /// <summary>Clones the job's repo and sets the commit identity before the agent starts, so it
+    /// can commit without guessing author metadata. Returns the <see cref="SetupFailure"/> to end
+    /// the run with, or <c>null</c> once the clone is ready.</summary>
+    private static async Task<SetupFailure?> CloneAsync(JobConfig config, JobContext context, string cloneDir, CancellationToken ct)
+    {
+        try
+        {
+            await context.Git.CloneAsync(config.Repo, cloneDir, ct);
+            await context.Git.ConfigureIdentityAsync(cloneDir, ct);
+            return null;
+        }
+        catch (RepoHostException ex)
+        {
+            return new SetupFailure(ex.Message);
+        }
+    }
+
+    /// <summary>The directory the agent home files are fetched into, or <c>null</c> when the run
+    /// has none configured.</summary>
+    private static TempDirectory? CreateAgentHomeCheckout(JobConfig config, JobContext context)
+    {
+        if (config.AgentHome is null)
+            return null;
+        return TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-agent-home");
+    }
+
+    /// <summary>Fetches the operator-supplied agent home files into <paramref name="checkout"/>:
+    /// a sparse clone of just the requested directory of the factory repo, read with the job's own
+    /// credential. Returns the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once
+    /// the files are there or when the run has none configured.</summary>
+    private static async Task<SetupFailure?> FetchAgentHomeAsync
     (
-        JobConfig config, JobContext context, CancellationToken ct
+        JobConfig config, JobContext context, TempDirectory? checkout, CancellationToken ct
     )
     {
-        if (config.AgentHome is not { } agentHome)
+        if (config.AgentHome is not { } agentHome || checkout is null)
             return null;
 
-        using var checkout = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-agent-home");
         try
         {
             await context.Git.SparseCloneAsync(agentHome.Repo, checkout.Path, agentHome.SourcePath, ct);
@@ -118,13 +145,23 @@ internal static class JobRunner
             return new SetupFailure($"agent home fetch failed: {ex.Message}");
         }
 
-        var source = Path.Combine(checkout.Path, agentHome.SourcePath.Value);
-        if (!context.FileSystem.DirectoryExists(source))
+        if (!context.FileSystem.DirectoryExists(Path.Combine(checkout.Path, agentHome.SourcePath.Value)))
             return new SetupFailure($"agent home fetch failed: agent home path not found in {agentHome.Repo.Value}: {agentHome.SourcePath.Value}");
+        return null;
+    }
+
+    /// <summary>Copies the fetched agent home files over the runner's user home before the agent
+    /// starts, so its config/context files are in place when the agent first reads them. Returns
+    /// the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once the files are in
+    /// place or when the run has none configured.</summary>
+    private static SetupFailure? CopyAgentHome(JobConfig config, JobContext context, TempDirectory? checkout)
+    {
+        if (config.AgentHome is not { } agentHome || checkout is null)
+            return null;
 
         try
         {
-            DirectoryMerge.CopySkippingExisting(context.FileSystem, source, agentHome.Home.Value);
+            DirectoryMerge.CopySkippingExisting(context.FileSystem, Path.Combine(checkout.Path, agentHome.SourcePath.Value), agentHome.Home.Value);
             return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
