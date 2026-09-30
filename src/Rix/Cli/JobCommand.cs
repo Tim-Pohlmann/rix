@@ -19,23 +19,24 @@ internal static class JobCommand
         return command;
     }
 
-    internal static JobConfig ReadConfig(ParseResult parsed, IFileSystem fileSystem)
+    /// <summary>Takes the prompt's text rather than reading it, since it may sit in a file: see
+    /// <see cref="JobOptions.ReadPrompt"/>.</summary>
+    internal static JobConfig ReadConfig(ParseResult parsed, string systemTempDirectory, string userHomeDirectory, string prompt)
     {
         // Read in the order problems should be reported: the first failing read is the one the
         // user sees.
         var repo = CommonOptions.ReadRepo(parsed);
-        var prompt = JobOptions.ReadPrompt(parsed, fileSystem);
         var readToken = JobOptions.ReadReadToken(parsed);
         var agent = JobOptions.ReadAgent(parsed);
         var maxTokens = JobOptions.ReadMaxTokens(parsed);
         var timeout = JobOptions.ReadTimeout(parsed);
-        var workDir = CommonOptions.ReadWorkDir(parsed, fileSystem);
-        var outputDir = JobOptions.ReadOutputDir(parsed, fileSystem);
+        var workDir = CommonOptions.ReadWorkDir(parsed, systemTempDirectory);
+        var outputDir = JobOptions.ReadOutputDir(parsed);
         var model = JobOptions.ReadModel(parsed);
         var apiKey = JobOptions.ReadAgentApiKey(parsed);
         var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
         var allowedPushBranches = BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
-        var agentHome = JobOptions.ReadAgentHome(parsed, fileSystem);
+        var agentHome = JobOptions.ReadAgentHome(parsed, userHomeDirectory);
 
         return new JobConfig
         (
@@ -49,4 +50,7 @@ internal static class JobCommand
             agentHome
         );
     }
+
+    internal static IReadOnlyList<RequiredDirectory> RequiredDirectories(JobConfig config)
+    => [RequiredDirectory.For(CommonOptions.WorkDirOption, config.WorkDir), RequiredDirectory.For(JobOptions.OutputDirOption, config.OutputDir), .. JobOptions.RunnerHome(config.AgentHome)];
 }

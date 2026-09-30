@@ -93,12 +93,42 @@ internal static class Startup
             using var onSigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, HandleSigterm(cts));
 
             var fileSystem = new LocalFileSystem();
+            var temp = fileSystem.SystemTempDirectory;
+            var home = fileSystem.UserHomeDirectory;
             var rootCommand = new RootCommand("RIX - AI-powered code automation")
             {
-                Runs(JobCommand.Build(), parsed => JobCommand.ReadConfig(parsed, fileSystem), config => ExecuteJobAsync(config, cts.Token)),
-                Runs(SubmitCommand.Build(), parsed => SubmitCommand.ReadConfig(parsed, fileSystem), config => ExecuteSubmitAsync(config, cts.Token)),
-                Runs(CiFailureCommand.Build(), parsed => CiFailureCommand.ReadConfig(parsed, fileSystem), config => ExecuteCiFailureAsync(config, cts.Token)),
-                Runs(InitializeCommand.Build(), parsed => InitializeCommand.ReadConfig(parsed, fileSystem), config => ExecuteInitializeAsync(config, cts.Token)),
+                Runs
+                (
+                    fileSystem,
+                    JobCommand.Build(),
+                    parsed => JobCommand.ReadConfig(parsed, temp, home, PromptText(fileSystem, JobOptions.ReadPrompt(parsed))),
+                    JobCommand.RequiredDirectories,
+                    config => ExecuteJobAsync(config, cts.Token)
+                ),
+                Runs
+                (
+                    fileSystem,
+                    SubmitCommand.Build(),
+                    parsed => SubmitCommand.ReadConfig(parsed, temp),
+                    SubmitCommand.RequiredDirectories,
+                    config => ExecuteSubmitAsync(config, cts.Token)
+                ),
+                Runs
+                (
+                    fileSystem,
+                    CiFailureCommand.Build(),
+                    CiFailureCommand.ReadConfig,
+                    CiFailureCommand.RequiredDirectories,
+                    config => ExecuteCiFailureAsync(config, cts.Token)
+                ),
+                Runs
+                (
+                    fileSystem,
+                    InitializeCommand.Build(),
+                    InitializeCommand.ReadConfig,
+                    InitializeCommand.RequiredDirectories,
+                    config => ExecuteInitializeAsync(config, cts.Token)
+                ),
             };
             return await CliPipeline.InvokeAsync(rootCommand, args);
         }
@@ -108,14 +138,66 @@ internal static class Startup
         }
     }
 
-    /// <summary>Makes invoking <paramref name="command"/> read its config and run it. The read happens
-    /// inside the action so an <see cref="InvalidInputException"/> it throws is reported like any
-    /// other (see <see cref="CliPipeline.ReportingInvalidInput"/>).</summary>
-    private static Command Runs<TConfig>(Command command, Func<ParseResult, TConfig> read, Func<TConfig, Task<int>> execute)
+    /// <summary>Makes invoking <paramref name="command"/> read its config, check the directories it
+    /// names exist, and run it. Both happen inside the action so an <see cref="InvalidInputException"/>
+    /// either throws is reported like any other (see <see cref="CliPipeline.ReportingInvalidInput"/>).</summary>
+    private static Command Runs<TConfig>
+    (
+        IFileSystem fileSystem,
+        Command command,
+        Func<ParseResult, TConfig> read,
+        Func<TConfig, IReadOnlyList<RequiredDirectory>> requiredDirectories,
+        Func<TConfig, Task<int>> execute
+    )
     {
-        command.SetAction(CliPipeline.ReportingInvalidInput(parsed => execute(read(parsed))));
+        var run = WhenDirectoriesExist(fileSystem, requiredDirectories, execute);
+        command.SetAction(CliPipeline.ReportingInvalidInput(parsed => run(read(parsed))));
         return command;
     }
+
+    /// <summary>The text <paramref name="prompt"/> gives, reading it from its file if it names one:
+    /// the one flag whose value <c>job</c> can't produce itself, since the command never sees the
+    /// file system. The file's content is taken whole and unmodified - no trimming, since the
+    /// prompt is the text an agent is handed. A missing or blank file is reported under
+    /// <c>--prompt-file</c> the way a blank <c>--prompt</c> is: naming it was the caller asking for
+    /// a prompt from it, so finding none there is a problem to report rather than a reason to run
+    /// the agent on nothing.</summary>
+    internal static string PromptText(IFileSystem fileSystem, PromptSource prompt)
+    => prompt switch
+    {
+        PromptText text => text.Text,
+        PromptFile file => Input.Named(JobOptions.PromptFileOption.Name, () => ReadPromptFile(fileSystem, file.Path)),
+        _ => throw new NotSupportedException($"Unexpected prompt source: {prompt.GetType()}"),
+    };
+
+    private static string ReadPromptFile(IFileSystem fileSystem, string path)
+    {
+        if (!fileSystem.FileExists(path))
+            throw new InvalidInputException($"no file at '{path}'");
+
+        using var reader = new StreamReader(fileSystem.OpenRead(path));
+        var prompt = reader.ReadToEnd();
+        if (string.IsNullOrWhiteSpace(prompt))
+            throw new InvalidInputException($"'{path}' holds no prompt");
+
+        return prompt;
+    }
+
+    /// <summary>Runs <paramref name="run"/> once every directory <paramref name="requiredDirectories"/>
+    /// lists for the config exists: the check the commands leave to the caller, since they never see
+    /// the file system. A missing one is an <see cref="InvalidInputException"/>, reported like any
+    /// other bad flag.</summary>
+    internal static Func<TConfig, Task<int>> WhenDirectoriesExist<TConfig>
+    (
+        IFileSystem fileSystem, Func<TConfig, IReadOnlyList<RequiredDirectory>> requiredDirectories, Func<TConfig, Task<int>> run
+    )
+    => config =>
+    {
+        var missing = requiredDirectories(config).FirstOrDefault(directory => !fileSystem.DirectoryExists(directory.Path.Value));
+        if (missing is not null)
+            throw new InvalidInputException($"{missing.Name}: directory does not exist: {missing.Path}");
+        return run(config);
+    };
 
     /// <summary>Cancels <paramref name="cts"/> and suppresses the runtime's default termination so
     /// the in-flight run unwinds gracefully. Extracted from <see cref="RunAsync"/> so the SIGTERM

@@ -6,13 +6,21 @@ namespace Rix.Tests;
 [TestClass]
 public class JobCommandTests
 {
+    /// <summary>Reads <c>job</c> the way <see cref="Startup"/> does, prompt file included.</summary>
     private static JobConfig Read(params string[] args)
-    => JobCommand.ReadConfig(CommandArgs.Parse(JobCommand.Build(), ["job", .. args]), new LocalFileSystem());
+    {
+        var parsed = CommandArgs.Parse(JobCommand.Build(), ["job", .. args]);
+        return JobCommand.ReadConfig(parsed, Path.GetTempPath(), UserHome, Startup.PromptText(new LocalFileSystem(), JobOptions.ReadPrompt(parsed)));
+    }
 
     /// <summary>Reads <c>job</c> with valid values for every required flag, then
     /// <paramref name="extra"/>.</summary>
     private static JobConfig ReadValid(params string[] extra)
     => Read(["--repo", "o/r", "--prompt", "p", "--read-token", "r", "--output-dir", Path.GetTempPath(), .. extra]);
+
+    private const string UserHome = "/the/user/home";
+
+    private static readonly string[] ExpectedDirectoriesWithoutAgentHome = ["--work-dir", "--output-dir"];
 
     [TestMethod]
     public void Command_PassesEnvVarFallbacks_WhenFlagsAbsent()
@@ -38,6 +46,35 @@ public class JobCommandTests
         CollectionAssert.AreEqual(
             new[] { "rix/env-a", "rix/env-b" },
             config.AllowedPushBranches.Select(b => b.Value).ToArray());
+    }
+
+    /// <summary>Whether they exist is left to <see cref="Startup"/>, so the command accepts
+    /// directories that don't and names each one after where it came from for Startup to check.</summary>
+    [TestMethod]
+    public void RequiredDirectories_NamesEachDirectoryAfterWhereItCameFrom()
+    {
+        var config = Read(
+            "--repo", "o/r", "--prompt", "p", "--read-token", "r",
+            "--work-dir", "/nonexistent/work", "--output-dir", "/nonexistent/out", "--factory-repo", "acme/factory");
+
+        CollectionAssert.AreEqual
+        (
+            new[]
+            {
+                new RequiredDirectory("--work-dir", new DirectoryPath("/nonexistent/work")),
+                new RequiredDirectory("--output-dir", new DirectoryPath("/nonexistent/out")),
+                new RequiredDirectory("runner home directory", new DirectoryPath(UserHome)),
+            },
+            JobCommand.RequiredDirectories(config).ToArray()
+        );
+    }
+
+    [TestMethod]
+    public void RequiredDirectories_LeavesTheRunnerHomeUnchecked_WithoutAFactoryRepo()
+    {
+        CollectionAssert.AreEqual(
+            ExpectedDirectoriesWithoutAgentHome,
+            JobCommand.RequiredDirectories(ReadValid()).Select(directory => directory.Name).ToArray());
     }
 
     [TestMethod]
@@ -214,7 +251,7 @@ public class JobCommandTests
     [TestMethod]
     public void Command_ReportsOnlyTheFirstProblem()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--repo", "", "--prompt", "", "--read-token", ""));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--repo", "", "--prompt", "p", "--read-token", ""));
 
         Assert.AreEqual("--repo is required", ex.Message);
     }

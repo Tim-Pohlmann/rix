@@ -21,18 +21,11 @@ namespace Rix.Tests;
 [TestClass]
 public class SharedJobOptionsTests
 {
-    // Two distinct directories that really exist, rather than Path.GetTempPath() for both:
-    // DirectoryPath rejects a path that isn't there, and a ReadConfig reading --work-dir into
-    // OutputDir (or vice versa) is only visible if the two values differ.
-    private string _workDir = string.Empty;
-    private string _outputDir = string.Empty;
-
-    [TestInitialize]
-    public void CreateDirectories()
-    {
-        _workDir = Directory.CreateTempSubdirectory("rix-shared-work-").FullName;
-        _outputDir = Directory.CreateTempSubdirectory("rix-shared-out-").FullName;
-    }
+    // Two distinct absolute paths, rather than Path.GetTempPath() for both: a ReadConfig reading
+    // --work-dir into OutputDir (or vice versa) is only visible if the two values differ. Neither
+    // has to exist - reading the config never touches the disk.
+    private readonly string _workDir = Path.Combine(Path.GetTempPath(), "rix-shared-work");
+    private readonly string _outputDir = Path.Combine(Path.GetTempPath(), "rix-shared-out");
 
     /// <summary>Every flag <see cref="JobOptions.AddTo"/> registers, each with a value that differs
     /// both from that option's default (so a ReadConfig that never reads it can't accidentally pass)
@@ -77,8 +70,8 @@ public class SharedJobOptionsTests
     [TestMethod]
     public void JobCommand_ReadsEverySharedFlag()
     {
-        var parsed = CommandArgs.Parse(JobCommand.Build(), ["job", "--prompt", "shared prompt", .. SharedArgs]);
+        var parsed = CommandArgs.Parse(JobCommand.Build(), ["job", .. SharedArgs]);
 
-        AssertEveryFlagArrived(JobCommand.ReadConfig(parsed, new LocalFileSystem()));
+        AssertEveryFlagArrived(JobCommand.ReadConfig(parsed, Path.GetTempPath(), Path.GetTempPath(), "p"));
     }
 }

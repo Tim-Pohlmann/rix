@@ -26,15 +26,19 @@ internal static class InitializeCommand
         return command;
     }
 
-    internal static InitializeConfig ReadConfig(ParseResult parsed, IFileSystem fileSystem)
+    internal static InitializeConfig ReadConfig(ParseResult parsed)
     {
         // Unlike the CI-run commands, `initialize` is a local dev step - no RIX_* env fallback; an
-        // absent --dir just means "this repo".
-        var dir = parsed.GetValue(DirOption) ?? fileSystem.CurrentDirectory;
+        // absent --dir just means "this repo", i.e. the directory rix runs in, which DirectoryPath
+        // resolves "." to.
+        var dir = parsed.GetValue(DirOption) ?? ".";
         return new InitializeConfig
         (
-            Input.Required("--dir", dir, path => new DirectoryPath(path, fileSystem)),
-            Input.Optional("--ref", parsed.GetValue(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild)
+            Input.Required(DirOption.Name, dir, path => new DirectoryPath(path)),
+            Input.Optional(RefOption.Name, parsed.GetValue(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild)
         );
     }
+
+    internal static IReadOnlyList<RequiredDirectory> RequiredDirectories(InitializeConfig config)
+    => [RequiredDirectory.For(DirOption, config.TargetDir)];
 }

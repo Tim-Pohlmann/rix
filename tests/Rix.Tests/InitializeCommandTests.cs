@@ -6,11 +6,8 @@ namespace Rix.Tests;
 [TestClass]
 public class InitializeCommandTests
 {
-    private static InitializeConfig Read(string[] args, IFileSystem? fileSystem = null)
-    => InitializeCommand.ReadConfig(CommandArgs.Parse(InitializeCommand.Build(), args), fileSystem ?? new LocalFileSystem());
-
     private static InitializeConfig Read(params string[] args)
-    => Read(args, null);
+    => InitializeCommand.ReadConfig(CommandArgs.Parse(InitializeCommand.Build(), args));
 
     [TestMethod]
     [DataRow("initialize")]
@@ -27,11 +24,9 @@ public class InitializeCommandTests
     [TestMethod]
     public void Command_DefaultsDirToCurrentDirectory_WhenFlagAbsent()
     {
-        var currentDirectory = Path.GetTempPath();
+        var config = Read("initialize");
 
-        var config = Read(["initialize"], new StubFileSystem(currentDirectory: currentDirectory));
-
-        Assert.AreEqual(Path.GetFullPath(currentDirectory), config.TargetDir.Value);
+        Assert.AreEqual(Path.GetFullPath("."), config.TargetDir.Value);
     }
 
     [TestMethod]
@@ -56,11 +51,11 @@ public class InitializeCommandTests
     }
 
     [TestMethod]
-    public void Command_ReportsTheFlag_WhenDirDoesNotExist()
+    public void RequiredDirectories_NamesTheDirAfterItsFlag()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("initialize", "--dir", "/nonexistent/path/xyz"));
+        var config = Read("initialize", "--dir", "/nonexistent/path/xyz");
 
-        Assert.AreEqual("--dir: directory does not exist: /nonexistent/path/xyz", ex.Message);
+        Assert.AreEqual(new RequiredDirectory("--dir", new DirectoryPath("/nonexistent/path/xyz")), InitializeCommand.RequiredDirectories(config).Single());
     }
 
     [TestMethod]

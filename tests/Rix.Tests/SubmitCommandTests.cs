@@ -11,7 +11,7 @@ public class SubmitCommandTests
     private static readonly string[] ExpectedUnusualBranches = ["--not-a-flag", "feature/ünïcode"];
 
     private static SubmitConfig ReadArgs(params string[] args)
-    => SubmitCommand.ReadConfig(CommandArgs.Parse(SubmitCommand.Build(), ["submit", .. args]), new LocalFileSystem());
+    => SubmitCommand.ReadConfig(CommandArgs.Parse(SubmitCommand.Build(), ["submit", .. args]), Path.GetTempPath());
 
     /// <summary>Reads <c>submit</c> with the given flags, filling in valid values for the required
     /// ones the test doesn't care about.</summary>
@@ -68,7 +68,6 @@ public class SubmitCommandTests
     [DataRow("owner/repo/extra", "write-tok", null, "--repo: 'owner/repo/extra' is not a valid repo identifier")]
     [DataRow("owner/repo", "", null, "--write-token is required")]
     [DataRow("owner/repo", "write-tok", "", "--input-dir is required")]
-    [DataRow("owner/repo", "write-tok", "/nonexistent/in", "--input-dir: directory does not exist: /nonexistent/in")]
     public void Command_ReportsTheFlag_WhenInputInvalid(string repo, string writeToken, string? inputDir, string expectedError)
     {
         var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read(repo: repo, writeToken: writeToken, inputDir: inputDir));
@@ -76,12 +75,22 @@ public class SubmitCommandTests
         StringAssert.StartsWith(ex.Message, expectedError);
     }
 
+    /// <summary>Whether they exist is left to <see cref="Startup"/>, so the command accepts
+    /// directories that don't and names each one after its flag for Startup to check.</summary>
     [TestMethod]
-    public void Command_ReportsTheFlag_WhenWorkDirDoesNotExist()
+    public void RequiredDirectories_NamesTheInputAndWorkDirsAfterTheirFlags()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read(workDir: "/nonexistent/path/xyz"));
+        var config = Read(inputDir: "/nonexistent/in", workDir: "/nonexistent/work");
 
-        Assert.AreEqual("--work-dir: directory does not exist: /nonexistent/path/xyz", ex.Message);
+        CollectionAssert.AreEqual
+        (
+            new[]
+            {
+                new RequiredDirectory("--input-dir", new DirectoryPath("/nonexistent/in")),
+                new RequiredDirectory("--work-dir", new DirectoryPath("/nonexistent/work")),
+            },
+            SubmitCommand.RequiredDirectories(config).ToArray()
+        );
     }
 
     [TestMethod]

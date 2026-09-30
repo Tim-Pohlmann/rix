@@ -117,34 +117,18 @@ internal static class JobOptions
     /// which reaches this job as an artifact: a file crosses that boundary without a size cap, and
     /// its content never has to survive being quoted through a job output or a shell. Reading it
     /// here rather than in the workflow that hands it over keeps the rule in the same place as
-    /// every other cross-flag rule, and gives every caller of the binary the same option.</summary>
-    internal static string ReadPrompt(ParseResult parsed, IFileSystem fileSystem)
+    /// every other cross-flag rule, and gives every caller of the binary the same option. The file
+    /// itself is read by <see cref="Startup.PromptText"/>.</summary>
+    internal static PromptSource ReadPrompt(ParseResult parsed)
     {
         var path = parsed.OptionalText(PromptFileOption, "RIX_PROMPT_FILE");
         if (path is null)
-            return parsed.RequiredText(PromptOption, "RIX_PROMPT");
+            return new PromptText(parsed.RequiredText(PromptOption, "RIX_PROMPT"));
 
         if (parsed.OptionalText(PromptOption, "RIX_PROMPT") is not null)
             throw new InvalidInputException($"{PromptOption.Name} and {PromptFileOption.Name} both give the prompt - supply one of them");
 
-        return Input.Named(PromptFileOption.Name, () => ReadPromptFile(path, fileSystem));
-    }
-
-    /// <summary>The file's content, whole and unmodified - no trimming, since the prompt is the
-    /// text an agent is handed. A missing or blank file is reported the way a blank
-    /// <c>--prompt</c> is: naming it was the caller asking for a prompt from it, so finding none
-    /// there is a problem to report rather than a reason to run the agent on nothing.</summary>
-    private static string ReadPromptFile(string path, IFileSystem fileSystem)
-    {
-        if (!fileSystem.FileExists(path))
-            throw new InvalidInputException($"no file at '{path}'");
-
-        using var reader = new StreamReader(fileSystem.OpenRead(path));
-        var prompt = reader.ReadToEnd();
-        if (string.IsNullOrWhiteSpace(prompt))
-            throw new InvalidInputException($"'{path}' holds no prompt");
-
-        return prompt;
+        return new PromptFile(path);
     }
 
     internal static GitReadToken ReadReadToken(ParseResult parsed)
@@ -175,8 +159,8 @@ internal static class JobOptions
         new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes)
     );
 
-    internal static DirectoryPath ReadOutputDir(ParseResult parsed, IFileSystem fileSystem)
-    => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path, fileSystem));
+    internal static DirectoryPath ReadOutputDir(ParseResult parsed)
+    => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path));
 
     internal static string? ReadModel(ParseResult parsed)
     => parsed.OptionalText(ModelOption, "RIX_MODEL");
@@ -195,11 +179,23 @@ internal static class JobOptions
     internal static AgentCredential? ReadAgentCredential(ParseResult parsed, AgentKind agent, string? apiKey)
     => parsed.Named(AgentApiKeyEnvOption, "AGENT_API_KEY_ENV", raw => AgentCredential.Resolve(agent, apiKey, raw));
 
+    /// <summary>What the runner's home directory is called in errors: it comes from the environment,
+    /// not from a flag.</summary>
+    private const string RunnerHomeName = "runner home directory";
+
+    /// <summary>The runner home, when there's an agent home to install into it.</summary>
+    internal static IEnumerable<RequiredDirectory> RunnerHome(AgentHomeInfo? agentHome)
+    => agentHome switch
+    {
+        null => [],
+        _ => [new RequiredDirectory(RunnerHomeName, agentHome.Home)],
+    };
+
     /// <summary>Reads <c>--factory-repo</c>/<c>--agent-home-path</c> as a pair, because whether
     /// the path means anything depends on the repo — a path without a repo is reported, not
-    /// ignored. The runner home is resolved only when a repo is given, so a job that doesn't use
+    /// ignored. The runner home is only validated when a repo is given, so a job that doesn't use
     /// the feature never depends on having one.</summary>
-    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed, IFileSystem fileSystem)
+    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed, string userHomeDirectory)
     {
         var repo = parsed.Optional<RepoIdentifier?>(FactoryRepoOption, "RIX_FACTORY_REPO", raw => new RepoIdentifier(raw), () => null);
         if (repo is null)
@@ -216,7 +212,7 @@ internal static class JobOptions
             raw => new SubDirectoryPath(raw),
             new SubDirectoryPath(JobConfig.DefaultAgentHomePath)
         );
-        var home = Input.Named("runner home directory", () => new DirectoryPath(fileSystem.UserHomeDirectory, fileSystem));
+        var home = Input.Named(RunnerHomeName, () => new DirectoryPath(userHomeDirectory));
         return new AgentHomeInfo(repo, sourcePath, home);
     }
 }

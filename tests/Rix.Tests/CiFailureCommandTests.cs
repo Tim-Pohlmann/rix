@@ -7,12 +7,24 @@ namespace Rix.Tests;
 public class CiFailureCommandTests
 {
     private static CiFailureConfig Read(params string[] args)
-    => CiFailureCommand.ReadConfig(CommandArgs.Parse(CiFailureCommand.Build(), ["ci-failure", .. args]), new LocalFileSystem());
+    => CiFailureCommand.ReadConfig(CommandArgs.Parse(CiFailureCommand.Build(), ["ci-failure", .. args]));
 
     /// <summary>Reads <c>ci-failure</c> with valid values for every required flag, then
     /// <paramref name="extra"/>.</summary>
     private static CiFailureConfig ReadValid(params string[] extra)
     => Read(["--repo", "o/r", "--read-token", "r", "--run-id", "1", "--output-dir", Path.GetTempPath(), .. extra]);
+
+    /// <summary>Whether it exists is left to <see cref="Startup"/>, so the command accepts an output
+    /// directory that doesn't and names it after its flag for Startup to check.</summary>
+    [TestMethod]
+    public void RequiredDirectories_NamesTheOutputDirAfterItsFlag()
+    {
+        var config = Read("--repo", "o/r", "--read-token", "r", "--run-id", "1", "--output-dir", "/nonexistent/out");
+
+        CollectionAssert.AreEqual(
+            new[] { new RequiredDirectory("--output-dir", new DirectoryPath("/nonexistent/out")) },
+            CiFailureCommand.RequiredDirectories(config).ToArray());
+    }
 
     [TestMethod]
     public void Command_PassesEnvVarFallbacks_WhenFlagsAbsent()
