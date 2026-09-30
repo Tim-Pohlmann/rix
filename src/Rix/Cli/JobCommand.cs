@@ -1,6 +1,5 @@
 using Rix.Job;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
@@ -11,11 +10,11 @@ internal static class JobCommand
         var command = new Command("job", "Clone a repo, run a coding agent against it, and write output bundles");
 
         JobOptions.AddTo(command);
-        command.AddOption(JobOptions.PromptOption);
-        command.AddOption(JobOptions.PromptFileOption);
-        command.AddOption(JobOptions.AllowedPushBranchesOption);
-        command.AddOption(JobOptions.FactoryRepoOption);
-        command.AddOption(JobOptions.AgentHomePathOption);
+        command.Options.Add(JobOptions.PromptOption);
+        command.Options.Add(JobOptions.PromptFileOption);
+        command.Options.Add(JobOptions.AllowedPushBranchesOption);
+        command.Options.Add(JobOptions.FactoryRepoOption);
+        command.Options.Add(JobOptions.AgentHomePathOption);
 
         return command;
     }

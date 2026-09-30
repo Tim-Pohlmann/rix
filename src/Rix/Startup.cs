@@ -7,7 +7,6 @@ using Rix.Process;
 using Rix.Repository;
 using Rix.Submit;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 
@@ -91,12 +90,14 @@ internal static class Startup
         {
             using var onSigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, HandleSigterm(cts));
 
-            var rootCommand = new RootCommand("RIX - AI-powered code automation");
-            rootCommand.AddCommand(Runs(JobCommand.Build(), JobCommand.ReadConfig, config => ExecuteJobAsync(config, cts.Token)));
-            rootCommand.AddCommand(Runs(SubmitCommand.Build(), SubmitCommand.ReadConfig, config => ExecuteSubmitAsync(config, cts.Token)));
-            rootCommand.AddCommand(Runs(CiFailureCommand.Build(), CiFailureCommand.ReadConfig, config => ExecuteCiFailureAsync(config, cts.Token)));
-            rootCommand.AddCommand(Runs(InitializeCommand.Build(), InitializeCommand.ReadConfig, config => ExecuteInitializeAsync(config, cts.Token)));
-            return await CliPipeline.Build(rootCommand).InvokeAsync(args);
+            var rootCommand = new RootCommand("RIX - AI-powered code automation")
+            {
+                Runs(JobCommand.Build(), JobCommand.ReadConfig, config => ExecuteJobAsync(config, cts.Token)),
+                Runs(SubmitCommand.Build(), SubmitCommand.ReadConfig, config => ExecuteSubmitAsync(config, cts.Token)),
+                Runs(CiFailureCommand.Build(), CiFailureCommand.ReadConfig, config => ExecuteCiFailureAsync(config, cts.Token)),
+                Runs(InitializeCommand.Build(), InitializeCommand.ReadConfig, config => ExecuteInitializeAsync(config, cts.Token)),
+            };
+            return await CliPipeline.InvokeAsync(rootCommand, args);
         }
         finally
         {
@@ -105,11 +106,11 @@ internal static class Startup
     }
 
     /// <summary>Makes invoking <paramref name="command"/> read its config and run it. The read happens
-    /// inside the handler so an <see cref="InvalidInputException"/> it throws reaches the pipeline's
-    /// exception handler (see <see cref="CliPipeline"/>) like any other.</summary>
+    /// inside the action so an <see cref="InvalidInputException"/> it throws is reported like any
+    /// other (see <see cref="CliPipeline.ReportingInvalidInput"/>).</summary>
     private static Command Runs<TConfig>(Command command, Func<ParseResult, TConfig> read, Func<TConfig, Task<int>> execute)
     {
-        command.SetHandler(async ctx => ctx.ExitCode = await execute(read(ctx.ParseResult)));
+        command.SetAction(CliPipeline.ReportingInvalidInput(parsed => execute(read(parsed))));
         return command;
     }
 
