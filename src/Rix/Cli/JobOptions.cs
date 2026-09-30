@@ -119,7 +119,7 @@ internal static class JobOptions
     /// here rather than in the workflow that hands it over keeps the rule in the same place as
     /// every other cross-flag rule, and gives every caller of the binary the same option. The file
     /// itself is read by <see cref="Startup.PromptText"/>.</summary>
-    internal static PromptSource ReadPrompt(ParseResult parsed)
+    internal static IPromptSource ReadPrompt(ParseResult parsed)
     {
         var path = parsed.OptionalText(PromptFileOption, "RIX_PROMPT_FILE");
         if (path is null)

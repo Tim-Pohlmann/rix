@@ -162,7 +162,7 @@ internal static class Startup
     /// <c>--prompt-file</c> the way a blank <c>--prompt</c> is: naming it was the caller asking for
     /// a prompt from it, so finding none there is a problem to report rather than a reason to run
     /// the agent on nothing.</summary>
-    internal static string PromptText(IFileSystem fileSystem, PromptSource prompt)
+    internal static string PromptText(IFileSystem fileSystem, IPromptSource prompt)
     => prompt switch
     {
         PromptText text => text.Text,
