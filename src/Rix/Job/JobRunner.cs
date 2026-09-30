@@ -28,14 +28,14 @@ internal static class JobRunner
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
 
-        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, ct) is InstallFailed installFailed)
+        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, config.WorkDir.Value, ct) is InstallFailed installFailed)
         {
             return new SetupFailure($"agent install failed: {installFailed.Reason}");
         }
 
         var stopwatch = Stopwatch.StartNew();
 
-        using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-clone");
+        using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-clone");
 
         try
         {
@@ -49,7 +49,7 @@ internal static class JobRunner
             return new SetupFailure(ex.Message);
         }
 
-        if (await CopyAgentHomeAsync(config, context.Git, ct) is { } agentHomeFailure)
+        if (await CopyAgentHomeAsync(config, context, ct) is { } agentHomeFailure)
             return agentHomeFailure;
 
         await using var apiServer = await LocalApiServer.StartAsync
@@ -102,16 +102,16 @@ internal static class JobRunner
     /// <c>null</c> once the files are in place or when the run has none configured.</summary>
     private static async Task<SetupFailure?> CopyAgentHomeAsync
     (
-        JobConfig config, IGit git, CancellationToken ct
+        JobConfig config, JobContext context, CancellationToken ct
     )
     {
         if (config.AgentHome is not { } agentHome)
             return null;
 
-        using var checkout = TempDirectory.Create(config.WorkDir.Value, "rix-agent-home");
+        using var checkout = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-agent-home");
         try
         {
-            await git.SparseCloneAsync(agentHome.Repo, checkout.Path, agentHome.SourcePath, ct);
+            await context.Git.SparseCloneAsync(agentHome.Repo, checkout.Path, agentHome.SourcePath, ct);
         }
         catch (RepoHostException ex)
         {
@@ -119,12 +119,12 @@ internal static class JobRunner
         }
 
         var source = Path.Combine(checkout.Path, agentHome.SourcePath.Value);
-        if (!Directory.Exists(source))
+        if (!context.FileSystem.DirectoryExists(source))
             return new SetupFailure($"agent home fetch failed: agent home path not found in {agentHome.Repo.Value}: {agentHome.SourcePath.Value}");
 
         try
         {
-            DirectoryMerge.CopySkippingExisting(source, agentHome.Home.Value);
+            DirectoryMerge.CopySkippingExisting(context.FileSystem, source, agentHome.Home.Value);
             return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

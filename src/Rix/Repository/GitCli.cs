@@ -12,12 +12,17 @@ internal sealed class GitCli : IGit
 {
     private readonly Uri _host;
     private readonly RunProcessAsync _runProcess;
+    private readonly string _workingDirectory;
     private readonly IReadOnlyDictionary<string, string> _authEnv;
 
-    internal GitCli(Uri host, GitReadToken token, RunProcessAsync runProcess)
+    /// <param name="workingDirectory">Where the commands that need no local repo (clone,
+    /// ls-remote) run from: a scratch directory, so git never picks up the config of a repo it
+    /// happens to be started in.</param>
+    internal GitCli(Uri host, GitReadToken token, RunProcessAsync runProcess, string workingDirectory)
     {
         _host = host;
         _runProcess = runProcess;
+        _workingDirectory = workingDirectory;
         _authEnv = BuildAuthEnv(host, token);
     }
 
@@ -42,7 +47,7 @@ internal sealed class GitCli : IGit
     }
 
     public Task CloneAsync(RepoIdentifier repo, string targetDirectory, CancellationToken cancellationToken)
-    => RunAsync(["clone", RemoteUrl(repo), targetDirectory], Path.GetTempPath(), authenticated: true, cancellationToken);
+    => RunAsync(["clone", RemoteUrl(repo), targetDirectory], _workingDirectory, authenticated: true, cancellationToken);
 
     /// <summary>Blobless + sparse + depth 1: fetch the commit's tree and only the blobs under
     /// <paramref name="directory"/>, never the repo's full history or unrelated files. Both steps
@@ -56,7 +61,7 @@ internal sealed class GitCli : IGit
         await RunAsync
         (
             ["clone", "--depth", "1", "--filter=blob:none", "--sparse", RemoteUrl(repo), targetDirectory],
-            Path.GetTempPath(),
+            _workingDirectory,
             authenticated: true,
             cancellationToken
         );
@@ -75,7 +80,7 @@ internal sealed class GitCli : IGit
         (
             "git",
             ["ls-remote", "--exit-code", RemoteUrl(repo), refName],
-            Path.GetTempPath(),
+            _workingDirectory,
             _authEnv,
             listed.Add,
             cancellationToken

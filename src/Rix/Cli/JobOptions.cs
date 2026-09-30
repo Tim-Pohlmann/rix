@@ -118,7 +118,7 @@ internal static class JobOptions
     /// its content never has to survive being quoted through a job output or a shell. Reading it
     /// here rather than in the workflow that hands it over keeps the rule in the same place as
     /// every other cross-flag rule, and gives every caller of the binary the same option.</summary>
-    internal static string ReadPrompt(ParseResult parsed)
+    internal static string ReadPrompt(ParseResult parsed, IFileSystem fileSystem)
     {
         var path = parsed.OptionalText(PromptFileOption, "RIX_PROMPT_FILE");
         if (path is null)
@@ -127,19 +127,20 @@ internal static class JobOptions
         if (parsed.OptionalText(PromptOption, "RIX_PROMPT") is not null)
             throw new InvalidInputException($"{PromptOption.Name} and {PromptFileOption.Name} both give the prompt - supply one of them");
 
-        return Input.Named(PromptFileOption.Name, () => ReadPromptFile(path));
+        return Input.Named(PromptFileOption.Name, () => ReadPromptFile(path, fileSystem));
     }
 
     /// <summary>The file's content, whole and unmodified - no trimming, since the prompt is the
     /// text an agent is handed. A missing or blank file is reported the way a blank
     /// <c>--prompt</c> is: naming it was the caller asking for a prompt from it, so finding none
     /// there is a problem to report rather than a reason to run the agent on nothing.</summary>
-    private static string ReadPromptFile(string path)
+    private static string ReadPromptFile(string path, IFileSystem fileSystem)
     {
-        if (!File.Exists(path))
+        if (!fileSystem.FileExists(path))
             throw new InvalidInputException($"no file at '{path}'");
 
-        var prompt = File.ReadAllText(path);
+        using var reader = new StreamReader(fileSystem.OpenRead(path));
+        var prompt = reader.ReadToEnd();
         if (string.IsNullOrWhiteSpace(prompt))
             throw new InvalidInputException($"'{path}' holds no prompt");
 
@@ -174,8 +175,8 @@ internal static class JobOptions
         new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes)
     );
 
-    internal static DirectoryPath ReadOutputDir(ParseResult parsed)
-    => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path));
+    internal static DirectoryPath ReadOutputDir(ParseResult parsed, IFileSystem fileSystem)
+    => parsed.Required(OutputDirOption, "RIX_OUTPUT_DIR", path => new DirectoryPath(path, fileSystem));
 
     internal static string? ReadModel(ParseResult parsed)
     => parsed.OptionalText(ModelOption, "RIX_MODEL");
@@ -198,7 +199,7 @@ internal static class JobOptions
     /// the path means anything depends on the repo — a path without a repo is reported, not
     /// ignored. The runner home is resolved only when a repo is given, so a job that doesn't use
     /// the feature never depends on having one.</summary>
-    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed)
+    internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed, IFileSystem fileSystem)
     {
         var repo = parsed.Optional<RepoIdentifier?>(FactoryRepoOption, "RIX_FACTORY_REPO", raw => new RepoIdentifier(raw), () => null);
         if (repo is null)
@@ -215,12 +216,7 @@ internal static class JobOptions
             raw => new SubDirectoryPath(raw),
             new SubDirectoryPath(JobConfig.DefaultAgentHomePath)
         );
-        // On Unix this already consults $HOME before the passwd entry.
-        var home = Input.Named
-        (
-            "runner home directory",
-            () => new DirectoryPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
-        );
+        var home = Input.Named("runner home directory", () => new DirectoryPath(fileSystem.UserHomeDirectory, fileSystem));
         return new AgentHomeInfo(repo, sourcePath, home);
     }
 }

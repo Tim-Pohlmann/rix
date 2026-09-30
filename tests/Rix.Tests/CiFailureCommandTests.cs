@@ -7,7 +7,7 @@ namespace Rix.Tests;
 public class CiFailureCommandTests
 {
     private static CiFailureConfig Read(params string[] args)
-    => CiFailureCommand.ReadConfig(CommandArgs.Parse(CiFailureCommand.Build(), ["ci-failure", .. args]));
+    => CiFailureCommand.ReadConfig(CommandArgs.Parse(CiFailureCommand.Build(), ["ci-failure", .. args]), new LocalFileSystem());
 
     /// <summary>Reads <c>ci-failure</c> with valid values for every required flag, then
     /// <paramref name="extra"/>.</summary>
