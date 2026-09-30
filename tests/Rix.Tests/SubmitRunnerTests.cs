@@ -156,6 +156,9 @@ public class SubmitRunnerTests
         CollectionAssert.AreEqual(ExpectedPushedBranches, git.FetchedBranches.Select(b => b.Value).ToArray());
         CollectionAssert.AreEqual(
             ExpectedPushedBranches, git.PushedBranches.Select(b => b.Value).ToArray());
+        var repo = new RepoIdentifier("owner/repo");
+        CollectionAssert.AreEqual(new[] { repo }, git.ClonedRepos);
+        Assert.AreEqual((repo, "rix/my-fix"), git.RemoteBranchChecks.Select(c => (c.Repo, c.Branch.Value)).Single());
     }
 
     [TestMethod]
