@@ -31,29 +31,9 @@ internal static class JobRunner
         var stopwatch = Stopwatch.StartNew();
 
         using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-clone");
-        using var agentHomeCheckout = CreateAgentHomeCheckout(config, context);
-
-        // The install and both clones are mostly network waits and touch nothing the others do,
-        // so they overlap. Failures are still reported in this order, whichever finishes first.
-        var install = context.Agent.EnsureInstalledAsync(context.RunProcess, config.WorkDir.Value, ct);
-        var clone = CloneAsync(config, context, cloneDir.Path, ct);
-        var agentHomeFetch = FetchAgentHomeAsync(config, context, agentHomeCheckout, ct);
-        await Task.WhenAll(install, clone, agentHomeFetch);
-
-        if (await install is InstallFailed installFailed)
-            return new SetupFailure($"agent install failed: {installFailed.Reason}");
-        if (await clone is { } cloneFailure)
-            return cloneFailure;
-        if (await agentHomeFetch is { } fetchFailure)
-            return fetchFailure;
-        // Only once the install is done, as before this overlapped: the install may write into the
-        // runner's home too, and the copy keeps whatever it finds there.
-        var copyFailure = CopyAgentHome(config, context, agentHomeCheckout);
-        // Done with it: the factory repo needn't sit in the work dir for the whole run. Disposing
-        // twice is harmless.
-        agentHomeCheckout?.Dispose();
-        if (copyFailure is not null)
-            return copyFailure;
+        var setupFailure = await SetUpAsync(config, context, cloneDir.Path, ct);
+        if (setupFailure is not null)
+            return setupFailure;
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
@@ -96,6 +76,32 @@ internal static class JobRunner
                 => new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
             _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
         };
+    }
+
+    /// <summary>Installs the agent, clones the job's repo into <paramref name="cloneDir"/> and puts
+    /// the agent home files in place. Returns the <see cref="SetupFailure"/> to end the run with, or
+    /// <c>null</c> once everything is ready.</summary>
+    private static async Task<SetupFailure?> SetUpAsync(JobConfig config, JobContext context, string cloneDir, CancellationToken ct)
+    {
+        // Scoped to setup: the factory repo needn't sit in the work dir for the whole run.
+        using var agentHomeCheckout = CreateAgentHomeCheckout(config, context);
+
+        // The install and both clones are mostly network waits and touch nothing the others do,
+        // so they overlap. Failures are still reported in this order, whichever finishes first.
+        var install = context.Agent.EnsureInstalledAsync(context.RunProcess, config.WorkDir.Value, ct);
+        var clone = CloneAsync(config, context, cloneDir, ct);
+        var agentHomeFetch = FetchAgentHomeAsync(config, context, agentHomeCheckout, ct);
+        await Task.WhenAll(install, clone, agentHomeFetch);
+
+        if (await install is InstallFailed installFailed)
+            return new SetupFailure($"agent install failed: {installFailed.Reason}");
+        if (await clone is { } cloneFailure)
+            return cloneFailure;
+        if (await agentHomeFetch is { } fetchFailure)
+            return fetchFailure;
+        // Only once the install is done, as before this overlapped: the install may write into the
+        // runner's home too, and the copy keeps whatever it finds there.
+        return CopyAgentHome(config, context, agentHomeCheckout);
     }
 
     /// <summary>Clones the job's repo and sets the commit identity before the agent starts, so it
