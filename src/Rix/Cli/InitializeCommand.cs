@@ -1,5 +1,6 @@
 using Rix.Initialize;
 using System.CommandLine;
+using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
@@ -19,7 +20,7 @@ internal static class InitializeCommand
     )
     { IsRequired = false };
 
-    internal static Command Build(Func<InitializeConfig, Task<int>> handler)
+    internal static Command Build()
     {
         var command = new Command("initialize", "Write the rix caller workflows into a cloned repo's .github/workflows/");
         // `init` alias: the short form nearly everyone reaches for first.
@@ -27,22 +28,18 @@ internal static class InitializeCommand
         command.AddOption(DirOption);
         command.AddOption(RefOption);
 
-        command.SetHandler
-        (
-            async ctx =>
-            {
-                // Unlike the CI-run commands, `initialize` is a local dev step - no RIX_* env
-                // fallback; an absent --dir just means "this repo".
-                var dir = ctx.ParseResult.GetValueForOption(DirOption) ?? Directory.GetCurrentDirectory();
-                var config = new InitializeConfig
-                (
-                    Input.Required("--dir", dir, path => new DirectoryPath(path)),
-                    Input.Optional("--ref", ctx.ParseResult.GetValueForOption(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild)
-                );
-                ctx.ExitCode = await handler(config);
-            }
-        );
-
         return command;
+    }
+
+    internal static InitializeConfig ReadConfig(ParseResult parsed)
+    {
+        // Unlike the CI-run commands, `initialize` is a local dev step - no RIX_* env fallback; an
+        // absent --dir just means "this repo".
+        var dir = parsed.GetValueForOption(DirOption) ?? Directory.GetCurrentDirectory();
+        return new InitializeConfig
+        (
+            Input.Required("--dir", dir, path => new DirectoryPath(path)),
+            Input.Optional("--ref", parsed.GetValueForOption(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild)
+        );
     }
 }

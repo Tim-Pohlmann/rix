@@ -4,9 +4,9 @@ using System.CommandLine.Parsing;
 namespace Rix.Cli;
 
 /// <summary>Shared CLI option resolution: prefer the parsed option, fall back to an environment
-/// variable, then to a default. Used by every command handler. The typed readers hand the raw
-/// text to <see cref="Input"/> under the option's own flag name, so an error always names the
-/// flag exactly as it was declared rather than a retyped copy of it.</summary>
+/// variable, then to a default. Used by every command's <c>ReadConfig</c>. The typed readers hand
+/// the raw text to <see cref="Input"/> under the option's own flag name, so an error always names
+/// the flag exactly as it was declared rather than a retyped copy of it.</summary>
 internal static class ParseResultExtensions
 {
     extension(ParseResult parseResult)

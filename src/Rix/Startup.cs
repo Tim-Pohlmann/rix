@@ -92,16 +92,25 @@ internal static class Startup
             using var onSigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, HandleSigterm(cts));
 
             var rootCommand = new RootCommand("RIX - AI-powered code automation");
-            rootCommand.AddCommand(JobCommand.Build(config => ExecuteJobAsync(config, cts.Token)));
-            rootCommand.AddCommand(SubmitCommand.Build(config => ExecuteSubmitAsync(config, cts.Token)));
-            rootCommand.AddCommand(CiFailureCommand.Build(config => ExecuteCiFailureAsync(config, cts.Token)));
-            rootCommand.AddCommand(InitializeCommand.Build(config => ExecuteInitializeAsync(config, cts.Token)));
+            rootCommand.AddCommand(Runs(JobCommand.Build(), JobCommand.ReadConfig, config => ExecuteJobAsync(config, cts.Token)));
+            rootCommand.AddCommand(Runs(SubmitCommand.Build(), SubmitCommand.ReadConfig, config => ExecuteSubmitAsync(config, cts.Token)));
+            rootCommand.AddCommand(Runs(CiFailureCommand.Build(), CiFailureCommand.ReadConfig, config => ExecuteCiFailureAsync(config, cts.Token)));
+            rootCommand.AddCommand(Runs(InitializeCommand.Build(), InitializeCommand.ReadConfig, config => ExecuteInitializeAsync(config, cts.Token)));
             return await CliPipeline.Build(rootCommand).InvokeAsync(args);
         }
         finally
         {
             Console.CancelKeyPress -= onCancelKeyPress;
         }
+    }
+
+    /// <summary>Makes invoking <paramref name="command"/> read its config and run it. The read happens
+    /// inside the handler so an <see cref="InvalidInputException"/> it throws reaches the pipeline's
+    /// exception handler (see <see cref="CliPipeline"/>) like any other.</summary>
+    private static Command Runs<TConfig>(Command command, Func<ParseResult, TConfig> read, Func<TConfig, Task<int>> execute)
+    {
+        command.SetHandler(async ctx => ctx.ExitCode = await execute(read(ctx.ParseResult)));
+        return command;
     }
 
     /// <summary>Cancels <paramref name="cts"/> and suppresses the runtime's default termination so

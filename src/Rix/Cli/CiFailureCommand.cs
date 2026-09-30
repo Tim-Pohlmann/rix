@@ -1,5 +1,6 @@
 using Rix.CiFailure;
 using System.CommandLine;
+using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
@@ -25,7 +26,7 @@ internal static class CiFailureCommand
     )
     { IsRequired = false };
 
-    internal static Command Build(Func<CiFailureConfig, Task<int>> handler)
+    internal static Command Build()
     {
         var command = new Command
         (
@@ -41,30 +42,25 @@ internal static class CiFailureCommand
         command.AddOption(RunIdOption);
         command.AddOption(MaxRixCommitsOption);
 
-        command.SetHandler
-        (
-            async ctx =>
-            {
-                var parsed = ctx.ParseResult;
-                // Same order as `job` for the shared options, so both commands report the same
-                // first problem for the same mistake; this command's own two come last.
-                var repo = CommonOptions.ReadRepo(parsed);
-                var readToken = JobOptions.ReadReadToken(parsed);
-                var outputDir = JobOptions.ReadOutputDir(parsed);
-                var runId = parsed.Required(RunIdOption, "RIX_RUN_ID", raw => new RunId(Input.WholeNumber<long>(raw)));
-                var maxRixCommits = parsed.Optional
-                (
-                    MaxRixCommitsOption,
-                    "RIX_MAX_RIX_COMMITS",
-                    raw => new MaxRixCommits(Input.WholeNumber<int>(raw)),
-                    new MaxRixCommits(CiFailureConfig.DefaultMaxRixCommits)
-                );
+        return command;
+    }
 
-                var config = new CiFailureConfig(runId, repo, readToken, outputDir, maxRixCommits);
-                ctx.ExitCode = await handler(config);
-            }
+    internal static CiFailureConfig ReadConfig(ParseResult parsed)
+    {
+        // Same order as `job` for the shared options, so both commands report the same first
+        // problem for the same mistake; this command's own two come last.
+        var repo = CommonOptions.ReadRepo(parsed);
+        var readToken = JobOptions.ReadReadToken(parsed);
+        var outputDir = JobOptions.ReadOutputDir(parsed);
+        var runId = parsed.Required(RunIdOption, "RIX_RUN_ID", raw => new RunId(Input.WholeNumber<long>(raw)));
+        var maxRixCommits = parsed.Optional
+        (
+            MaxRixCommitsOption,
+            "RIX_MAX_RIX_COMMITS",
+            raw => new MaxRixCommits(Input.WholeNumber<int>(raw)),
+            new MaxRixCommits(CiFailureConfig.DefaultMaxRixCommits)
         );
 
-        return command;
+        return new CiFailureConfig(runId, repo, readToken, outputDir, maxRixCommits);
     }
 }
