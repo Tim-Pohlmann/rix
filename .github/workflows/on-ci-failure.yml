@@ -78,6 +78,20 @@ on:
         description: Wall-clock timeout in minutes
         required: false
         type: number
+      factory-repo:
+        description: >-
+          Optional repo (owner/name) holding agent config/context files to copy into the
+          runner's home directory. The read-token secret must also grant read access to this
+          repo. Omit to leave the runner home untouched.
+        required: false
+        type: string
+      agent-home-path:
+        description: >-
+          Directory inside factory-repo whose contents are copied into the runner's home
+          before the agent starts (existing files are kept). Requires factory-repo; defaults
+          to .rix/agent-home.
+        required: false
+        type: string
       runner:
         description: runs-on label for all three jobs (e.g. a self-hosted runner label)
         required: false
@@ -205,6 +219,8 @@ jobs:
           allowed-push-branches: ${{ needs.detect.outputs.branch }}
           max-tokens: ${{ inputs.max-tokens }}
           timeout: ${{ inputs.timeout }}
+          factory-repo: ${{ inputs.factory-repo }}
+          agent-home-path: ${{ inputs.agent-home-path }}
           rix-version: ${{ inputs.rix-version }}
           rix-bin: ${{ inputs.rix-bin }}
 
