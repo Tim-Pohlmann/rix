@@ -227,7 +227,7 @@ internal static class Startup
     }
 
     /// <summary>
-    /// Imperative shell around <see cref="CiFailureDetector.DetectAsync"/>: reports what the check
+    /// Imperative shell around <see cref="CiFailureRunner.RunAsync"/>: reports what the check
     /// found and stops. No agent runs here, and nothing is cloned — whoever answers the failure
     /// does so from a <see cref="CiFailureDetected.Prompt"/> this wrote, on a machine this one
     /// never touches.
@@ -245,7 +245,7 @@ internal static class Startup
     internal static async Task<int> ExecuteCiFailureAsync(CiFailureConfig config, CancellationToken cancellationToken, CiFailureContext? context = null)
     {
         var collaborators = context ?? DefaultCiFailureContext(config);
-        var result = await CiFailureDetector.DetectAsync
+        var result = await CiFailureRunner.RunAsync
         (
             config.Repo, config.RunId, collaborators.Ci, collaborators.RepoHost, config.MaxRixCommits, cancellationToken
         );
