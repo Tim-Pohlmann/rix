@@ -26,6 +26,8 @@ internal sealed class ClaudeAgent : ICodingAgent
         ];
         if (!string.IsNullOrWhiteSpace(config.Agent.Model))
             args.AddRange(["--model", config.Agent.Model]);
+        if (!string.IsNullOrWhiteSpace(config.Agent.Effort))
+            args.AddRange(["--effort", config.Agent.Effort]);
 
         return new
         (

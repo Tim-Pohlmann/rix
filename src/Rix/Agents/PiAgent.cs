@@ -33,6 +33,9 @@ internal sealed class PiAgent : ICodingAgent
         ];
         if (!string.IsNullOrWhiteSpace(config.Agent.Model))
             args.AddRange(["--model", config.Agent.Model]);
+        // Pi calls its reasoning-effort setting the "thinking level".
+        if (!string.IsNullOrWhiteSpace(config.Agent.Effort))
+            args.AddRange(["--thinking", config.Agent.Effort]);
 
         return new
         (

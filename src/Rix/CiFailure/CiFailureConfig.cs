@@ -1,10 +1,10 @@
 namespace Rix.CiFailure;
 
 /// <summary>Everything <c>rix ci-failure</c> needs, already strongly typed. Detection only: the
-/// agent-running values <c>rix job</c> takes (agent, model, credential, token budget, timeout, a
-/// working directory to clone into) are deliberately absent, because this command never starts an
-/// agent — it reports what it found and stops, leaving the run to a separate job that cannot reach
-/// back into the machine this check ran on.</summary>
+/// agent-running values <c>rix job</c> takes (agent, model, effort, credential, token budget,
+/// timeout, a working directory to clone into) are deliberately absent, because this command never
+/// starts an agent — it reports what it found and stops, leaving the run to a separate job that
+/// cannot reach back into the machine this check ran on.</summary>
 /// <param name="Repo">The repo whose run is inspected, and the one the run's branch is judged
 /// against — a run whose head lives elsewhere is a fork's.</param>
 /// <param name="ReadToken">The token the run's metadata, logs and commits are read with.</param>
