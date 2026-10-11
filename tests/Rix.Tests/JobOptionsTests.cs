@@ -147,6 +147,18 @@ public class JobOptionsTests
     => Assert.AreEqual("openai/gpt-4o", JobOptions.ReadModel(Parse("--model", "openai/gpt-4o")));
 
     [TestMethod]
+    public void ReadEffort_IsNull_WhenBlank()
+    {
+        // Unset means "keep the agent CLI's own default effort", so no flag is passed at all.
+        Assert.IsNull(JobOptions.ReadEffort(Parse()));
+        Assert.IsNull(JobOptions.ReadEffort(Parse("--effort", "")));
+    }
+
+    [TestMethod]
+    public void ReadEffort_PassesThroughExplicitValue()
+    => Assert.AreEqual("high", JobOptions.ReadEffort(Parse("--effort", "high")));
+
+    [TestMethod]
     public void ReadAgentApiKey_IsNull_WhenNotSupplied()
     => Assert.IsNull(JobOptions.ReadAgentApiKey(Parse()));
 

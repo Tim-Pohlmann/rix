@@ -26,6 +26,7 @@ internal sealed record CiFailureConfig
     MaxTokens MaxTokens,
     MaxRixCommits MaxRixCommits,
     string? Model = null,
+    string? Effort = null,
     AgentCredential? Credential = null
 )
 {
@@ -53,7 +54,7 @@ internal sealed record CiFailureConfig
         TimeoutMinutes,
         WorkDir: WorkDir,
         OutputDir: OutputDir,
-        new AgentConfig(Agent, prompt, MaxTokens, Model, Credential),
+        new AgentConfig(Agent, prompt, MaxTokens, Model, Effort, Credential),
         [allowedPushBranch]
     );
 }

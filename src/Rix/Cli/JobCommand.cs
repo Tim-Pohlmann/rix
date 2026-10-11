@@ -31,6 +31,7 @@ internal static class JobCommand
                 var workDir = CommonOptions.ReadWorkDir(parsed);
                 var outputDir = JobOptions.ReadOutputDir(parsed);
                 var model = JobOptions.ReadModel(parsed);
+                var effort = JobOptions.ReadEffort(parsed);
                 var apiKey = JobOptions.ReadAgentApiKey(parsed);
                 var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
                 var allowedPushBranches = BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
@@ -43,7 +44,7 @@ internal static class JobCommand
                     timeout,
                     WorkDir: workDir,
                     OutputDir: outputDir,
-                    new AgentConfig(agent, prompt, maxTokens, model, credential),
+                    new AgentConfig(agent, prompt, maxTokens, model, effort, credential),
                     allowedPushBranches,
                     agentHome
                 );

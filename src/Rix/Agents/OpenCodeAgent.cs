@@ -45,6 +45,10 @@ internal sealed class OpenCodeAgent : ICodingAgent
         List<string> args = ["run", $"{systemPrompt}\n\n{config.Agent.Prompt}", "--auto"];
         if (!string.IsNullOrWhiteSpace(config.Agent.Model))
             args.AddRange(["--model", config.Agent.Model]);
+        // OpenCode calls its reasoning-effort setting a model "variant"; which ones exist depends
+        // on the provider.
+        if (!string.IsNullOrWhiteSpace(config.Agent.Effort))
+            args.AddRange(["--variant", config.Agent.Effort]);
         args.AddRange(["--format", "json"]);
 
         return new

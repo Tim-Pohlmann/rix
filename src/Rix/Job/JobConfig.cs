@@ -42,8 +42,10 @@ internal record JobConfig
 /// <paramref name="Prompt"/> it receives, its token budget, and an optional <paramref name="Model"/>
 /// identifier forwarded verbatim to the agent CLI (e.g. <c>openai/gpt-4o</c> for opencode) — rix
 /// does not interpret or validate it, since which providers/models an agent CLI accepts is entirely
-/// that CLI's concern. Groups the inputs the <c>--agent</c>, <c>--prompt</c>, <c>--max-tokens</c>,
-/// and <c>--model</c> flags configure.
+/// that CLI's concern. <paramref name="Effort"/> is likewise forwarded verbatim, to whichever flag
+/// the agent CLI sets its reasoning effort with, since the accepted levels differ per CLI and,
+/// for opencode, per provider. Groups the inputs the <c>--agent</c>, <c>--prompt</c>,
+/// <c>--max-tokens</c>, <c>--model</c>, and <c>--effort</c> flags configure.
 /// <paramref name="Credential"/> (already resolved and validated by
 /// <see cref="AgentCredential.Resolve"/>) is <see cref="JobRunner"/>'s instruction for which single
 /// env var to add to the agent invocation's <see cref="AgentInvocation.EnvironmentOverrides"/> —
@@ -54,6 +56,7 @@ internal sealed record AgentConfig
     string Prompt,
     MaxTokens MaxTokens,
     string? Model = null,
+    string? Effort = null,
     AgentCredential? Credential = null
 );
 

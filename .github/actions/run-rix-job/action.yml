@@ -18,6 +18,9 @@ inputs:
   model:
     description: Model identifier passed to the agent CLI via --model; omit for the agent's own default
     required: false
+  effort:
+    description: Reasoning effort passed to the agent CLI (claude --effort, opencode --variant, pi --thinking); omit for the agent's own default
+    required: false
   agent-api-key:
     description: API key for the selected agent's model provider; optional (opencode's free default model needs none)
     required: false
@@ -77,6 +80,7 @@ runs:
         AGENT_API_KEY_ENV: ${{ inputs.agent-api-key-env }}
         RIX_AGENT: ${{ inputs.agent }}
         RIX_MODEL: ${{ inputs.model }}
+        RIX_EFFORT: ${{ inputs.effort }}
         RIX_READ_TOKEN: ${{ inputs.read-token }}
         RIX_REPO: ${{ inputs.repo }}
         RIX_PROMPT: ${{ inputs.prompt }}

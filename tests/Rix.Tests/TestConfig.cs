@@ -23,6 +23,7 @@ internal static class TestConfig
         string? outputDir = null,
         AgentKind agent = JobConfig.DefaultAgent,
         string? model = null,
+        string? effort = null,
         string? agentApiKey = null,
         string? agentApiKeyEnv = null,
         IReadOnlyList<BranchName>? allowedPushBranches = null,
@@ -39,7 +40,7 @@ internal static class TestConfig
             new TimeoutMinutes(timeoutMinutes),
             WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
             OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
-            new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, credential),
+            new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, effort, credential),
             allowedPushBranches ?? [],
             agentHome
         );
