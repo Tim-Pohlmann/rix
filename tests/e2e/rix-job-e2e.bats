@@ -65,7 +65,7 @@ setup() {
 }
 
 teardown() {
-  unset RIX_AGENT RIX_MODEL OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY
+  unset RIX_AGENT RIX_MODEL RIX_EFFORT OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY
 }
 
 # The real binary's output is the one thing the schema can be checked against that nobody wrote by

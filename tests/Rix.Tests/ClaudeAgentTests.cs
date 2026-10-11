@@ -173,4 +173,26 @@ public class ClaudeAgentTests
 
         CollectionAssert.DoesNotContain(args, "--model");
     }
+
+    [TestMethod]
+    public void BuildInvocation_OmitsEffortFlag_ByDefault()
+    {
+        var config = TestConfig.Valid(agent: AgentKind.Claude);
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        CollectionAssert.DoesNotContain(args, "--effort");
+    }
+
+    [TestMethod]
+    public void BuildInvocation_IncludesEffortFlag_WhenEffortSet()
+    {
+        var config = TestConfig.Valid(agent: AgentKind.Claude, effort: "high");
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        var effortIndex = args.IndexOf("--effort");
+        Assert.AreNotEqual(-1, effortIndex);
+        Assert.AreEqual("high", args[effortIndex + 1]);
+    }
 }

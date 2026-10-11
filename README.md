@@ -129,7 +129,7 @@ the copy into home fails, the job stops with a setup failure and the agent never
 `agent-home-path` without `factory-repo` is rejected. The inputs forward as
 `--factory-repo` / `--agent-home-path` (env `RIX_FACTORY_REPO` / `RIX_AGENT_HOME_PATH`).
 
-### Using a different provider or model
+### Using a different provider, model, or effort
 
 opencode supports many model providers beyond the free default. Pick a model with the
 `model` input, forwarded verbatim as `--model` (rix does not interpret it), and set
@@ -156,6 +156,13 @@ opencode supports many model providers beyond the free default. Pick a model wit
 with `model`, forwarded verbatim as `--model` (e.g. `openai/gpt-4o`). Unlike opencode, pi has
 no free default provider, so `agent-api-key-env` must always be set explicitly when
 `agent-api-key` is provided; there is no per-agent default to fall back on.
+
+Set the optional `effort` input to change how hard the agent reasons. rix forwards it verbatim
+to the agent CLI's own flag, so the accepted levels are that CLI's: `--effort` for claude (`low`,
+`medium`, `high`, `xhigh`, `max`), `--variant` for opencode (provider-specific, e.g. `high`,
+`max`, `minimal`), and `--thinking` for pi (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
+`max`). Leave it unset to keep the agent's default. The input forwards as `--effort` (env
+`RIX_EFFORT`).
 
 Local/self-hosted backends (e.g. Ollama, LM Studio) aren't supported yet — opencode and pi
 reach those through a generated config file rather than a model string + API key, which is a

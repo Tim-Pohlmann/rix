@@ -158,4 +158,26 @@ public class OpenCodeAgentTests
         Assert.AreNotEqual(-1, modelIndex);
         Assert.AreEqual("openai/gpt-4o", args[modelIndex + 1]);
     }
+
+    [TestMethod]
+    public void BuildInvocation_OmitsEffortFlag_ByDefault()
+    {
+        var config = TestConfig.Valid();
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        CollectionAssert.DoesNotContain(args, "--variant");
+    }
+
+    [TestMethod]
+    public void BuildInvocation_IncludesEffortFlag_WhenEffortSet()
+    {
+        var config = TestConfig.Valid(effort: "high");
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        var effortIndex = args.IndexOf("--variant");
+        Assert.AreNotEqual(-1, effortIndex);
+        Assert.AreEqual("high", args[effortIndex + 1]);
+    }
 }

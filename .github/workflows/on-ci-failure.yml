@@ -36,6 +36,14 @@ on:
           picks a free model on its own, needing no API key).
         required: false
         type: string
+      effort:
+        description: >-
+          Reasoning effort passed to the agent CLI, forwarded verbatim to its own flag: --effort
+          for claude (low, medium, high, xhigh, max), --variant for opencode (provider-specific,
+          e.g. high, max, minimal), --thinking for pi (off, minimal, low, medium, high, xhigh,
+          max). Omit to use the agent's own default effort.
+        required: false
+        type: string
       agent-api-key-env:
         description: >-
           Name of the environment variable agent-api-key is exported as (e.g. OPENCODE_API_KEY,
@@ -134,6 +142,7 @@ jobs:
           read-token: ${{ secrets.read-token }}
           agent: ${{ inputs.agent }}
           model: ${{ inputs.model }}
+          effort: ${{ inputs.effort }}
           agent-api-key: ${{ secrets.agent-api-key }}
           agent-api-key-env: ${{ inputs.agent-api-key-env }}
           # Forwarded raw, 0 and all: run-ci-failure normalizes the omitted-number-input 0 the

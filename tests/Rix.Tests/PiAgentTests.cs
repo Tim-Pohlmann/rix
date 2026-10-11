@@ -155,4 +155,26 @@ public class PiAgentTests
         Assert.AreNotEqual(-1, modelIndex);
         Assert.AreEqual("openai/gpt-4o", args[modelIndex + 1]);
     }
+
+    [TestMethod]
+    public void BuildInvocation_OmitsEffortFlag_ByDefault()
+    {
+        var config = TestConfig.Valid(agent: AgentKind.Pi);
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        CollectionAssert.DoesNotContain(args, "--thinking");
+    }
+
+    [TestMethod]
+    public void BuildInvocation_IncludesEffortFlag_WhenEffortSet()
+    {
+        var config = TestConfig.Valid(agent: AgentKind.Pi, effort: "high");
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        var effortIndex = args.IndexOf("--thinking");
+        Assert.AreNotEqual(-1, effortIndex);
+        Assert.AreEqual("high", args[effortIndex + 1]);
+    }
 }
