@@ -186,12 +186,15 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Async methods in this codebase take and propagate a CancellationToken
-      (the sole exception is Startup.RunAsync, the top-level entry point).
-      Add a CancellationToken parameter and forward it to any awaited calls.
+      Async methods in this codebase take and propagate a CancellationToken.
+      Add one and forward it to any awaited call. The CLI shell is excluded
+      for the same reason it may touch the console: it is where the writes
+      that happen after the outcome is already decided live, and those must
+      finish even once cancellation has been requested.
     paths:
       exclude:
         - src/Rix/Startup.cs
+        - src/Rix/Cli/**
     patterns:
       - pattern-either:
           - pattern: "async Task $M(...) { ... }"
@@ -203,9 +206,8 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Rix.Cli is a leaf layer wired only from the composition root
-      (Startup.cs); reference it there only, not from Job/Agents/Process/
-      Repository/Submit/Api.
+      Rix.Cli is a leaf layer the entry point wires up; reference it from
+      Startup.cs only, not from Job/Agents/Process/Repository/Submit/Api.
     paths:
       exclude:
         - src/Rix/Startup.cs
@@ -232,3 +234,17 @@ rules:
           - pattern: new ClaudeAgent()
           - pattern: new OpenCodeAgent()
           - pattern: new PiAgent()
+
+  - id: composition-use-outside-cli
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Only a command in Rix.Cli asks Composition for a production context, in
+      the one method that exists to do it. Everything deeper takes the context
+      it needs as a parameter, so what a run is wired against stays visible at
+      the call site rather than being reached for from inside.
+    paths:
+      exclude:
+        - src/Rix/Cli/**
+        - src/Rix/Composition.cs
+    pattern: Composition.$M(...)

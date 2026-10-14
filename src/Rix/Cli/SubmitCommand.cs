@@ -1,5 +1,6 @@
 using Rix.Submit;
 using System.CommandLine;
+using System.Text.Json;
 
 namespace Rix.Cli;
 
@@ -27,6 +28,7 @@ internal static class SubmitCommand
         // flag name or a different environment variable for the same list.
         command.Options.Add(JobOptions.AllowedPushBranchesOption);
 
+        command.SetAction(CliPipeline.ReportingInvalidInput((parsed, token) => ExecuteDefaultAsync(ReadConfig(parsed), token)));
         return command;
     }
 
@@ -41,4 +43,27 @@ internal static class SubmitCommand
         // means the empty list, which is the safe end of the range rather than an error.
         BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"))
     );
+
+    /// <summary>Runs <paramref name="config"/> against the production context. Separate from
+    /// <see cref="ExecuteAsync"/> so a test supplies a context of its own and never reaches
+    /// <see cref="Composition"/>.</summary>
+    private static Task<int> ExecuteDefaultAsync(SubmitConfig config, CancellationToken cancellationToken)
+    => ExecuteAsync(config, Composition.DefaultSubmitContext(config), cancellationToken);
+
+    /// <summary>
+    /// Imperative shell around <see cref="SubmitRunner.RunAsync"/>: runs the submit, writes the
+    /// result JSON to stdout, and maps the result to an exit code.
+    /// </summary>
+    internal static async Task<int> ExecuteAsync(SubmitConfig config, SubmitContext context, CancellationToken cancellationToken)
+    {
+        var result = await SubmitRunner.RunAsync(config, context, cancellationToken);
+        var json = JsonSerializer.Serialize(result, SubmitJsonContext.Default.ISubmitResult);
+        Console.WriteLine(json);
+        return result switch
+        {
+            SubmitSuccess => ExitCodes.Success,
+            SubmitFailure => ExitCodes.JobFailed,
+            _ => throw new NotSupportedException($"Unexpected submit result type: {result.GetType()}"),
+        };
+    }
 }

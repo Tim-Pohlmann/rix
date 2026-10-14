@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Rix.CiFailure;
+using Rix.Cli;
 using Rix.Repository;
 
 namespace Rix.Tests;
@@ -232,7 +233,7 @@ public class CiFailureDetectorTests
     }
 
     /// <summary>The imperative shell's own tests, beside the core's like
-    /// <c>JobRunnerTests</c>'s are: <see cref="Startup.ExecuteCiFailureAsync"/> adds exactly two
+    /// <c>JobRunnerTests</c>'s are: <see cref="CiFailureCommand.ExecuteAsync"/> adds exactly two
     /// things to a detection - the exit code it maps the verdict to, and the files it drops in the
     /// output directory - and both are only meaningful next to the verdict that produced
     /// them.</summary>
@@ -337,7 +338,7 @@ public class CiFailureDetectorTests
     /// <summary>The shell's counterpart to <see cref="Detect"/>, defaulting the repo host the same
     /// way.</summary>
     private Task<int> Execute(StubCiHost ci, StubCiFailureRepoHost? repoHost = null)
-    => Startup.ExecuteCiFailureAsync(Config(), CancellationToken.None, new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost()));
+    => CiFailureCommand.ExecuteAsync(Config(), new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost()), CancellationToken.None);
 
     private JsonObject WrittenResult()
     => JsonNode.Parse(File.ReadAllText(Path.Combine(_outputDir, "result.json")))!.AsObject();
