@@ -242,11 +242,11 @@ rules:
     severity: ERROR
     message: >-
       Choose a production implementation (GitCli, the GitHub hosts, a coding
-      agent, the local file system) only in Startup.cs, the composition root.
-      Everywhere else takes the seam it needs as a parameter.
+      agent, the local file system) only in Composition.cs, the composition
+      root. Everywhere else takes the seam it needs as a parameter.
     paths:
       exclude:
-        - src/Rix/Startup.cs
+        - src/Rix/Composition.cs
     patterns:
       - pattern-either:
           - pattern: new GitCli(...)

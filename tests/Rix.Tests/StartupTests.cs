@@ -1,7 +1,4 @@
-using Rix.Agents;
 using Rix.Cli;
-using Rix.Job;
-using Rix.Repository;
 using System.Runtime.InteropServices;
 
 namespace Rix.Tests;
@@ -13,30 +10,6 @@ public class StartupTests
 
     private static string Echo(string text) =>
         OperatingSystem.IsWindows() ? $"Write-Output '{text}'" : $"echo {text}";
-
-    /// <summary>The one thing a <see cref="JobContext"/> takes from its config: which coding agent
-    /// to run. Every kind is pinned here rather than one per <c>[DataRow]</c>, which can't carry an
-    /// internal <see cref="AgentKind"/> into a public test method — the mapping is a switch a new
-    /// kind can be added to without anything else noticing.</summary>
-    [TestMethod]
-    public void DefaultContext_RunsTheAgentTheConfigNames()
-    {
-        Assert.IsInstanceOfType<ClaudeAgent>(Startup.DefaultContext(TestConfig.Valid(agent: AgentKind.Claude)).Agent);
-        Assert.IsInstanceOfType<OpenCodeAgent>(Startup.DefaultContext(TestConfig.Valid(agent: AgentKind.OpenCode)).Agent);
-        Assert.IsInstanceOfType<PiAgent>(Startup.DefaultContext(TestConfig.Valid(agent: AgentKind.Pi)).Agent);
-    }
-
-    /// <summary><c>ci-failure</c> reads and judges, so its two halves are both read-only hosts —
-    /// no agent, no clone, nothing that could run what it found. Separate fields over one object
-    /// because the roles are separable even though GitHub serves both.</summary>
-    [TestMethod]
-    public void DefaultCiFailureContext_ReadsFromTheCiHostAndJudgesAgainstTheRepoHost()
-    {
-        var context = Startup.DefaultCiFailureContext(TestConfig.ValidCiFailure());
-
-        Assert.IsInstanceOfType<GitHubActionsCiHost>(context.Ci);
-        Assert.IsInstanceOfType<GitHubCiFailureRepoHost>(context.RepoHost);
-    }
 
     [TestMethod]
     public async Task RunAsync_WithHelpFlag_ReturnsZero()
