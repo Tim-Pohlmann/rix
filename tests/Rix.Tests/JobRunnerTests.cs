@@ -1,4 +1,5 @@
 using Rix.Agents;
+using Rix.Cli;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
@@ -57,10 +58,10 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_Returns2_WhenClaudeInstallerFails()
     {
-        var result = await Startup.ExecuteJobAsync(
-            MakeConfig(), CancellationToken.None,
+        var result = await JobCommand.ExecuteAsync(
+            MakeConfig(),
             Context(new StubGit(), FakeRunner(),
-                _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))));
+                _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))), CancellationToken.None);
 
         Assert.AreEqual(2, result);
     }
@@ -120,10 +121,10 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_WritesResultJson_OnSetupFailure()
     {
-        await Startup.ExecuteJobAsync(
-            MakeConfig(), CancellationToken.None,
+        await JobCommand.ExecuteAsync(
+            MakeConfig(),
             Context(new StubGit(), FakeRunner(),
-                _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))));
+                _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         using var doc = JsonDocument.Parse(json);
@@ -436,9 +437,9 @@ public class JobRunnerTests
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await JobCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -451,9 +452,9 @@ public class JobRunnerTests
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => "thinking...", false => null }));
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await JobCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -477,9 +478,9 @@ public class JobRunnerTests
         var hostWithFailingBundle = new StubGit(
             createBundle: _ => throw new RepoHostException("git bundle failed: exited with code 128"));
 
-        var result = await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        var result = await JobCommand.ExecuteAsync(MakeConfig(),
             Context(hostWithFailingBundle, runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         Assert.AreEqual(1, result);
     }
@@ -492,9 +493,9 @@ public class JobRunnerTests
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await JobCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -519,8 +520,8 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: ["rix/my-fix"]), CancellationToken.None,
-            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
+        await JobCommand.ExecuteAsync(MakeConfig(allowedPushBranches: ["rix/my-fix"]),
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -624,9 +625,8 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: ["rix/allowed"]),
-            CancellationToken.None,
-            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
+        await JobCommand.ExecuteAsync(MakeConfig(allowedPushBranches: ["rix/allowed"]),
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -692,9 +692,9 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await JobCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var transcript = await File.ReadAllTextAsync(Path.Combine(_outputDir, "transcript.md"));
         StringAssert.Contains(transcript, "I will fix the bug");
@@ -710,9 +710,9 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await JobCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "transcript.md")),
             "transcript.md must not be written when nothing was extracted");
@@ -881,11 +881,11 @@ public class JobRunnerTests
     => new(git, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }), fileSystem ?? new LocalFileSystem());
 
     private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null)
-    => Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+    => JobCommand.ExecuteAsync(MakeConfig(),
         Context(new StubGit(),
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
             _ => Task.FromResult<InstallResult>(new Installed()),
-            fileSystem: fileSystem));
+            fileSystem: fileSystem), CancellationToken.None);
 
     private JobConfig MakeConfig(
         string[]? allowedPushBranches = null,

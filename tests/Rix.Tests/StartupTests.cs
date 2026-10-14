@@ -88,10 +88,10 @@ public class StartupTests
         (
             new StubFileSystem(directoryExists: _ => true),
             _ => [new RequiredDirectory("--work-dir", new DirectoryPath("/only/on/the/stub"))],
-            config => Task.FromResult(config)
+            (config, _) => Task.FromResult(config)
         );
 
-        var exitCode = await run(7);
+        var exitCode = await run(7, CancellationToken.None);
 
         Assert.AreEqual(7, exitCode);
     }
@@ -107,7 +107,7 @@ public class StartupTests
         (
             new StubFileSystem(directoryExists: path => path == present.Value),
             _ => [new RequiredDirectory("--work-dir", present), new RequiredDirectory("--output-dir", missing), new RequiredDirectory("--dir", missing)],
-            _ =>
+            (_, _) =>
             {
                 ran = true;
                 return Task.FromResult(0);
@@ -116,7 +116,7 @@ public class StartupTests
 
         var ex = Assert.ThrowsExactly<InvalidInputException>
         (
-            () => _ = run(0)
+            () => _ = run(0, CancellationToken.None)
         );
 
         Assert.AreEqual($"--output-dir: directory does not exist: {missing.Value}", ex.Message);
