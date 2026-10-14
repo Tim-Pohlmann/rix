@@ -241,16 +241,19 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Wire production service implementations (GitHubReadHost, GitHubHost,
-      ClaudeAgent, OpenCodeAgent) only in Startup.cs, the composition root
-      (GitHubHost composing GitHubReadHost internally is the one exception).
+      Choose a production implementation (GitCli, the GitHub hosts, a coding
+      agent, the local file system) only in Startup.cs, the composition root.
+      Everywhere else takes the seam it needs as a parameter.
     paths:
       exclude:
         - src/Rix/Startup.cs
-        - src/Rix/Repository/GitHubHost.cs
     patterns:
       - pattern-either:
-          - pattern: new GitHubReadHost(...)
-          - pattern: new GitHubHost(...)
+          - pattern: new GitCli(...)
+          - pattern: new GitHubActionsCiHost(...)
+          - pattern: new GitHubCiFailureRepoHost(...)
+          - pattern: new GitHubSubmitRepoHost(...)
+          - pattern: new LocalFileSystem(...)
           - pattern: new ClaudeAgent()
           - pattern: new OpenCodeAgent()
+          - pattern: new PiAgent()
