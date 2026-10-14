@@ -1,11 +1,12 @@
 name: Prepare rix environment
 description: >-
-  Shared setup for any rix job-shaped subcommand ('job', 'ci-failure'): installs the coding
-  agent CLI, downloads rix (exporting RIX_BIN), and normalizes max-tokens/timeout. Exports
-  everything via $GITHUB_ENV so it reaches whichever later step in the calling job actually
-  invokes rix. Does not touch agent-api-key at all - resolving its target env var and exporting
-  it stays entirely inside each caller's own invocation step, since that's the only way to keep
-  the secret out of $GITHUB_ENV.
+  Setup for `rix job`, the one subcommand that runs the coding agent: installs the agent CLI,
+  downloads rix (exporting RIX_BIN), and normalizes max-tokens/timeout. Exports everything via
+  $GITHUB_ENV so it reaches whichever later step in the calling job actually invokes rix.
+  `ci-failure` shared this back when it ran the agent too; it needs only the binary now, and
+  takes that from download-rix directly. Does not touch agent-api-key at all - resolving its
+  target env var and exporting it stays entirely inside each caller's own invocation step, since
+  that's the only way to keep the secret out of $GITHUB_ENV.
 
 inputs:
   max-tokens:

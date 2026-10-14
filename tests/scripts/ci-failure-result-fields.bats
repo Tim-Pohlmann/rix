@@ -9,7 +9,7 @@
 # The action's own parse is extracted and run rather than restated, so this can't pass while the
 # action drifts away from it.
 
-ACTION="${BATS_TEST_DIRNAME}/../../.github/actions/run-ci-failure/action.yml"
+ACTION="${BATS_TEST_DIRNAME}/../../.github/actions/detect-ci-failure/action.yml"
 
 setup() {
   load result-schema
@@ -23,7 +23,7 @@ extract_parse() {
 
 parse_result() {
   local result="$1"
-  assert_matches_schema ci-failure-output.schema.json "$result"
+  assert_matches_schema ci-failure-result.schema.json "$result"
   eval "$(extract_parse)"
 }
 

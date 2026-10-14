@@ -27,7 +27,7 @@ public class ResultSchemaTests
     [TestMethod]
     [DataRow("job-result.schema.json")]
     [DataRow("submit-result.schema.json")]
-    [DataRow("ci-failure-output.schema.json")]
+    [DataRow("ci-failure-result.schema.json")]
     public void CommittedSchema_MatchesTheResultTypes(string fileName)
     {
         var path = Path.Combine(RepoRoot(), "schemas", fileName);
@@ -50,27 +50,13 @@ public class ResultSchemaTests
         );
     }
 
-    private static readonly string[] CiFailureStdoutStatuses =
-        ["error", "failure", "loopGuarded", "setupFailure", "skipped", "success", "untrustedRun"];
-
-    [TestMethod]
-    public void CiFailureOutput_OffersEveryStatusThatReachesStdout_AndNotDetected()
-    {
-        var statuses = Generate("ci-failure-output.schema.json")["anyOf"]!.AsArray()
-            .Select(variant => variant!["properties"]!["status"]!["const"]!.GetValue<string>())
-            .Order()
-            .ToArray();
-
-        CollectionAssert.AreEqual(CiFailureStdoutStatuses, statuses);
-    }
-
     /// <summary>The schemas claim every property is always written; this holds them to it by
     /// serializing one of each variant exactly the way <see cref="Startup"/> does and comparing the
     /// fields that come out with the ones its schema requires.</summary>
     [TestMethod]
     public void EveryVariant_WritesExactlyTheFieldsItsSchemaRequires()
     {
-        const string job = "job-result.schema.json", submit = "submit-result.schema.json", ciFailure = "ci-failure-output.schema.json";
+        const string job = "job-result.schema.json", submit = "submit-result.schema.json", ciFailure = "ci-failure-result.schema.json";
         (string Schema, string Json)[] written =
         [
             (job, JsonSerializer.Serialize<IJobResult>(new JobSuccess([], [], 0m, TimeSpan.Zero), JobJsonContext.Default.IJobResult)),
@@ -78,6 +64,7 @@ public class ResultSchemaTests
             (job, JsonSerializer.Serialize<IJobResult>(new SetupFailure("boom"), JobJsonContext.Default.IJobResult)),
             (submit, JsonSerializer.Serialize<ISubmitResult>(new SubmitSuccess([], []), SubmitJsonContext.Default.ISubmitResult)),
             (submit, JsonSerializer.Serialize<ISubmitResult>(new SubmitFailure("boom"), SubmitJsonContext.Default.ISubmitResult)),
+            (ciFailure, JsonSerializer.Serialize<ICiFailureResult>(new CiFailureDetected("fix it", "https://example.test/run", "main", 7) { PromptFile = "out/prompt.md" }, CiFailureJsonContext.Default.ICiFailureResult)),
             (ciFailure, JsonSerializer.Serialize<ICiFailureResult>(new CiFailureSkipped("succeeded"), CiFailureJsonContext.Default.ICiFailureResult)),
             (ciFailure, JsonSerializer.Serialize<ICiFailureResult>(new CiFailureLoopGuarded("rix/fix", 3), CiFailureJsonContext.Default.ICiFailureResult)),
             (ciFailure, JsonSerializer.Serialize<ICiFailureResult>(new CiFailureUntrustedRun("someone/fork", "main"), CiFailureJsonContext.Default.ICiFailureResult)),
@@ -107,15 +94,9 @@ public class ResultSchemaTests
         "submit-result.schema.json" => Document(
             "The result rix submit prints.",
             Variants(SubmitJsonContext.Default, typeof(ISubmitResult))),
-        // What `rix ci-failure` prints is not one C# type: a run it does not act on prints an
-        // ICiFailureResult, and one it does act on prints the job's IJobResult instead. "detected"
-        // is the one variant that never reaches stdout - it always leads to the job running - so it
-        // is left out rather than letting a fixture carrying it pass as valid.
-        "ci-failure-output.schema.json" => Document(
-            "The result rix ci-failure prints: a check that never reached the agent, or the job it ran.",
-            Variants(CiFailureJsonContext.Default, typeof(ICiFailureResult))
-                .Where(variant => variant["properties"]!["status"]!["const"]!.GetValue<string>() != "detected")
-                .Concat(Variants(JobJsonContext.Default, typeof(IJobResult)))),
+        "ci-failure-result.schema.json" => Document(
+            "The result rix ci-failure prints and writes to result.json.",
+            Variants(CiFailureJsonContext.Default, typeof(ICiFailureResult))),
         _ => throw new ArgumentOutOfRangeException(nameof(fileName), fileName, null),
     };
 

@@ -15,8 +15,7 @@ internal record BranchName(string Value)
     ///
     /// Shared by <c>rix job</c> and <c>rix submit</c> so the same text can't mean two different
     /// lists at the two points that enforce it. The comma-separated form cannot express a branch
-    /// whose name contains a comma; a caller holding real <see cref="BranchName"/>s passes them
-    /// directly instead (see <c>CiFailureConfig.ToJobConfig</c>).</summary>
+    /// whose name contains a comma.</summary>
     internal static List<BranchName> ParseAllowList(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))

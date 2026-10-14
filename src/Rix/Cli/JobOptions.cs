@@ -5,18 +5,16 @@ using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
-/// <summary>The CLI options shared by <c>job</c> and <c>ci-failure</c>, which both run the coding
-/// agent and so take the same execution parameters, plus one reader per option that turns its
-/// flag-or-environment text into the value the command's config takes — the first missing or
-/// malformed value throws <see cref="InvalidInputException"/> naming the flag, which
-/// <see cref="CliPipeline"/> reports. Each command assembles its own config from these at the
-/// call site, in the order it wants problems reported. <see cref="PromptOption"/> and
-/// <see cref="AllowedPushBranchesOption"/> are the exception: <c>ci-failure</c> derives both from
-/// the failure it detects rather than accepting them as inputs, so <see cref="AddTo"/> leaves
-/// those two to <c>job</c>. <c>--repo</c> and <c>--work-dir</c> live in <see cref="CommonOptions"/>
-/// instead, since <c>submit</c> takes them too without taking anything else here;
-/// <see cref="AddTo"/> still registers them, so a command accepting the agent-running set keeps
-/// getting the whole flag surface from one call.</summary>
+/// <summary>The CLI options a command that runs the coding agent takes, plus one reader per option
+/// that turns its flag-or-environment text into the value the command's config takes — the first
+/// missing or malformed value throws <see cref="InvalidInputException"/> naming the flag, which
+/// <see cref="CliPipeline"/> reports. The command assembles its config from these at the call site,
+/// in the order it wants problems reported. <c>--repo</c> and <c>--work-dir</c> live in
+/// <see cref="CommonOptions"/> instead, since <c>submit</c> takes them too without taking anything
+/// else here; <see cref="AddTo"/> still registers them, so one call yields the whole flag surface.
+///
+/// <c>ci-failure</c> runs no agent, so it borrows only <see cref="ReadTokenOption"/> and
+/// <see cref="OutputDirOption"/> by name — see <see cref="CiFailureCommand"/>.</summary>
 internal static class JobOptions
 {
     internal static readonly Option<string> ReadTokenOption = new
@@ -30,6 +28,13 @@ internal static class JobOptions
     (
         name: "--prompt",
         description: "Task prompt passed to the coding agent"
+    )
+    { IsRequired = false };
+
+    internal static readonly Option<string> PromptFileOption = new
+    (
+        name: "--prompt-file",
+        description: "Path to a file holding the task prompt, read instead of --prompt"
     )
     { IsRequired = false };
 
@@ -129,6 +134,43 @@ internal static class JobOptions
         command.AddOption(ModelOption);
         command.AddOption(AgentApiKeyOption);
         command.AddOption(AgentApiKeyEnvOption);
+    }
+
+    /// <summary>Reads the prompt from <c>--prompt</c> or <c>--prompt-file</c>: two ways of handing
+    /// over one value, not two values, so supplying both is reported rather than settled by a
+    /// precedence rule nobody would remember, and supplying neither is still reported under
+    /// <c>--prompt</c>. The file form exists for a prompt built somewhere else - <c>rix
+    /// ci-failure</c>'s, assembled from a failing run's log output and so both long and arbitrary -
+    /// which reaches this job as an artifact: a file crosses that boundary without a size cap, and
+    /// its content never has to survive being quoted through a job output or a shell. Reading it
+    /// here rather than in the workflow that hands it over keeps the rule in the same place as
+    /// every other cross-flag rule, and gives every caller of the binary the same option.</summary>
+    internal static string ReadPrompt(ParseResult parsed)
+    {
+        var path = parsed.OptionalText(PromptFileOption, "RIX_PROMPT_FILE");
+        if (path is null)
+            return parsed.RequiredText(PromptOption, "RIX_PROMPT");
+
+        if (parsed.OptionalText(PromptOption, "RIX_PROMPT") is not null)
+            throw new InvalidInputException($"{ParseResultExtensions.Flag(PromptOption)} and {ParseResultExtensions.Flag(PromptFileOption)} both give the prompt - supply one of them");
+
+        return Input.Named(ParseResultExtensions.Flag(PromptFileOption), () => ReadPromptFile(path));
+    }
+
+    /// <summary>The file's content, whole and unmodified - no trimming, since the prompt is the
+    /// text an agent is handed. A missing or blank file is reported the way a blank
+    /// <c>--prompt</c> is: naming it was the caller asking for a prompt from it, so finding none
+    /// there is a problem to report rather than a reason to run the agent on nothing.</summary>
+    private static string ReadPromptFile(string path)
+    {
+        if (!File.Exists(path))
+            throw new InvalidInputException($"no file at '{path}'");
+
+        var prompt = File.ReadAllText(path);
+        if (string.IsNullOrWhiteSpace(prompt))
+            throw new InvalidInputException($"'{path}' holds no prompt");
+
+        return prompt;
     }
 
     internal static GitReadToken ReadReadToken(ParseResult parsed)
