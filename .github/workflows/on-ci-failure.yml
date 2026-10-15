@@ -160,6 +160,13 @@ jobs:
         with:
           name: rix-prompt
           path: out/prompt.md
+          # A branch here means rix wrote the prompt: it writes the file before it reports the
+          # verdict, and a failed write is reported as an error instead, which names no branch.
+          # So a missing file is a broken invariant rather than a case to handle, and the default
+          # (warn, upload nothing) would let it surface one job later as the `run` job failing to
+          # download an artifact that was never created - pointing at the wrong step. Fail here,
+          # where it actually broke.
+          if-no-files-found: error
 
   run:
     name: Run rix job

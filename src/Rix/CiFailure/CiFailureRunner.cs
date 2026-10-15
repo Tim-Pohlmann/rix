@@ -9,10 +9,14 @@ namespace Rix.CiFailure;
 /// failure into a prompt" logic lives in one tested place instead of a workflow script. Also the
 /// one place that decides a failure is not worth answering at all — a run that didn't fail, one
 /// rix isn't allowed to answer because it came from a fork, or one whose branch rix has already
-/// been fixing on its own for too long. Deciding what to do with the
-/// outcome is the caller's job, not this one's.
+/// been fixing on its own for too long. Deciding what to do with the outcome is the caller's job,
+/// not this one's: reaching a verdict is the whole of <c>rix ci-failure</c>, and answering the
+/// failure is a separate <c>rix job</c> run on a machine this one never touches.
+///
+/// Named for the command it is the whole of, like <see cref="Rix.Job.JobRunner"/> and
+/// <see cref="Rix.Submit.SubmitRunner"/>, rather than for the one thing it does.
 /// </summary>
-internal static class CiFailureDetector
+internal static class CiFailureRunner
 {
     /// <summary>Caps the log excerpt so a flooding failure can't blow the model's context budget.
     /// The host applies it while streaming the logs, so it bounds what is held in memory as well as
@@ -20,7 +24,7 @@ internal static class CiFailureDetector
     /// — nothing here re-trims what comes back.</summary>
     private const int LogTailChars = 20_000;
 
-    internal static async Task<ICiFailureResult> DetectAsync
+    internal static async Task<ICiFailureResult> RunAsync
     (
         RepoIdentifier repo,
         RunId runId,
