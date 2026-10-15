@@ -3,52 +3,59 @@ using System.Text;
 
 namespace Rix.Repository;
 
-/// <summary><see cref="IGit"/> on the <c>git</c> binary, for the one remote given at creation. Owns
-/// the credential injection: the token goes only to the commands that talk to the remote. Knows
-/// nothing about any particular host - the remote's URL is an input, so a GitHub repo is only
-/// GitHub-specific where that URL is built.</summary>
+/// <summary><see cref="IGit"/> on the <c>git</c> binary, for repos on the one host given at
+/// creation. Owns the credential injection: the token goes only to the commands that talk to the
+/// host. Knows nothing about any particular host - the host is an input, so a GitHub repo is only
+/// GitHub-specific where the host is named. The one thing it assumes is the usual
+/// <c>{host}/{owner}/{name}.git</c> remote layout.</summary>
 internal sealed class GitCli : IGit
 {
-    private readonly Uri _remote;
+    private readonly Uri _host;
     private readonly RunProcessAsync _runProcess;
     private readonly IReadOnlyDictionary<string, string> _authEnv;
 
-    internal GitCli(Uri remote, GitReadToken token, RunProcessAsync runProcess)
+    internal GitCli(Uri host, GitReadToken token, RunProcessAsync runProcess)
     {
-        _remote = remote;
+        _host = host;
         _runProcess = runProcess;
-        _authEnv = BuildAuthEnv(remote, token);
+        _authEnv = BuildAuthEnv(host, token);
     }
+
+    private string RemoteUrl(RepoIdentifier repo)
+    => new Uri(_host, $"{repo.Value}.git").AbsoluteUri;
 
     /// <summary>
     /// Builds environment overrides for git HTTPS auth without ever placing the token in argv (visible via <c>ps</c>)
     /// or persisting it into the clone's <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables
     /// as ad-hoc config, so the credential is supplied only via the git subprocess environment for each invocation,
-    /// and only for requests to <paramref name="remote"/>'s host.
+    /// and only for requests to <paramref name="host"/>.
     /// </summary>
-    private static Dictionary<string, string> BuildAuthEnv(Uri remote, GitReadToken token)
+    private static Dictionary<string, string> BuildAuthEnv(Uri host, GitReadToken token)
     {
         var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token.Value}"));
         return new Dictionary<string, string>
         {
             ["GIT_CONFIG_COUNT"] = "1",
-            ["GIT_CONFIG_KEY_0"] = $"http.{remote.GetLeftPart(UriPartial.Authority)}/.extraheader",
+            ["GIT_CONFIG_KEY_0"] = $"http.{host.GetLeftPart(UriPartial.Authority)}/.extraheader",
             ["GIT_CONFIG_VALUE_0"] = $"Authorization: Basic {basic}",
         };
     }
 
-    public Task CloneAsync(string targetDirectory, CancellationToken cancellationToken)
-    => RunAsync(["clone", _remote.AbsoluteUri, targetDirectory], Path.GetTempPath(), authenticated: true, cancellationToken);
+    public Task CloneAsync(RepoIdentifier repo, string targetDirectory, CancellationToken cancellationToken)
+    => RunAsync(["clone", RemoteUrl(repo), targetDirectory], Path.GetTempPath(), authenticated: true, cancellationToken);
 
     /// <summary>Blobless + sparse + depth 1: fetch the commit's tree and only the blobs under
     /// <paramref name="directory"/>, never the repo's full history or unrelated files. Both steps
     /// talk to the remote: the blobs are only fetched when sparse-checkout populates the working
     /// tree, so it needs the credential as much as the clone does.</summary>
-    public async Task SparseCloneAsync(string targetDirectory, SubDirectoryPath directory, CancellationToken cancellationToken)
+    public async Task SparseCloneAsync
+    (
+        RepoIdentifier repo, string targetDirectory, SubDirectoryPath directory, CancellationToken cancellationToken
+    )
     {
         await RunAsync
         (
-            ["clone", "--depth", "1", "--filter=blob:none", "--sparse", _remote.AbsoluteUri, targetDirectory],
+            ["clone", "--depth", "1", "--filter=blob:none", "--sparse", RemoteUrl(repo), targetDirectory],
             Path.GetTempPath(),
             authenticated: true,
             cancellationToken
@@ -60,14 +67,14 @@ internal sealed class GitCli : IGit
     /// containing <c>*</c> would match other branches: the listed refs are compared exactly instead
     /// of trusting the exit code alone. Exit 2 is <c>--exit-code</c>'s "nothing matched" - an answer,
     /// not a fault.</summary>
-    public async Task<bool> BranchExistsOnRemoteAsync(BranchName branch, CancellationToken cancellationToken)
+    public async Task<bool> BranchExistsOnRemoteAsync(RepoIdentifier repo, BranchName branch, CancellationToken cancellationToken)
     {
         var refName = $"refs/heads/{branch.Value}";
         var listed = new List<string>();
         var result = await _runProcess
         (
             "git",
-            ["ls-remote", "--exit-code", _remote.AbsoluteUri, refName],
+            ["ls-remote", "--exit-code", RemoteUrl(repo), refName],
             Path.GetTempPath(),
             _authEnv,
             listed.Add,

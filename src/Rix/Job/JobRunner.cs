@@ -39,7 +39,7 @@ internal static class JobRunner
 
         try
         {
-            await context.Git.CloneAsync(cloneDir.Path, ct);
+            await context.Git.CloneAsync(config.Repo, cloneDir.Path, ct);
             // Set the commit identity before the agent starts, so it can commit without guessing
             // author metadata.
             await context.Git.ConfigureIdentityAsync(cloneDir.Path, ct);
@@ -49,12 +49,12 @@ internal static class JobRunner
             return new SetupFailure(ex.Message);
         }
 
-        if (await CopyAgentHomeAsync(config, context.AgentHomeFetcher, ct) is { } agentHomeFailure)
+        if (await CopyAgentHomeAsync(config, context.Git, ct) is { } agentHomeFailure)
             return agentHomeFailure;
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
-            context.Git, cloneDir.Path, ct, context.LogLine.Invoke,
+            context.Git, config.Repo, cloneDir.Path, ct, context.LogLine.Invoke,
             allowedPushBranches: config.AllowedPushBranches
         );
 
@@ -97,11 +97,12 @@ internal static class JobRunner
 
     /// <summary>Copies the operator-supplied agent home files over the runner's user home before
     /// the agent starts, so its config/context files are in place when the agent first reads them.
-    /// Returns the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once the files are
-    /// in place or when the run has none configured.</summary>
+    /// They come from a sparse clone of just the requested directory of the factory repo, read with
+    /// the job's own credential. Returns the <see cref="SetupFailure"/> to end the run with, or
+    /// <c>null</c> once the files are in place or when the run has none configured.</summary>
     private static async Task<SetupFailure?> CopyAgentHomeAsync
     (
-        JobConfig config, IAgentHomeFetcher fetcher, CancellationToken ct
+        JobConfig config, IGit git, CancellationToken ct
     )
     {
         if (config.AgentHome is not { } agentHome)
@@ -110,13 +111,21 @@ internal static class JobRunner
         using var checkout = TempDirectory.Create(config.WorkDir.Value, "rix-agent-home");
         try
         {
-            var source = await fetcher.FetchAsync(agentHome.Repo, agentHome.SourcePath, new DirectoryPath(checkout.Path), ct);
-            DirectoryMerge.CopySkippingExisting(source.Value, agentHome.Home.Value);
-            return null;
+            await git.SparseCloneAsync(agentHome.Repo, checkout.Path, agentHome.SourcePath, ct);
         }
         catch (RepoHostException ex)
         {
             return new SetupFailure($"agent home fetch failed: {ex.Message}");
+        }
+
+        var source = Path.Combine(checkout.Path, agentHome.SourcePath.Value);
+        if (!Directory.Exists(source))
+            return new SetupFailure($"agent home fetch failed: agent home path not found in {agentHome.Repo.Value}: {agentHome.SourcePath.Value}");
+
+        try
+        {
+            DirectoryMerge.CopySkippingExisting(source, agentHome.Home.Value);
+            return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

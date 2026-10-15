@@ -37,6 +37,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     internal static async Task<LocalApiServer> StartAsync
     (
         IGit git,
+        RepoIdentifier repo,
         string cloneDir,
         CancellationToken cancellationToken,
         Action<string>? logLine = null,
@@ -44,7 +45,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     )
     {
         var allowed = allowedPushBranches ?? [];
-        var delivery = new DeliveryEndpoints(git, cloneDir, allowed);
+        var delivery = new DeliveryEndpoints(git, repo, cloneDir, allowed);
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
@@ -165,6 +166,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private sealed class DeliveryEndpoints
     (
         IGit git,
+        RepoIdentifier repo,
         string cloneDir,
         IReadOnlyList<BranchName> allowedPushBranches
     )
@@ -230,7 +232,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 Input.Required("body", req.Body, value => new PrBody(value))
             );
 
-            if (await git.BranchExistsOnRemoteAsync(queuedPr.Branch, ct))
+            if (await git.BranchExistsOnRemoteAsync(repo, queuedPr.Branch, ct))
                 return Results.Conflict(new ErrorResponse($"Branch {queuedPr.Branch.Value} already exists on the remote."));
 
             return await CheckCommittedLocallyAsync(queuedPr.Branch, PrPath, ct)
@@ -263,7 +265,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             // The point of /push is delivering to a branch that already exists on the remote, so the
             // opposite guard from /pr: if the branch does not exist there, the agent should have used
             // /pr instead.
-            if (!await git.BranchExistsOnRemoteAsync(queuedPush.Branch, ct))
+            if (!await git.BranchExistsOnRemoteAsync(repo, queuedPush.Branch, ct))
                 return Results.Conflict(new ErrorResponse($"Branch {queuedPush.Branch.Value} does not exist on the remote. Use /pr to create a new branch."));
 
             return await CheckCommittedLocallyAsync(queuedPush.Branch, PushPath, ct)
