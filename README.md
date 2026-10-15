@@ -102,8 +102,9 @@ re-applied when `rix submit` parses the file.
 ### Supplying agent home files from a factory repo
 
 The coding agent CLIs read configuration and context from the runner's user home (`~/.config/...`,
-`~/.claude/...`, house style guides, MCP configs, and so on). Point `rix job` at a second repo — a
-"factory repo" — to copy files into that home directory before the agent starts:
+`~/.claude/...`, house style guides, MCP configs, and so on). Point rix at a second repo — a
+"factory repo" — to copy files into that home directory before the agent starts. `job.yml` and
+`on-ci-failure.yml` both take the same two inputs:
 
 ```yaml
     with:
