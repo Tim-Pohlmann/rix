@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace Rix.Cli;
 
@@ -11,19 +10,15 @@ namespace Rix.Cli;
 /// clones nothing, registers only the repo.</summary>
 internal static class CommonOptions
 {
-    internal static readonly Option<string> RepoOption = new
-    (
-        name: "--repo",
-        description: "Full GitHub repo identifier (owner/repo)"
-    )
-    { IsRequired = false };
+    internal static readonly Option<string> RepoOption = new("--repo")
+    {
+        Description = "Full GitHub repo identifier (owner/repo)"
+    };
 
-    internal static readonly Option<string> WorkDirOption = new
-    (
-        name: "--work-dir",
-        description: "Base directory for the temp clone (default: system temp)"
-    )
-    { IsRequired = false };
+    internal static readonly Option<string> WorkDirOption = new("--work-dir")
+    {
+        Description = "Base directory for the temp clone (default: system temp)"
+    };
 
     internal static RepoIdentifier ReadRepo(ParseResult parsed)
     => parsed.Required(RepoOption, "RIX_REPO", value => new RepoIdentifier(value));
