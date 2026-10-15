@@ -9,8 +9,8 @@ public class CliPipelineTests
     private static Task<int> InvokeAsync(Func<Task<int>> action)
     {
         var command = new Command("boom");
-        command.SetAction(CliPipeline.ReportingInvalidInput(_ => action()));
-        return CliPipeline.InvokeAsync(new RootCommand { command }, ["boom"]);
+        command.SetAction(CliPipeline.ReportingInvalidInput((_, _) => action()));
+        return CliPipeline.InvokeAsync(new RootCommand { command }, ["boom"], CancellationToken.None);
     }
 
     [TestMethod]

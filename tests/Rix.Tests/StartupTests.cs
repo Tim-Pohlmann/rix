@@ -1,7 +1,5 @@
-using Rix.Agents;
 using Rix.Cli;
-using Rix.Job;
-using Rix.Repository;
+using Rix.Submit;
 using System.Runtime.InteropServices;
 
 namespace Rix.Tests;
@@ -13,30 +11,6 @@ public class StartupTests
 
     private static string Echo(string text) =>
         OperatingSystem.IsWindows() ? $"Write-Output '{text}'" : $"echo {text}";
-
-    /// <summary>The one thing a <see cref="JobContext"/> takes from its config: which coding agent
-    /// to run. Every kind is pinned here rather than one per <c>[DataRow]</c>, which can't carry an
-    /// internal <see cref="AgentKind"/> into a public test method — the mapping is a switch a new
-    /// kind can be added to without anything else noticing.</summary>
-    [TestMethod]
-    public void DefaultContext_RunsTheAgentTheConfigNames()
-    {
-        Assert.IsInstanceOfType<ClaudeAgent>(Startup.DefaultContext(TestConfig.Valid(agent: AgentKind.Claude)).Agent);
-        Assert.IsInstanceOfType<OpenCodeAgent>(Startup.DefaultContext(TestConfig.Valid(agent: AgentKind.OpenCode)).Agent);
-        Assert.IsInstanceOfType<PiAgent>(Startup.DefaultContext(TestConfig.Valid(agent: AgentKind.Pi)).Agent);
-    }
-
-    /// <summary><c>ci-failure</c> reads and judges, so its two halves are both read-only hosts —
-    /// no agent, no clone, nothing that could run what it found. Separate fields over one object
-    /// because the roles are separable even though GitHub serves both.</summary>
-    [TestMethod]
-    public void DefaultCiFailureContext_ReadsFromTheCiHostAndJudgesAgainstTheRepoHost()
-    {
-        var context = Startup.DefaultCiFailureContext(TestConfig.ValidCiFailure());
-
-        Assert.IsInstanceOfType<GitHubActionsCiHost>(context.Ci);
-        Assert.IsInstanceOfType<GitHubCiFailureRepoHost>(context.RepoHost);
-    }
 
     [TestMethod]
     public async Task RunAsync_WithHelpFlag_ReturnsZero()
@@ -108,6 +82,24 @@ public class StartupTests
         StringAssert.Contains(stderr.Text, $"error: --input-dir: directory does not exist: {Path.GetFullPath("/nonexistent/in")}");
     }
 
+    /// <summary>The one command whose production wiring a run can reach without touching anything
+    /// outside the machine: an input directory with no <c>result.json</c> is refused before the
+    /// clone, so the real <see cref="SubmitContext"/> is built and run, and the token here is never
+    /// offered to GitHub. Covers the path from the command list down to the exit code, which the
+    /// stub-context tests in <see cref="SubmitCommandTests"/> deliberately start below.</summary>
+    [TestMethod]
+    public async Task RunSubmitAsync_Returns1_WhenInputDirHoldsNoResultJson()
+    {
+        var inputDir = Directory.CreateTempSubdirectory("rix-submit-in-").FullName;
+
+        var exitCode = await Startup.RunAsync
+        (
+            ["submit", "--repo", "owner/repo", "--write-token", "not-a-token", "--input-dir", inputDir]
+        );
+
+        Assert.AreEqual(1, exitCode);
+    }
+
     [TestMethod]
     public async Task WhenDirectoriesExist_Runs_WhenEveryDirectoryExists()
     {
@@ -115,10 +107,10 @@ public class StartupTests
         (
             new StubFileSystem(directoryExists: _ => true),
             _ => [new RequiredDirectory("--work-dir", new DirectoryPath("/only/on/the/stub"))],
-            config => Task.FromResult(config)
+            (config, _) => Task.FromResult(config)
         );
 
-        var exitCode = await run(7);
+        var exitCode = await run(7, CancellationToken.None);
 
         Assert.AreEqual(7, exitCode);
     }
@@ -134,7 +126,7 @@ public class StartupTests
         (
             new StubFileSystem(directoryExists: path => path == present.Value),
             _ => [new RequiredDirectory("--work-dir", present), new RequiredDirectory("--output-dir", missing), new RequiredDirectory("--dir", missing)],
-            _ =>
+            (_, _) =>
             {
                 ran = true;
                 return Task.FromResult(0);
@@ -143,7 +135,7 @@ public class StartupTests
 
         var ex = Assert.ThrowsExactly<InvalidInputException>
         (
-            () => _ = run(0)
+            () => _ = run(0, CancellationToken.None)
         );
 
         Assert.AreEqual($"--output-dir: directory does not exist: {missing.Value}", ex.Message);

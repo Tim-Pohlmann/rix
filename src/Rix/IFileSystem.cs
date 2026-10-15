@@ -1,5 +1,11 @@
 namespace Rix;
 
+/// <summary>One file write, as <see cref="IFileSystem.WriteAllTextAsync"/> performs it: content to
+/// a path, creating any missing parent directories and overwriting an existing file. The seam for
+/// code that writes a file and does nothing else with the disk - it is handed the one operation
+/// rather than the whole file system, so what it can do is visible in its signature.</summary>
+internal delegate Task WriteFileAsync(string path, string content, CancellationToken cancellationToken);
+
 /// <summary>The file-system operations rix performs. The seam all file access goes through, so the
 /// code deciding what to read, write or copy stays where it belongs and tests can stand in for the
 /// disk — the way <see cref="Repository.IGit"/> stands in for git.</summary>

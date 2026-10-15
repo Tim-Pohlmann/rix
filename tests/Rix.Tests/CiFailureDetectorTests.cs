@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Rix.CiFailure;
+using Rix.Cli;
 using Rix.Repository;
 
 namespace Rix.Tests;
@@ -232,7 +233,7 @@ public class CiFailureDetectorTests
     }
 
     /// <summary>The imperative shell's own tests, beside the core's like
-    /// <c>JobRunnerTests</c>'s are: <see cref="Startup.ExecuteCiFailureAsync"/> adds exactly two
+    /// <c>JobRunnerTests</c>'s are: <see cref="CiFailureCommand.ExecuteAsync"/> adds exactly two
     /// things to a detection - the exit code it maps the verdict to, and the files it drops in the
     /// output directory - and both are only meaningful next to the verdict that produced
     /// them.</summary>
@@ -341,8 +342,8 @@ public class CiFailureDetectorTests
         var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
         var fullDisk = new StubFileSystem(writeAllText: _ => throw new IOException("disk full"));
 
-        var exitCode = await Startup.ExecuteCiFailureAsync(
-            Config(), CancellationToken.None, new CiFailureContext(ci, new StubCiFailureRepoHost(), fullDisk));
+        var exitCode = await CiFailureCommand.ExecuteAsync(
+            Config(), new CiFailureContext(ci, new StubCiFailureRepoHost(), fullDisk), CancellationToken.None);
 
         Assert.AreEqual(0, exitCode);
         StringAssert.Contains(stderr.Text, "warning: failed to write result.json: disk full");
@@ -353,7 +354,7 @@ public class CiFailureDetectorTests
     /// <summary>The shell's counterpart to <see cref="Detect"/>, defaulting the repo host the same
     /// way.</summary>
     private Task<int> Execute(StubCiHost ci, StubCiFailureRepoHost? repoHost = null)
-    => Startup.ExecuteCiFailureAsync(Config(), CancellationToken.None, new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost(), new LocalFileSystem()));
+    => CiFailureCommand.ExecuteAsync(Config(), new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost(), new LocalFileSystem()), CancellationToken.None);
 
     private JsonObject WrittenResult()
     => JsonNode.Parse(File.ReadAllText(Path.Combine(_outputDir, "result.json")))!.AsObject();

@@ -83,9 +83,11 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      The CLI commands only turn text into values and never see the file
-      system. Take the locations they need as strings, and list directories
-      that must exist in the command's RequiredDirectories for Startup to check.
+      A command never holds the file system. Its config read runs before any
+      context exists, so it takes the locations it needs as strings and lists
+      the directories that must exist in RequiredDirectories for Startup to
+      check; its writes afterwards take the one WriteFileAsync their context
+      was built with, not the disk that produced it.
     paths:
       include:
         - src/Rix/Cli/**
@@ -211,12 +213,15 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Async methods in this codebase take and propagate a CancellationToken
-      (the sole exception is Startup.RunAsync, the top-level entry point).
-      Add a CancellationToken parameter and forward it to any awaited calls.
+      Async methods in this codebase take and propagate a CancellationToken.
+      Add one and forward it to any awaited call. The CLI shell is excluded
+      for the same reason it may touch the console: it is where the writes
+      that happen after the outcome is already decided live, and those must
+      finish even once cancellation has been requested.
     paths:
       exclude:
         - src/Rix/Startup.cs
+        - src/Rix/Cli/**
     patterns:
       - pattern-either:
           - pattern: "async Task $M(...) { ... }"
@@ -228,9 +233,8 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Rix.Cli is a leaf layer wired only from the composition root
-      (Startup.cs); reference it there only, not from Job/Agents/Process/
-      Repository/Submit/Api.
+      Rix.Cli is a leaf layer the entry point wires up; reference it from
+      Startup.cs only, not from Job/Agents/Process/Repository/Submit/Api.
     paths:
       exclude:
         - src/Rix/Startup.cs
@@ -241,16 +245,34 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Wire production service implementations (GitHubReadHost, GitHubHost,
-      ClaudeAgent, OpenCodeAgent) only in Startup.cs, the composition root
-      (GitHubHost composing GitHubReadHost internally is the one exception).
+      Choose a production implementation (GitCli, the GitHub hosts, a coding
+      agent, the local file system) only in Composition.cs, the composition
+      root. Everywhere else takes the seam it needs as a parameter.
     paths:
       exclude:
-        - src/Rix/Startup.cs
-        - src/Rix/Repository/GitHubHost.cs
+        - src/Rix/Composition.cs
     patterns:
       - pattern-either:
-          - pattern: new GitHubReadHost(...)
-          - pattern: new GitHubHost(...)
+          - pattern: new GitCli(...)
+          - pattern: new GitHubActionsCiHost(...)
+          - pattern: new GitHubCiFailureRepoHost(...)
+          - pattern: new GitHubSubmitRepoHost(...)
+          - pattern: new LocalFileSystem(...)
           - pattern: new ClaudeAgent()
           - pattern: new OpenCodeAgent()
+          - pattern: new PiAgent()
+
+  - id: composition-use-outside-entry-point
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Only Startup and the commands in Rix.Cli ask Composition for something,
+      each in the one method that exists to do it. Everything deeper takes what
+      it needs as a parameter, so what a run is wired against stays visible at
+      the call site rather than being reached for from inside.
+    paths:
+      exclude:
+        - src/Rix/Cli/**
+        - src/Rix/Composition.cs
+        - src/Rix/Startup.cs
+    pattern: Composition.$M(...)
