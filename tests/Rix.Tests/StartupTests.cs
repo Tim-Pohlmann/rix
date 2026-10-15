@@ -1,4 +1,5 @@
 using Rix.Cli;
+using Rix.Submit;
 using System.Runtime.InteropServices;
 
 namespace Rix.Tests;
@@ -79,6 +80,24 @@ public class StartupTests
 
         Assert.AreEqual(2, exitCode);
         StringAssert.Contains(stderr.Text, $"error: --input-dir: directory does not exist: {Path.GetFullPath("/nonexistent/in")}");
+    }
+
+    /// <summary>The one command whose production wiring a run can reach without touching anything
+    /// outside the machine: an input directory with no <c>result.json</c> is refused before the
+    /// clone, so the real <see cref="SubmitContext"/> is built and run, and the token here is never
+    /// offered to GitHub. Covers the path from the command list down to the exit code, which the
+    /// stub-context tests in <see cref="SubmitCommandTests"/> deliberately start below.</summary>
+    [TestMethod]
+    public async Task RunSubmitAsync_Returns1_WhenInputDirHoldsNoResultJson()
+    {
+        var inputDir = Directory.CreateTempSubdirectory("rix-submit-in-").FullName;
+
+        var exitCode = await Startup.RunAsync
+        (
+            ["submit", "--repo", "owner/repo", "--write-token", "not-a-token", "--input-dir", inputDir]
+        );
+
+        Assert.AreEqual(1, exitCode);
     }
 
     [TestMethod]

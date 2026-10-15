@@ -117,4 +117,37 @@ public class SubmitCommandTests
 
         CollectionAssert.AreEqual(ExpectedUnusualBranches, config.AllowedPushBranches.Select(b => b.Value).ToArray());
     }
+
+    /// <summary>Both outcomes map to an exit code here rather than in the runner, so the one place
+    /// that decides is covered for each: a submit that delivered nothing still succeeded, and a
+    /// refused one is a failed job rather than bad setup. Built on a stub context, so nothing is
+    /// cloned and the write token is never used.</summary>
+    [TestMethod]
+    public async Task ExecuteAsync_Returns0_WhenThereWasNothingToSubmit()
+    {
+        var inputDir = Directory.CreateTempSubdirectory("rix-submit-in-").FullName;
+        await File.WriteAllTextAsync
+        (
+            Path.Combine(inputDir, "result.json"),
+            """{"status":"success","pendingPrRequests":[],"costUsd":0,"durationSeconds":1}"""
+        );
+
+        Assert.AreEqual(0, await Execute(inputDir));
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_Returns1_WhenTheSubmitFailed()
+    {
+        var inputDir = Directory.CreateTempSubdirectory("rix-submit-in-").FullName;
+
+        Assert.AreEqual(1, await Execute(inputDir));
+    }
+
+    private static Task<int> Execute(string inputDir)
+    => SubmitCommand.ExecuteAsync
+    (
+        TestConfig.ValidSubmit(inputDir: inputDir),
+        new SubmitContext(new StubGit(), new StubSubmitRepoHost(), _ => { }, new LocalFileSystem()),
+        CancellationToken.None
+    );
 }

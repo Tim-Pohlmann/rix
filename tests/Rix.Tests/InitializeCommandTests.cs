@@ -67,4 +67,24 @@ public class InitializeCommandTests
 
         Assert.AreEqual("--dir is required", ex.Message);
     }
+
+    /// <summary>The failure branch of the one place a run's outcome becomes an exit code: a write
+    /// the runner could not perform is reported under <c>error:</c> and exits 2, the same shape a
+    /// bad flag gets, because both mean nothing ran.</summary>
+    [TestMethod]
+    public async Task ExecuteAsync_ReportsTheError_AndReturns2_WhenATemplateCannotBeWritten()
+    {
+        using var stderr = new ConsoleErrorScope();
+
+        var exitCode = await InitializeCommand.ExecuteAsync
+        (
+            TestConfig.ValidInitialize(),
+            new InitializeContext((_, _, _) => throw new IOException("disk full"), _ => { }),
+            CancellationToken.None
+        );
+
+        Assert.AreEqual(2, exitCode);
+        StringAssert.Contains(stderr.Text, "error: could not write ");
+        StringAssert.Contains(stderr.Text, "disk full");
+    }
 }
