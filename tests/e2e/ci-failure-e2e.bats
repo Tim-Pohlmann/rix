@@ -11,13 +11,10 @@
 # the payloads we believe GitHub sends; these assert it against the ones it does send.
 #
 # Deliberately not covered here: the `detected` path. It needs a run whose conclusion really is
-# "failure", and detecting one always hands a prompt to a coding agent (CiFailureRunner.RunAsync) -
-# a prompt built from that run's own logs, so nothing here could control what the agent is asked to
-# do or how long it takes. The one shortcut past the agent is a loop guard that trips immediately,
-# which needs --max-rix-commits 0, and rix rejects that (1..100). Pointing this at some older failed
-# run in the repo's history would not fix either half, and would make the test depend on history
-# that ages out. So the failure path stays with the unit tests, and everything around it - the
-# outcomes that stop before the agent, and the errors that stop before the outcome - is here.
+# "failure", and none can be arranged from inside a passing CI run - pointing this at some older
+# failed run in the repo's history would make the test depend on history that ages out. So the
+# failure path stays with the unit tests, and everything around it - the outcomes that do not
+# answer a run, and the errors that stop before the outcome - is here.
 #
 # Requires: RIX_BIN (a built rix binary), RIX_REPO/RIX_READ_TOKEN (a real repo and a token with
 # actions:read on it), plus curl and jq.
@@ -27,16 +24,14 @@ setup() {
   : "${RIX_REPO:?RIX_REPO must name a real GitHub repo (e.g. Tim-Pohlmann/rix)}"
   : "${RIX_READ_TOKEN:?RIX_READ_TOKEN must be a GitHub token with actions:read on RIX_REPO}"
   export RIX_OUTPUT_DIR="$BATS_TEST_TMPDIR/out"
-  export RIX_WORK_DIR="$BATS_TEST_TMPDIR/work"
   export RIX_RESULT="$BATS_TEST_TMPDIR/result.json"
   export RIX_STDERR="$BATS_TEST_TMPDIR/stderr.log"
-  mkdir -p "$RIX_OUTPUT_DIR" "$RIX_WORK_DIR"
+  mkdir -p "$RIX_OUTPUT_DIR"
 }
 
-# A check that stops before the agent writes no result.json at all (see
-# Startup.WriteCiFailureResult), so rix's stdout is the only copy of its result - captured to a file
-# of its own because bats' `run` merges the process's stderr into $output, and any log line rix
-# writes there would then have to be parsed back out of the JSON.
+# rix's stdout is captured to a file of its own because bats' `run` merges the process's stderr
+# into $output, and any log line rix writes there would then have to be parsed back out of the
+# JSON.
 ci_failure() {
   run bash -c 'rix=$1; shift; "$rix" ci-failure "$@" >"$RIX_RESULT" 2>"$RIX_STDERR"' bash "$RIX_BIN" "$@"
 }
@@ -76,8 +71,9 @@ api() {
 
 @test "the in-progress run these tests are part of has no outcome yet" {
   # The same case ci-failure-plumbing covers through the composite action, asserted one layer down
-  # on the word rix reports rather than on the action's has-result: GitHub sends conclusion:null for
-  # a run that is still going, which is a state of its own and not an unrecognized outcome.
+  # on the word rix reports rather than on the empty branch the action turns it into: GitHub sends
+  # conclusion:null for a run that is still going, which is a state of its own and not an
+  # unrecognized outcome.
   [ -n "${GITHUB_RUN_ID:-}" ] || skip "not running inside a workflow run"
 
   ci_failure --run-id "$GITHUB_RUN_ID"

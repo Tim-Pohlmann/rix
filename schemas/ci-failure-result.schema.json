@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The result rix ci-failure prints and writes to result.json.",
+  "type": "object",
+  "required": [
+    "status"
+  ],
+  "anyOf": [
+    {
+      "properties": {
+        "status": {
+          "const": "detected"
+        },
+        "runUrl": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "prNumber": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "promptFile": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "runUrl",
+        "branch",
+        "prNumber",
+        "promptFile"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "skipped"
+        },
+        "outcome": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "outcome"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "loopGuarded"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "rixCommits": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "branch",
+        "rixCommits"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "untrustedRun"
+        },
+        "headRepo": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "headRepo",
+        "branch"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "error"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

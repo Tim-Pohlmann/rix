@@ -25,16 +25,14 @@ public class StartupTests
         Assert.IsInstanceOfType<PiAgent>(Startup.DefaultContext(TestConfig.Valid(agent: AgentKind.Pi)).Agent);
     }
 
-    /// <summary><c>ci-failure</c> builds its job half up front, before a failure has been detected
-    /// and so before the <see cref="JobConfig"/> naming the agent exists — the agent has to come
-    /// from the ci-failure config instead. Nothing here opens a connection, which is what makes
-    /// building it before it's known to be needed free.</summary>
+    /// <summary><c>ci-failure</c> reads and judges, so its two halves are both read-only hosts —
+    /// no agent, no clone, nothing that could run what it found. Separate fields over one object
+    /// because the roles are separable even though GitHub serves both.</summary>
     [TestMethod]
-    public void DefaultCiFailureContext_RunsTheAgentTheCiFailureConfigNames()
+    public void DefaultCiFailureContext_ReadsFromTheCiHostAndJudgesAgainstTheRepoHost()
     {
-        var context = Startup.DefaultCiFailureContext(TestConfig.ValidCiFailure(agent: AgentKind.Claude));
+        var context = Startup.DefaultCiFailureContext(TestConfig.ValidCiFailure());
 
-        Assert.IsInstanceOfType<ClaudeAgent>(context.Job.Agent);
         Assert.IsInstanceOfType<GitHubActionsCiHost>(context.Ci);
         Assert.IsInstanceOfType<GitHubCiFailureRepoHost>(context.RepoHost);
     }

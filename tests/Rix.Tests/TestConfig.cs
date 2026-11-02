@@ -67,21 +67,15 @@ internal static class TestConfig
         string repo = "owner/repo",
         string readToken = "read-tok",
         long runId = 1,
-        string? workDir = null,
         string? outputDir = null,
-        int maxRixCommits = CiFailureConfig.DefaultMaxRixCommits,
-        AgentKind agent = JobConfig.DefaultAgent
+        int maxRixCommits = CiFailureConfig.DefaultMaxRixCommits
     )
     => new
     (
         new RunId(runId),
         new RepoIdentifier(repo),
         new GitReadToken(readToken),
-        new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes),
-        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
-        OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
-        agent,
-        new MaxTokens(JobConfig.DefaultMaxTokens),
+        new DirectoryPath(outputDir ?? Path.GetTempPath()),
         new MaxRixCommits(maxRixCommits)
     );
 

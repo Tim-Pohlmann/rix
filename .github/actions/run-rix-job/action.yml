@@ -7,8 +7,17 @@ inputs:
     description: Target GitHub repo (owner/name)
     required: true
   prompt:
-    description: Task prompt for the coding agent
-    required: true
+    description: >-
+      Task prompt for the coding agent. Required unless prompt-file is given.
+    required: false
+  prompt-file:
+    description: >-
+      Path to a file rix reads the task prompt from, given instead of prompt. For a prompt that was
+      built somewhere else and carried here — rix ci-failure's, say, which is assembled from a
+      failing run's log output and so is both long and arbitrary. A file crosses a job boundary as
+      an artifact without a size cap, and without its content ever having to survive being quoted
+      through a job output.
+    required: false
   read-token:
     description: GitHub PAT (or equivalent token) with read access to the target repo
     required: true
@@ -80,6 +89,7 @@ runs:
         RIX_READ_TOKEN: ${{ inputs.read-token }}
         RIX_REPO: ${{ inputs.repo }}
         RIX_PROMPT: ${{ inputs.prompt }}
+        RIX_PROMPT_FILE: ${{ inputs.prompt-file }}
         RIX_ALLOWED_PUSH_BRANCHES: ${{ inputs.allowed-push-branches }}
         RIX_FACTORY_REPO: ${{ inputs.factory-repo }}
         RIX_AGENT_HOME_PATH: ${{ inputs.agent-home-path }}
@@ -91,6 +101,11 @@ runs:
         # Rix.Agents.AgentCredential and Rix.Job.JobRunner). The key never needs to exist under
         # that name in this shell or in $GITHUB_ENV.
         mkdir -p out work
+
+        # Both prompt inputs are forwarded as they arrived: rix reads the file itself, and reports
+        # a missing one, an empty one, or both inputs at once the same way it reports every other
+        # bad flag. The file's content never passes through this shell, so nothing a failing run's
+        # logs put in it can be re-parsed on the way.
         "$RIX_BIN" job --agent "$RIX_AGENT" --output-dir out --work-dir work
 
     - name: Post job summary
