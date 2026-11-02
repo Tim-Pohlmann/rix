@@ -103,21 +103,28 @@ jobs:
       RIX_BIN_PATH: ${{ github.workspace }}/rix-bin/rix
 
     # Runs the real .github/actions/run-rix-job composite action (the same one job.yml's `run`
-    # job uses) against this repo itself with opencode's free default model (no API key needed),
-    # using the binary build-rix just published from this PR's own source. This exercises the
-    # actual end-to-end plumbing - CLI parsing, agent CLI install, BuildInvocation, the real agent
-    # process - rather than a hand-copied mirror of it, so a real regression (e.g. an agent CLI
-    # needing a new required flag) fails CI here instead of only being discovered by a broken
-    # production run. Failure-mode assertions (auth errors, bad models, ...) live in the
+    # job uses) against this repo itself, using the binary build-rix just published from this PR's
+    # own source. This exercises the actual end-to-end plumbing - CLI parsing, the agent process,
+    # the result, submit - rather than a hand-copied mirror of it, so a regression in the composite
+    # actions or the inputs they forward fails CI here instead of only being discovered by a broken
+    # production run.
+    #
+    # The agent is tests/e2e/stub-opencode (see the step below), so this job needs no API key and no
+    # npm install. It used to run the real CLI on opencode's keyless free tier; that tier was
+    # withdrawn upstream, and nothing a runner can reach for free replaces it. What that costs is
+    # catching a real CLI growing a new required flag - the stub asserts the invocation it is handed
+    # instead, and rix-job-e2e still launches the real claude and pi CLIs. Failure-mode assertions (auth errors, bad models, ...) live in the
     # `rix-job-e2e` bats test instead, where they can do real JSON parsing without embedding that
     # logic in workflow YAML.
     steps:
-      # Only the composite actions under .github/actions are needed here (the app source and
-      # test suites aren't touched directly by this job - build-rix above already built the
-      # binary under test).
+      # Only the composite actions under .github/actions are needed here, plus the stub agent they
+      # run (the app source and test suites aren't touched directly by this job - build-rix above
+      # already built the binary under test).
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: .github/actions
+          sparse-checkout: |
+            .github/actions
+            tests/e2e/stub-opencode
           sparse-checkout-cone-mode: false
 
       - name: Download rix binary
@@ -128,6 +135,16 @@ jobs:
 
       - name: Make rix binary executable
         run: chmod +x rix-bin/rix
+
+      # Under its own name on PATH, because that is how rix looks an agent CLI up: it accepts
+      # whatever `opencode --version` resolves to and skips the npm install (see
+      # EnsureInstalledViaNpmAsync), so no rix input has to know this is a stub. A directory of its
+      # own rather than tests/e2e itself, so only this one file is reachable as a command.
+      - name: Put the stub agent on PATH as opencode
+        run: |
+          mkdir -p "$RUNNER_TEMP/stub-bin"
+          install -m 0755 tests/e2e/stub-opencode "$RUNNER_TEMP/stub-bin/opencode"
+          echo "$RUNNER_TEMP/stub-bin" >> "$GITHUB_PATH"
 
       - name: Run rix job
         uses: ./.github/actions/run-rix-job
@@ -422,6 +439,15 @@ jobs:
       RIX_BIN: ${{ github.workspace }}/rix-bin/rix
       RIX_REPO: ${{ github.repository }}
       RIX_READ_TOKEN: ${{ github.token }}
+      # The one leg that needs a working agent rather than a failing one. All four are empty when
+      # the repo has not set them (and the secret always is on a fork), which makes that leg skip
+      # and leaves the rest of the file - every assertion about running with no credential - intact.
+      # Provider and model are variables, not secrets, so a leg skipped for want of configuration
+      # is visible as that rather than as a missing key.
+      RIX_E2E_AGENT: ${{ vars.RIX_E2E_AGENT }}
+      RIX_E2E_AGENT_MODEL: ${{ vars.RIX_E2E_AGENT_MODEL }}
+      RIX_E2E_AGENT_KEY_ENV: ${{ vars.RIX_E2E_AGENT_KEY_ENV }}
+      RIX_E2E_AGENT_KEY: ${{ secrets.RIX_E2E_AGENT_KEY }}
 
     # One level deeper than agent-plumbing above: invokes the built rix binary directly (bypassing
     # the composite-action/workflow layer) and does real JSON parsing on its result, so
@@ -470,7 +496,12 @@ jobs:
         # Named files rather than the directory: each e2e file needs its own environment (these
         # two an agent CLI and a key, ci-failure-e2e.bats above only actions:read), so a new file
         # here joins the job built for it instead of silently joining this one.
-        run: bats --print-output-on-failure tests/e2e/rix-job-e2e.bats tests/e2e/agent-home-e2e.bats
+        # agent-home-e2e.bats runs tests/e2e/stub-opencode from its own directory, so it has to be
+        # executable - sparse-checkout preserves the bit, but not every way of getting these files
+        # onto a runner does.
+        run: |
+          chmod +x tests/e2e/stub-opencode
+          bats --print-output-on-failure tests/e2e/rix-job-e2e.bats tests/e2e/agent-home-e2e.bats
 
   download-rix:
     name: Download rix (release path)

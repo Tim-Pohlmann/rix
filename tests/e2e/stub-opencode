@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# A stand-in for the opencode CLI, for the legs that need *an* agent process but not a particular
+# model's judgement: ci.yml's agent-plumbing job and agent-home-e2e.bats. Both assert things around
+# the agent (the composite actions, the factory-repo home merge), and only need the agent to start,
+# answer, and exit 0 - which no third-party CLI does for free any more, opencode's keyless tier
+# having been withdrawn upstream.
+#
+# No rix change is needed to use this: EnsureInstalledViaNpmAsync returns Installed as soon as
+# `opencode --version` succeeds, so putting this on PATH ahead of any real opencode makes rix skip
+# the npm install and launch this instead.
+#
+# It answers the one prompt those legs send ("reply with the text: OK"); it is not a general
+# opencode emulator, and deliberately fails rather than guessing if rix ever invokes it differently.
+set -uo pipefail
+
+if [ "${1-}" = "--version" ]; then
+  echo "0.0.0-rix-stub"
+  exit 0
+fi
+
+# Asserting the invocation is the point, not a safety net: a real CLI rejects flags it does not know
+# and so catches a bad BuildInvocation by failing, and this has to keep catching it in the same way.
+# Checked by shape rather than as one fixed list because --model is conditional (see
+# OpenCodeAgent.BuildInvocation), and the message carries rix's whole system prompt.
+fail() { echo "stub-opencode: $*" >&2; exit 64; }
+[ "${1-}" = "run" ] || fail "expected 'run' as the first argument, got '${1-}'"
+[ -n "${2-}" ] || fail "expected a run message as the second argument"
+printf '%s\n' "${@}" | grep -qx -- '--auto' || fail "expected --auto (an unattended run cannot answer a permission prompt)"
+printf '%s\n' "${@}" | grep -qx -- '--format' || fail "expected --format json"
+
+# The event lines rix reads back: part.text becomes the transcript (ParseTranscriptLine), part.cost
+# on a step_finish becomes the run's cost (ParseCost). Zero is what the real CLI reports for a free
+# model, so the result.json this produces has the same shape the free tier used to produce.
+echo '{"type":"text","part":{"text":"OK"}}'
+echo '{"type":"step_finish","part":{"cost":0}}'

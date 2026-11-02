@@ -1,9 +1,14 @@
 #!/usr/bin/env bats
 # End-to-end tests for the rix binary itself - one level deeper than ci.yml's agent-plumbing job,
 # which only proves the composite-action/workflow plumbing works for the happy path. These tests
-# invoke the built rix binary directly against the real opencode/claude/pi CLIs (no npm version
+# invoke the built rix binary directly against the real claude/pi/opencode CLIs (no npm version
 # pinning - see EnsureInstalledViaNpmAsync - so this is knowingly a bit brittle to upstream CLI
 # changes) and do real JSON parsing on the result.
+#
+# All but the last leg assert a *failure* mode and so need no credential, which is what keeps them
+# runnable anywhere. The one leg that needs a working agent is skipped unless the caller supplies a
+# key (see RIX_E2E_AGENT_KEY below); it used to rely on opencode answering with no key at all, which
+# opencode no longer does.
 #
 # A regression that breaks agent invocation (e.g. a CLI usage error from a missing required flag)
 # must be told apart from an expected runtime failure (bad key, no login, ...) without hardcoding
@@ -34,7 +39,8 @@
 #     since a rejected flag instead fails the process outright with a plain "Unknown option" line.
 #
 # Requires: RIX_BIN (a built rix binary), RIX_REPO/RIX_READ_TOKEN (a real repo + token to clone),
-# and network access to install/run the real agent CLIs via npm.
+# and network access to install/run the real agent CLIs via npm. Optionally RIX_E2E_AGENT_KEY and
+# friends, which enable the last leg.
 
 setup() {
   load ../scripts/result-schema
@@ -42,6 +48,10 @@ setup() {
   : "${RIX_REPO:?RIX_REPO must name a real GitHub repo to clone (e.g. Tim-Pohlmann/rix)}"
   : "${RIX_READ_TOKEN:?RIX_READ_TOKEN must be a GitHub token with read access to RIX_REPO}"
   export RIX_PROMPT="Make no changes to any files and do not call the PR endpoint. Just reply with the text: OK"
+  # Every leg but the last asserts what rix does with *no* credential, so a key the caller exported
+  # for that one (or a runner that happens to have either name set) must not reach them. Cleared
+  # here rather than only in teardown, which cannot clear what was set before the first test.
+  unset AGENT_API_KEY AGENT_API_KEY_ENV
   export RIX_OUTPUT_DIR="$BATS_TEST_TMPDIR/out"
   export RIX_WORK_DIR="$BATS_TEST_TMPDIR/work"
   mkdir -p "$RIX_OUTPUT_DIR" "$RIX_WORK_DIR"
@@ -65,7 +75,7 @@ setup() {
 }
 
 teardown() {
-  unset RIX_AGENT RIX_MODEL OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY
+  unset RIX_AGENT RIX_MODEL OPENCODE_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY AGENT_API_KEY AGENT_API_KEY_ENV
 }
 
 # The real binary's output is the one thing the schema can be checked against that nobody wrote by
@@ -82,14 +92,6 @@ result_field() {
 # at the agent CLI's own diagnostic line (see ProcessWrapper.Diagnostic).
 diagnostic_of() {
   sed -E 's/^agent failed: exited with code [0-9]+: //'
-}
-
-@test "opencode succeeds with its free default model and no key" {
-  export RIX_AGENT=opencode
-  run "$RIX_BIN" job
-  [ "$status" -eq 0 ]
-  assert_result_matches_schema
-  [ "$(result_field status)" = success ]
 }
 
 @test "claude with an explicit model fails without a key with a structured (not plain-text) diagnostic" {
@@ -132,13 +134,23 @@ diagnostic_of() {
 # until now only in-process tests (JobRunnerTests) covered it - with a fake agent POSTing on the
 # real agent's behalf, so nothing proved a real agent can drive it from the system prompt alone.
 #
-# opencode is the agent used because it is the only one that runs here without a key (see the first
-# test above). The prompt is deliberately step-by-step, naming the exact git commands and the exact
-# JSON body: this asserts that the endpoint and the delivery path work, not that a free default
-# model can plan a PR unaided - that would make the test a model-quality benchmark and fail for
-# reasons that are nothing to do with rix.
-@test "opencode can commit a branch and queue a PR that rix bundles" {
-  export RIX_AGENT=opencode
+# A real agent, not the tests/e2e/stub-opencode that stands in elsewhere: a stub following
+# hardcoded steps would prove nothing about the one thing this leg is for. Which agent is the
+# caller's to say (RIX_E2E_AGENT/_MODEL/_KEY/_KEY_ENV), because none of them runs here for free any
+# more - opencode's keyless tier was withdrawn upstream - so this skips rather than fails when no
+# key is supplied, e.g. on a fork. The rest of this file still runs: its legs assert failure modes
+# that need no key.
+#
+# The prompt is deliberately step-by-step, naming the exact git commands and the exact JSON body:
+# this asserts that the endpoint and the delivery path work, not that a given model can plan a PR
+# unaided - that would make the test a model-quality benchmark and fail for reasons that are nothing
+# to do with rix. It is also why a cheap free-tier model is enough here.
+@test "a real agent can commit a branch and queue a PR that rix bundles" {
+  [ -n "${RIX_E2E_AGENT_KEY:-}" ] || skip "set RIX_E2E_AGENT_KEY (+ RIX_E2E_AGENT/_MODEL/_KEY_ENV) to run a real agent against the PR endpoint"
+  export RIX_AGENT="${RIX_E2E_AGENT:?RIX_E2E_AGENT must name the agent RIX_E2E_AGENT_KEY belongs to}"
+  export RIX_MODEL="${RIX_E2E_AGENT_MODEL:?RIX_E2E_AGENT_MODEL must name the model to run}"
+  export AGENT_API_KEY="$RIX_E2E_AGENT_KEY"
+  export AGENT_API_KEY_ENV="${RIX_E2E_AGENT_KEY_ENV:?RIX_E2E_AGENT_KEY_ENV must name the env var the provider expects}"
   # rix/e2e-pr-check must not exist on the remote or POST /pr answers 409 (see HandlePrAsync).
   # Nothing in the job path pushes, so running this test never creates it.
   export RIX_PROMPT='Do exactly these four steps in your working directory, then stop.
