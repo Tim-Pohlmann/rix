@@ -7,6 +7,6 @@ namespace Rix.Initialize;
 /// </summary>
 internal sealed record InitializeContext
 (
-    IFileSystem FileSystem,
+    WriteFileAsync WriteFile,
     LogLine LogLine
 );
