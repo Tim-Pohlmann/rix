@@ -113,7 +113,7 @@ public class JobRunnerTests
     {
         using var stderr = new ConsoleErrorScope();
 
-        var result = await Run(fileSystem: new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full")));
+        var result = await Run(fileSystem: new StubFileSystem(writeAllText: _ => throw new IOException("disk full")));
 
         Assert.AreEqual(0, result);
         StringAssert.Contains(stderr.Text, "warning: failed to write result.json: disk full");
@@ -889,7 +889,7 @@ public class JobRunnerTests
     (
         string repo, string home, string sourcePath = JobConfig.DefaultAgentHomePath
     )
-    => new(new RepoIdentifier(repo), new SubDirectoryPath(sourcePath), new DirectoryPath(home, new LocalFileSystem()));
+    => new(new RepoIdentifier(repo), new SubDirectoryPath(sourcePath), new DirectoryPath(home));
 
     /// <summary>A process runner that succeeds at everything and calls <paramref name="onAgent"/>
     /// when the agent is started.</summary>

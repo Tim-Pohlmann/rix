@@ -7,12 +7,14 @@ namespace Rix.Tests;
 public class SubmitCommandTests
 {
     private static readonly string ExistingDir = Path.GetTempPath();
-    private static readonly string PrivateTempDir = Directory.CreateTempSubdirectory("rix-submit-opts-").FullName;
     private static readonly string[] ExpectedTrimmedBranches = ["main", "release/1"];
     private static readonly string[] ExpectedUnusualBranches = ["--not-a-flag", "feature/ünïcode"];
 
     private static SubmitConfig ReadArgs(params string[] args)
-    => SubmitCommand.ReadConfig(CommandArgs.Parse(SubmitCommand.Build(), ["submit", .. args]), new LocalFileSystem());
+    {
+        var parsed = CommandArgs.Parse(SubmitCommand.Build(), ["submit", .. args]);
+        return SubmitCommand.ReadConfig(parsed, Startup.WorkDir(new LocalFileSystem(), parsed));
+    }
 
     /// <summary>Reads <c>submit</c> with the given flags, filling in valid values for the required
     /// ones the test doesn't care about.</summary>
@@ -56,35 +58,12 @@ public class SubmitCommandTests
         Assert.AreEqual("env-write", config.WriteToken.Value);
     }
 
-    /// <summary>Reads <c>submit</c> against <paramref name="fileSystem"/> rather than the disk, so
-    /// the work-dir fallback can be observed without creating a directory of its own.</summary>
-    private static SubmitConfig ReadWith(IFileSystem fileSystem, params string[] extra)
-    => SubmitCommand.ReadConfig
-    (
-        CommandArgs.Parse
-        (
-            SubmitCommand.Build(),
-            ["submit", "--repo", "owner/repo", "--write-token", "write-tok", "--input-dir", ExistingDir, .. extra]
-        ),
-        fileSystem
-    );
-
-    [TestMethod]
-    public void Command_DefaultsWorkDirToAPrivateTempDirectory_WhenAbsentOrBlank()
-    {
-        var fileSystem = new StubFileSystem(privateTempDirectory: PrivateTempDir);
-
-        Assert.AreEqual(PrivateTempDir, ReadWith(fileSystem).WorkDir.Value);
-        Assert.AreEqual(PrivateTempDir, ReadWith(fileSystem, "--work-dir", "   ").WorkDir.Value);
-    }
-
     [TestMethod]
     [DataRow("", "write-tok", null, "--repo is required")]
     [DataRow("noslash", "write-tok", null, "--repo: 'noslash' is not a valid repo identifier")]
     [DataRow("owner/repo/extra", "write-tok", null, "--repo: 'owner/repo/extra' is not a valid repo identifier")]
     [DataRow("owner/repo", "", null, "--write-token is required")]
     [DataRow("owner/repo", "write-tok", "", "--input-dir is required")]
-    [DataRow("owner/repo", "write-tok", "/nonexistent/in", "--input-dir: directory does not exist: /nonexistent/in")]
     public void Command_ReportsTheFlag_WhenInputInvalid(string repo, string writeToken, string? inputDir, string expectedError)
     {
         var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read(repo: repo, writeToken: writeToken, inputDir: inputDir));
@@ -92,12 +71,22 @@ public class SubmitCommandTests
         StringAssert.StartsWith(ex.Message, expectedError);
     }
 
+    /// <summary>Whether they exist is left to <see cref="Startup"/>, so the command accepts
+    /// directories that don't and names each one after its flag for Startup to check.</summary>
     [TestMethod]
-    public void Command_ReportsTheFlag_WhenWorkDirDoesNotExist()
+    public void RequiredDirectories_NamesTheInputAndWorkDirsAfterTheirFlags()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read(workDir: "/nonexistent/path/xyz"));
+        var config = Read(inputDir: "/nonexistent/in", workDir: "/nonexistent/work");
 
-        Assert.AreEqual("--work-dir: directory does not exist: /nonexistent/path/xyz", ex.Message);
+        CollectionAssert.AreEqual
+        (
+            new[]
+            {
+                new RequiredDirectory("--input-dir", new DirectoryPath("/nonexistent/in")),
+                new RequiredDirectory("--work-dir", new DirectoryPath("/nonexistent/work")),
+            },
+            SubmitCommand.RequiredDirectories(config).ToArray()
+        );
     }
 
     [TestMethod]

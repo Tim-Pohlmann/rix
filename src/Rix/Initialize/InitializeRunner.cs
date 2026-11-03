@@ -20,7 +20,7 @@ internal static class InitializeRunner
             var fullPath = Path.Combine(config.TargetDir.Value, relativePath);
             try
             {
-                await context.FileSystem.WriteAllTextAsync(fullPath, content, cancellationToken);
+                await context.WriteFile(fullPath, content, cancellationToken);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

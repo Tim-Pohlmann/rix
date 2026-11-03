@@ -1,19 +1,20 @@
 namespace Rix;
 
 /// <summary>The production <see cref="IFileSystem"/>: the local disk. The one type allowed to touch
-/// <see cref="File"/> and <see cref="Directory"/> directly, or to look up where the process, the
-/// temp files and the user's home are.</summary>
+/// <see cref="File"/> and <see cref="Directory"/> directly, or to look up where the user's home is.
+/// That lookup happens once, in <see cref="Startup"/>, and is handed down as a plain path, so it
+/// isn't part of the interface - unlike creating a private temp directory, which is an operation on
+/// the disk rather than a question about the machine and so belongs on the seam.</summary>
 internal sealed class LocalFileSystem : IFileSystem
 {
-    public string CurrentDirectory => Directory.GetCurrentDirectory();
-
     // CreateTempSubdirectory, not a path under GetTempPath() we create ourselves: it makes the
     // directory 0700 on Unix, and on Windows under the user's own profile temp where the inherited
     // ACL grants nobody else access. Either way the contents are the current user's alone, which a
     // directory created in the shared temp root would not be.
     public string CreatePrivateTempDirectory() => Directory.CreateTempSubdirectory("rix-").FullName;
 
-    // On Unix this already consults $HOME before the passwd entry.
+    /// <summary>The current user's home directory. On Unix this already consults $HOME before the
+    /// passwd entry.</summary>
     public string UserHomeDirectory => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     public bool FileExists(string path) => File.Exists(path);

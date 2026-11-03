@@ -1,4 +1,5 @@
 using Rix.Agents;
+using Rix.Cli;
 using Rix.Job;
 using Rix.Repository;
 using System.Runtime.InteropServices;
@@ -12,6 +13,30 @@ public class StartupTests
 
     private static string Echo(string text) =>
         OperatingSystem.IsWindows() ? $"Write-Output '{text}'" : $"echo {text}";
+
+    private static System.CommandLine.ParseResult ParseJob(params string[] args)
+    => CommandArgs.Parse(JobCommand.Build(), ["job", .. args]);
+
+    /// <summary>A named <c>--work-dir</c> is taken as given: no directory is created for a run that
+    /// brought its own, which is every run the shipped action makes.</summary>
+    [TestMethod]
+    public void WorkDir_TakesTheDirectoryTheCallerNamed()
+    {
+        var fileSystem = new StubFileSystem(privateTempDirectory: "/never/created");
+
+        Assert.AreEqual(Path.GetFullPath("/named/work/dir"), Startup.WorkDir(fileSystem, ParseJob("--work-dir", "/named/work/dir")).Value);
+    }
+
+    /// <summary>Naming none asks <c>Startup</c> for one, and what it creates is private to this run
+    /// rather than the shared temp root - the clone and the agent's workspace land in there.</summary>
+    [TestMethod]
+    public void WorkDir_CreatesAPrivateOne_WhenNoneIsNamed()
+    {
+        var fileSystem = new StubFileSystem(privateTempDirectory: "/the/private/temp");
+
+        Assert.AreEqual(Path.GetFullPath("/the/private/temp"), Startup.WorkDir(fileSystem, ParseJob()).Value);
+        Assert.AreEqual(Path.GetFullPath("/the/private/temp"), Startup.WorkDir(fileSystem, ParseJob("--work-dir", "   ")).Value);
+    }
 
     /// <summary>The one thing a <see cref="JobContext"/> takes from its config: which coding agent
     /// to run. Every kind is pinned here rather than one per <c>[DataRow]</c>, which can't carry an
@@ -85,8 +110,68 @@ public class StartupTests
     [TestMethod]
     public async Task RunInitializeAsync_Returns2_WhenTargetDirDoesNotExist()
     {
+        using var stderr = new ConsoleErrorScope();
         var exitCode = await Startup.RunAsync(["initialize", "--dir", "/nonexistent/path/xyz"]);
+
         Assert.AreEqual(2, exitCode);
+        StringAssert.Contains(stderr.Text, $"error: --dir: directory does not exist: {Path.GetFullPath("/nonexistent/path/xyz")}");
+    }
+
+    /// <summary>The check runs before the command does, so a missing directory costs no clone and no
+    /// connection: the tokens here would be refused by GitHub if they ever got that far.</summary>
+    [TestMethod]
+    public async Task RunSubmitAsync_Returns2_WhenInputDirDoesNotExist()
+    {
+        using var stderr = new ConsoleErrorScope();
+        var exitCode = await Startup.RunAsync
+        (
+            ["submit", "--repo", "owner/repo", "--write-token", "not-a-token", "--input-dir", "/nonexistent/in"]
+        );
+
+        Assert.AreEqual(2, exitCode);
+        StringAssert.Contains(stderr.Text, $"error: --input-dir: directory does not exist: {Path.GetFullPath("/nonexistent/in")}");
+    }
+
+    [TestMethod]
+    public async Task WhenDirectoriesExist_Runs_WhenEveryDirectoryExists()
+    {
+        var run = Startup.WhenDirectoriesExist<int>
+        (
+            new StubFileSystem(directoryExists: _ => true),
+            _ => [new RequiredDirectory("--work-dir", new DirectoryPath("/only/on/the/stub"))],
+            config => Task.FromResult(config)
+        );
+
+        var exitCode = await run(7);
+
+        Assert.AreEqual(7, exitCode);
+    }
+
+    [TestMethod]
+    public void WhenDirectoriesExist_ReportsTheFirstMissingDirectory_WithoutRunning()
+    {
+        var ran = false;
+        var present = new DirectoryPath("/present");
+        var missing = new DirectoryPath("/missing");
+
+        var run = Startup.WhenDirectoriesExist<int>
+        (
+            new StubFileSystem(directoryExists: path => path == present.Value),
+            _ => [new RequiredDirectory("--work-dir", present), new RequiredDirectory("--output-dir", missing), new RequiredDirectory("--dir", missing)],
+            _ =>
+            {
+                ran = true;
+                return Task.FromResult(0);
+            }
+        );
+
+        var ex = Assert.ThrowsExactly<InvalidInputException>
+        (
+            () => _ = run(0)
+        );
+
+        Assert.AreEqual($"--output-dir: directory does not exist: {missing.Value}", ex.Message);
+        Assert.IsFalse(ran);
     }
 
     [TestMethod]

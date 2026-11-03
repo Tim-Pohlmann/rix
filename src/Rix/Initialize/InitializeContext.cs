@@ -1,5 +1,11 @@
 namespace Rix.Initialize;
 
+/// <summary>Writes <paramref name="content"/> to <paramref name="path"/>, creating any missing
+/// parent directories and overwriting an existing file. The one side effect
+/// <see cref="InitializeRunner"/> needs, injected so tests can capture writes instead of touching
+/// disk.</summary>
+internal delegate Task WriteFileAsync(string path, string content, CancellationToken cancellationToken);
+
 /// <summary>
 /// The side-effecting collaborators <c>rix initialize</c> needs, gathered into a single explicit
 /// boundary object. The core (<see cref="InitializeRunner.RunAsync"/>) consumes these; the
@@ -7,6 +13,6 @@ namespace Rix.Initialize;
 /// </summary>
 internal sealed record InitializeContext
 (
-    IFileSystem FileSystem,
+    WriteFileAsync WriteFile,
     LogLine LogLine
 );

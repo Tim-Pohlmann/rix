@@ -192,20 +192,14 @@ internal sealed class StubSubmitRepoHost(Func<PendingPr, Task<string>>? createPu
 /// cleanup fail the way a full disk or a locked file would, or to decide what exists, without
 /// arranging it on disk.</summary>
 internal sealed class StubFileSystem(
-    Func<string, string, Task>? writeAllText = null,
+    Func<string, Task>? writeAllText = null,
     Action<string>? deleteDirectory = null,
     Func<string, bool>? directoryExists = null,
-    string? currentDirectory = null,
-    string? privateTempDirectory = null,
-    string? userHomeDirectory = null) : IFileSystem
+    string? privateTempDirectory = null) : IFileSystem
 {
     private readonly LocalFileSystem _real = new();
 
-    public string CurrentDirectory => currentDirectory ?? _real.CurrentDirectory;
-
     public string CreatePrivateTempDirectory() => privateTempDirectory ?? _real.CreatePrivateTempDirectory();
-
-    public string UserHomeDirectory => userHomeDirectory ?? _real.UserHomeDirectory;
 
     public bool FileExists(string path) => _real.FileExists(path);
 
@@ -239,7 +233,7 @@ internal sealed class StubFileSystem(
     public Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken)
     => writeAllText switch
     {
-        { } write => write(path, content),
+        { } write => write(path),
         _ => _real.WriteAllTextAsync(path, content, cancellationToken),
     };
 }

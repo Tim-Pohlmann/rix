@@ -5,19 +5,14 @@ namespace Rix;
 /// disk — the way <see cref="Repository.IGit"/> stands in for git.</summary>
 internal interface IFileSystem
 {
-    /// <summary>The process's working directory.</summary>
-    string CurrentDirectory { get; }
-
     /// <summary>Creates a directory for temporary files that only the current user can read, write
-    /// or traverse, and returns its absolute path. Creating one is the operation rather than naming
-    /// the system's shared temp directory, because that directory is world-writable: a clone or an
-    /// agent's workspace placed directly in it is readable by every other user on the machine. Each
-    /// call makes a new directory with an unpredictable name, so no two runs share one and nobody
-    /// can pre-create the path rix is about to use.</summary>
+    /// or traverse, and returns its absolute path. An operation rather than a lookup, which is why
+    /// it stays on the seam while the temp and home directories came off it: creating one *is* the
+    /// answer to "where do temporary files go", because the system's shared temp directory is
+    /// world-writable - a clone or an agent's workspace placed directly in it is readable by every
+    /// other user on the machine. Each call makes a new directory with an unpredictable name, so no
+    /// two runs share one and nobody can pre-create the path rix is about to use.</summary>
     string CreatePrivateTempDirectory();
-
-    /// <summary>The current user's home directory.</summary>
-    string UserHomeDirectory { get; }
 
     bool FileExists(string path);
 
