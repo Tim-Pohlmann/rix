@@ -40,13 +40,13 @@ internal static class CiFailureCommand
         return command;
     }
 
-    internal static CiFailureConfig ReadConfig(ParseResult parsed)
+    internal static CiFailureConfig ReadConfig(ParseResult parsed, IFileSystem fileSystem)
     {
         // Same order as `job` for the shared options, so both commands report the same first
         // problem for the same mistake; this command's own two come last.
         var repo = CommonOptions.ReadRepo(parsed);
         var readToken = JobOptions.ReadReadToken(parsed);
-        var outputDir = JobOptions.ReadOutputDir(parsed);
+        var outputDir = JobOptions.ReadOutputDir(parsed, fileSystem);
         var runId = parsed.Required(RunIdOption, "RIX_RUN_ID", raw => new RunId(Input.WholeNumber<long>(raw)));
         var maxRixCommits = parsed.Optional
         (

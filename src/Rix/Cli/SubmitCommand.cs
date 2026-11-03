@@ -30,13 +30,13 @@ internal static class SubmitCommand
         return command;
     }
 
-    internal static SubmitConfig ReadConfig(ParseResult parsed)
+    internal static SubmitConfig ReadConfig(ParseResult parsed, IFileSystem fileSystem)
     => new
     (
         CommonOptions.ReadRepo(parsed),
         parsed.Required(WriteTokenOption, "RIX_WRITE_TOKEN", value => new GitToken(value)),
-        InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path)),
-        WorkDir: CommonOptions.ReadWorkDir(parsed),
+        InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path, fileSystem)),
+        WorkDir: CommonOptions.ReadWorkDir(parsed, fileSystem),
         // Unparseable input is impossible: every branch name is acceptable, and a blank value
         // means the empty list, which is the safe end of the range rather than an error.
         BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"))

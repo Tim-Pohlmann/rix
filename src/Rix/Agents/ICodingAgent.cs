@@ -14,9 +14,10 @@ internal interface ICodingAgent
     /// <summary>
     /// Ensures the agent CLI is available, installing it if necessary. All subprocesses run
     /// through the injected <paramref name="runProcess"/> so installation stays on the same
-    /// side-effect seam as the rest of the job.
+    /// side-effect seam as the rest of the job, from <paramref name="workingDirectory"/>, a scratch
+    /// directory outside any repo.
     /// </summary>
-    Task<InstallResult> EnsureInstalledAsync(RunProcessAsync runProcess, CancellationToken cancellationToken);
+    Task<InstallResult> EnsureInstalledAsync(RunProcessAsync runProcess, string workingDirectory, CancellationToken cancellationToken);
 
     /// <summary>Builds the process invocation that launches the agent for this job (pure).</summary>
     AgentInvocation BuildInvocation(JobConfig config, string systemPrompt);
@@ -61,12 +62,13 @@ internal static class CodingAgentHelper
     internal static async Task<string?> RunCommandAsync
     (
         RunProcessAsync runProcess,
+        string workingDirectory,
         string fileName,
         IEnumerable<string> args,
         CancellationToken cancellationToken
     )
     {
-        var result = await runProcess(fileName, args, Path.GetTempPath(), null, null, cancellationToken);
+        var result = await runProcess(fileName, args, workingDirectory, null, null, cancellationToken);
         if (result is ProcessFailure failure)
             return failure.Reason;
         return null;
@@ -80,13 +82,14 @@ internal static class CodingAgentHelper
     internal static async Task<InstallResult> EnsureInstalledViaNpmAsync
     (
         RunProcessAsync runProcess,
+        string workingDirectory,
         string cliName,
         string npmPackage,
         CancellationToken cancellationToken
     )
     {
         Task<string?> Run(string fileName, IEnumerable<string> args)
-        => RunCommandAsync(runProcess, fileName, args, cancellationToken);
+        => RunCommandAsync(runProcess, workingDirectory, fileName, args, cancellationToken);
 
         if (await Run(cliName, ["--version"]) is null) return new Installed();
 

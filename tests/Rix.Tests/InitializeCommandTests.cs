@@ -6,8 +6,11 @@ namespace Rix.Tests;
 [TestClass]
 public class InitializeCommandTests
 {
+    private static InitializeConfig Read(string[] args, IFileSystem? fileSystem = null)
+    => InitializeCommand.ReadConfig(CommandArgs.Parse(InitializeCommand.Build(), args), fileSystem ?? new LocalFileSystem());
+
     private static InitializeConfig Read(params string[] args)
-    => InitializeCommand.ReadConfig(CommandArgs.Parse(InitializeCommand.Build(), args));
+    => Read(args, null);
 
     [TestMethod]
     [DataRow("initialize")]
@@ -24,7 +27,11 @@ public class InitializeCommandTests
     [TestMethod]
     public void Command_DefaultsDirToCurrentDirectory_WhenFlagAbsent()
     {
-        Assert.AreEqual(Path.GetFullPath(Directory.GetCurrentDirectory()), Read("initialize").TargetDir.Value);
+        var currentDirectory = Path.GetTempPath();
+
+        var config = Read(["initialize"], new StubFileSystem(currentDirectory: currentDirectory));
+
+        Assert.AreEqual(Path.GetFullPath(currentDirectory), config.TargetDir.Value);
     }
 
     [TestMethod]

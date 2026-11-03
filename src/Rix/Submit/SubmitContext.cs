@@ -11,5 +11,6 @@ internal sealed record SubmitContext
 (
     IGit Git,
     ISubmitRepoHost RepoHost,
-    LogLine LogLine
+    LogLine LogLine,
+    IFileSystem FileSystem
 );

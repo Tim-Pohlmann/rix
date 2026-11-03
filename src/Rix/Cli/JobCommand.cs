@@ -19,23 +19,23 @@ internal static class JobCommand
         return command;
     }
 
-    internal static JobConfig ReadConfig(ParseResult parsed)
+    internal static JobConfig ReadConfig(ParseResult parsed, IFileSystem fileSystem)
     {
         // Read in the order problems should be reported: the first failing read is the one the
         // user sees.
         var repo = CommonOptions.ReadRepo(parsed);
-        var prompt = JobOptions.ReadPrompt(parsed);
+        var prompt = JobOptions.ReadPrompt(parsed, fileSystem);
         var readToken = JobOptions.ReadReadToken(parsed);
         var agent = JobOptions.ReadAgent(parsed);
         var maxTokens = JobOptions.ReadMaxTokens(parsed);
         var timeout = JobOptions.ReadTimeout(parsed);
-        var workDir = CommonOptions.ReadWorkDir(parsed);
-        var outputDir = JobOptions.ReadOutputDir(parsed);
+        var workDir = CommonOptions.ReadWorkDir(parsed, fileSystem);
+        var outputDir = JobOptions.ReadOutputDir(parsed, fileSystem);
         var model = JobOptions.ReadModel(parsed);
         var apiKey = JobOptions.ReadAgentApiKey(parsed);
         var credential = JobOptions.ReadAgentCredential(parsed, agent, apiKey);
         var allowedPushBranches = BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"));
-        var agentHome = JobOptions.ReadAgentHome(parsed);
+        var agentHome = JobOptions.ReadAgentHome(parsed, fileSystem);
 
         return new JobConfig
         (
