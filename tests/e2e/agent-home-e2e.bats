@@ -19,8 +19,8 @@
 # would mean it was deleted rather than merely not merged yet.
 #
 # Requires: RIX_BIN (a built rix binary), RIX_REPO/RIX_READ_TOKEN (a real repo + token, used both as
-# the repo to work in and as the factory repo to fetch from), and network access to install and run
-# the real agent CLI via npm.
+# the repo to work in and as the factory repo to fetch from), and network access to clone it. No npm
+# and no agent key: the agent here is tests/e2e/stub-opencode (see setup).
 
 # The directory inside the factory repo that the happy path asks for, named once: it is also the
 # path this checkout is searched at, which is what tells "not merged yet" from "deleted".
@@ -32,14 +32,25 @@ setup() {
   : "${RIX_REPO:?RIX_REPO must name a real GitHub repo to clone (e.g. Tim-Pohlmann/rix)}"
   : "${RIX_READ_TOKEN:?RIX_READ_TOKEN must be a GitHub token with read access to RIX_REPO}"
   export RIX_PROMPT="Make no changes to any files and do not call the PR endpoint. Just reply with the text: OK"
-  # opencode because it is the one agent that runs here without a key - see rix-job-e2e.bats. The
-  # agent is incidental to these tests, but it does run: the copy has to survive a real job.
+  # The agent is incidental to these tests - what they assert is the clone and the merge - but it
+  # does run: the copy has to survive a real job. So it is the stub (see tests/e2e/stub-opencode),
+  # put on PATH ahead of any real opencode, which rix then uses without an npm install or a key.
+  # These legs never needed a particular model's judgement, and after opencode withdrew its keyless
+  # tier no real CLI runs here for free - see rix-job-e2e.bats for the legs that do want a real one.
   export RIX_AGENT=opencode
+  # Installed under the name rix looks up, not its own: rix resolves the agent CLI by name on PATH
+  # and accepts whatever answers `opencode --version`, which is what lets a stub stand in with no
+  # rix-side switch for it (see EnsureInstalledViaNpmAsync). Its own directory, so this is the only
+  # file these tests add as a command.
+  mkdir -p "$BATS_TEST_TMPDIR/stub-bin"
+  install -m 0755 "$BATS_TEST_DIRNAME/stub-opencode" "$BATS_TEST_TMPDIR/stub-bin/opencode"
+  PATH="$BATS_TEST_TMPDIR/stub-bin:$PATH"
+  export PATH
   export RIX_FACTORY_REPO="$RIX_REPO"
   # Well under rix's 30-minute default, because the agent turn is incidental to what these legs
-  # assert - it only has to reply OK, which takes under a minute in this job. An agent CLI that
-  # hangs instead (seen locally: opencode against an empty HOME sat there for the whole default)
-  # should fail this in minutes rather than hold a runner for half an hour.
+  # assert - the stub only has to reply OK. Kept now that the stub cannot hang: it is the backstop
+  # for rix's own side of the wait, which should fail this in minutes rather than hold a runner for
+  # half an hour.
   export RIX_TIMEOUT=5
   export RIX_OUTPUT_DIR="$BATS_TEST_TMPDIR/out"
   export RIX_WORK_DIR="$BATS_TEST_TMPDIR/work"
