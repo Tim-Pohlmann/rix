@@ -65,16 +65,38 @@ public class JobRunnerTests
         Assert.AreEqual(2, result);
     }
 
+    /// <summary>The install and the clone run side by side, so both can fail; the install is still
+    /// the one reported, as it was when it ran first.</summary>
     [TestMethod]
-    public async Task RunAsync_DoesNotClone_WhenClaudeInstallerFails()
+    public async Task RunAsync_ReportsTheInstallFailure_WhenTheCloneFailsToo()
     {
-        var host = new StubGit();
+        var host = new StubGit(clone: () => throw new RepoHostException("git clone failed: exit code 128"));
 
-        await JobRunner.RunAsync(MakeConfig(),
+        var result = await JobRunner.RunAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))),
             CancellationToken.None);
 
-        Assert.IsFalse(host.CloneCalled);
+        Assert.AreEqual("agent install failed: install failed", result is SetupFailure failure ? failure.Error : $"not a setup failure: {result}");
+    }
+
+    /// <summary>The install needn't finish before the clone starts: the one thing that waits for it
+    /// is copying the agent home.</summary>
+    [TestMethod]
+    public async Task RunAsync_ClonesWhileTheAgentInstalls()
+    {
+        var installReleased = new TaskCompletionSource<InstallResult>();
+        var cloned = new TaskCompletionSource();
+        var host = new StubGit(clone: () =>
+        {
+            cloned.SetResult();
+            return Task.CompletedTask;
+        });
+
+        var run = JobRunner.RunAsync(MakeConfig(), Context(host, FakeRunner(), _ => installReleased.Task), CancellationToken.None);
+
+        await cloned.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        installReleased.SetResult(new Installed());
+        Assert.IsInstanceOfType<JobSuccess>(await run);
     }
 
     [TestMethod]
