@@ -17,7 +17,7 @@ internal static class CommonOptions
 
     internal static readonly Option<string> WorkDirOption = new("--work-dir")
     {
-        Description = "Base directory for the temp clone (default: system temp)"
+        Description = "Base directory for the temp clone (default: a private temp directory of rix's own)"
     };
 
     internal static RepoIdentifier ReadRepo(ParseResult parsed)
