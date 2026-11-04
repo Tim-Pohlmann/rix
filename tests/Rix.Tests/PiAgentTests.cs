@@ -8,7 +8,7 @@ namespace Rix.Tests;
 public class PiAgentTests
 {
     private static readonly PiAgent Agent = new();
-    private static readonly DirectoryPath WorkDir = TestConfig.AnyDirectory("/tmp/work");
+    private static readonly DirectoryPath WorkDir = new DirectoryPath("/tmp/work");
 
     // Adapts a simple (fileName, args) -> ProcessResult stub to the full RunProcessAsync shape.
     private static RunProcessAsync Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)

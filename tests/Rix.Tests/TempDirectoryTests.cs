@@ -7,7 +7,7 @@ public class TempDirectoryTests
 
     [TestInitialize]
     public void Setup()
-    => _baseDir = TestConfig.AnyDirectory(Directory.CreateTempSubdirectory("rix-temp-base-").FullName);
+    => _baseDir = new DirectoryPath(Directory.CreateTempSubdirectory("rix-temp-base-").FullName);
 
     [TestCleanup]
     public void Cleanup()

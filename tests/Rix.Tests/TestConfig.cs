@@ -12,11 +12,6 @@ namespace Rix.Tests;
 /// malformed.</summary>
 internal static class TestConfig
 {
-    /// <summary>A <see cref="DirectoryPath"/> for a directory that need not exist, for tests that
-    /// only hand the path onwards - to a stubbed process runner, say - rather than read from it.</summary>
-    internal static DirectoryPath AnyDirectory(string path)
-    => new(path, new StubFileSystem(directoryExists: _ => true));
-
     internal static JobConfig Valid
     (
         string repo = "owner/repo",
