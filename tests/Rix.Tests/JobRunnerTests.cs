@@ -121,7 +121,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_WritesResultJson_OnSetupFailure()
     {
-        await JobCommand.ExecuteAsync(
+        await JobRunner.RunAsync(
             MakeConfig(),
             Context(new StubGit(), FakeRunner(),
                 _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))), CancellationToken.None);
@@ -131,15 +131,22 @@ public class JobRunnerTests
         Assert.AreEqual("setupFailure", doc.RootElement.GetProperty("status").GetString());
     }
 
+    /// <summary>An unwritable output directory costs the artifact and nothing else: the job ran,
+    /// so it still reports what it did. The warning goes to the run's log sink, which is stderr in
+    /// production.</summary>
     [TestMethod]
     public async Task ExecuteJobAsync_StillReturnsExitCode_WhenResultJsonCannotBeWritten()
     {
-        using var stderr = new ConsoleErrorScope();
+        var log = new List<string>();
 
-        var result = await Run(fileSystem: new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full")));
+        var result = await JobCommand.ExecuteAsync(MakeConfig(),
+            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()),
+                logLine: log.Add,
+                fileSystem: new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full"))),
+            CancellationToken.None);
 
         Assert.AreEqual(0, result);
-        StringAssert.Contains(stderr.Text, "warning: failed to write result.json: disk full");
+        CollectionAssert.Contains(log, "warning: failed to write result.json: disk full");
     }
 
     [TestMethod]
@@ -375,48 +382,6 @@ public class JobRunnerTests
             CancellationToken.None);
 
         CollectionAssert.Contains(log, "test line");
-    }
-
-    [TestMethod]
-    public async Task RunAsync_ForwardsExtractedTranscriptLines_ToTranscriptSink()
-    {
-        const string assistantLine = """{"type":"assistant","message":{"content":[{"type":"text","text":"hello transcript"}]}}""";
-        var transcript = new List<string>();
-
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude") onLine?.Invoke(assistantLine);
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed()),
-                transcriptLine: transcript.Add),
-            CancellationToken.None);
-
-        CollectionAssert.Contains(transcript, "hello transcript");
-    }
-
-    [TestMethod]
-    public async Task RunAsync_DoesNotForwardNonTranscriptLines_ToTranscriptSink()
-    {
-        const string noiseLine = """{"type":"result","subtype":"success","total_cost_usd":0.5}""";
-        var transcript = new List<string>();
-
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude") onLine?.Invoke(noiseLine);
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed()),
-                transcriptLine: transcript.Add),
-            CancellationToken.None);
-
-        Assert.AreEqual(0, transcript.Count);
     }
 
     [TestMethod]
@@ -657,32 +622,22 @@ public class JobRunnerTests
         StringAssert.Contains(systemPrompt, "DELETE");
     }
 
+    /// <summary>A job that returns is a job whose output is on disk: the run itself writes the
+    /// artifacts, so no caller can leave a finished job unrecorded by forgetting to.</summary>
     [TestMethod]
-    public async Task RunAsync_ReturnsJobSuccess_WithoutWritingResultJson()
+    public async Task RunAsync_WritesResultJson_WhenTheJobSucceeds()
     {
         var result = await JobRunner.RunAsync(MakeConfig(),
             Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         Assert.IsInstanceOfType<JobSuccess>(result);
-        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")),
-            "JobRunner core must not perform the result.json write — that is the shell's job");
+        using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json")));
+        Assert.AreEqual("success", doc.RootElement.GetProperty("status").GetString());
     }
 
     [TestMethod]
-    public async Task RunAsync_ReturnsJobSuccess_WithoutWritingTranscriptMd()
-    {
-        var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
-            CancellationToken.None);
-
-        Assert.IsInstanceOfType<JobSuccess>(result);
-        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "transcript.md")),
-            "JobRunner core must not perform the transcript.md write — that is the shell's job");
-    }
-
-    [TestMethod]
-    public async Task ExecuteJobAsync_WritesTranscriptMd_FromClaudeAssistantLines()
+    public async Task RunAsync_WritesTranscriptMd_FromClaudeAssistantLines()
     {
         const string assistantLine = """{"type":"assistant","message":{"content":[{"type":"text","text":"I will fix the bug"},{"type":"tool_use","name":"Bash","input":{}}]}}""";
 
@@ -692,7 +647,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobCommand.ExecuteAsync(MakeConfig(),
+        await JobRunner.RunAsync(MakeConfig(),
             Context(new StubGit(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
@@ -701,8 +656,10 @@ public class JobRunnerTests
         StringAssert.Contains(transcript, "→ Bash(...)");
     }
 
+    /// <summary>Only the lines the agent recognizes as transcript reach the file, so a run whose
+    /// output was all machine chatter leaves no empty artifact behind.</summary>
     [TestMethod]
-    public async Task ExecuteJobAsync_OmitsTranscriptMd_WhenNothingExtracted()
+    public async Task RunAsync_OmitsTranscriptMd_WhenNothingExtracted()
     {
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
         {
@@ -710,7 +667,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobCommand.ExecuteAsync(MakeConfig(),
+        await JobRunner.RunAsync(MakeConfig(),
             Context(new StubGit(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
@@ -876,9 +833,8 @@ public class JobRunnerTests
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
         LogLine? logLine = null,
-        LogLine? transcriptLine = null,
         IFileSystem? fileSystem = null)
-    => new(git, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }), fileSystem ?? new LocalFileSystem());
+    => new(git, processRunner, new StubAgent(install), logLine ?? (_ => { }), fileSystem ?? new LocalFileSystem());
 
     private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null)
     => JobCommand.ExecuteAsync(MakeConfig(),

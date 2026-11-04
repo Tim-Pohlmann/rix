@@ -33,19 +33,14 @@ internal static class Composition
     /// <summary>The production <see cref="JobContext"/>: git against GitHub, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
     /// from <paramref name="config"/>. The one git client reads both the job's repo and the factory
-    /// repo holding the agent home files. <see cref="JobContext.TranscriptLine"/> is a no-op here;
-    /// <see cref="Cli.JobCommand.ExecuteAsync"/> tees in its own collecting sink regardless of which
-    /// context it ends up using.</summary>
+    /// repo holding the agent home files.</summary>
     internal static JobContext DefaultContext(JobConfig config)
     => new
     (
         GitHubGit(config.ReadToken, config.WorkDir),
         ProcessWrapper.RunAsync,
         SelectAgent(config.Agent.Kind),
-        // Named because LogLine and TranscriptLine are the same delegate type: transposing them
-        // compiles, and would silently print the agent's transcript to stderr and drop rix's own log.
         LogLine: Console.Error.WriteLine,
-        TranscriptLine: _ => { },
         FileSystem: FileSystem()
     );
 

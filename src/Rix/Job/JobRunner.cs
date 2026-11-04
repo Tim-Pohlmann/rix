@@ -17,10 +17,32 @@ internal partial class JobJsonContext : JsonSerializerContext { }
 
 internal static class JobRunner
 {
+    /// <summary>Runs a job and leaves its output in <see cref="JobConfig.OutputDir"/>. The writes
+    /// happen here rather than in the caller because <c>result.json</c> and <c>transcript.md</c> are
+    /// the job's product (see <see cref="JobOutput"/>), and because every way the run can end -
+    /// including a setup failure before the agent started - has to leave the same artifacts behind.
+    /// What the caller adds is a CLI's own: printing the result and choosing an exit code.</summary>
     internal static async Task<IJobResult> RunAsync
     (
         JobConfig config,
         JobContext context,
+        CancellationToken cancellationToken
+    )
+    {
+        var transcript = new List<string>();
+        var result = await RunCoreAsync(config, context, transcript, cancellationToken);
+        await JobOutput.WriteAsync(config, context, result, transcript);
+        return result;
+    }
+
+    /// <summary>The run itself, in one method so each way it can end is a plain <c>return</c> and
+    /// the artifacts are written once, by <see cref="RunAsync"/>, whichever one it took. Appends
+    /// whatever the agent said to <paramref name="transcript"/> as it streams.</summary>
+    private static async Task<IJobResult> RunCoreAsync
+    (
+        JobConfig config,
+        JobContext context,
+        List<string> transcript,
         CancellationToken cancellationToken
     )
     {
@@ -42,7 +64,7 @@ internal static class JobRunner
         );
 
         var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl, config.AllowedPushBranches);
-        var agentResult = await RunAgentAsync(config, context, systemPrompt, cloneDir.Path, ct);
+        var agentResult = await RunAgentAsync(config, context, transcript, systemPrompt, cloneDir.Path, ct);
 
         if (agentResult is ProcessFailure agentFailure)
         {
@@ -176,10 +198,12 @@ internal static class JobRunner
         }
     }
 
-    /// <summary>Runs the coding agent in the cloned repo and returns its raw process result.</summary>
+    /// <summary>Runs the coding agent in the cloned repo and returns its raw process result,
+    /// appending every transcript line it recognizes to <paramref name="transcript"/>.</summary>
     private static Task<ProcessResult> RunAgentAsync
     (
-        JobConfig config, JobContext context, string systemPrompt, string cloneDir, CancellationToken ct
+        JobConfig config, JobContext context, List<string> transcript, string systemPrompt, string cloneDir,
+        CancellationToken ct
     )
     {
         var invocation = context.Agent.BuildInvocation(config, systemPrompt);
@@ -197,7 +221,7 @@ internal static class JobRunner
         {
             context.LogLine(line);
             if (context.Agent.ParseTranscriptLine(line) is { } transcriptLine)
-                context.TranscriptLine(transcriptLine);
+                transcript.Add(transcriptLine);
         }
     }
 

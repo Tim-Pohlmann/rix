@@ -198,14 +198,15 @@ rules:
     severity: ERROR
     message: >-
       Async methods in this codebase take and propagate a CancellationToken.
-      Add one and forward it to any awaited call. The CLI shell is excluded
-      for the same reason it may touch the console: it is where the writes
-      that happen after the outcome is already decided live, and those must
-      finish even once cancellation has been requested.
+      Add one and forward it to any awaited call. What is excluded is the
+      writes that record an outcome already decided - the CLI shell, and the
+      job's own artifacts in JobOutput: those must finish even once
+      cancellation has been requested, so they are handed no token to honour.
     paths:
       exclude:
         - src/Rix/Startup.cs
         - src/Rix/Cli/**
+        - src/Rix/Job/JobOutput.cs
     patterns:
       - pattern-either:
           - pattern: "async Task $M(...) { ... }"
