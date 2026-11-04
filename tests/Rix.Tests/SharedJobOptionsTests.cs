@@ -6,9 +6,9 @@ using System.CommandLine;
 namespace Rix.Tests;
 
 /// <summary><see cref="JobOptions.AddTo"/> registers this set in one call, but <c>job</c>'s
-/// <c>ReadConfig</c> reads it back one option at a time, so a flag can be registered - and
+/// <c>CreateConfig</c> reads it back one option at a time, so a flag can be registered - and
 /// documented, and accepted on the command line without complaint - while nothing ever reads it.
-/// Nothing but these tests connects the two halves: a flag dropped from <c>ReadConfig</c> is
+/// Nothing but these tests connects the two halves: a flag dropped from <c>CreateConfig</c> is
 /// silently ignored at runtime, taking the default instead of what the caller asked for.
 ///
 /// So every flag is listed exactly once below, with the value it's invoked with and the assertion
@@ -22,7 +22,7 @@ namespace Rix.Tests;
 public class SharedJobOptionsTests
 {
     // Two distinct directories that really exist, rather than Path.GetTempPath() for both:
-    // DirectoryPath rejects a path that isn't there, and a ReadConfig reading --work-dir into
+    // DirectoryPath rejects a path that isn't there, and a CreateConfig reading --work-dir into
     // OutputDir (or vice versa) is only visible if the two values differ.
     private string _workDir = string.Empty;
     private string _outputDir = string.Empty;
@@ -35,8 +35,8 @@ public class SharedJobOptionsTests
     }
 
     /// <summary>Every flag <see cref="JobOptions.AddTo"/> registers, each with a value that differs
-    /// both from that option's default (so a ReadConfig that never reads it can't accidentally pass)
-    /// and from every other value here (so a ReadConfig reading one option into another's slot can't
+    /// both from that option's default (so a CreateConfig that never reads it can't accidentally pass)
+    /// and from every other value here (so a CreateConfig reading one option into another's slot can't
     /// either).</summary>
     private (string Flag, string Value, Action<JobConfig> AssertArrived)[] SharedFlags =>
     [
@@ -79,6 +79,6 @@ public class SharedJobOptionsTests
     {
         var parsed = CommandArgs.Parse(JobCommand.Build(), ["job", "--prompt", "shared prompt", .. SharedArgs]);
 
-        AssertEveryFlagArrived(JobCommand.ReadConfig(parsed, new LocalFileSystem()));
+        AssertEveryFlagArrived(JobCommand.CreateConfig(parsed, new LocalFileSystem()));
     }
 }

@@ -26,7 +26,7 @@ internal static class InitializeCommand
         return command;
     }
 
-    internal static InitializeConfig ReadConfig(ParseResult parsed, IFileSystem fileSystem)
+    internal static InitializeConfig CreateConfig(ParseResult parsed, IFileSystem fileSystem)
     {
         // Unlike the CI-run commands, `initialize` is a local dev step - no RIX_* env fallback; an
         // absent --dir just means "this repo".

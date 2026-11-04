@@ -40,7 +40,7 @@ internal static class CiFailureCommand
         return command;
     }
 
-    internal static CiFailureConfig ReadConfig(ParseResult parsed, IFileSystem fileSystem)
+    internal static CiFailureConfig CreateConfig(ParseResult parsed, IFileSystem fileSystem)
     {
         // Same order as `job` for the shared options, so both commands report the same first
         // problem for the same mistake; this command's own two come last.

@@ -95,10 +95,10 @@ internal static class Startup
             var fileSystem = new LocalFileSystem();
             var rootCommand = new RootCommand("RIX - AI-powered code automation")
             {
-                Runs(JobCommand.Build(), parsed => JobCommand.ReadConfig(parsed, fileSystem), config => ExecuteJobAsync(config, cts.Token)),
-                Runs(SubmitCommand.Build(), parsed => SubmitCommand.ReadConfig(parsed, fileSystem), config => ExecuteSubmitAsync(config, cts.Token)),
-                Runs(CiFailureCommand.Build(), parsed => CiFailureCommand.ReadConfig(parsed, fileSystem), config => ExecuteCiFailureAsync(config, cts.Token)),
-                Runs(InitializeCommand.Build(), parsed => InitializeCommand.ReadConfig(parsed, fileSystem), config => ExecuteInitializeAsync(config, cts.Token)),
+                Runs(JobCommand.Build(), parsed => JobCommand.CreateConfig(parsed, fileSystem), config => ExecuteJobAsync(config, cts.Token)),
+                Runs(SubmitCommand.Build(), parsed => SubmitCommand.CreateConfig(parsed, fileSystem), config => ExecuteSubmitAsync(config, cts.Token)),
+                Runs(CiFailureCommand.Build(), parsed => CiFailureCommand.CreateConfig(parsed, fileSystem), config => ExecuteCiFailureAsync(config, cts.Token)),
+                Runs(InitializeCommand.Build(), parsed => InitializeCommand.CreateConfig(parsed, fileSystem), config => ExecuteInitializeAsync(config, cts.Token)),
             };
             return await CliPipeline.InvokeAsync(rootCommand, args);
         }

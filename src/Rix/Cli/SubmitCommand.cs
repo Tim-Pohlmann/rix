@@ -30,7 +30,7 @@ internal static class SubmitCommand
         return command;
     }
 
-    internal static SubmitConfig ReadConfig(ParseResult parsed, IFileSystem fileSystem)
+    internal static SubmitConfig CreateConfig(ParseResult parsed, IFileSystem fileSystem)
     => new
     (
         CommonOptions.ReadRepo(parsed),

@@ -12,7 +12,7 @@ public class SubmitCommandTests
     private static readonly string[] ExpectedUnusualBranches = ["--not-a-flag", "feature/ünïcode"];
 
     private static SubmitConfig ReadArgs(params string[] args)
-    => SubmitCommand.ReadConfig(CommandArgs.Parse(SubmitCommand.Build(), ["submit", .. args]), new LocalFileSystem());
+    => SubmitCommand.CreateConfig(CommandArgs.Parse(SubmitCommand.Build(), ["submit", .. args]), new LocalFileSystem());
 
     /// <summary>Reads <c>submit</c> with the given flags, filling in valid values for the required
     /// ones the test doesn't care about.</summary>
@@ -59,7 +59,7 @@ public class SubmitCommandTests
     /// <summary>Reads <c>submit</c> against <paramref name="fileSystem"/> rather than the disk, so
     /// the work-dir fallback can be observed without creating a directory of its own.</summary>
     private static SubmitConfig ReadWith(IFileSystem fileSystem, params string[] extra)
-    => SubmitCommand.ReadConfig
+    => SubmitCommand.CreateConfig
     (
         CommandArgs.Parse
         (

@@ -7,7 +7,7 @@ namespace Rix.Tests;
 public class InitializeCommandTests
 {
     private static InitializeConfig Read(string[] args, IFileSystem? fileSystem = null)
-    => InitializeCommand.ReadConfig(CommandArgs.Parse(InitializeCommand.Build(), args), fileSystem ?? new LocalFileSystem());
+    => InitializeCommand.CreateConfig(CommandArgs.Parse(InitializeCommand.Build(), args), fileSystem ?? new LocalFileSystem());
 
     private static InitializeConfig Read(params string[] args)
     => Read(args, null);

@@ -19,7 +19,7 @@ internal static class JobCommand
         return command;
     }
 
-    internal static JobConfig ReadConfig(ParseResult parsed, IFileSystem fileSystem)
+    internal static JobConfig CreateConfig(ParseResult parsed, IFileSystem fileSystem)
     {
         // Read in the order problems should be reported: the first failing read is the one the
         // user sees.
