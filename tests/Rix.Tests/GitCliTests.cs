@@ -25,7 +25,11 @@ public class GitCliTests
     private static readonly string[] ExpectedConfigureUserEmailArgs =
         ["config", "user.email", "rix@noreply.invalid"];
 
-    private static readonly string[] ExpectedWorkingDirs = ["/tmp/work", "/tmp/work", "/tmp/checkout", "/tmp/work"];
+    // Rooted, because GitCli is handed a DirectoryPath and that normalizes what it is given: on
+    // Windows "/tmp/work" reaches git as "D:\tmp\work". The clone target stays a bare string all
+    // the way through, so it is compared as written.
+    private static readonly string WorkingDir = Path.GetFullPath("/tmp/work");
+    private static readonly string[] ExpectedWorkingDirs = [WorkingDir, WorkingDir, "/tmp/checkout", WorkingDir];
 
     private static readonly string[] ExpectedLsRemoteArgs =
         ["ls-remote", "--exit-code", "https://github.com/owner/repo.git", "refs/heads/rix/fix"];
