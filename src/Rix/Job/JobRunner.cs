@@ -28,14 +28,14 @@ internal static class JobRunner
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
 
-        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, config.WorkDir.Value, ct) is InstallFailed installFailed)
+        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, config.WorkDir, ct) is InstallFailed installFailed)
         {
             return new SetupFailure($"agent install failed: {installFailed.Reason}");
         }
 
         var stopwatch = Stopwatch.StartNew();
 
-        using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-clone");
+        using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir, "rix-clone");
 
         try
         {
@@ -108,7 +108,7 @@ internal static class JobRunner
         if (config.AgentHome is not { } agentHome)
             return null;
 
-        using var checkout = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-agent-home");
+        using var checkout = TempDirectory.Create(context.FileSystem, config.WorkDir, "rix-agent-home");
         try
         {
             await context.Git.SparseCloneAsync(agentHome.Repo, checkout.Path, agentHome.SourcePath, ct);

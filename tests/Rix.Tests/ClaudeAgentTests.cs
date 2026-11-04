@@ -8,6 +8,7 @@ namespace Rix.Tests;
 public class ClaudeAgentTests
 {
     private static readonly ClaudeAgent Agent = new();
+    private static readonly DirectoryPath WorkDir = TestConfig.AnyDirectory("/tmp/work");
 
     // Adapts a simple (fileName, args) -> ProcessResult stub to the full RunProcessAsync shape.
     private static RunProcessAsync Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)
@@ -25,9 +26,9 @@ public class ClaudeAgentTests
                 workingDirs.Add(workingDir);
                 return Task.FromResult<ProcessResult>(new ProcessSuccess());
             },
-            "/tmp/work", CancellationToken.None);
+            WorkDir, CancellationToken.None);
 
-        Assert.AreEqual("/tmp/work", workingDirs.Single());
+        Assert.AreEqual(WorkDir.Value, workingDirs.Single());
     }
 
     [TestMethod]
@@ -37,7 +38,7 @@ public class ClaudeAgentTests
             Runner((f, _) => Task.FromResult<ProcessResult>(f == "claude"
                 ? new ProcessSuccess()
                 : new ProcessFailure("exited with code 1"))),
-            "/tmp/work", CancellationToken.None);
+            WorkDir, CancellationToken.None);
 
         Assert.IsInstanceOfType<Installed>(result);
     }
@@ -55,7 +56,7 @@ public class ClaudeAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
             }),
-            "/tmp/work", CancellationToken.None);
+            WorkDir, CancellationToken.None);
 
         Assert.IsInstanceOfType<Installed>(result);
     }
@@ -65,7 +66,7 @@ public class ClaudeAgentTests
     {
         var result = await Agent.EnsureInstalledAsync(
             Runner((_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"))),
-            "/tmp/work", CancellationToken.None);
+            WorkDir, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "npm");
@@ -82,7 +83,7 @@ public class ClaudeAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
                 _ => throw new NotSupportedException(f),
             }),
-            "/tmp/work", CancellationToken.None);
+            WorkDir, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "npm install");
@@ -108,7 +109,7 @@ public class ClaudeAgentTests
                     _ => throw new NotSupportedException(f),
                 };
             }),
-            "/tmp/work", CancellationToken.None);
+            WorkDir, CancellationToken.None);
 
         Assert.AreEqual("@anthropic-ai/claude-code", installedPackage);
     }
@@ -118,7 +119,7 @@ public class ClaudeAgentTests
     {
         var result = await Agent.EnsureInstalledAsync(
             Runner((_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("timed out"))),
-            "/tmp/work", CancellationToken.None);
+            WorkDir, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "timed out");
@@ -134,7 +135,7 @@ public class ClaudeAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
             }),
-            "/tmp/work", CancellationToken.None);
+            WorkDir, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "could not be verified");

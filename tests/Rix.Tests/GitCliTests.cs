@@ -38,7 +38,7 @@ public class GitCliTests
     private static readonly RepoIdentifier Repo = new("owner/repo");
 
     private static GitCli Build(string readToken = "read-tok", RunProcessAsync? gitRunner = null, string host = "https://github.com/")
-    => new(new Uri(host), new GitReadToken(readToken), gitRunner ?? SuccessGitRunner, "/tmp/work");
+    => new(new Uri(host), new GitReadToken(readToken), gitRunner ?? SuccessGitRunner, TestConfig.AnyDirectory("/tmp/work"));
 
     [TestMethod]
     public async Task CommandsWithoutALocalRepo_RunFromTheWorkingDirectoryGivenAtCreation()

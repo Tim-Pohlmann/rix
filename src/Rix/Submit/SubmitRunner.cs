@@ -79,7 +79,7 @@ internal static class SubmitRunner
         CancellationToken cancellationToken
     )
     {
-        using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir.Value, "rix-submit");
+        using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir, "rix-submit");
 
         await context.Git.CloneAsync(config.Repo, cloneDir.Path, cancellationToken);
 

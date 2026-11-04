@@ -16,9 +16,9 @@ internal sealed class TempDirectory : IDisposable
         Path = path;
     }
 
-    internal static TempDirectory Create(IFileSystem fileSystem, string baseDir, string prefix)
+    internal static TempDirectory Create(IFileSystem fileSystem, DirectoryPath baseDir, string prefix)
     {
-        var path = System.IO.Path.Combine(baseDir, $"{prefix}-{Guid.NewGuid():N}");
+        var path = System.IO.Path.Combine(baseDir.Value, $"{prefix}-{Guid.NewGuid():N}");
         fileSystem.CreateDirectory(path);
         return new TempDirectory(fileSystem, path);
     }

@@ -3,16 +3,16 @@ namespace Rix.Tests;
 [TestClass]
 public class TempDirectoryTests
 {
-    private string _baseDir = null!;
+    private DirectoryPath _baseDir = null!;
 
     [TestInitialize]
     public void Setup()
-    => _baseDir = Directory.CreateTempSubdirectory("rix-temp-base-").FullName;
+    => _baseDir = TestConfig.AnyDirectory(Directory.CreateTempSubdirectory("rix-temp-base-").FullName);
 
     [TestCleanup]
     public void Cleanup()
     {
-        try { Directory.Delete(_baseDir, recursive: true); } catch (DirectoryNotFoundException) { }
+        try { Directory.Delete(_baseDir.Value, recursive: true); } catch (DirectoryNotFoundException) { }
     }
 
     [TestMethod]
@@ -23,7 +23,7 @@ public class TempDirectoryTests
         {
             path = temp.Path;
             File.WriteAllText(Path.Combine(path, "a.txt"), "a");
-            Assert.AreEqual(_baseDir, Path.GetDirectoryName(path));
+            Assert.AreEqual(_baseDir.Value, Path.GetDirectoryName(path));
             StringAssert.StartsWith(Path.GetFileName(path), "rix-test-");
         }
 

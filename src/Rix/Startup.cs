@@ -37,7 +37,7 @@ internal static class Startup
     /// place the GitHub host is spelled out. Commands that need no local repo run from
     /// <paramref name="workDir"/>.</summary>
     private static GitCli GitHubGit(GitReadToken token, DirectoryPath workDir)
-    => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessWrapper.RunAsync, workDir.Value);
+    => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessWrapper.RunAsync, workDir);
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch

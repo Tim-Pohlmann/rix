@@ -18,11 +18,13 @@ internal sealed class GitCli : IGit
     /// <param name="workingDirectory">Where the commands that need no local repo (clone,
     /// ls-remote) run from: a scratch directory, so git never picks up the config of a repo it
     /// happens to be started in.</param>
-    internal GitCli(Uri host, GitReadToken token, RunProcessAsync runProcess, string workingDirectory)
+    internal GitCli(Uri host, GitReadToken token, RunProcessAsync runProcess, DirectoryPath workingDirectory)
     {
         _host = host;
         _runProcess = runProcess;
-        _workingDirectory = workingDirectory;
+        // Unwrapped once here: below this point every directory is a bare path on its way into a
+        // git subprocess, including the clone targets that don't exist yet.
+        _workingDirectory = workingDirectory.Value;
         _authEnv = BuildAuthEnv(host, token);
     }
 
