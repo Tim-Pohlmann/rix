@@ -7,6 +7,7 @@ namespace Rix.Tests;
 public class SubmitCommandTests
 {
     private static readonly string ExistingDir = Path.GetTempPath();
+    private static readonly string PrivateTempDir = Directory.CreateTempSubdirectory("rix-submit-opts-").FullName;
     private static readonly string[] ExpectedTrimmedBranches = ["main", "release/1"];
     private static readonly string[] ExpectedUnusualBranches = ["--not-a-flag", "feature/ünïcode"];
 
@@ -55,11 +56,26 @@ public class SubmitCommandTests
         Assert.AreEqual("env-write", config.WriteToken.Value);
     }
 
+    /// <summary>Reads <c>submit</c> against <paramref name="fileSystem"/> rather than the disk, so
+    /// the work-dir fallback can be observed without creating a directory of its own.</summary>
+    private static SubmitConfig ReadWith(IFileSystem fileSystem, params string[] extra)
+    => SubmitCommand.ReadConfig
+    (
+        CommandArgs.Parse
+        (
+            SubmitCommand.Build(),
+            ["submit", "--repo", "owner/repo", "--write-token", "write-tok", "--input-dir", ExistingDir, .. extra]
+        ),
+        fileSystem
+    );
+
     [TestMethod]
-    public void Command_DefaultsWorkDirToTemp_WhenAbsentOrBlank()
+    public void Command_DefaultsWorkDirToAPrivateTempDirectory_WhenAbsentOrBlank()
     {
-        Assert.AreEqual(Path.GetTempPath(), Read().WorkDir.Value);
-        Assert.AreEqual(Path.GetTempPath(), Read(workDir: "   ").WorkDir.Value);
+        var fileSystem = new StubFileSystem(privateTempDirectory: PrivateTempDir);
+
+        Assert.AreEqual(PrivateTempDir, ReadWith(fileSystem).WorkDir.Value);
+        Assert.AreEqual(PrivateTempDir, ReadWith(fileSystem, "--work-dir", "   ").WorkDir.Value);
     }
 
     [TestMethod]

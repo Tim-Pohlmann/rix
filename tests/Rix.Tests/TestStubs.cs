@@ -196,14 +196,14 @@ internal sealed class StubFileSystem(
     Action<string>? deleteDirectory = null,
     Func<string, bool>? directoryExists = null,
     string? currentDirectory = null,
-    string? systemTempDirectory = null,
+    string? privateTempDirectory = null,
     string? userHomeDirectory = null) : IFileSystem
 {
     private readonly LocalFileSystem _real = new();
 
     public string CurrentDirectory => currentDirectory ?? _real.CurrentDirectory;
 
-    public string SystemTempDirectory => systemTempDirectory ?? _real.SystemTempDirectory;
+    public string CreatePrivateTempDirectory() => privateTempDirectory ?? _real.CreatePrivateTempDirectory();
 
     public string UserHomeDirectory => userHomeDirectory ?? _real.UserHomeDirectory;
 

@@ -7,7 +7,11 @@ internal sealed class LocalFileSystem : IFileSystem
 {
     public string CurrentDirectory => Directory.GetCurrentDirectory();
 
-    public string SystemTempDirectory => Path.GetTempPath();
+    // CreateTempSubdirectory, not a path under GetTempPath() we create ourselves: it makes the
+    // directory 0700 on Unix, and on Windows under the user's own profile temp where the inherited
+    // ACL grants nobody else access. Either way the contents are the current user's alone, which a
+    // directory created in the shared temp root would not be.
+    public string CreatePrivateTempDirectory() => Directory.CreateTempSubdirectory("rix-").FullName;
 
     // On Unix this already consults $HOME before the passwd entry.
     public string UserHomeDirectory => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);

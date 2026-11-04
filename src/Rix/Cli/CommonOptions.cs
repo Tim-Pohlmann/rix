@@ -23,14 +23,18 @@ internal static class CommonOptions
     internal static RepoIdentifier ReadRepo(ParseResult parsed)
     => parsed.Required(RepoOption, "RIX_REPO", value => new RepoIdentifier(value));
 
-    /// <summary>The system temp directory is the fallback, built lazily so an explicitly supplied
-    /// <c>--work-dir</c> never pays for a <see cref="DirectoryPath"/> it won't use.</summary>
+    /// <summary>A freshly created private temp directory is the fallback, built lazily so an
+    /// explicitly supplied <c>--work-dir</c> never pays for a <see cref="DirectoryPath"/> it won't
+    /// use - and, now that producing the fallback creates a directory, so that supplying one leaves
+    /// no directory behind at all. What lands in here is a clone of the target repo and the agent's
+    /// workspace, which is why the fallback is a directory of rix's own rather than the shared temp
+    /// root every user on the machine can read.</summary>
     internal static DirectoryPath ReadWorkDir(ParseResult parsed, IFileSystem fileSystem)
     => parsed.Optional
     (
         WorkDirOption,
         "RIX_WORK_DIR",
         path => new DirectoryPath(path, fileSystem),
-        () => new DirectoryPath(fileSystem.SystemTempDirectory, fileSystem)
+        () => new DirectoryPath(fileSystem.CreatePrivateTempDirectory(), fileSystem)
     );
 }

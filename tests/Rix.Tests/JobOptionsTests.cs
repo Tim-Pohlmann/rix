@@ -87,9 +87,9 @@ public class JobOptionsTests
     => Assert.AreEqual($"--timeout: {expected}", ErrorOf(() => JobOptions.ReadTimeout(Parse("--timeout", raw))));
 
     [TestMethod]
-    public void ReadWorkDir_DefaultsToTemp_WhenBlank()
+    public void ReadWorkDir_DefaultsToAPrivateTempDirectory_WhenBlank()
     {
-        var fileSystem = new StubFileSystem(systemTempDirectory: ExistingSubDir);
+        var fileSystem = new StubFileSystem(privateTempDirectory: ExistingSubDir);
 
         Assert.AreEqual(ExistingSubDir, CommonOptions.ReadWorkDir(Parse(), fileSystem).Value);
         Assert.AreEqual(ExistingSubDir, CommonOptions.ReadWorkDir(Parse("--work-dir", ""), fileSystem).Value);
