@@ -88,7 +88,7 @@ internal static class Composition
     internal static InitializeContext DefaultInitializeContext()
     => new
     (
-        FileSystem().WriteAllTextAsync,
+        FileSystem(),
         Console.Error.WriteLine
     );
 }

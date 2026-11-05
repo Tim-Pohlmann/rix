@@ -6,16 +6,15 @@ namespace Rix.Cli;
 /// broken pipe, a full disk, or a cancellation arriving in the window after the work finished must
 /// not stop the correct exit code from being returned. Only the output is lost.
 ///
-/// Takes the one write it performs rather than a file system, so what it can touch is visible in
-/// its signature. <c>job</c>'s artifacts don't come through here: they are the job's own product
-/// and <see cref="Rix.Job.JobArtifacts"/> writes them, under the same rule.</summary>
+/// <c>job</c>'s artifacts don't come through here: they are the job's own product and
+/// <see cref="Rix.Job.JobArtifacts"/> writes them, under the same rule.</summary>
 internal static class BestEffortOutput
 {
-    internal static async Task WriteAsync(WriteFileAsync write, DirectoryPath outputDir, string name, string content)
+    internal static async Task WriteAsync(IFileSystem fileSystem, DirectoryPath outputDir, string name, string content)
     {
         try
         {
-            await write(Path.Combine(outputDir.Value, name), content, CancellationToken.None);
+            await fileSystem.WriteAllTextAsync(Path.Combine(outputDir.Value, name), content, CancellationToken.None);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

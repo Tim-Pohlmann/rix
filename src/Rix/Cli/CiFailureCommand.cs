@@ -90,11 +90,11 @@ internal static class CiFailureCommand
         );
 
         if (result is CiFailureDetected detected)
-            result = await WritePromptAsync(detected, context.FileSystem.WriteAllTextAsync, config.OutputDir);
+            result = await WritePromptAsync(detected, context.FileSystem, config.OutputDir);
 
         var json = JsonSerializer.Serialize(result, CiFailureJsonContext.Default.ICiFailureResult);
         await BestEffortOutput.WriteLineAsync(Console.Out, json);
-        await BestEffortOutput.WriteAsync(context.FileSystem.WriteAllTextAsync, config.OutputDir, "result.json", json);
+        await BestEffortOutput.WriteAsync(context.FileSystem, config.OutputDir, "result.json", json);
 
         // A detected failure exits successfully like the rest: it is a verdict, not an outcome, and
         // the caller decides what to do with it. Only CiFailureError - a problem talking to the API,
@@ -113,12 +113,12 @@ internal static class CiFailureCommand
     /// after, and a <c>detected</c> result whose prompt never reached disk would send a caller to a
     /// file that isn't there. Reporting it as an error instead leaves the caller with no branch and
     /// no agent started, which is what a check that couldn't finish should produce.</summary>
-    private static async Task<ICiFailureResult> WritePromptAsync(CiFailureDetected detected, WriteFileAsync write, DirectoryPath outputDir)
+    private static async Task<ICiFailureResult> WritePromptAsync(CiFailureDetected detected, IFileSystem fileSystem, DirectoryPath outputDir)
     {
         var path = Path.Combine(outputDir.Value, "prompt.md");
         try
         {
-            await write(path, detected.Prompt, CancellationToken.None);
+            await fileSystem.WriteAllTextAsync(path, detected.Prompt, CancellationToken.None);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
