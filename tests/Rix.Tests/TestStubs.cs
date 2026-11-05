@@ -191,6 +191,35 @@ internal sealed class StubSubmitRepoHost(Func<PendingPr, Task<string>>? createPu
 /// <summary>The local disk, except for the operations a test overrides — to make a write or a
 /// cleanup fail the way a full disk or a locked file would, or to decide what exists, without
 /// arranging it on disk.</summary>
+/// <summary>One run of a subprocess, as a test describes it: the full shape of
+/// <see cref="IProcessRunner.RunAsync"/> so a test can assert on any argument it was given.
+/// Test-only - production code passes <see cref="IProcessRunner"/> itself; this exists so a case
+/// is written as a lambda rather than a class per behaviour.</summary>
+internal delegate Task<ProcessResult> RunProcess
+(
+    string fileName,
+    IEnumerable<string> arguments,
+    string workingDirectory,
+    IReadOnlyDictionary<string, string>? environmentOverrides,
+    Action<string>? onStdoutLine,
+    CancellationToken cancellationToken
+);
+
+/// <summary>An <see cref="IProcessRunner"/> that does whatever <paramref name="run"/> says.</summary>
+internal sealed class StubProcessRunner(RunProcess run) : IProcessRunner
+{
+    public Task<ProcessResult> RunAsync
+    (
+        string fileName,
+        IEnumerable<string> arguments,
+        string workingDirectory,
+        IReadOnlyDictionary<string, string>? environmentOverrides = null,
+        Action<string>? onStdoutLine = null,
+        CancellationToken cancellationToken = default
+    )
+    => run(fileName, arguments, workingDirectory, environmentOverrides, onStdoutLine, cancellationToken);
+}
+
 /// <summary>A log that keeps every line it was given, so a test asserts what a run reported the
 /// same way it asserts a result. Doubles as the "nobody is listening" sink: a test that doesn't
 /// care simply never reads <see cref="Lines"/>.</summary>
@@ -263,7 +292,7 @@ internal sealed class StubAgent(Func<CancellationToken, Task<InstallResult>> ins
 {
     private readonly ClaudeAgent _real = new();
 
-    public Task<InstallResult> EnsureInstalledAsync(RunProcessAsync _, DirectoryPath workingDirectory, CancellationToken cancellationToken)
+    public Task<InstallResult> EnsureInstalledAsync(IProcessRunner _, DirectoryPath workingDirectory, CancellationToken cancellationToken)
     => install(cancellationToken);
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)

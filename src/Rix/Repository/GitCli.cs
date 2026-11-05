@@ -11,17 +11,17 @@ namespace Rix.Repository;
 internal sealed class GitCli : IGit
 {
     private readonly Uri _host;
-    private readonly RunProcessAsync _runProcess;
+    private readonly IProcessRunner _processRunner;
     private readonly string _workingDirectory;
     private readonly IReadOnlyDictionary<string, string> _authEnv;
 
     /// <param name="workingDirectory">Where the commands that need no local repo (clone,
     /// ls-remote) run from: a scratch directory, so git never picks up the config of a repo it
     /// happens to be started in.</param>
-    internal GitCli(Uri host, GitReadToken token, RunProcessAsync runProcess, DirectoryPath workingDirectory)
+    internal GitCli(Uri host, GitReadToken token, IProcessRunner processRunner, DirectoryPath workingDirectory)
     {
         _host = host;
-        _runProcess = runProcess;
+        _processRunner = processRunner;
         // Unwrapped once here: below this point every directory is a bare path on its way into a
         // git subprocess, including the clone targets that don't exist yet.
         _workingDirectory = workingDirectory.Value;
@@ -78,7 +78,7 @@ internal sealed class GitCli : IGit
     {
         var refName = $"refs/heads/{branch.Value}";
         var listed = new List<string>();
-        var result = await _runProcess
+        var result = await _processRunner.RunAsync
         (
             "git",
             ["ls-remote", "--exit-code", RemoteUrl(repo), refName],
@@ -189,6 +189,6 @@ internal sealed class GitCli : IGit
             true => (IReadOnlyDictionary<string, string>?)_authEnv,
             false => null,
         };
-        return _runProcess("git", args, workingDirectory, env, null, cancellationToken);
+        return _processRunner.RunAsync("git", args, workingDirectory, env, null, cancellationToken);
     }
 }

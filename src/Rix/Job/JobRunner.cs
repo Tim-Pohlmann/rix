@@ -110,7 +110,7 @@ internal static class JobRunner
 
         // The install and both clones are mostly network waits and touch nothing the others do,
         // so they overlap. Failures are still reported in this order, whichever finishes first.
-        var install = context.Agent.EnsureInstalledAsync(context.RunProcess, config.WorkDir, ct);
+        var install = context.Agent.EnsureInstalledAsync(context.ProcessRunner, config.WorkDir, ct);
         var clone = CloneAsync(config, context, cloneDir, ct);
         var agentHomeFetch = FetchAgentHomeAsync(config, context, agentHomeCheckout, ct);
         await Task.WhenAll(install, clone, agentHomeFetch);
@@ -207,7 +207,7 @@ internal static class JobRunner
     )
     {
         var invocation = context.Agent.BuildInvocation(config, systemPrompt);
-        return context.RunProcess
+        return context.ProcessRunner.RunAsync
         (
             invocation.FileName,
             invocation.Arguments,

@@ -18,22 +18,11 @@ internal sealed record ProcessSuccess(string? Output = null) : ProcessResult;
 /// started (see <see cref="Win32Exception"/>) or timed out carries no diagnostic.</summary>
 internal sealed record ProcessFailure(string Reason, string? Diagnostic = null) : ProcessResult;
 
-/// <summary>The single side-effect seam for running a subprocess. Every part of a job — agent
-/// install, the agent run itself, and git operations — flows through one of these so effects stay
-/// in one place and can be stubbed in tests.</summary>
-internal delegate Task<ProcessResult> RunProcessAsync
-(
-    string fileName,
-    IEnumerable<string> arguments,
-    string workingDirectory,
-    IReadOnlyDictionary<string, string>? environmentOverrides,
-    Action<string>? onStdoutLine,
-    CancellationToken cancellationToken
-);
-
-internal static class ProcessWrapper
+/// <summary>The production <see cref="IProcessRunner"/>: a real child process, with both its
+/// streams drained concurrently so neither can fill its pipe and deadlock the run.</summary>
+internal sealed class ProcessWrapper : IProcessRunner
 {
-    internal static async Task<ProcessResult> RunAsync
+    public async Task<ProcessResult> RunAsync
     (
         string fileName,
         IEnumerable<string> arguments,

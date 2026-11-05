@@ -10,9 +10,9 @@ public class ClaudeAgentTests
     private static readonly ClaudeAgent Agent = new();
     private static readonly DirectoryPath WorkDir = TestConfig.AnyDirectory("/tmp/work");
 
-    // Adapts a simple (fileName, args) -> ProcessResult stub to the full RunProcessAsync shape.
-    private static RunProcessAsync Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)
-    => (fileName, args, _, _, _, _) => run(fileName, args);
+    // Adapts a simple (fileName, args) -> ProcessResult stub to the full IProcessRunner shape.
+    private static IProcessRunner Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)
+    => new StubProcessRunner((fileName, args, _, _, _, _) => run(fileName, args));
 
     // ---- EnsureInstalledAsync ----
 
@@ -21,11 +21,11 @@ public class ClaudeAgentTests
     {
         var workingDirs = new List<string>();
         await Agent.EnsureInstalledAsync(
-            (_, _, workingDir, _, _, _) =>
+            new StubProcessRunner((_, _, workingDir, _, _, _) =>
             {
                 workingDirs.Add(workingDir);
                 return Task.FromResult<ProcessResult>(new ProcessSuccess());
-            },
+            }),
             WorkDir, CancellationToken.None);
 
         Assert.AreEqual(WorkDir.Value, workingDirs.Single());

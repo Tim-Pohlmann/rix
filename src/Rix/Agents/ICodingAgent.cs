@@ -13,11 +13,11 @@ internal interface ICodingAgent
 {
     /// <summary>
     /// Ensures the agent CLI is available, installing it if necessary. All subprocesses run
-    /// through the injected <paramref name="runProcess"/> so installation stays on the same
+    /// through the injected <paramref name="processRunner"/> so installation stays on the same
     /// side-effect seam as the rest of the job, from <paramref name="workingDirectory"/>, a scratch
     /// directory outside any repo.
     /// </summary>
-    Task<InstallResult> EnsureInstalledAsync(RunProcessAsync runProcess, DirectoryPath workingDirectory, CancellationToken cancellationToken);
+    Task<InstallResult> EnsureInstalledAsync(IProcessRunner processRunner, DirectoryPath workingDirectory, CancellationToken cancellationToken);
 
     /// <summary>Builds the process invocation that launches the agent for this job (pure).</summary>
     AgentInvocation BuildInvocation(JobConfig config, string systemPrompt);
@@ -63,14 +63,14 @@ internal static class CodingAgentHelper
     /// </summary>
     private static async Task<string?> RunCommandAsync
     (
-        RunProcessAsync runProcess,
+        IProcessRunner processRunner,
         DirectoryPath workingDirectory,
         string fileName,
         IEnumerable<string> args,
         CancellationToken cancellationToken
     )
     {
-        var result = await runProcess(fileName, args, workingDirectory.Value, null, null, cancellationToken);
+        var result = await processRunner.RunAsync(fileName, args, workingDirectory.Value, null, null, cancellationToken);
         if (result is ProcessFailure failure)
             return failure.Reason;
         return null;
@@ -83,7 +83,7 @@ internal static class CodingAgentHelper
     /// </summary>
     internal static async Task<InstallResult> EnsureInstalledViaNpmAsync
     (
-        RunProcessAsync runProcess,
+        IProcessRunner processRunner,
         DirectoryPath workingDirectory,
         string cliName,
         string npmPackage,
@@ -91,7 +91,7 @@ internal static class CodingAgentHelper
     )
     {
         Task<string?> Run(string fileName, IEnumerable<string> args)
-        => RunCommandAsync(runProcess, workingDirectory, fileName, args, cancellationToken);
+        => RunCommandAsync(processRunner, workingDirectory, fileName, args, cancellationToken);
 
         if (await Run(cliName, ["--version"]) is null) return new Installed();
 

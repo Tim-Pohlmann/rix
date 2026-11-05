@@ -5,6 +5,8 @@ namespace Rix.Tests;
 [TestClass]
 public class ProcessWrapperTests
 {
+    private static readonly ProcessWrapper Wrapper = new();
+
     private static string Shell => OperatingSystem.IsWindows() switch { true => "pwsh", false => "/bin/sh" };
 
     private static string Echo(string text)
@@ -32,7 +34,7 @@ public class ProcessWrapperTests
     {
         var lines = new List<string>();
 
-        var result = await ProcessWrapper.RunAsync(
+        var result = await Wrapper.RunAsync(
             Shell, ["-c", Echo("hello")],
             workingDirectory: Path.GetTempPath(),
             onStdoutLine: lines.Add,
@@ -49,7 +51,7 @@ public class ProcessWrapperTests
             ? "Write-Output 'first'; Write-Output 'last'"
             : "echo first; echo last";
 
-        var result = await ProcessWrapper.RunAsync(
+        var result = await Wrapper.RunAsync(
             Shell, ["-c", command],
             workingDirectory: Path.GetTempPath(),
             cancellationToken: CancellationToken.None);
@@ -61,7 +63,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_Output_IsNull_WhenNoStdout()
     {
-        var result = await ProcessWrapper.RunAsync(
+        var result = await Wrapper.RunAsync(
             Shell, ["-c", "exit 0"],
             workingDirectory: Path.GetTempPath(),
             cancellationToken: CancellationToken.None);
@@ -73,7 +75,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_ReportsNonZeroExitCode()
     {
-        var result = await ProcessWrapper.RunAsync(
+        var result = await Wrapper.RunAsync(
             Shell, ["-c", "exit 1"],
             workingDirectory: Path.GetTempPath(),
             cancellationToken: CancellationToken.None);
@@ -85,7 +87,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_Diagnostic_IsLastStderrLine_OnFailure()
     {
-        var result = await ProcessWrapper.RunAsync(
+        var result = await Wrapper.RunAsync(
             Shell, ["-c", $"{EchoToStderr("boom")}; exit 1"],
             workingDirectory: Path.GetTempPath(),
             cancellationToken: CancellationToken.None);
@@ -97,7 +99,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_Diagnostic_FallsBackToStdout_WhenStderrEmpty()
     {
-        var result = await ProcessWrapper.RunAsync(
+        var result = await Wrapper.RunAsync(
             Shell, ["-c", $"{Echo("last stdout line")}; exit 1"],
             workingDirectory: Path.GetTempPath(),
             cancellationToken: CancellationToken.None);
@@ -109,7 +111,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_Diagnostic_IsNull_WhenNoOutputOnFailure()
     {
-        var result = await ProcessWrapper.RunAsync(
+        var result = await Wrapper.RunAsync(
             Shell, ["-c", "exit 1"],
             workingDirectory: Path.GetTempPath(),
             cancellationToken: CancellationToken.None);
@@ -122,7 +124,7 @@ public class ProcessWrapperTests
     public async Task RunAsync_PropagatesOnStdoutLineException()
     {
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => ProcessWrapper.RunAsync(
+            () => Wrapper.RunAsync(
                 Shell, ["-c", Echo("hello")],
                 workingDirectory: Path.GetTempPath(),
                 onStdoutLine: _ => throw new InvalidOperationException("callback failed"),
@@ -166,7 +168,7 @@ public class ProcessWrapperTests
     public async Task RunAsync_TimesOut_WhenCancelled()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        var result = await ProcessWrapper.RunAsync(
+        var result = await Wrapper.RunAsync(
             Shell, ["-c", SleepSeconds(60)],
             workingDirectory: Path.GetTempPath(),
             cancellationToken: cts.Token);
@@ -178,7 +180,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_ReturnsFailure_WhenExecutableNotFound()
     {
-        var result = await ProcessWrapper.RunAsync(
+        var result = await Wrapper.RunAsync(
             "rix-no-such-executable", [],
             workingDirectory: Path.GetTempPath(),
             cancellationToken: CancellationToken.None);
@@ -194,7 +196,7 @@ public class ProcessWrapperTests
         scope.Set("RIX_TEST_INHERIT", "inherited-value");
 
         var lines = new List<string>();
-        await ProcessWrapper.RunAsync(
+        await Wrapper.RunAsync(
             Shell, ["-c", PrintEnvOrFallback("RIX_TEST_INHERIT", "ABSENT")],
             workingDirectory: Path.GetTempPath(),
             onStdoutLine: lines.Add,
@@ -213,7 +215,7 @@ public class ProcessWrapperTests
         var overrides = new Dictionary<string, string> { ["RIX_TEST_OVERRIDE"] = "overridden-value" };
 
         var inheritLines = new List<string>();
-        await ProcessWrapper.RunAsync(
+        await Wrapper.RunAsync(
             Shell, ["-c", PrintEnvOrFallback("RIX_TEST_INHERIT", "ABSENT")],
             workingDirectory: Path.GetTempPath(),
             environmentOverrides: overrides,
@@ -221,7 +223,7 @@ public class ProcessWrapperTests
             cancellationToken: CancellationToken.None);
 
         var overrideLines = new List<string>();
-        await ProcessWrapper.RunAsync(
+        await Wrapper.RunAsync(
             Shell, ["-c", PrintEnvOrFallback("RIX_TEST_OVERRIDE", "ABSENT")],
             workingDirectory: Path.GetTempPath(),
             environmentOverrides: overrides,

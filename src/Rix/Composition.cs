@@ -30,6 +30,10 @@ internal static class Composition
     internal static LocalFileSystem FileSystem()
     => new();
 
+    /// <summary>The production <see cref="IProcessRunner"/>: real child processes.</summary>
+    private static IProcessRunner ProcessRunner()
+    => new ProcessWrapper();
+
     /// <summary>The production <see cref="JobContext"/>: git against GitHub, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
     /// from <paramref name="config"/>. The one git client reads both the job's repo and the factory
@@ -38,7 +42,7 @@ internal static class Composition
     => new
     (
         GitHubGit(config.ReadToken, config.WorkDir),
-        ProcessWrapper.RunAsync,
+        ProcessRunner(),
         SelectAgent(config.Agent.Kind),
         Log: new StderrLog(),
         FileSystem: FileSystem()
@@ -48,7 +52,7 @@ internal static class Composition
     /// place the GitHub host is spelled out. Commands that need no local repo run from
     /// <paramref name="workDir"/>.</summary>
     private static GitCli GitHubGit(GitReadToken token, DirectoryPath workDir)
-    => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessWrapper.RunAsync, workDir);
+    => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessRunner(), workDir);
 
     private static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch

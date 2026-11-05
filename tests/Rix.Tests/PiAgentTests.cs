@@ -10,9 +10,9 @@ public class PiAgentTests
     private static readonly PiAgent Agent = new();
     private static readonly DirectoryPath WorkDir = TestConfig.AnyDirectory("/tmp/work");
 
-    // Adapts a simple (fileName, args) -> ProcessResult stub to the full RunProcessAsync shape.
-    private static RunProcessAsync Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)
-    => (fileName, args, _, _, _, _) => run(fileName, args);
+    // Adapts a simple (fileName, args) -> ProcessResult stub to the full IProcessRunner shape.
+    private static IProcessRunner Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)
+    => new StubProcessRunner((fileName, args, _, _, _, _) => run(fileName, args));
 
     // ---- EnsureInstalledAsync ----
 

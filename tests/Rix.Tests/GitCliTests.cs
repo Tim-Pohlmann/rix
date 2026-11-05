@@ -6,7 +6,7 @@ namespace Rix.Tests;
 [TestClass]
 public class GitCliTests
 {
-    private static readonly RunProcessAsync SuccessGitRunner =
+    private static readonly RunProcess SuccessGitRunner =
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
 
     private static readonly string[] ExpectedBundleArgs =
@@ -41,8 +41,8 @@ public class GitCliTests
 
     private static readonly RepoIdentifier Repo = new("owner/repo");
 
-    private static GitCli Build(string readToken = "read-tok", RunProcessAsync? gitRunner = null, string host = "https://github.com/")
-    => new(new Uri(host), new GitReadToken(readToken), gitRunner ?? SuccessGitRunner, TestConfig.AnyDirectory("/tmp/work"));
+    private static GitCli Build(string readToken = "read-tok", RunProcess? gitRunner = null, string host = "https://github.com/")
+    => new(new Uri(host), new GitReadToken(readToken), new StubProcessRunner(gitRunner ?? SuccessGitRunner), TestConfig.AnyDirectory("/tmp/work"));
 
     [TestMethod]
     public async Task CommandsWithoutALocalRepo_RunFromTheWorkingDirectoryGivenAtCreation()
