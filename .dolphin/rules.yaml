@@ -51,20 +51,31 @@ rules:
       if/else statement instead.
     pattern: "$A ? $B : $C"
 
-  - id: raw-directory-creation
+  - id: raw-file-system-access
     languages: [csharp]
     severity: ERROR
     message: >-
-      Directory.CreateDirectory is reserved for the dedicated file-system
-      wrapper types (TempDirectory, FileWriter, DirectoryMerge); go through
-      one of them instead of calling it directly.
-    # The exclusion list is the list of wrappers: a new one is added here.
+      Access files and directories, and look up the current, temp and home
+      directories, through IFileSystem, whose only implementation
+      (LocalFileSystem) may do so directly, so the calling code stays testable
+      without touching the disk or depending on where the process runs.
+    # Tests arrange and inspect real directories.
     paths:
       exclude:
-        - src/Rix/TempDirectory.cs
-        - src/Rix/FileWriter.cs
-        - src/Rix/DirectoryMerge.cs
-    pattern: Directory.CreateDirectory($P)
+        - src/Rix/LocalFileSystem.cs
+        - tests/**
+    patterns:
+      - pattern-either:
+          - pattern: File.$M(...)
+          - pattern: Directory.$M(...)
+          - pattern: Path.Exists(...)
+          - pattern: Path.GetTempPath()
+          - pattern: Path.GetTempFileName()
+          - pattern: Environment.GetFolderPath(...)
+          - pattern: Environment.CurrentDirectory
+          - pattern: new FileInfo(...)
+          - pattern: new DirectoryInfo(...)
+          - pattern: new FileStream(...)
 
   - id: raw-process-outside-wrapper
     languages: [csharp]
@@ -86,10 +97,13 @@ rules:
     message: >-
       Keep console I/O at the composition root: confine Console.Write*
       calls to Startup.cs and the Cli/ layer; return typed results elsewhere.
+      The exception is StderrLog, the ILog implementation that exists to be
+      stderr - naming the stream is its whole content.
     paths:
       exclude:
         - src/Rix/Startup.cs
         - src/Rix/Cli/**
+        - src/Rix/StderrLog.cs
     patterns:
       - pattern-either:
           - pattern: Console.WriteLine(...)
@@ -186,12 +200,18 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Async methods in this codebase take and propagate a CancellationToken
-      (the sole exception is Startup.RunAsync, the top-level entry point).
-      Add a CancellationToken parameter and forward it to any awaited calls.
+      Async methods in this codebase take and propagate a CancellationToken.
+      Add one and forward it to any awaited call. What is excluded is the
+      writes that record an outcome already decided - the CLI shell, and the
+      files a command leaves behind in BestEffortArtifact and JobArtifacts:
+      those must finish even once cancellation has been requested, so they are
+      handed no token to honour.
     paths:
       exclude:
         - src/Rix/Startup.cs
+        - src/Rix/Cli/**
+        - src/Rix/BestEffortArtifact.cs
+        - src/Rix/Job/JobArtifacts.cs
     patterns:
       - pattern-either:
           - pattern: "async Task $M(...) { ... }"
@@ -203,9 +223,8 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Rix.Cli is a leaf layer wired only from the composition root
-      (Startup.cs); reference it there only, not from Job/Agents/Process/
-      Repository/Submit/Api.
+      Rix.Cli is a leaf layer the entry point wires up; reference it from
+      Startup.cs only, not from Job/Agents/Process/Repository/Submit/Api.
     paths:
       exclude:
         - src/Rix/Startup.cs
@@ -216,16 +235,37 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Wire production service implementations (GitHubReadHost, GitHubHost,
-      ClaudeAgent, OpenCodeAgent) only in Startup.cs, the composition root
-      (GitHubHost composing GitHubReadHost internally is the one exception).
+      Choose a production implementation (GitCli, the GitHub hosts, a coding
+      agent, the local file system, the stderr log, the subprocess runner)
+      only in Composition.cs, the composition root. Everywhere else takes the seam it needs as a
+      parameter.
     paths:
       exclude:
-        - src/Rix/Startup.cs
-        - src/Rix/Repository/GitHubHost.cs
+        - src/Rix/Composition.cs
     patterns:
       - pattern-either:
-          - pattern: new GitHubReadHost(...)
-          - pattern: new GitHubHost(...)
+          - pattern: new GitCli(...)
+          - pattern: new GitHubActionsCiHost(...)
+          - pattern: new GitHubCiFailureRepoHost(...)
+          - pattern: new GitHubSubmitRepoHost(...)
+          - pattern: new LocalFileSystem(...)
+          - pattern: new StderrLog(...)
+          - pattern: new ProcessWrapper(...)
           - pattern: new ClaudeAgent()
           - pattern: new OpenCodeAgent()
+          - pattern: new PiAgent()
+
+  - id: composition-use-outside-entry-point
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      Only Startup and the commands in Rix.Cli ask Composition for something,
+      each in the one method that exists to do it. Everything deeper takes what
+      it needs as a parameter, so what a run is wired against stays visible at
+      the call site rather than being reached for from inside.
+    paths:
+      exclude:
+        - src/Rix/Cli/**
+        - src/Rix/Composition.cs
+        - src/Rix/Startup.cs
+    pattern: Composition.$M(...)

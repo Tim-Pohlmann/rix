@@ -12,8 +12,8 @@ namespace Rix.Job;
 internal sealed record JobContext
 (
     IGit Git,
-    RunProcessAsync RunProcess,
+    IProcessRunner ProcessRunner,
     ICodingAgent Agent,
-    LogLine LogLine,
-    LogLine TranscriptLine
+    ILog Log,
+    IFileSystem FileSystem
 );

@@ -1,3 +1,4 @@
+using Rix.Agents;
 using Rix.Cli;
 using Rix.Job;
 
@@ -7,7 +8,7 @@ namespace Rix.Tests;
 public class JobCommandTests
 {
     private static JobConfig Read(params string[] args)
-    => JobCommand.ReadConfig(CommandArgs.Parse(JobCommand.Build(), ["job", .. args]));
+    => JobCommand.CreateConfig(CommandArgs.Parse(JobCommand.Build(), ["job", .. args]), new LocalFileSystem());
 
     /// <summary>Reads <c>job</c> with valid values for every required flag, then
     /// <paramref name="extra"/>.</summary>
@@ -217,5 +218,17 @@ public class JobCommandTests
         var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--repo", "", "--prompt", "", "--read-token", ""));
 
         Assert.AreEqual("--repo is required", ex.Message);
+    }
+
+    /// <summary>The one thing a <see cref="JobContext"/> takes from its config: which coding agent
+    /// to run. Every kind is pinned here rather than one per <c>[DataRow]</c>, which can't carry an
+    /// internal <see cref="AgentKind"/> into a public test method — the mapping is a switch a new
+    /// kind can be added to without anything else noticing.</summary>
+    [TestMethod]
+    public void DefaultContext_RunsTheAgentTheConfigNames()
+    {
+        Assert.IsInstanceOfType<ClaudeAgent>(JobCommand.DefaultContext(TestConfig.Valid(agent: AgentKind.Claude)).Agent);
+        Assert.IsInstanceOfType<OpenCodeAgent>(JobCommand.DefaultContext(TestConfig.Valid(agent: AgentKind.OpenCode)).Agent);
+        Assert.IsInstanceOfType<PiAgent>(JobCommand.DefaultContext(TestConfig.Valid(agent: AgentKind.Pi)).Agent);
     }
 }

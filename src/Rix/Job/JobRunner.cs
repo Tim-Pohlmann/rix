@@ -17,6 +17,11 @@ internal partial class JobJsonContext : JsonSerializerContext { }
 
 internal static class JobRunner
 {
+    /// <summary>Runs a job and leaves its output in <see cref="JobConfig.OutputDir"/>. The writes
+    /// happen here rather than in the caller because <c>result.json</c> and <c>transcript.md</c> are
+    /// the job's product (see <see cref="JobArtifacts"/>), and because every way the run can end -
+    /// including a setup failure before the agent started - has to leave the same artifacts behind.
+    /// What the caller adds is a CLI's own: printing the result and choosing an exit code.</summary>
     internal static async Task<IJobResult> RunAsync
     (
         JobConfig config,
@@ -24,42 +29,42 @@ internal static class JobRunner
         CancellationToken cancellationToken
     )
     {
+        var transcript = new List<string>();
+        var result = await RunCoreAsync(config, context, transcript, cancellationToken);
+        await JobArtifacts.WriteAsync(config, context, result, transcript);
+        return result;
+    }
+
+    /// <summary>The run itself, in one method so each way it can end is a plain <c>return</c> and
+    /// the artifacts are written once, by <see cref="RunAsync"/>, whichever one it took. Appends
+    /// whatever the agent said to <paramref name="transcript"/> as it streams.</summary>
+    private static async Task<IJobResult> RunCoreAsync
+    (
+        JobConfig config,
+        JobContext context,
+        List<string> transcript,
+        CancellationToken cancellationToken
+    )
+    {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(config.TimeoutMinutes.Value));
         var ct = timeoutCts.Token;
 
-        if (await context.Agent.EnsureInstalledAsync(context.RunProcess, ct) is InstallFailed installFailed)
-        {
-            return new SetupFailure($"agent install failed: {installFailed.Reason}");
-        }
-
         var stopwatch = Stopwatch.StartNew();
 
-        using var cloneDir = TempDirectory.Create(config.WorkDir.Value, "rix-clone");
-
-        try
-        {
-            await context.Git.CloneAsync(config.Repo, cloneDir.Path, ct);
-            // Set the commit identity before the agent starts, so it can commit without guessing
-            // author metadata.
-            await context.Git.ConfigureIdentityAsync(cloneDir.Path, ct);
-        }
-        catch (RepoHostException ex)
-        {
-            return new SetupFailure(ex.Message);
-        }
-
-        if (await CopyAgentHomeAsync(config, context.Git, ct) is { } agentHomeFailure)
-            return agentHomeFailure;
+        using var cloneDir = TempDirectory.Create(context.FileSystem, config.WorkDir, "rix-clone");
+        var setupFailure = await SetUpAsync(config, context, cloneDir.Path, ct);
+        if (setupFailure is not null)
+            return setupFailure;
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
-            context.Git, config.Repo, cloneDir.Path, ct, context.LogLine.Invoke,
+            context.Git, config.Repo, cloneDir.Path, ct, context.Log,
             allowedPushBranches: config.AllowedPushBranches
         );
 
         var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl, config.AllowedPushBranches);
-        var agentResult = await RunAgentAsync(config, context, systemPrompt, cloneDir.Path, ct);
+        var agentResult = await RunAgentAsync(config, context, transcript, systemPrompt, cloneDir.Path, ct);
 
         if (agentResult is ProcessFailure agentFailure)
         {
@@ -95,36 +100,96 @@ internal static class JobRunner
         };
     }
 
-    /// <summary>Copies the operator-supplied agent home files over the runner's user home before
-    /// the agent starts, so its config/context files are in place when the agent first reads them.
-    /// They come from a sparse clone of just the requested directory of the factory repo, read with
-    /// the job's own credential. Returns the <see cref="SetupFailure"/> to end the run with, or
-    /// <c>null</c> once the files are in place or when the run has none configured.</summary>
-    private static async Task<SetupFailure?> CopyAgentHomeAsync
-    (
-        JobConfig config, IGit git, CancellationToken ct
-    )
+    /// <summary>Installs the agent, clones the job's repo into <paramref name="cloneDir"/> and puts
+    /// the agent home files in place. Returns the <see cref="SetupFailure"/> to end the run with, or
+    /// <c>null</c> once everything is ready.</summary>
+    private static async Task<SetupFailure?> SetUpAsync(JobConfig config, JobContext context, string cloneDir, CancellationToken ct)
     {
-        if (config.AgentHome is not { } agentHome)
-            return null;
+        // Scoped to setup: the factory repo needn't sit in the work dir for the whole run.
+        using var agentHomeCheckout = CreateAgentHomeCheckout(config, context);
 
-        using var checkout = TempDirectory.Create(config.WorkDir.Value, "rix-agent-home");
+        // The install and both clones are mostly network waits and touch nothing the others do,
+        // so they overlap. Failures are still reported in this order, whichever finishes first.
+        var install = context.Agent.EnsureInstalledAsync(context.ProcessRunner, config.WorkDir, ct);
+        var clone = CloneAsync(config, context, cloneDir, ct);
+        var agentHomeFetch = FetchAgentHomeAsync(config, context, agentHomeCheckout, ct);
+        await Task.WhenAll(install, clone, agentHomeFetch);
+
+        if (await install is InstallFailed installFailed)
+            return new SetupFailure($"agent install failed: {installFailed.Reason}");
+        if (await clone is { } cloneFailure)
+            return cloneFailure;
+        if (await agentHomeFetch is { } fetchFailure)
+            return fetchFailure;
+        // Only once the install is done, as before this overlapped: the install may write into the
+        // runner's home too, and the copy keeps whatever it finds there.
+        return CopyAgentHome(config, context, agentHomeCheckout);
+    }
+
+    /// <summary>Clones the job's repo and sets the commit identity before the agent starts, so it
+    /// can commit without guessing author metadata. Returns the <see cref="SetupFailure"/> to end
+    /// the run with, or <c>null</c> once the clone is ready.</summary>
+    private static async Task<SetupFailure?> CloneAsync(JobConfig config, JobContext context, string cloneDir, CancellationToken ct)
+    {
         try
         {
-            await git.SparseCloneAsync(agentHome.Repo, checkout.Path, agentHome.SourcePath, ct);
+            await context.Git.CloneAsync(config.Repo, cloneDir, ct);
+            await context.Git.ConfigureIdentityAsync(cloneDir, ct);
+            return null;
+        }
+        catch (RepoHostException ex)
+        {
+            return new SetupFailure(ex.Message);
+        }
+    }
+
+    /// <summary>The directory the agent home files are fetched into, or <c>null</c> when the run
+    /// has none configured.</summary>
+    private static TempDirectory? CreateAgentHomeCheckout(JobConfig config, JobContext context)
+    {
+        if (config.AgentHome is null)
+            return null;
+        return TempDirectory.Create(context.FileSystem, config.WorkDir, "rix-agent-home");
+    }
+
+    /// <summary>Fetches the operator-supplied agent home files into <paramref name="checkout"/>:
+    /// a sparse clone of just the requested directory of the factory repo, read with the job's own
+    /// credential. Returns the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once
+    /// the files are there or when the run has none configured.</summary>
+    private static async Task<SetupFailure?> FetchAgentHomeAsync
+    (
+        JobConfig config, JobContext context, TempDirectory? checkout, CancellationToken ct
+    )
+    {
+        if (config.AgentHome is not { } agentHome || checkout is null)
+            return null;
+
+        try
+        {
+            await context.Git.SparseCloneAsync(agentHome.Repo, checkout.Path, agentHome.SourcePath, ct);
         }
         catch (RepoHostException ex)
         {
             return new SetupFailure($"agent home fetch failed: {ex.Message}");
         }
 
-        var source = Path.Combine(checkout.Path, agentHome.SourcePath.Value);
-        if (!Directory.Exists(source))
+        if (!context.FileSystem.DirectoryExists(Path.Combine(checkout.Path, agentHome.SourcePath.Value)))
             return new SetupFailure($"agent home fetch failed: agent home path not found in {agentHome.Repo.Value}: {agentHome.SourcePath.Value}");
+        return null;
+    }
+
+    /// <summary>Copies the fetched agent home files over the runner's user home before the agent
+    /// starts, so its config/context files are in place when the agent first reads them. Returns
+    /// the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once the files are in
+    /// place or when the run has none configured.</summary>
+    private static SetupFailure? CopyAgentHome(JobConfig config, JobContext context, TempDirectory? checkout)
+    {
+        if (config.AgentHome is not { } agentHome || checkout is null)
+            return null;
 
         try
         {
-            DirectoryMerge.CopySkippingExisting(source, agentHome.Home.Value);
+            DirectoryMerge.CopySkippingExisting(context.FileSystem, Path.Combine(checkout.Path, agentHome.SourcePath.Value), agentHome.Home.Value);
             return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -133,14 +198,16 @@ internal static class JobRunner
         }
     }
 
-    /// <summary>Runs the coding agent in the cloned repo and returns its raw process result.</summary>
+    /// <summary>Runs the coding agent in the cloned repo and returns its raw process result,
+    /// appending every transcript line it recognizes to <paramref name="transcript"/>.</summary>
     private static Task<ProcessResult> RunAgentAsync
     (
-        JobConfig config, JobContext context, string systemPrompt, string cloneDir, CancellationToken ct
+        JobConfig config, JobContext context, List<string> transcript, string systemPrompt, string cloneDir,
+        CancellationToken ct
     )
     {
         var invocation = context.Agent.BuildInvocation(config, systemPrompt);
-        return context.RunProcess
+        return context.ProcessRunner.RunAsync
         (
             invocation.FileName,
             invocation.Arguments,
@@ -152,9 +219,9 @@ internal static class JobRunner
 
         void ForwardLine(string line)
         {
-            context.LogLine(line);
+            context.Log.WriteLine(line);
             if (context.Agent.ParseTranscriptLine(line) is { } transcriptLine)
-                context.TranscriptLine(transcriptLine);
+                transcript.Add(transcriptLine);
         }
     }
 
@@ -251,7 +318,7 @@ internal static class JobRunner
         // collide and the second would overwrite the first. Keep the first and skip the rest.
         if (!seenBranches.Add(request.Branch.Value))
         {
-            context.LogLine($"skipping duplicate queued {request.Kind} for branch {request.Branch.Value}");
+            context.Log.WriteLine($"skipping duplicate queued {request.Kind} for branch {request.Branch.Value}");
             return new BundleSkipped();
         }
 

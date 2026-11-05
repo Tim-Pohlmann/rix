@@ -1,4 +1,5 @@
 using Rix.Agents;
+using Rix.Cli;
 using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
@@ -57,24 +58,46 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_Returns2_WhenClaudeInstallerFails()
     {
-        var result = await Startup.ExecuteJobAsync(
-            MakeConfig(), CancellationToken.None,
+        var result = await JobCommand.ExecuteAsync(
+            MakeConfig(),
             Context(new StubGit(), FakeRunner(),
-                _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))));
+                _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))), CancellationToken.None);
 
         Assert.AreEqual(2, result);
     }
 
+    /// <summary>The install and the clone run side by side, so both can fail; the install is still
+    /// the one reported, as it was when it ran first.</summary>
     [TestMethod]
-    public async Task RunAsync_DoesNotClone_WhenClaudeInstallerFails()
+    public async Task RunAsync_ReportsTheInstallFailure_WhenTheCloneFailsToo()
     {
-        var host = new StubGit();
+        var host = new StubGit(clone: () => throw new RepoHostException("git clone failed: exit code 128"));
 
-        await JobRunner.RunAsync(MakeConfig(),
+        var result = await JobRunner.RunAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))),
             CancellationToken.None);
 
-        Assert.IsFalse(host.CloneCalled);
+        Assert.AreEqual("agent install failed: install failed", result is SetupFailure failure ? failure.Error : $"not a setup failure: {result}");
+    }
+
+    /// <summary>The install needn't finish before the clone starts: the one thing that waits for it
+    /// is copying the agent home.</summary>
+    [TestMethod]
+    public async Task RunAsync_ClonesWhileTheAgentInstalls()
+    {
+        var installReleased = new TaskCompletionSource<InstallResult>();
+        var cloned = new TaskCompletionSource();
+        var host = new StubGit(clone: () =>
+        {
+            cloned.SetResult();
+            return Task.CompletedTask;
+        });
+
+        var run = JobRunner.RunAsync(MakeConfig(), Context(host, FakeRunner(), _ => installReleased.Task), CancellationToken.None);
+
+        await cloned.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        installReleased.SetResult(new Installed());
+        Assert.IsInstanceOfType<JobSuccess>(await run);
     }
 
     [TestMethod]
@@ -98,26 +121,32 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_WritesResultJson_OnSetupFailure()
     {
-        await Startup.ExecuteJobAsync(
-            MakeConfig(), CancellationToken.None,
+        await JobRunner.RunAsync(
+            MakeConfig(),
             Context(new StubGit(), FakeRunner(),
-                _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))));
+                _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         using var doc = JsonDocument.Parse(json);
         Assert.AreEqual("setupFailure", doc.RootElement.GetProperty("status").GetString());
     }
 
+    /// <summary>An unwritable output directory costs the artifact and nothing else: the job ran,
+    /// so it still reports what it did. The warning goes to the run's log sink, which is stderr in
+    /// production.</summary>
     [TestMethod]
     public async Task ExecuteJobAsync_StillReturnsExitCode_WhenResultJsonCannotBeWritten()
     {
-        // Forces the write to fail with UnauthorizedAccessException: "result.json" already exists
-        // as a directory at that path, so it can't be opened as a file.
-        Directory.CreateDirectory(Path.Combine(_outputDir, "result.json"));
+        var log = new StubLog();
 
-        var result = await Run();
+        var result = await JobCommand.ExecuteAsync(MakeConfig(),
+            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()),
+                log: log,
+                fileSystem: new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full"))),
+            CancellationToken.None);
 
         Assert.AreEqual(0, result);
+        CollectionAssert.Contains(log.Lines, "warning: failed to write result.json: disk full");
     }
 
     [TestMethod]
@@ -193,7 +222,7 @@ public class JobRunnerTests
     {
         var statusCodes = new List<HttpStatusCode>();
 
-        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
             {
@@ -242,7 +271,7 @@ public class JobRunnerTests
             return Task.CompletedTask;
         });
         string? agentWorkingDir = null;
-        RunProcessAsync tracker = (f, a, d, e, onLine, ct) =>
+        RunProcess tracker = (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude") agentWorkingDir = d;
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -275,7 +304,7 @@ public class JobRunnerTests
     {
         string? capturedCloneDir = null;
 
-        RunProcessAsync tracker = async (f, a, d, e, onLine, ct) =>
+        RunProcess tracker = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude") capturedCloneDir = d;
             return new ProcessSuccess();
@@ -294,7 +323,7 @@ public class JobRunnerTests
     {
         string? capturedCloneDir = null;
 
-        RunProcessAsync tracker = (f, a, d, e, onLine, ct) =>
+        RunProcess tracker = (f, a, d, e, onLine, ct) =>
         {
             capturedCloneDir = d;
             return Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"));
@@ -313,7 +342,7 @@ public class JobRunnerTests
     {
         Action<string>? claudeCallback = null;
 
-        RunProcessAsync capture = async (f, a, d, e, onLine, ct) =>
+        RunProcess capture = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
             {
@@ -338,9 +367,9 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ForwardsClaudeOutputLines_ToLogSink()
     {
-        var log = new List<string>();
+        var log = new StubLog();
 
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude") onLine?.Invoke("test line");
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -349,52 +378,10 @@ public class JobRunnerTests
         await JobRunner.RunAsync(MakeConfig(),
             Context(new StubGit(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed()),
-                logLine: log.Add),
+                log: log),
             CancellationToken.None);
 
-        CollectionAssert.Contains(log, "test line");
-    }
-
-    [TestMethod]
-    public async Task RunAsync_ForwardsExtractedTranscriptLines_ToTranscriptSink()
-    {
-        const string assistantLine = """{"type":"assistant","message":{"content":[{"type":"text","text":"hello transcript"}]}}""";
-        var transcript = new List<string>();
-
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude") onLine?.Invoke(assistantLine);
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed()),
-                transcriptLine: transcript.Add),
-            CancellationToken.None);
-
-        CollectionAssert.Contains(transcript, "hello transcript");
-    }
-
-    [TestMethod]
-    public async Task RunAsync_DoesNotForwardNonTranscriptLines_ToTranscriptSink()
-    {
-        const string noiseLine = """{"type":"result","subtype":"success","total_cost_usd":0.5}""";
-        var transcript = new List<string>();
-
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
-        {
-            if (f == "claude") onLine?.Invoke(noiseLine);
-            return Task.FromResult<ProcessResult>(new ProcessSuccess());
-        };
-
-        await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed()),
-                transcriptLine: transcript.Add),
-            CancellationToken.None);
-
-        Assert.AreEqual(0, transcript.Count);
+        CollectionAssert.Contains(log.Lines, "test line");
     }
 
     [TestMethod]
@@ -412,12 +399,12 @@ public class JobRunnerTests
     {
         const string resultLine = """{"type":"result","subtype":"success","total_cost_usd":0.028521,"usage":{"input_tokens":2036,"output_tokens":14}}""";
 
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, onLine, ct) =>
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await JobCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -427,12 +414,12 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_CostIsZero_WhenClaudeOutputIsNotAResultLine()
     {
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, onLine, ct) =>
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => "thinking...", false => null }));
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await JobCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -442,7 +429,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_Returns1_WhenGitBundleFails()
     {
-        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, onLine, ct) =>
         {
             var apiUrl = ExtractApiUrlFromSystemPrompt(a);
             using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
@@ -456,9 +443,9 @@ public class JobRunnerTests
         var hostWithFailingBundle = new StubGit(
             createBundle: _ => throw new RepoHostException("git bundle failed: exited with code 128"));
 
-        var result = await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        var result = await JobCommand.ExecuteAsync(MakeConfig(),
             Context(hostWithFailingBundle, runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         Assert.AreEqual(1, result);
     }
@@ -468,12 +455,12 @@ public class JobRunnerTests
     {
         const string resultLine = """{"type":"result","total_cost_usd":"not-a-number"}""";
 
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, onLine, ct) =>
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await JobCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -484,7 +471,7 @@ public class JobRunnerTests
     public async Task RunAsync_ResultJson_ContainsPendingPushRequests()
     {
         var host = new StubGit(branchExists: _ => Task.FromResult(true));
-        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
             {
@@ -498,8 +485,8 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: ["rix/my-fix"]), CancellationToken.None,
-            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
+        await JobCommand.ExecuteAsync(MakeConfig(allowedPushBranches: ["rix/my-fix"]),
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -511,7 +498,7 @@ public class JobRunnerTests
     public async Task RunAsync_CreatesBundleFile_ForPush()
     {
         var host = new StubGit(branchExists: _ => Task.FromResult(true));
-        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
             {
@@ -537,7 +524,7 @@ public class JobRunnerTests
     {
         var statusCodes = new List<HttpStatusCode>();
         var host = new StubGit(branchExists: _ => Task.FromResult(true));
-        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
             {
@@ -588,7 +575,7 @@ public class JobRunnerTests
     public async Task RunAsync_RejectsPush_ToDisallowedBranch()
     {
         var host = new StubGit(branchExists: _ => Task.FromResult(true));
-        RunProcessAsync runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
             {
@@ -603,9 +590,8 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(allowedPushBranches: ["rix/allowed"]),
-            CancellationToken.None,
-            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())));
+        await JobCommand.ExecuteAsync(MakeConfig(allowedPushBranches: ["rix/allowed"]),
+            Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var json = await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json"));
         var doc = JsonDocument.Parse(json);
@@ -636,62 +622,54 @@ public class JobRunnerTests
         StringAssert.Contains(systemPrompt, "DELETE");
     }
 
+    /// <summary>A job that returns is a job whose output is on disk: the run itself writes the
+    /// artifacts, so no caller can leave a finished job unrecorded by forgetting to.</summary>
     [TestMethod]
-    public async Task RunAsync_ReturnsJobSuccess_WithoutWritingResultJson()
+    public async Task RunAsync_WritesResultJson_WhenTheJobSucceeds()
     {
         var result = await JobRunner.RunAsync(MakeConfig(),
             Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
         Assert.IsInstanceOfType<JobSuccess>(result);
-        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "result.json")),
-            "JobRunner core must not perform the result.json write — that is the shell's job");
+        using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json")));
+        Assert.AreEqual("success", doc.RootElement.GetProperty("status").GetString());
     }
 
     [TestMethod]
-    public async Task RunAsync_ReturnsJobSuccess_WithoutWritingTranscriptMd()
-    {
-        var result = await JobRunner.RunAsync(MakeConfig(),
-            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
-            CancellationToken.None);
-
-        Assert.IsInstanceOfType<JobSuccess>(result);
-        Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "transcript.md")),
-            "JobRunner core must not perform the transcript.md write — that is the shell's job");
-    }
-
-    [TestMethod]
-    public async Task ExecuteJobAsync_WritesTranscriptMd_FromClaudeAssistantLines()
+    public async Task RunAsync_WritesTranscriptMd_FromClaudeAssistantLines()
     {
         const string assistantLine = """{"type":"assistant","message":{"content":[{"type":"text","text":"I will fix the bug"},{"type":"tool_use","name":"Bash","input":{}}]}}""";
 
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude") onLine?.Invoke(assistantLine);
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await JobRunner.RunAsync(MakeConfig(),
             Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         var transcript = await File.ReadAllTextAsync(Path.Combine(_outputDir, "transcript.md"));
         StringAssert.Contains(transcript, "I will fix the bug");
         StringAssert.Contains(transcript, "→ Bash(...)");
     }
 
+    /// <summary>Only the lines the agent recognizes as transcript reach the file, so a run whose
+    /// output was all machine chatter leaves no empty artifact behind.</summary>
     [TestMethod]
-    public async Task ExecuteJobAsync_OmitsTranscriptMd_WhenNothingExtracted()
+    public async Task RunAsync_OmitsTranscriptMd_WhenNothingExtracted()
     {
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude") onLine?.Invoke("""{"type":"result","subtype":"success","total_cost_usd":0.5}""");
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+        await JobRunner.RunAsync(MakeConfig(),
             Context(new StubGit(), runner,
-                _ => Task.FromResult<InstallResult>(new Installed())));
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
         Assert.IsFalse(File.Exists(Path.Combine(_outputDir, "transcript.md")),
             "transcript.md must not be written when nothing was extracted");
@@ -700,7 +678,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_JobFailureError_IncludesAgentDiagnostic_WhenPresent()
     {
-        RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, onLine, ct) =>
             Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1", Diagnostic: "Invalid API key"));
 
         var result = await JobRunner.RunAsync(MakeConfig(),
@@ -748,7 +726,7 @@ public class JobRunnerTests
     public async Task RunAsync_AddsResolvedApiKey_ToAgentProcessEnvironment()
     {
         IReadOnlyDictionary<string, string>? capturedEnv = null;
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        RunProcess capture = (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude") capturedEnv = e;
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -766,7 +744,7 @@ public class JobRunnerTests
     public async Task RunAsync_DoesNotAddApiKey_ToAgentProcessEnvironment_WhenNoneSupplied()
     {
         IReadOnlyDictionary<string, string>? capturedEnv = null;
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        RunProcess capture = (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude") capturedEnv = e;
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -852,17 +830,18 @@ public class JobRunnerTests
 
     private static JobContext Context(
         IGit git,
-        RunProcessAsync processRunner,
+        RunProcess processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
-        LogLine? logLine = null,
-        LogLine? transcriptLine = null)
-    => new(git, processRunner, new StubAgent(install), logLine ?? (_ => { }), transcriptLine ?? (_ => { }));
+        ILog? log = null,
+        IFileSystem? fileSystem = null)
+    => new(git, new StubProcessRunner(processRunner), new StubAgent(install), log ?? new StubLog(), fileSystem ?? new LocalFileSystem());
 
-    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null)
-    => Startup.ExecuteJobAsync(MakeConfig(), CancellationToken.None,
+    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null)
+    => JobCommand.ExecuteAsync(MakeConfig(),
         Context(new StubGit(),
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
-            _ => Task.FromResult<InstallResult>(new Installed())));
+            _ => Task.FromResult<InstallResult>(new Installed()),
+            fileSystem: fileSystem), CancellationToken.None);
 
     private JobConfig MakeConfig(
         string[]? allowedPushBranches = null,
@@ -888,11 +867,11 @@ public class JobRunnerTests
     (
         string repo, string home, string sourcePath = JobConfig.DefaultAgentHomePath
     )
-    => new(new RepoIdentifier(repo), new SubDirectoryPath(sourcePath), new DirectoryPath(home));
+    => new(new RepoIdentifier(repo), new SubDirectoryPath(sourcePath), new DirectoryPath(home, new LocalFileSystem()));
 
     /// <summary>A process runner that succeeds at everything and calls <paramref name="onAgent"/>
     /// when the agent is started.</summary>
-    private static RunProcessAsync OnAgent(Action onAgent)
+    private static RunProcess OnAgent(Action onAgent)
     => (f, a, d, e, onLine, ct) =>
     {
         if (f == "claude") onAgent();
@@ -919,7 +898,7 @@ public class JobRunnerTests
         return (failure, agentRan);
     }
 
-    private static RunProcessAsync FakeRunner(
+    private static RunProcess FakeRunner(
         int claudeExitCode = 0,
         bool claudeTimedOut = false,
         QueuedPrSpec? pr = null)
@@ -934,7 +913,7 @@ public class JobRunnerTests
     private static async Task<string?> CaptureSystemPromptAsync(JobConfig config)
     {
         string? systemPrompt = null;
-        RunProcessAsync capture = (f, a, d, e, onLine, ct) =>
+        RunProcess capture = (f, a, d, e, onLine, ct) =>
         {
             if (f == "claude")
             {

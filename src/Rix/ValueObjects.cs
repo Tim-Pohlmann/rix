@@ -1,8 +1,5 @@
 namespace Rix;
 
-/// <summary>Writes a single diagnostic line (e.g. a forwarded agent stdout line) to the log sink.</summary>
-internal delegate void LogLine(string line);
-
 /// <summary>A read-scoped GitHub access token: enough to clone and inspect a repo, never to write.
 /// <see cref="GitToken"/> derives from it because a write-capable token can do everything a read
 /// one can, so a <see cref="GitToken"/> is accepted wherever a <c>GitReadToken</c> is required.</summary>
@@ -154,8 +151,9 @@ internal sealed record SubDirectoryPath
     public override string ToString() => Value;
 }
 
-/// <summary>A directory path that existed when the instance was constructed, stored as an
-/// absolute path — the constructor throws <see cref="InvalidInputException"/> otherwise.
+/// <summary>A directory path that existed on <see cref="IFileSystem"/> when the instance was
+/// constructed, stored as an absolute path — the constructor throws
+/// <see cref="InvalidInputException"/> otherwise.
 /// Normalising to absolute at the boundary means paths derived from it (e.g. via
 /// <see cref="System.IO.Path.Combine(string, string)"/>) stay rooted, so a subprocess run from a
 /// different working directory resolves them where the caller intended.</summary>
@@ -163,9 +161,9 @@ internal sealed record DirectoryPath
 {
     internal string Value { get; }
 
-    internal DirectoryPath(string path)
+    internal DirectoryPath(string path, IFileSystem fileSystem)
     {
-        if (!Directory.Exists(path))
+        if (!fileSystem.DirectoryExists(path))
             throw new InvalidInputException($"directory does not exist: {path}");
         Value = Path.GetFullPath(path);
     }

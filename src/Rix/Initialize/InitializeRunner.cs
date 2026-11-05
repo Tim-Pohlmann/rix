@@ -20,13 +20,13 @@ internal static class InitializeRunner
             var fullPath = Path.Combine(config.TargetDir.Value, relativePath);
             try
             {
-                await context.WriteFile(fullPath, content, cancellationToken);
+                await context.FileSystem.WriteAllTextAsync(fullPath, content, cancellationToken);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 return new InitializeFailure($"could not write {relativePath}: {ex.Message}");
             }
-            context.LogLine($"wrote {relativePath}");
+            context.Log.WriteLine($"wrote {relativePath}");
         }
         return new InitializeSuccess();
     }

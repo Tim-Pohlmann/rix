@@ -6,16 +6,16 @@ namespace Rix.Tests;
 public class InitializeRunnerTests
 {
     private readonly List<(string Path, string Content)> _writes = [];
-    private readonly List<string> _logs = [];
+    private readonly StubLog _log = new();
 
-    private InitializeContext Context(WriteFileAsync? writeFile = null) => new
+    private InitializeContext Context(Func<string, string, Task>? writeAllText = null) => new
     (
-        writeFile ?? ((path, content, _) =>
+        new StubFileSystem(writeAllText: writeAllText ?? ((path, content) =>
         {
             _writes.Add((path, content));
             return Task.CompletedTask;
-        }),
-        _logs.Add
+        })),
+        _log
     );
 
     private static Task<IInitializeResult> Run(InitializeConfig config, InitializeContext context)
@@ -73,8 +73,8 @@ public class InitializeRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsFailure_WhenAWriteThrowsIoException()
     {
-        WriteFileAsync throwing = (_, _, _) => throw new IOException("disk full");
-        var result = await Run(TestConfig.ValidInitialize(), Context(throwing));
+        var result = await Run(TestConfig.ValidInitialize(),
+            Context((_, _) => throw new IOException("disk full")));
 
         var failure = result switch
         {

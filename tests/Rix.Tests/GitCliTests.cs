@@ -6,7 +6,7 @@ namespace Rix.Tests;
 [TestClass]
 public class GitCliTests
 {
-    private static readonly RunProcessAsync SuccessGitRunner =
+    private static readonly RunProcess SuccessGitRunner =
         (_, _, _, _, _, _) => Task.FromResult<ProcessResult>(new ProcessSuccess());
 
     private static readonly string[] ExpectedBundleArgs =
@@ -25,6 +25,12 @@ public class GitCliTests
     private static readonly string[] ExpectedConfigureUserEmailArgs =
         ["config", "user.email", "rix@noreply.invalid"];
 
+    // Rooted, because GitCli is handed a DirectoryPath and that normalizes what it is given: on
+    // Windows "/tmp/work" reaches git as "D:\tmp\work". The clone target stays a bare string all
+    // the way through, so it is compared as written.
+    private static readonly string WorkingDir = Path.GetFullPath("/tmp/work");
+    private static readonly string[] ExpectedWorkingDirs = [WorkingDir, WorkingDir, "/tmp/checkout", WorkingDir];
+
     private static readonly string[] ExpectedLsRemoteArgs =
         ["ls-remote", "--exit-code", "https://github.com/owner/repo.git", "refs/heads/rix/fix"];
 
@@ -35,8 +41,26 @@ public class GitCliTests
 
     private static readonly RepoIdentifier Repo = new("owner/repo");
 
-    private static GitCli Build(string readToken = "read-tok", RunProcessAsync? gitRunner = null, string host = "https://github.com/")
-    => new(new Uri(host), new GitReadToken(readToken), gitRunner ?? SuccessGitRunner);
+    private static GitCli Build(string readToken = "read-tok", RunProcess? gitRunner = null, string host = "https://github.com/")
+    => new(new Uri(host), new GitReadToken(readToken), new StubProcessRunner(gitRunner ?? SuccessGitRunner), TestConfig.AnyDirectory("/tmp/work"));
+
+    [TestMethod]
+    public async Task CommandsWithoutALocalRepo_RunFromTheWorkingDirectoryGivenAtCreation()
+    {
+        var workingDirs = new List<string>();
+        var git = Build(
+            gitRunner: (_, _, workingDir, _, _, _) =>
+            {
+                workingDirs.Add(workingDir);
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            });
+
+        await git.CloneAsync(Repo, "/tmp/clone", CancellationToken.None);
+        await git.SparseCloneAsync(Repo, "/tmp/checkout", new SubDirectoryPath("agent-home"), CancellationToken.None);
+        await git.BranchExistsOnRemoteAsync(Repo, new BranchName("rix/fix"), CancellationToken.None);
+
+        CollectionAssert.AreEqual(ExpectedWorkingDirs, workingDirs);
+    }
 
     [TestMethod]
     public async Task BranchExistsOnRemoteAsync_RunsLsRemote_AgainstTheRemote_WithAuthEnv()

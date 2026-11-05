@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Rix.CiFailure;
+using Rix.Cli;
 using Rix.Repository;
 
 namespace Rix.Tests;
@@ -232,7 +233,7 @@ public class CiFailureRunnerTests
     }
 
     /// <summary>The imperative shell's own tests, beside the core's like
-    /// <c>JobRunnerTests</c>'s are: <see cref="Startup.ExecuteCiFailureAsync"/> adds exactly two
+    /// <c>JobRunnerTests</c>'s are: <see cref="CiFailureCommand.ExecuteAsync"/> adds exactly two
     /// things to a detection - the exit code it maps the verdict to, and the files it drops in the
     /// output directory - and both are only meaningful next to the verdict that produced
     /// them.</summary>
@@ -332,12 +333,28 @@ public class CiFailureRunnerTests
         StringAssert.Contains(WrittenResult()["error"]!.GetValue<string>(), "failed to write the prompt");
     }
 
+    /// <summary>result.json is written after the verdict is decided, so failing to write it only
+    /// warns.</summary>
+    [TestMethod]
+    public async Task ExecuteCiFailureAsync_StillReturnsExitCode_WhenTheVerdictCannotBeWritten()
+    {
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
+        var fullDisk = new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full"));
+        var log = new StubLog();
+
+        var exitCode = await CiFailureCommand.ExecuteAsync(
+            Config(), new CiFailureContext(ci, new StubCiFailureRepoHost(), fullDisk, log), CancellationToken.None);
+
+        Assert.AreEqual(0, exitCode);
+        CollectionAssert.Contains(log.Lines, "warning: failed to write result.json: disk full");
+    }
+
     private CiFailureConfig Config() => TestConfig.ValidCiFailure(outputDir: _outputDir);
 
     /// <summary>The shell's counterpart to <see cref="Detect"/>, defaulting the repo host the same
     /// way.</summary>
     private Task<int> Execute(StubCiHost ci, StubCiFailureRepoHost? repoHost = null)
-    => Startup.ExecuteCiFailureAsync(Config(), CancellationToken.None, new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost()));
+    => CiFailureCommand.ExecuteAsync(Config(), new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost(), new LocalFileSystem(), new StubLog()), CancellationToken.None);
 
     private JsonObject WrittenResult()
     => JsonNode.Parse(File.ReadAllText(Path.Combine(_outputDir, "result.json")))!.AsObject();

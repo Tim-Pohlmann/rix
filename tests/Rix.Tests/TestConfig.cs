@@ -12,6 +12,11 @@ namespace Rix.Tests;
 /// malformed.</summary>
 internal static class TestConfig
 {
+    /// <summary>A <see cref="DirectoryPath"/> for a directory that need not exist, for tests that
+    /// only hand the path onwards - to a stubbed process runner, say - rather than read from it.</summary>
+    internal static DirectoryPath AnyDirectory(string path)
+    => new(path, new StubFileSystem(directoryExists: _ => true));
+
     internal static JobConfig Valid
     (
         string repo = "owner/repo",
@@ -37,8 +42,8 @@ internal static class TestConfig
             new RepoIdentifier(repo),
             new GitReadToken(readToken),
             new TimeoutMinutes(timeoutMinutes),
-            WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
-            OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath()),
+            WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath(), new LocalFileSystem()),
+            OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath(), new LocalFileSystem()),
             new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, credential),
             allowedPushBranches ?? [],
             agentHome
@@ -57,8 +62,8 @@ internal static class TestConfig
     (
         new RepoIdentifier(repo),
         new GitToken(writeToken),
-        InputDir: new DirectoryPath(inputDir ?? Path.GetTempPath()),
-        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath()),
+        InputDir: new DirectoryPath(inputDir ?? Path.GetTempPath(), new LocalFileSystem()),
+        WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath(), new LocalFileSystem()),
         BranchName.ParseAllowList(allowedPushBranches)
     );
 
@@ -75,10 +80,10 @@ internal static class TestConfig
         new RunId(runId),
         new RepoIdentifier(repo),
         new GitReadToken(readToken),
-        new DirectoryPath(outputDir ?? Path.GetTempPath()),
+        new DirectoryPath(outputDir ?? Path.GetTempPath(), new LocalFileSystem()),
         new MaxRixCommits(maxRixCommits)
     );
 
     internal static InitializeConfig ValidInitialize(string? dir = null, string? workflowRef = null)
-    => new(new DirectoryPath(dir ?? Path.GetTempPath()), new WorkflowRef(workflowRef ?? "v0"));
+    => new(new DirectoryPath(dir ?? Path.GetTempPath(), new LocalFileSystem()), new WorkflowRef(workflowRef ?? "v0"));
 }

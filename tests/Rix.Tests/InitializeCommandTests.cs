@@ -6,8 +6,11 @@ namespace Rix.Tests;
 [TestClass]
 public class InitializeCommandTests
 {
+    private static InitializeConfig Read(string[] args, IFileSystem? fileSystem = null)
+    => InitializeCommand.CreateConfig(CommandArgs.Parse(InitializeCommand.Build(), args), fileSystem ?? new LocalFileSystem());
+
     private static InitializeConfig Read(params string[] args)
-    => InitializeCommand.ReadConfig(CommandArgs.Parse(InitializeCommand.Build(), args));
+    => Read(args, null);
 
     [TestMethod]
     [DataRow("initialize")]
@@ -24,7 +27,11 @@ public class InitializeCommandTests
     [TestMethod]
     public void Command_DefaultsDirToCurrentDirectory_WhenFlagAbsent()
     {
-        Assert.AreEqual(Path.GetFullPath(Directory.GetCurrentDirectory()), Read("initialize").TargetDir.Value);
+        var currentDirectory = Path.GetTempPath();
+
+        var config = Read(["initialize"], new StubFileSystem(currentDirectory: currentDirectory));
+
+        Assert.AreEqual(Path.GetFullPath(currentDirectory), config.TargetDir.Value);
     }
 
     [TestMethod]
@@ -64,5 +71,25 @@ public class InitializeCommandTests
         var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("initialize", "--dir", dir));
 
         Assert.AreEqual("--dir is required", ex.Message);
+    }
+
+    /// <summary>The failure branch of the one place a run's outcome becomes an exit code: a write
+    /// the runner could not perform is reported under <c>error:</c> and exits 2, the same shape a
+    /// bad flag gets, because both mean nothing ran.</summary>
+    [TestMethod]
+    public async Task ExecuteAsync_ReportsTheError_AndReturns2_WhenATemplateCannotBeWritten()
+    {
+        using var stderr = new ConsoleErrorScope();
+
+        var exitCode = await InitializeCommand.ExecuteAsync
+        (
+            TestConfig.ValidInitialize(),
+            new InitializeContext(new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full")), new StubLog()),
+            CancellationToken.None
+        );
+
+        Assert.AreEqual(2, exitCode);
+        StringAssert.Contains(stderr.Text, "error: could not write ");
+        StringAssert.Contains(stderr.Text, "disk full");
     }
 }

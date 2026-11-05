@@ -1,5 +1,6 @@
-using Rix.Cli;
 using Rix.CiFailure;
+using Rix.Cli;
+using Rix.Repository;
 
 namespace Rix.Tests;
 
@@ -7,7 +8,7 @@ namespace Rix.Tests;
 public class CiFailureCommandTests
 {
     private static CiFailureConfig Read(params string[] args)
-    => CiFailureCommand.ReadConfig(CommandArgs.Parse(CiFailureCommand.Build(), ["ci-failure", .. args]));
+    => CiFailureCommand.CreateConfig(CommandArgs.Parse(CiFailureCommand.Build(), ["ci-failure", .. args]), new LocalFileSystem());
 
     /// <summary>Reads <c>ci-failure</c> with valid values for every required flag, then
     /// <paramref name="extra"/>.</summary>
@@ -118,5 +119,17 @@ public class CiFailureCommandTests
         var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--repo", "", "--read-token", "", "--run-id", ""));
 
         Assert.AreEqual("--repo is required", ex.Message);
+    }
+
+    /// <summary><c>ci-failure</c> reads and judges, so its two halves are both read-only hosts —
+    /// no agent, no clone, nothing that could run what it found. Separate fields over one object
+    /// because the roles are separable even though GitHub serves both.</summary>
+    [TestMethod]
+    public void DefaultContext_ReadsFromTheCiHostAndJudgesAgainstTheRepoHost()
+    {
+        var context = CiFailureCommand.DefaultContext(TestConfig.ValidCiFailure());
+
+        Assert.IsInstanceOfType<GitHubActionsCiHost>(context.Ci);
+        Assert.IsInstanceOfType<GitHubCiFailureRepoHost>(context.RepoHost);
     }
 }

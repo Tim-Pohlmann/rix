@@ -1,5 +1,6 @@
 using Rix.Submit;
 using System.CommandLine;
+using System.Text.Json;
 
 namespace Rix.Cli;
 
@@ -30,15 +31,49 @@ internal static class SubmitCommand
         return command;
     }
 
-    internal static SubmitConfig ReadConfig(ParseResult parsed)
+    internal static SubmitConfig CreateConfig(ParseResult parsed, IFileSystem fileSystem)
     => new
     (
         CommonOptions.ReadRepo(parsed),
         parsed.Required(WriteTokenOption, "RIX_WRITE_TOKEN", value => new GitToken(value)),
-        InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path)),
-        WorkDir: CommonOptions.ReadWorkDir(parsed),
+        InputDir: parsed.Required(InputDirOption, "RIX_INPUT_DIR", path => new DirectoryPath(path, fileSystem)),
+        WorkDir: CommonOptions.ReadWorkDir(parsed, fileSystem),
         // Unparseable input is impossible: every branch name is acceptable, and a blank value
         // means the empty list, which is the safe end of the range rather than an error.
         BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"))
     );
+
+    /// <summary>Runs <paramref name="config"/> against the production context. Separate from
+    /// <see cref="ExecuteAsync"/> so a test supplies a context of its own and never reaches
+    /// <see cref="Composition"/>.</summary>
+    internal static Task<int> ExecuteDefaultAsync(SubmitConfig config, CancellationToken cancellationToken)
+    => ExecuteAsync(config, DefaultContext(config), cancellationToken);
+
+    /// <summary>What a submit runs against in production: git and the GitHub repo host, both
+    /// authenticated with the write token, the log and the disk.</summary>
+    internal static SubmitContext DefaultContext(SubmitConfig config)
+    => new
+    (
+        Composition.GitHubGit(config.WriteToken, config.WorkDir),
+        Composition.GitHubSubmitHost(config.Repo, config.WriteToken),
+        Composition.Log(),
+        Composition.FileSystem()
+    );
+
+    /// <summary>
+    /// Imperative shell around <see cref="SubmitRunner.RunAsync"/>: runs the submit, writes the
+    /// result JSON to stdout, and maps the result to an exit code.
+    /// </summary>
+    internal static async Task<int> ExecuteAsync(SubmitConfig config, SubmitContext context, CancellationToken cancellationToken)
+    {
+        var result = await SubmitRunner.RunAsync(config, context, cancellationToken);
+        var json = JsonSerializer.Serialize(result, SubmitJsonContext.Default.ISubmitResult);
+        Console.WriteLine(json);
+        return result switch
+        {
+            SubmitSuccess => ExitCodes.Success,
+            SubmitFailure => ExitCodes.JobFailed,
+            _ => throw new NotSupportedException($"Unexpected submit result type: {result.GetType()}"),
+        };
+    }
 }
