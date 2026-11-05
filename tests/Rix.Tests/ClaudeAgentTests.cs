@@ -11,7 +11,7 @@ public class ClaudeAgentTests
     private static readonly DirectoryPath WorkDir = TestConfig.AnyDirectory("/tmp/work");
 
     // Adapts a simple (fileName, args) -> ProcessResult stub to the full IProcessRunner shape.
-    private static IProcessRunner Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)
+    private static StubProcessRunner Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)
     => new StubProcessRunner((fileName, args, _, _, _, _) => run(fileName, args));
 
     // ---- EnsureInstalledAsync ----

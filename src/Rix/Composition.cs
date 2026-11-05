@@ -30,9 +30,11 @@ internal static class Composition
     internal static LocalFileSystem FileSystem()
     => new();
 
-    /// <summary>The production <see cref="IProcessRunner"/>: real child processes.</summary>
-    private static IProcessRunner ProcessRunner()
-    => new ProcessWrapper();
+    /// <summary>The production <see cref="IProcessRunner"/>: real child processes. Typed
+    /// concretely for the same reason <see cref="FileSystem"/> is - naming the implementation is
+    /// this file's job, and the contexts hold the seam.</summary>
+    private static ProcessWrapper ProcessRunner()
+    => new();
 
     /// <summary>The production <see cref="JobContext"/>: git against GitHub, process runner,
     /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
