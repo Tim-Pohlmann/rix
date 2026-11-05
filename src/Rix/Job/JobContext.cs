@@ -14,6 +14,6 @@ internal sealed record JobContext
     IGit Git,
     RunProcessAsync RunProcess,
     ICodingAgent Agent,
-    LogLine LogLine,
+    ILog Log,
     IFileSystem FileSystem
 );

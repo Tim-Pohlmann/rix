@@ -26,7 +26,7 @@ internal static class InitializeRunner
             {
                 return new InitializeFailure($"could not write {relativePath}: {ex.Message}");
             }
-            context.LogLine($"wrote {relativePath}");
+            context.Log.WriteLine($"wrote {relativePath}");
         }
         return new InitializeSuccess();
     }

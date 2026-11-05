@@ -40,7 +40,7 @@ internal static class Composition
         GitHubGit(config.ReadToken, config.WorkDir),
         ProcessWrapper.RunAsync,
         SelectAgent(config.Agent.Kind),
-        LogLine: Console.Error.WriteLine,
+        Log: new StderrLog(),
         FileSystem: FileSystem()
     );
 
@@ -79,7 +79,7 @@ internal static class Composition
     (
         GitHubGit(config.WriteToken, config.WorkDir),
         new GitHubSubmitRepoHost(config.Repo, config.WriteToken),
-        Console.Error.WriteLine,
+        new StderrLog(),
         FileSystem()
     );
 
@@ -89,6 +89,6 @@ internal static class Composition
     => new
     (
         FileSystem(),
-        Console.Error.WriteLine
+        new StderrLog()
     );
 }

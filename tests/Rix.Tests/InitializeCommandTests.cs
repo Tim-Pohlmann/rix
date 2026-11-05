@@ -84,7 +84,7 @@ public class InitializeCommandTests
         var exitCode = await InitializeCommand.ExecuteAsync
         (
             TestConfig.ValidInitialize(),
-            new InitializeContext(new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full")), _ => { }),
+            new InitializeContext(new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full")), new StubLog()),
             CancellationToken.None
         );
 

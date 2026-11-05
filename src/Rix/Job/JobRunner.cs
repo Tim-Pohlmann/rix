@@ -59,7 +59,7 @@ internal static class JobRunner
 
         await using var apiServer = await LocalApiServer.StartAsync
         (
-            context.Git, config.Repo, cloneDir.Path, ct, context.LogLine.Invoke,
+            context.Git, config.Repo, cloneDir.Path, ct, context.Log,
             allowedPushBranches: config.AllowedPushBranches
         );
 
@@ -219,7 +219,7 @@ internal static class JobRunner
 
         void ForwardLine(string line)
         {
-            context.LogLine(line);
+            context.Log.WriteLine(line);
             if (context.Agent.ParseTranscriptLine(line) is { } transcriptLine)
                 transcript.Add(transcriptLine);
         }
@@ -318,7 +318,7 @@ internal static class JobRunner
         // collide and the second would overwrite the first. Keep the first and skip the rest.
         if (!seenBranches.Add(request.Branch.Value))
         {
-            context.LogLine($"skipping duplicate queued {request.Kind} for branch {request.Branch.Value}");
+            context.Log.WriteLine($"skipping duplicate queued {request.Kind} for branch {request.Branch.Value}");
             return new BundleSkipped();
         }
 

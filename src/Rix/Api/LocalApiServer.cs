@@ -25,7 +25,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         _delivery = delivery;
     }
 
-    /// <param name="logLine">Sink for the server's own diagnostic log lines, forwarded live so they
+    /// <param name="log">Sink for the server's own diagnostic log lines, forwarded live so they
     /// interleave with the agent's output on the same seam. When <c>null</c>, server logs are dropped.</param>
     /// <param name="cloneDir">The job's own clone of the target repo — the only directory a queued
     /// branch is accepted from, since it's also the directory <c>rix</c> later bundles from.</param>
@@ -40,7 +40,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
         RepoIdentifier repo,
         string cloneDir,
         CancellationToken cancellationToken,
-        Action<string>? logLine = null,
+        ILog? log = null,
         IReadOnlyList<BranchName>? allowedPushBranches = null
     )
     {
@@ -52,8 +52,8 @@ internal sealed class LocalApiServer : IAsyncDisposable
         builder.Logging.ClearProviders();
         // With no sink there is nothing to forward to, so skip the provider entirely rather than
         // formatting every line only to drop it.
-        if (logLine is not null)
-            builder.Logging.AddProvider(new LogForwarder(logLine));
+        if (log is not null)
+            builder.Logging.AddProvider(new LogForwarder(log));
         builder.Services.ConfigureHttpJsonOptions
         (
             options => options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonContext.Default)
@@ -294,12 +294,12 @@ internal sealed class LocalApiServer : IAsyncDisposable
         => pendingRequests.TryRemove(Input.Required("branch", req.Branch, value => new BranchName(value)));
     }
 
-    private sealed class LogForwarder(Action<string> sink) : ILoggerProvider
+    private sealed class LogForwarder(ILog sink) : ILoggerProvider
     {
         public ILogger CreateLogger(string categoryName) => new Logger(sink, categoryName);
         public void Dispose() { }
 
-        private sealed class Logger(Action<string> sink, string category) : ILogger
+        private sealed class Logger(ILog sink, string category) : ILogger
         {
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
             public bool IsEnabled(LogLevel logLevel) => true;
@@ -307,7 +307,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             {
                 // ASP.NET invokes loggers from arbitrary threadpool threads; logging is best-effort,
                 // so a throwing sink must never bubble back into request handling.
-                try { sink($"[{logLevel}] {category}: {formatter(state, exception)}"); }
+                try { sink.WriteLine($"[{logLevel}] {category}: {formatter(state, exception)}"); }
                 catch { /* drop the line rather than fault the request */ }
             }
         }

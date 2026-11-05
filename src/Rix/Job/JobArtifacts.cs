@@ -52,16 +52,16 @@ internal static class JobArtifacts
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Warn(context.LogLine, $"warning: failed to write {name}: {ex.Message}");
+            Warn(context.Log, $"warning: failed to write {name}: {ex.Message}");
         }
     }
 
     /// <summary>Reports <paramref name="line"/> through <paramref name="log"/>, swallowing the ways
     /// a closed or broken sink can fail - the warning about a lost artifact must not cost the
     /// correct result any more than the lost artifact itself did.</summary>
-    private static void Warn(LogLine log, string line)
+    private static void Warn(ILog log, string line)
     {
-        try { log(line); }
+        try { log.WriteLine(line); }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException) { /* nothing left to report to */ }
     }
 }

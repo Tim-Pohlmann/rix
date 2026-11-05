@@ -137,16 +137,16 @@ public class JobRunnerTests
     [TestMethod]
     public async Task ExecuteJobAsync_StillReturnsExitCode_WhenResultJsonCannotBeWritten()
     {
-        var log = new List<string>();
+        var log = new StubLog();
 
         var result = await JobCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()),
-                logLine: log.Add,
+                log: log,
                 fileSystem: new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full"))),
             CancellationToken.None);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.Contains(log, "warning: failed to write result.json: disk full");
+        CollectionAssert.Contains(log.Lines, "warning: failed to write result.json: disk full");
     }
 
     [TestMethod]
@@ -367,7 +367,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ForwardsClaudeOutputLines_ToLogSink()
     {
-        var log = new List<string>();
+        var log = new StubLog();
 
         RunProcessAsync runner = (f, a, d, e, onLine, ct) =>
         {
@@ -378,10 +378,10 @@ public class JobRunnerTests
         await JobRunner.RunAsync(MakeConfig(),
             Context(new StubGit(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed()),
-                logLine: log.Add),
+                log: log),
             CancellationToken.None);
 
-        CollectionAssert.Contains(log, "test line");
+        CollectionAssert.Contains(log.Lines, "test line");
     }
 
     [TestMethod]
@@ -832,9 +832,9 @@ public class JobRunnerTests
         IGit git,
         RunProcessAsync processRunner,
         Func<CancellationToken, Task<InstallResult>> install,
-        LogLine? logLine = null,
+        ILog? log = null,
         IFileSystem? fileSystem = null)
-    => new(git, processRunner, new StubAgent(install), logLine ?? (_ => { }), fileSystem ?? new LocalFileSystem());
+    => new(git, processRunner, new StubAgent(install), log ?? new StubLog(), fileSystem ?? new LocalFileSystem());
 
     private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null)
     => JobCommand.ExecuteAsync(MakeConfig(),

@@ -140,7 +140,7 @@ internal static class SubmitRunner
 
         var url = await context.RepoHost.CreatePullRequestAsync(pr, cancellationToken);
 
-        context.LogLine($"opened PR for {pr.Branch.Value}");
+        context.Log.WriteLine($"opened PR for {pr.Branch.Value}");
         return new SubmitOneSucceeded(url);
     }
 
@@ -170,7 +170,7 @@ internal static class SubmitRunner
         if (await DeliverBranchAsync(config, context, cloneDir, push.Branch, push.BundleFile, cancellationToken) is { } deliverFailure)
             return new SubmitOneFailed(deliverFailure);
 
-        context.LogLine($"pushed commits to {push.Branch.Value}");
+        context.Log.WriteLine($"pushed commits to {push.Branch.Value}");
         return new SubmitOnePushed(push.Branch.Value);
     }
 

@@ -6,7 +6,7 @@ namespace Rix.Tests;
 public class InitializeRunnerTests
 {
     private readonly List<(string Path, string Content)> _writes = [];
-    private readonly List<string> _logs = [];
+    private readonly StubLog _log = new();
 
     private InitializeContext Context(Func<string, string, Task>? writeAllText = null) => new
     (
@@ -15,7 +15,7 @@ public class InitializeRunnerTests
             _writes.Add((path, content));
             return Task.CompletedTask;
         })),
-        _logs.Add
+        _log
     );
 
     private static Task<IInitializeResult> Run(InitializeConfig config, InitializeContext context)

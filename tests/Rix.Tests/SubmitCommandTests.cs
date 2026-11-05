@@ -154,7 +154,7 @@ public class SubmitCommandTests
     => SubmitCommand.ExecuteAsync
     (
         TestConfig.ValidSubmit(inputDir: inputDir),
-        new SubmitContext(new StubGit(), new StubSubmitRepoHost(), _ => { }, new LocalFileSystem()),
+        new SubmitContext(new StubGit(), new StubSubmitRepoHost(), new StubLog(), new LocalFileSystem()),
         CancellationToken.None
     );
 }

@@ -191,6 +191,16 @@ internal sealed class StubSubmitRepoHost(Func<PendingPr, Task<string>>? createPu
 /// <summary>The local disk, except for the operations a test overrides — to make a write or a
 /// cleanup fail the way a full disk or a locked file would, or to decide what exists, without
 /// arranging it on disk.</summary>
+/// <summary>A log that keeps every line it was given, so a test asserts what a run reported the
+/// same way it asserts a result. Doubles as the "nobody is listening" sink: a test that doesn't
+/// care simply never reads <see cref="Lines"/>.</summary>
+internal sealed class StubLog : ILog
+{
+    internal List<string> Lines { get; } = [];
+
+    public void WriteLine(string line) => Lines.Add(line);
+}
+
 internal sealed class StubFileSystem(
     Func<string, string, Task>? writeAllText = null,
     Action<string>? deleteDirectory = null,

@@ -8,5 +8,5 @@ namespace Rix.Initialize;
 internal sealed record InitializeContext
 (
     IFileSystem FileSystem,
-    LogLine LogLine
+    ILog Log
 );
