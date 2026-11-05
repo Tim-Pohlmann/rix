@@ -47,7 +47,18 @@ internal static class SubmitCommand
     /// <see cref="ExecuteAsync"/> so a test supplies a context of its own and never reaches
     /// <see cref="Composition"/>.</summary>
     internal static Task<int> ExecuteDefaultAsync(SubmitConfig config, CancellationToken cancellationToken)
-    => ExecuteAsync(config, Composition.DefaultSubmitContext(config), cancellationToken);
+    => ExecuteAsync(config, DefaultContext(config), cancellationToken);
+
+    /// <summary>What a submit runs against in production: git and the GitHub repo host, both
+    /// authenticated with the write token, the log and the disk.</summary>
+    internal static SubmitContext DefaultContext(SubmitConfig config)
+    => new
+    (
+        Composition.GitHubGit(config.WriteToken, config.WorkDir),
+        Composition.GitHubSubmitHost(config.Repo, config.WriteToken),
+        Composition.Log(),
+        Composition.FileSystem()
+    );
 
     /// <summary>
     /// Imperative shell around <see cref="SubmitRunner.RunAsync"/>: runs the submit, writes the

@@ -54,7 +54,20 @@ internal static class JobCommand
     /// <see cref="ExecuteAsync"/> so a test supplies a context of its own and never reaches
     /// <see cref="Composition"/>.</summary>
     internal static Task<int> ExecuteDefaultAsync(JobConfig config, CancellationToken cancellationToken)
-    => ExecuteAsync(config, Composition.DefaultContext(config), cancellationToken);
+    => ExecuteAsync(config, DefaultContext(config), cancellationToken);
+
+    /// <summary>What a job runs against in production: git and a coding agent, both chosen from
+    /// <paramref name="config"/>, plus the process runner, the log and the disk. The one git client
+    /// reads both the job's repo and the factory repo holding the agent home files.</summary>
+    internal static JobContext DefaultContext(JobConfig config)
+    => new
+    (
+        Composition.GitHubGit(config.ReadToken, config.WorkDir),
+        Composition.ProcessRunner(),
+        Composition.SelectAgent(config.Agent.Kind),
+        Composition.Log(),
+        Composition.FileSystem()
+    );
 
     /// <summary>What a CLI adds to a run: the result on stdout for a human or a shell watching the
     /// command, and an exit code. The artifacts the job itself produces are

@@ -1,4 +1,5 @@
 using Rix.Cli;
+using Rix.Repository;
 using Rix.Submit;
 
 namespace Rix.Tests;
@@ -157,4 +158,18 @@ public class SubmitCommandTests
         new SubmitContext(new StubGit(), new StubSubmitRepoHost(), new StubLog(), new LocalFileSystem()),
         CancellationToken.None
     );
+
+    /// <summary><c>submit</c> is the one command that writes, so both halves carry the write token:
+    /// git pushes the branches, the repo host opens the pull requests. Asserted here rather than
+    /// left to the end-to-end run in <see cref="StartupTests"/>, which never gets far enough to say
+    /// which implementations it was given.</summary>
+    [TestMethod]
+    public void DefaultContext_PushesWithGit_AndOpensPullRequestsThroughTheRepoHost()
+    {
+        var context = SubmitCommand.DefaultContext(TestConfig.ValidSubmit());
+
+        Assert.IsInstanceOfType<GitCli>(context.Git);
+        Assert.IsInstanceOfType<GitHubSubmitRepoHost>(context.RepoHost);
+        Assert.IsInstanceOfType<LocalFileSystem>(context.FileSystem);
+    }
 }

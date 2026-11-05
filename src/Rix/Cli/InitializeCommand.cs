@@ -42,7 +42,12 @@ internal static class InitializeCommand
     /// <see cref="ExecuteAsync"/> so a test supplies a context of its own and never reaches
     /// <see cref="Composition"/>.</summary>
     internal static Task<int> ExecuteDefaultAsync(InitializeConfig config, CancellationToken cancellationToken)
-    => ExecuteAsync(config, Composition.DefaultInitializeContext(), cancellationToken);
+    => ExecuteAsync(config, DefaultContext(), cancellationToken);
+
+    /// <summary>What writing the templates runs against in production: the disk, and the log the
+    /// written paths are reported on.</summary>
+    internal static InitializeContext DefaultContext()
+    => new(Composition.FileSystem(), Composition.Log());
 
     /// <summary>
     /// Imperative shell around <see cref="InitializeRunner.RunAsync"/>: writes the caller

@@ -1,62 +1,54 @@
 using Rix.Agents;
 using Rix.CiFailure;
-using Rix.Initialize;
-using Rix.Job;
 using Rix.Process;
 using Rix.Repository;
 using Rix.Submit;
 
 namespace Rix;
 
-/// <summary>Every production service rix runs against, chosen in one place: which git client, which
-/// repo and CI hosts, which coding agent, which file system. Each command asks for the context it
-/// needs and gets the real thing; a test calls the command's run with a context of its own and this
-/// file never executes. Collected rather than kept beside each command because what is asserted
-/// here is one decision, not four — rix talks to GitHub, against the local disk — and a second repo
-/// host should be a change to this file alone.
+/// <summary>Every production implementation rix runs against, chosen in one place: which git
+/// client, which repo and CI hosts, which coding agent, which file system, where the log goes, how
+/// a subprocess is started. That is one decision, not six — rix talks to GitHub, against the local
+/// disk, with real child processes — and a second repo host should be a change to this file alone.
+///
+/// Each factory is typed as the implementation it returns, wherever there is only one of them:
+/// naming it is this file's whole job, and it is the contexts that hold the seams.
+///
+/// What is *not* here is which of these each command needs: a command assembles its own context
+/// from these, because that is a statement about the command rather than about the host. So this
+/// file knows how to build each service and nothing about the shape of a run, and a new command
+/// adds no line to it.
 ///
 /// Separate from <see cref="Startup"/> so the composition root is not also the process entry point:
-/// <see cref="Startup"/> owns the signals and the invocation, this owns the wiring, and the
-/// commands own what they do with it.</summary>
+/// <see cref="Startup"/> owns the signals and the invocation, this owns the implementations, and
+/// the commands own what they do with them.</summary>
 internal static class Composition
 {
-    /// <summary>The disk. Separate from the contexts below because two things are read from it
-    /// before any context exists: the prompt file a flag names, and the directories a config points
-    /// at. <see cref="Startup"/> asks for it here rather than choosing one of its own, so every
-    /// production implementation is still named in this file. Typed concretely because
-    /// <see cref="Startup"/> also needs <see cref="LocalFileSystem.UserHomeDirectory"/>, which
-    /// answers where a flag defaults to rather than what is on disk and so isn't on the
-    /// seam.</summary>
+    /// <summary>The disk. <see cref="Startup"/> asks for it here rather than choosing one of its
+    /// own, so every production implementation is still named in this file — and it needs the
+    /// concrete type for <see cref="LocalFileSystem.UserHomeDirectory"/>, which answers where a
+    /// flag defaults to rather than what is on disk and so isn't on the seam.</summary>
     internal static LocalFileSystem FileSystem()
     => new();
 
-    /// <summary>The production <see cref="IProcessRunner"/>: real child processes. Typed
-    /// concretely for the same reason <see cref="FileSystem"/> is - naming the implementation is
-    /// this file's job, and the contexts hold the seam.</summary>
-    private static ProcessWrapper ProcessRunner()
+    /// <summary>Real child processes.</summary>
+    internal static ProcessWrapper ProcessRunner()
     => new();
 
-    /// <summary>The production <see cref="JobContext"/>: git against GitHub, process runner,
-    /// the coding agent selected by <see cref="JobConfig.Agent"/>, and stderr log sink, all wired
-    /// from <paramref name="config"/>. The one git client reads both the job's repo and the factory
-    /// repo holding the agent home files.</summary>
-    internal static JobContext DefaultContext(JobConfig config)
-    => new
-    (
-        GitHubGit(config.ReadToken, config.WorkDir),
-        ProcessRunner(),
-        SelectAgent(config.Agent.Kind),
-        Log: new StderrLog(),
-        FileSystem: FileSystem()
-    );
+    /// <summary>Diagnostics to stderr, which is where they belong when stdout carries the result a
+    /// caller parses.</summary>
+    internal static StderrLog Log()
+    => new();
 
     /// <summary>Git against repos on GitHub, authenticated with <paramref name="token"/> — the one
     /// place the GitHub host is spelled out. Commands that need no local repo run from
     /// <paramref name="workDir"/>.</summary>
-    private static GitCli GitHubGit(GitReadToken token, DirectoryPath workDir)
+    internal static GitCli GitHubGit(GitReadToken token, DirectoryPath workDir)
     => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessRunner(), workDir);
 
-    private static ICodingAgent SelectAgent(AgentKind agent)
+    /// <summary>The coding agent <paramref name="agent"/> names. The one factory that can't be
+    /// typed as its implementation: which one it is is the input.</summary>
+    internal static ICodingAgent SelectAgent(AgentKind agent)
     => agent switch
     {
         AgentKind.Claude => new ClaudeAgent(),
@@ -65,39 +57,22 @@ internal static class Composition
         _ => throw new NotSupportedException($"Unsupported agent: {agent}"),
     };
 
-    /// <summary>The production <see cref="CiFailureContext"/>: reading the run and judging its
-    /// branch are two roles against the same GitHub account under the same credential, so they are
-    /// two hosts over one shared <see cref="GitHubApi"/> transport rather than two independently
-    /// connected ones. This is where GitHub-hosting-its-own-CI is asserted — the seams themselves
-    /// don't require it, and pointing <see cref="CiFailureContext.Ci"/> at another CI provider is a
-    /// change to this method alone. Built only when the command runs, so a test that brings its own
-    /// stubs opens no connection at all.</summary>
-    internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
+    /// <summary>Reading a CI run and judging its branch, as two roles against the same GitHub
+    /// account under the same credential: two hosts over one shared <see cref="GitHubApi"/>
+    /// transport rather than two independently connected ones. Returned as a pair because sharing
+    /// the transport is the part that belongs here — this is where GitHub-hosting-its-own-CI is
+    /// asserted, and the seams themselves don't require it.</summary>
+    internal static (GitHubActionsCiHost Ci, GitHubCiFailureRepoHost RepoHost) GitHubCiHosts
+    (
+        RepoIdentifier repo, GitReadToken token
+    )
     {
-        var api = new GitHubApi(config.Repo, config.ReadToken);
-        return new CiFailureContext
-        (
-            new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), FileSystem(), new StderrLog()
-        );
+        var api = new GitHubApi(repo, token);
+        return (new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api));
     }
 
-    /// <summary>The production <see cref="SubmitContext"/>: git and the GitHub repo host, both
-    /// authenticated with the write token, a stderr log sink and the local disk.</summary>
-    internal static SubmitContext DefaultSubmitContext(SubmitConfig config)
-    => new
-    (
-        GitHubGit(config.WriteToken, config.WorkDir),
-        new GitHubSubmitRepoHost(config.Repo, config.WriteToken),
-        new StderrLog(),
-        FileSystem()
-    );
-
-    /// <summary>The production <see cref="InitializeContext"/>: writes each template to disk
-    /// (creating any missing parent directory), and logs to stderr.</summary>
-    internal static InitializeContext DefaultInitializeContext()
-    => new
-    (
-        FileSystem(),
-        new StderrLog()
-    );
+    /// <summary>The GitHub side of <c>submit</c>: opening pull requests and inspecting branches,
+    /// authenticated with the write token.</summary>
+    internal static GitHubSubmitRepoHost GitHubSubmitHost(RepoIdentifier repo, GitToken token)
+    => new(repo, token);
 }

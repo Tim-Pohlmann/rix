@@ -64,7 +64,17 @@ internal static class CiFailureCommand
     /// <see cref="ExecuteAsync"/> so a test supplies a context of its own and never reaches
     /// <see cref="Composition"/>.</summary>
     internal static Task<int> ExecuteDefaultAsync(CiFailureConfig config, CancellationToken cancellationToken)
-    => ExecuteAsync(config, Composition.DefaultCiFailureContext(config), cancellationToken);
+    => ExecuteAsync(config, DefaultContext(config), cancellationToken);
+
+    /// <summary>What a check runs against in production: the two GitHub hosts sharing one
+    /// transport, the disk it writes its verdict to, and the log it reports a lost verdict through.
+    /// Built only when the command runs, so a test that brings its own stubs opens no connection at
+    /// all.</summary>
+    internal static CiFailureContext DefaultContext(CiFailureConfig config)
+    {
+        var (ci, repoHost) = Composition.GitHubCiHosts(config.Repo, config.ReadToken);
+        return new CiFailureContext(ci, repoHost, Composition.FileSystem(), Composition.Log());
+    }
 
     /// <summary>
     /// Imperative shell around <see cref="CiFailureRunner.RunAsync"/>: reports what the check
