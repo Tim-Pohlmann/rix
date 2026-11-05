@@ -338,15 +338,15 @@ public class CiFailureRunnerTests
     [TestMethod]
     public async Task ExecuteCiFailureAsync_StillReturnsExitCode_WhenTheVerdictCannotBeWritten()
     {
-        using var stderr = new ConsoleErrorScope();
         var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
         var fullDisk = new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full"));
+        var log = new StubLog();
 
         var exitCode = await CiFailureCommand.ExecuteAsync(
-            Config(), new CiFailureContext(ci, new StubCiFailureRepoHost(), fullDisk), CancellationToken.None);
+            Config(), new CiFailureContext(ci, new StubCiFailureRepoHost(), fullDisk, log), CancellationToken.None);
 
         Assert.AreEqual(0, exitCode);
-        StringAssert.Contains(stderr.Text, "warning: failed to write result.json: disk full");
+        CollectionAssert.Contains(log.Lines, "warning: failed to write result.json: disk full");
     }
 
     private CiFailureConfig Config() => TestConfig.ValidCiFailure(outputDir: _outputDir);
@@ -354,7 +354,7 @@ public class CiFailureRunnerTests
     /// <summary>The shell's counterpart to <see cref="Detect"/>, defaulting the repo host the same
     /// way.</summary>
     private Task<int> Execute(StubCiHost ci, StubCiFailureRepoHost? repoHost = null)
-    => CiFailureCommand.ExecuteAsync(Config(), new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost(), new LocalFileSystem()), CancellationToken.None);
+    => CiFailureCommand.ExecuteAsync(Config(), new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost(), new LocalFileSystem(), new StubLog()), CancellationToken.None);
 
     private JsonObject WrittenResult()
     => JsonNode.Parse(File.ReadAllText(Path.Combine(_outputDir, "result.json")))!.AsObject();

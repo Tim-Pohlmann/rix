@@ -1,28 +1,16 @@
 namespace Rix.Cli;
 
-/// <summary>The writes a command makes once its outcome is already decided: the result JSON to
-/// stdout, and for <c>ci-failure</c> its <c>result.json</c> too. Every one of them reports a
-/// failure instead of raising it, and none of them takes a <see cref="CancellationToken"/> - a
-/// broken pipe, a full disk, or a cancellation arriving in the window after the work finished must
-/// not stop the correct exit code from being returned. Only the output is lost.
+/// <summary>The lines a command writes to a console stream once its outcome is already decided:
+/// the result JSON to stdout, so a caller watching the command sees the same verdict that went to
+/// disk. Reports a failure instead of raising it and takes no
+/// <see cref="CancellationToken"/> - a broken pipe, or a cancellation arriving in the window after
+/// the work finished, must not stop the correct exit code from being returned. Only the line is
+/// lost.
 ///
-/// <c>job</c>'s artifacts don't come through here: they are the job's own product and
-/// <see cref="Rix.Job.JobArtifacts"/> writes them, under the same rule.</summary>
+/// Files don't come through here, whether they are a job's artifacts or <c>ci-failure</c>'s
+/// verdict: <see cref="BestEffortArtifact"/> writes those, under the same rule.</summary>
 internal static class BestEffortOutput
 {
-    internal static async Task WriteAsync(IFileSystem fileSystem, DirectoryPath outputDir, string name, string content)
-    {
-        try
-        {
-            await fileSystem.WriteAllTextAsync(Path.Combine(outputDir.Value, name), content, CancellationToken.None);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Also best-effort: a closed/broken stderr must not defeat the exit-code guarantee.
-            await WriteLineAsync(Console.Error, $"warning: failed to write {name}: {ex.Message}");
-        }
-    }
-
     internal static async Task WriteLineAsync(TextWriter writer, string line)
     {
         try { await writer.WriteLineAsync(line); }

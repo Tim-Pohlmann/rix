@@ -94,7 +94,10 @@ internal static class CiFailureCommand
 
         var json = JsonSerializer.Serialize(result, CiFailureJsonContext.Default.ICiFailureResult);
         await BestEffortOutput.WriteLineAsync(Console.Out, json);
-        await BestEffortOutput.WriteAsync(context.FileSystem, config.OutputDir, "result.json", json);
+        await BestEffortArtifact.WriteAsync
+        (
+            context.FileSystem, context.Log, config.OutputDir, "result.json", json
+        );
 
         // A detected failure exits successfully like the rest: it is a verdict, not an outcome, and
         // the caller decides what to do with it. Only CiFailureError - a problem talking to the API,
@@ -108,7 +111,7 @@ internal static class CiFailureCommand
     }
 
     /// <summary>Writes the prompt beside the verdict and returns the verdict naming it. Unlike
-    /// <see cref="BestEffortOutput"/>'s writes, a failure is turned into a
+    /// <see cref="BestEffortArtifact"/>'s writes, a failure is turned into a
     /// <see cref="CiFailureError"/>: this one runs before the verdict is reported rather than
     /// after, and a <c>detected</c> result whose prompt never reached disk would send a caller to a
     /// file that isn't there. Reporting it as an error instead leaves the caller with no branch and

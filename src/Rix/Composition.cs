@@ -69,7 +69,10 @@ internal static class Composition
     internal static CiFailureContext DefaultCiFailureContext(CiFailureConfig config)
     {
         var api = new GitHubApi(config.Repo, config.ReadToken);
-        return new CiFailureContext(new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), FileSystem());
+        return new CiFailureContext
+        (
+            new GitHubActionsCiHost(api), new GitHubCiFailureRepoHost(api), FileSystem(), new StderrLog()
+        );
     }
 
     /// <summary>The production <see cref="SubmitContext"/>: git and the GitHub repo host, both
