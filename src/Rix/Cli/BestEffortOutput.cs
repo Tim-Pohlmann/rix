@@ -8,7 +8,7 @@ namespace Rix.Cli;
 ///
 /// Takes the one write it performs rather than a file system, so what it can touch is visible in
 /// its signature. <c>job</c>'s artifacts don't come through here: they are the job's own product
-/// and <see cref="Rix.Job.JobOutput"/> writes them, under the same rule.</summary>
+/// and <see cref="Rix.Job.JobArtifacts"/> writes them, under the same rule.</summary>
 internal static class BestEffortOutput
 {
     internal static async Task WriteAsync(WriteFileAsync write, DirectoryPath outputDir, string name, string content)

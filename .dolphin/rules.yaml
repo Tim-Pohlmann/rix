@@ -200,13 +200,13 @@ rules:
       Async methods in this codebase take and propagate a CancellationToken.
       Add one and forward it to any awaited call. What is excluded is the
       writes that record an outcome already decided - the CLI shell, and the
-      job's own artifacts in JobOutput: those must finish even once
+      job's own artifacts in JobArtifacts: those must finish even once
       cancellation has been requested, so they are handed no token to honour.
     paths:
       exclude:
         - src/Rix/Startup.cs
         - src/Rix/Cli/**
-        - src/Rix/Job/JobOutput.cs
+        - src/Rix/Job/JobArtifacts.cs
     patterns:
       - pattern-either:
           - pattern: "async Task $M(...) { ... }"

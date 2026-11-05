@@ -58,13 +58,13 @@ internal static class JobCommand
 
     /// <summary>What a CLI adds to a run: the result on stdout for a human or a shell watching the
     /// command, and an exit code. The artifacts the job itself produces are
-    /// <see cref="JobRunner.RunAsync"/>'s (see <see cref="JobOutput"/>), so nothing here can leave a
+    /// <see cref="JobRunner.RunAsync"/>'s (see <see cref="JobArtifacts"/>), so nothing here can leave a
     /// job half-recorded. The same JSON has already gone to <c>result.json</c>, which is why losing
     /// stdout to a broken pipe costs nothing but the echo.</summary>
     internal static async Task<int> ExecuteAsync(JobConfig config, JobContext context, CancellationToken cancellationToken)
     {
         var result = await JobRunner.RunAsync(config, context, cancellationToken);
-        await BestEffortOutput.WriteLineAsync(Console.Out, JobOutput.Serialize(result));
+        await BestEffortOutput.WriteLineAsync(Console.Out, JobArtifacts.Serialize(result));
         return ExitCode(result);
     }
 

@@ -19,7 +19,7 @@ internal static class JobRunner
 {
     /// <summary>Runs a job and leaves its output in <see cref="JobConfig.OutputDir"/>. The writes
     /// happen here rather than in the caller because <c>result.json</c> and <c>transcript.md</c> are
-    /// the job's product (see <see cref="JobOutput"/>), and because every way the run can end -
+    /// the job's product (see <see cref="JobArtifacts"/>), and because every way the run can end -
     /// including a setup failure before the agent started - has to leave the same artifacts behind.
     /// What the caller adds is a CLI's own: printing the result and choosing an exit code.</summary>
     internal static async Task<IJobResult> RunAsync
@@ -31,7 +31,7 @@ internal static class JobRunner
     {
         var transcript = new List<string>();
         var result = await RunCoreAsync(config, context, transcript, cancellationToken);
-        await JobOutput.WriteAsync(config, context, result, transcript);
+        await JobArtifacts.WriteAsync(config, context, result, transcript);
         return result;
     }
 

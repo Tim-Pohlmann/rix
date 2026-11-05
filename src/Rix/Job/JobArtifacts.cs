@@ -11,8 +11,10 @@ namespace Rix.Job;
 ///
 /// <c>result.json</c> is written whatever the outcome, including a <see cref="SetupFailure"/>
 /// before the agent ran, so there is one place to read the outcome from instead of scraping stdout.
-/// </summary>
-internal static class JobOutput
+///
+/// Named for the files rather than for the outcome: <see cref="IJobResult"/> is what happened, this
+/// is what the job leaves behind about it.</summary>
+internal static class JobArtifacts
 {
     /// <summary>The result as JSON - the one spelling of it, so what lands in
     /// <c>result.json</c> and what the CLI prints to stdout cannot drift apart.</summary>
