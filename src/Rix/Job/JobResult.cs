@@ -23,7 +23,7 @@ internal abstract record JobResultBase
     public int DurationSeconds => (int)Duration.TotalSeconds;
 }
 
-internal record JobSuccess
+internal sealed record JobSuccess
 (
     [property: JsonPropertyName("pendingPrRequests")] IReadOnlyList<PendingPr> PendingPrRequests,
     [property: JsonPropertyName("pendingPushRequests")] IReadOnlyList<PendingPush> PendingPushRequests,
