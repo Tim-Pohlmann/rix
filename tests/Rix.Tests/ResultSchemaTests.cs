@@ -51,8 +51,8 @@ public class ResultSchemaTests
     }
 
     /// <summary>The schemas claim every property is always written; this holds them to it by
-    /// serializing one of each variant exactly the way <see cref="Startup"/> does and comparing the
-    /// fields that come out with the ones its schema requires.</summary>
+    /// serializing one of each variant exactly the way the command that writes it does and
+    /// comparing the fields that come out with the ones its schema requires.</summary>
     [TestMethod]
     public void EveryVariant_WritesExactlyTheFieldsItsSchemaRequires()
     {

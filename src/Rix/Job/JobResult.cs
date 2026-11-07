@@ -34,7 +34,8 @@ internal sealed record JobSuccess
 /// <summary>Shared base for the two failure shapes — a job that ran and failed
 /// (<see cref="JobFailure"/>) and a failure before the job could run (<see cref="SetupFailure"/>).
 /// They are <em>siblings</em> rather than one deriving from the other, so the exit-code switch in
-/// <see cref="Rix.Startup"/> matches disjoint concrete types and is no longer order-sensitive.</summary>
+/// <see cref="Rix.Cli.JobCommand"/> matches disjoint concrete types and is no longer
+/// order-sensitive.</summary>
 internal abstract record JobFailureBase
 (
     [property: JsonPropertyName("error")] string Error,

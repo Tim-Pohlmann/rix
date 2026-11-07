@@ -9,7 +9,6 @@ namespace Rix.Tests;
 public class CiFailureRunnerTests
 {
     private static readonly RepoIdentifier Repo = new RepoIdentifier("owner/repo");
-    private static readonly RunId Run = new(1);
 
     /// <summary>A real directory, because the runner writes into it: the check's files are its
     /// product, so there is no running it without somewhere to put them.</summary>
