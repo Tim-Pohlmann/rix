@@ -21,6 +21,11 @@ inputs:
       is left alone instead of answered (default: 5). Bounds rix reacting to the CI failures of its
       own fixes forever; a commit by anyone else at the tip clears the count.
     required: false
+  prompt-artifact:
+    description: >-
+      Name to upload out/prompt.md under when there is a branch, for the job answering the failure
+      to pick up with run-rix-job's prompt-artifact. Omit to leave the prompt in out/.
+    required: false
   rix-version:
     description: "Rix release tag to download, or 'latest'"
     required: false
@@ -165,3 +170,21 @@ runs:
         esac
 
         exit "$exit_code"
+
+    # The prompt travels as a file rather than a job output for two reasons: it is built from the
+    # failing run's log output, so it has no size bound a job output could honour, and keeping it
+    # out of $GITHUB_OUTPUT leaves that channel carrying only the short values rix validated -
+    # nothing long enough or arbitrary enough to forge a second output alongside it.
+    - name: Upload prompt
+      if: steps.detect.outputs.branch != '' && inputs.prompt-artifact != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.prompt-artifact }}
+        path: out/prompt.md
+        # A branch here means rix wrote the prompt: it writes the file before it reports the
+        # verdict, and a failed write is reported as an error instead, which names no branch.
+        # So a missing file is a broken invariant rather than a case to handle, and the default
+        # (warn, upload nothing) would let it surface one job later as the `run` job failing to
+        # download an artifact that was never created - pointing at the wrong step. Fail here,
+        # where it actually broke.
+        if-no-files-found: error

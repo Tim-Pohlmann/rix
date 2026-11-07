@@ -2,7 +2,8 @@ name: Submit rix job
 description: >-
   Pushes the branches from a `rix job` result and opens their pull requests via `rix submit`.
   Assumes the calling job has already checked out Tim-Pohlmann/rix (see
-  .github/actions/download-rix) and that input-dir holds a prior `rix job` run's result.json.
+  .github/actions/download-rix), and that a prior `rix job` run's result.json is in input-dir or
+  in the artifact input-artifact names.
 
 inputs:
   repo:
@@ -15,6 +16,11 @@ inputs:
     description: Directory holding result.json and the git bundles produced by `rix job`
     required: false
     default: out
+  input-artifact:
+    description: >-
+      Name of the artifact run-rix-job uploaded with output-artifact, downloaded into input-dir
+      first. Omit when `rix job` ran in this same job, where input-dir is already there.
+    required: false
   allowed-push-branches:
     description: >-
       Comma-separated branches a pending push may deliver to; must repeat whatever the `rix job`
@@ -32,6 +38,13 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Download job output
+      if: inputs.input-artifact != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.input-artifact }}
+        path: ${{ inputs.input-dir }}
+
     - name: Download rix
       uses: ./.github/actions/download-rix
       with:
