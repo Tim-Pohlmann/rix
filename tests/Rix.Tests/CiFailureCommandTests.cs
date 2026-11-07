@@ -8,7 +8,7 @@ namespace Rix.Tests;
 public class CiFailureCommandTests
 {
     private static CiFailureConfig Read(params string[] args)
-    => CiFailureCommand.CreateConfig(CommandArgs.Parse(CiFailureCommand.Build(), ["ci-failure", .. args]), new LocalFileSystem());
+    => CiFailureCommand.CreateConfig(CommandArgs.Parse(CiFailureCommand.Build(), args), new LocalFileSystem());
 
     /// <summary>Reads <c>ci-failure</c> with valid values for every required flag, then
     /// <paramref name="extra"/>.</summary>
@@ -73,7 +73,7 @@ public class CiFailureCommandTests
         // requires nor accepts one - a caller passing it gets the parser's own unknown-option error.
         var parsed = CommandArgs.Parse(
             CiFailureCommand.Build(),
-            "ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
+            "--repo", "o/r", "--read-token", "r", "--run-id", "1",
             "--output-dir", Path.GetTempPath(), "--prompt", "fix it");
 
         Assert.AreNotEqual(0, parsed.Errors.Count);
@@ -92,7 +92,7 @@ public class CiFailureCommandTests
         // belongs to whoever performs that run - on another machine, from another command line.
         var parsed = CommandArgs.Parse(
             CiFailureCommand.Build(),
-            "ci-failure", "--repo", "o/r", "--read-token", "r", "--run-id", "1",
+            "--repo", "o/r", "--read-token", "r", "--run-id", "1",
             "--output-dir", Path.GetTempPath(), flag, value);
 
         Assert.AreNotEqual(0, parsed.Errors.Count);
