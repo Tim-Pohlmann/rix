@@ -73,7 +73,7 @@ public class JobRunnerTests
     {
         var host = new StubGit(clone: () => throw new RepoHostException("git clone failed: exit code 128"));
 
-        var result = await JobRunner.RunAsync(MakeConfig(),
+        var result = await RunJobAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))),
             CancellationToken.None);
 
@@ -93,7 +93,7 @@ public class JobRunnerTests
             return Task.CompletedTask;
         });
 
-        var run = JobRunner.RunAsync(MakeConfig(), Context(host, FakeRunner(), _ => installReleased.Task), CancellationToken.None);
+        var run = RunJobAsync(MakeConfig(), Context(host, FakeRunner(), _ => installReleased.Task), CancellationToken.None);
 
         await cloned.Task.WaitAsync(TimeSpan.FromSeconds(10));
         installReleased.SetResult(new Installed());
@@ -121,7 +121,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_WritesResultJson_OnSetupFailure()
     {
-        await JobRunner.RunAsync(
+        await RunJobAsync(
             MakeConfig(),
             Context(new StubGit(), FakeRunner(),
                 _ => Task.FromResult<InstallResult>(new InstallFailed("install failed"))), CancellationToken.None);
@@ -131,11 +131,12 @@ public class JobRunnerTests
         Assert.AreEqual("setupFailure", doc.RootElement.GetProperty("status").GetString());
     }
 
-    /// <summary>An unwritable output directory costs the artifact and nothing else: the job ran,
-    /// so it still reports what it did. The warning goes to the run's log sink, which is stderr in
-    /// production.</summary>
+    /// <summary>An unwritable output directory doesn't change what the job did - it ran, and the
+    /// result still goes to stdout - but it does change the exit code: the file <c>rix submit</c>
+    /// and the job summary read is missing, so a caller cannot treat this run as finished. The
+    /// reason goes to the run's log sink, which is stderr in production.</summary>
     [TestMethod]
-    public async Task ExecuteJobAsync_StillReturnsExitCode_WhenResultJsonCannotBeWritten()
+    public async Task ExecuteJobAsync_Returns3_WhenResultJsonCannotBeWritten()
     {
         var log = new StubLog();
 
@@ -145,8 +146,52 @@ public class JobRunnerTests
                 fileSystem: new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full"))),
             CancellationToken.None);
 
-        Assert.AreEqual(0, result);
+        Assert.AreEqual(3, result);
         CollectionAssert.Contains(log.Lines, "warning: failed to write result.json: disk full");
+    }
+
+    /// <summary>The lost file is reported ahead of the job's own failure. Both are true, and a
+    /// caller told only "the job failed" would go on to read a file that isn't there; 3 says it
+    /// cannot read the outcome at all, and stdout still carries it.</summary>
+    [TestMethod]
+    public async Task ExecuteJobAsync_Returns3_WhenAFailedJobAlsoCannotWriteResultJson()
+    {
+        var result = await Run(
+            claudeExitCode: 1,
+            fileSystem: new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full")));
+
+        Assert.AreEqual(3, result);
+    }
+
+    /// <summary>What the run hands back about the file, which is what the exit code above is
+    /// decided from: the job's own result is untouched by the loss.</summary>
+    [TestMethod]
+    public async Task RunAsync_ReportsTheLostResultFile_WithoutChangingTheResult()
+    {
+        var outcome = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()),
+                fileSystem: new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full"))),
+            CancellationToken.None);
+
+        Assert.IsInstanceOfType<JobSuccess>(outcome.Result);
+        var lost = outcome.ResultFile switch
+        {
+            ArtifactLost l => l,
+            var other => throw new AssertFailedException($"expected the result file to be lost, got {other}"),
+        };
+        Assert.AreEqual("disk full", lost.Error);
+    }
+
+    /// <summary>And the other way round, since the exit code hangs off it: a run whose files
+    /// landed says so.</summary>
+    [TestMethod]
+    public async Task RunAsync_ReportsTheResultFileAsWritten_WhenItLands()
+    {
+        var outcome = await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
+            CancellationToken.None);
+
+        Assert.IsInstanceOfType<ArtifactWritten>(outcome.ResultFile);
     }
 
     [TestMethod]
@@ -239,7 +284,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        var result = await JobRunner.RunAsync(MakeConfig(),
+        var result = await RunJobAsync(MakeConfig(),
             Context(new StubGit(), runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -254,7 +299,7 @@ public class JobRunnerTests
     {
         var host = new StubGit();
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await RunJobAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -277,7 +322,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await RunJobAsync(MakeConfig(),
             Context(host, tracker, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -292,7 +337,7 @@ public class JobRunnerTests
         var host = new StubGit(
             configureIdentity: _ => throw new RepoHostException("git config failed: exited with code 128"));
 
-        var result = await JobRunner.RunAsync(MakeConfig(),
+        var result = await RunJobAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -310,7 +355,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await RunJobAsync(MakeConfig(),
             Context(new StubGit(), tracker, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -329,7 +374,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"));
         };
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await RunJobAsync(MakeConfig(),
             Context(new StubGit(), tracker, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -357,7 +402,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await RunJobAsync(MakeConfig(),
             Context(new StubGit(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -375,7 +420,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await RunJobAsync(MakeConfig(),
             Context(new StubGit(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed()),
                 log: log),
@@ -512,7 +557,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        await JobRunner.RunAsync(MakeConfig(allowedPushBranches: ["rix/my-fix"]),
+        await RunJobAsync(MakeConfig(allowedPushBranches: ["rix/my-fix"]),
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -541,7 +586,7 @@ public class JobRunnerTests
             return new ProcessSuccess();
         };
 
-        var result = await JobRunner.RunAsync(MakeConfig(allowedPushBranches: ["rix/dup"]),
+        var result = await RunJobAsync(MakeConfig(allowedPushBranches: ["rix/dup"]),
             Context(host, runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -627,7 +672,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_WritesResultJson_WhenTheJobSucceeds()
     {
-        var result = await JobRunner.RunAsync(MakeConfig(),
+        var result = await RunJobAsync(MakeConfig(),
             Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -647,7 +692,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await RunJobAsync(MakeConfig(),
             Context(new StubGit(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
@@ -667,7 +712,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await RunJobAsync(MakeConfig(),
             Context(new StubGit(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
@@ -681,7 +726,7 @@ public class JobRunnerTests
         RunProcess runner = (f, a, d, e, onLine, ct) =>
             Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1", Diagnostic: "Invalid API key"));
 
-        var result = await JobRunner.RunAsync(MakeConfig(),
+        var result = await RunJobAsync(MakeConfig(),
             Context(new StubGit(), runner, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -692,7 +737,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_JobFailureError_OmitsDiagnosticSuffix_WhenAbsent()
     {
-        var result = await JobRunner.RunAsync(MakeConfig(),
+        var result = await RunJobAsync(MakeConfig(),
             Context(new StubGit(), FakeRunner(claudeExitCode: 1), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -703,7 +748,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_ReturnsSetupFailure_WhenInstallerFails()
     {
-        var result = await JobRunner.RunAsync(MakeConfig(),
+        var result = await RunJobAsync(MakeConfig(),
             Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new InstallFailed("nope"))),
             CancellationToken.None);
 
@@ -715,7 +760,7 @@ public class JobRunnerTests
     {
         var host = new StubGit(clone: () => throw new RepoHostException("git clone failed: exit code 128"));
 
-        var result = await JobRunner.RunAsync(MakeConfig(),
+        var result = await RunJobAsync(MakeConfig(),
             Context(host, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -732,7 +777,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(agentApiKey: "secret", agentApiKeyEnv: "ANTHROPIC_API_KEY"),
+        await RunJobAsync(MakeConfig(agentApiKey: "secret", agentApiKeyEnv: "ANTHROPIC_API_KEY"),
             Context(new StubGit(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -750,7 +795,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await RunJobAsync(MakeConfig(),
             Context(new StubGit(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -765,7 +810,7 @@ public class JobRunnerTests
         var git = SparseCloneLayingOut("config/home");
         var homeHadFileWhenAgentRan = false;
 
-        await JobRunner.RunAsync(
+        await RunJobAsync(
             MakeConfig(agentHome: AgentHome("acme/factory", home, "config/home")),
             Context(git,
                 OnAgent(() => homeHadFileWhenAgentRan = File.Exists(Path.Combine(home, "agent.md"))),
@@ -782,7 +827,7 @@ public class JobRunnerTests
     {
         var git = new StubGit();
 
-        await JobRunner.RunAsync(MakeConfig(),
+        await RunJobAsync(MakeConfig(),
             Context(git, FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 
@@ -843,6 +888,12 @@ public class JobRunnerTests
             _ => Task.FromResult<InstallResult>(new Installed()),
             fileSystem: fileSystem), CancellationToken.None);
 
+    /// <summary>The job's own result, for the tests that are about what the run did rather than
+    /// about whether <c>result.json</c> landed. The few that are about the file call
+    /// <see cref="JobRunner.RunAsync"/> itself.</summary>
+    private static async Task<IJobResult> RunJobAsync(JobConfig config, JobContext context, CancellationToken cancellationToken)
+    => (await JobRunner.RunAsync(config, context, cancellationToken)).Result;
+
     private JobConfig MakeConfig(
         string[]? allowedPushBranches = null,
         string? agentApiKey = null,
@@ -884,7 +935,7 @@ public class JobRunnerTests
     )
     {
         var agentRan = false;
-        var result = await JobRunner.RunAsync(
+        var result = await RunJobAsync(
             MakeConfig(agentHome: agentHome),
             Context(git, OnAgent(() => agentRan = true),
                 _ => Task.FromResult<InstallResult>(new Installed())),
@@ -925,7 +976,7 @@ public class JobRunnerTests
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
-        await JobRunner.RunAsync(config,
+        await RunJobAsync(config,
             Context(new StubGit(), capture, _ => Task.FromResult<InstallResult>(new Installed())),
             CancellationToken.None);
 

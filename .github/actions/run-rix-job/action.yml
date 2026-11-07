@@ -113,9 +113,10 @@ runs:
         "$RIX_BIN" job --agent "$RIX_AGENT" --output-dir out --work-dir work
 
     - name: Post job summary
-      # result.json is always written by rix job - on failure too (see Startup.ExecuteJobAsync) -
-      # so this renders the job outcome even when the step above failed and the later create-pr
-      # job is skipped.
+      # rix job writes result.json whatever its outcome - on failure too (see JobRunner.RunAsync)
+      # - so this renders the job outcome even when the step above failed and the later create-pr
+      # job is skipped. The one case with no file to render is a run that could not write it, which
+      # rix reports as exit code 3 rather than as its own outcome; the summary says so.
       if: always()
       uses: ./.github/actions/post-job-summary
       with:

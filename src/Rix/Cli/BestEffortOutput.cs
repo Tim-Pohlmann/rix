@@ -8,7 +8,8 @@ namespace Rix.Cli;
 /// lost.
 ///
 /// Files don't come through here, whether they are a job's artifacts or <c>ci-failure</c>'s
-/// verdict: <see cref="BestEffortArtifact"/> writes those, under the same rule.</summary>
+/// verdict: <see cref="ArtifactFile"/> writes those, and what a lost one costs is decided per
+/// file there rather than always being nothing.</summary>
 internal static class BestEffortOutput
 {
     internal static async Task WriteLineAsync(TextWriter writer, string line)

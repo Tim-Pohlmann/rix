@@ -11,6 +11,8 @@ namespace Rix.Job;
 ///
 /// <c>result.json</c> is written whatever the outcome, including a <see cref="SetupFailure"/>
 /// before the agent ran, so there is one place to read the outcome from instead of scraping stdout.
+/// It is also the one artifact whose loss is reported rather than warned about - see
+/// <see cref="WriteAsync"/>.
 ///
 /// Named for the files rather than for the outcome: <see cref="IJobResult"/> is what happened, this
 /// is what the job leaves behind about it.</summary>
@@ -21,22 +23,30 @@ internal static class JobArtifacts
     internal static string Serialize(IJobResult result)
     => JsonSerializer.Serialize(result, JobJsonContext.Default.IJobResult);
 
-    internal static async Task WriteAsync
+    /// <summary>Writes both and returns what became of <c>result.json</c>, the one of the two a
+    /// caller has to know about: <c>rix submit</c> reads it back out of this directory and refuses
+    /// a directory without one, so losing it leaves the run unfinished however well the job itself
+    /// went. <c>transcript.md</c> is an echo of what is already in the log, so the warning
+    /// <see cref="ArtifactFile"/> emits is the whole of what its loss costs and there is nothing
+    /// here to return about it.</summary>
+    internal static async Task<IArtifactWrite> WriteAsync
     (
         JobConfig config, JobContext context, IJobResult result, IReadOnlyList<string> transcript
     )
     {
-        await Write(config, context, "result.json", Serialize(result));
+        var resultFile = await Write(config, context, "result.json", Serialize(result));
         // Skipped entirely when nothing was extracted, so the artifact only exists when there is
         // content: joined with a blank line, it is a human-readable log of what the agent said.
         if (transcript.Count > 0)
             await Write(config, context, "transcript.md", string.Join("\n\n", transcript));
+
+        return resultFile;
     }
 
     /// <summary>One artifact into the job's output directory, under
-    /// <see cref="BestEffortArtifact"/>'s rule: a write that cannot fail the run it is recording.
-    /// Here only to spare both call sites the same four fields out of
-    /// <paramref name="config"/> and <paramref name="context"/>.</summary>
-    private static Task Write(JobConfig config, JobContext context, string name, string content)
-    => BestEffortArtifact.WriteAsync(context.FileSystem, context.Log, config.OutputDir, name, content);
+    /// <see cref="ArtifactFile"/>'s rule: a write that cannot throw and cannot be cancelled. Here
+    /// only to spare both call sites the same four fields out of <paramref name="config"/> and
+    /// <paramref name="context"/>.</summary>
+    private static Task<IArtifactWrite> Write(JobConfig config, JobContext context, string name, string content)
+    => ArtifactFile.WriteAsync(context.FileSystem, context.Log, config.OutputDir, name, content);
 }
