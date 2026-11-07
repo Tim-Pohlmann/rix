@@ -24,13 +24,30 @@ internal static class CiFailureRunner
     /// — nothing here re-trims what comes back.</summary>
     private const int LogTailChars = 20_000;
 
+    /// <summary>Checks a run and leaves its output in <see cref="CiFailureConfig.OutputDir"/>. The
+    /// writes happen here rather than in the caller because <c>result.json</c> and <c>prompt.md</c>
+    /// are the check's product (see <see cref="CiFailureArtifacts"/>), and because one of them can
+    /// still change the verdict: a prompt that never reached disk is reported as a
+    /// <see cref="CiFailureError"/>, which only works while the write is inside the thing that
+    /// returns the verdict. What the caller adds is a CLI's own: printing the verdict and choosing
+    /// an exit code.</summary>
     internal static async Task<ICiFailureResult> RunAsync
     (
-        RepoIdentifier repo,
-        RunId runId,
-        ICiHost ci,
-        ICiFailureRepoHost repoHost,
-        MaxRixCommits maxRixCommits,
+        CiFailureConfig config,
+        CiFailureContext context,
+        CancellationToken cancellationToken
+    )
+    {
+        var result = await CheckAsync(config, context, cancellationToken);
+        return await CiFailureArtifacts.WriteAsync(config, context, result);
+    }
+
+    /// <summary>The check itself, in one method so each way it can end is a plain <c>return</c> and
+    /// the artifacts are written once, by <see cref="RunAsync"/>, whichever one it took.</summary>
+    private static async Task<ICiFailureResult> CheckAsync
+    (
+        CiFailureConfig config,
+        CiFailureContext context,
         CancellationToken cancellationToken
     )
     {
@@ -41,7 +58,7 @@ internal static class CiFailureRunner
         // here branches on which, so they are caught together.
         try
         {
-            var run = await ci.GetRunAsync(runId, cancellationToken);
+            var run = await context.Ci.GetRunAsync(config.RunId, cancellationToken);
             if (run.Outcome is not CiFailed)
                 return new CiFailureSkipped(run.Outcome.Name);
 
@@ -49,26 +66,29 @@ internal static class CiFailureRunner
             // a branch into this repo takes write access to it, so a run whose head is this repo was
             // put there by someone who has it, and a run whose head is a fork was not. What makes
             // two repo identities the same one is RepoIdentifier's own rule, not this comparison's.
-            if (run.HeadRepo != repo)
+            if (run.HeadRepo != config.Repo)
                 return new CiFailureUntrustedRun(run.HeadRepo.Value, run.HeadBranch.Value);
 
             // Answered before anything else is fetched, rather than concurrently with it: it is the
             // one question whose answer makes all the remaining work pointless, and the log fetch is
             // by far the most expensive call here. A single extra round-trip ahead of a run that then
             // spends minutes on a coding agent is the cheaper half of that trade.
-            var rixCommits = await repoHost.CountLeadingRixCommitsAsync(run.HeadBranch, maxRixCommits, cancellationToken);
-            if (rixCommits >= maxRixCommits.Value)
+            var rixCommits = await context.RepoHost.CountLeadingRixCommitsAsync(run.HeadBranch, config.MaxRixCommits, cancellationToken);
+            if (rixCommits >= config.MaxRixCommits.Value)
                 return new CiFailureLoopGuarded(run.HeadBranch.Value, rixCommits);
 
             // Independent of each other - only the already-fetched run is needed by both - so they
             // run concurrently rather than paying two sequential network round-trips.
-            var logsTask = ci.GetFailedJobLogsAsync(runId, LogTailChars, cancellationToken);
-            var prTask = repoHost.FindOpenPullRequestNumberAsync(run.HeadBranch, cancellationToken);
+            var logsTask = context.Ci.GetFailedJobLogsAsync(config.RunId, LogTailChars, cancellationToken);
+            var prTask = context.RepoHost.FindOpenPullRequestNumberAsync(run.HeadBranch, cancellationToken);
             await Task.WhenAll(logsTask, prTask);
             var logs = logsTask.Result;
             var prNumber = prTask.Result;
-            var prompt = BuildPrompt(repo, run, prNumber, logs);
-            return new CiFailureDetected(prompt, run.Url, run.HeadBranch.Value, prNumber);
+            var prompt = BuildPrompt(config.Repo, run, prNumber, logs);
+            return new CiFailureDetected
+            (
+                prompt, run.Url, run.HeadBranch.Value, prNumber, CiFailureArtifacts.PromptFile(config.OutputDir)
+            );
         }
         catch (Exception ex) when (ex is CiHostException or RepoHostException)
         {

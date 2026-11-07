@@ -12,25 +12,22 @@ internal interface ICiFailureResult;
 
 /// <summary>The run failed: a ready-to-use prompt, plus the raw facts it was built from, so a
 /// caller that wants a different prompt shape isn't forced to re-fetch them. The prompt itself
-/// stays out of the serialized verdict - see <see cref="PromptFile"/>, which is what reports it
-/// there.</summary>
+/// stays out of the serialized verdict - see <paramref name="PromptFile"/>, which is what reports
+/// it there.</summary>
+/// <param name="PromptFile">Where the prompt is written, which is what the verdict reports in its
+/// place: the prompt is built from the failing run's log output, so it is the one field with no
+/// bound on its length or its content, and a reader of the verdict should never have to quote it
+/// back out of a parsed field. A required part of the verdict rather than something patched in
+/// afterwards - <see cref="CiFailureArtifacts.PromptFile"/> is known before anything is written,
+/// and a verdict naming a file that could not be written is never returned at all.</param>
 internal sealed record CiFailureDetected
 (
     [property: JsonIgnore] string Prompt,
     [property: JsonPropertyName("runUrl")] string RunUrl,
     [property: JsonPropertyName("branch")] string Branch,
-    [property: JsonPropertyName("prNumber")] int? PrNumber
-) : ICiFailureResult
-{
-    /// <summary>Where the prompt was written, which is what the verdict reports in its place: the
-    /// prompt is built from the failing run's log output, so it is the one field with no bound on
-    /// its length or its content, and a reader of the verdict should never have to quote it back
-    /// out of a parsed field. Detection doesn't know this - which directory the result is written
-    /// to is the caller's choice, and writing it is the caller's job - so it is filled in by
-    /// whoever wrote the file, and is empty on the result the detector hands back.</summary>
-    [JsonPropertyName("promptFile")]
-    public string PromptFile { get; init; } = string.Empty;
-}
+    [property: JsonPropertyName("prNumber")] int? PrNumber,
+    [property: JsonPropertyName("promptFile")] string PromptFile
+) : ICiFailureResult;
 
 /// <summary>The run did not fail — it succeeded, was cancelled, is still running, or ended some
 /// other way its CI system has a word for. Nothing to do. <paramref name="Outcome"/> is that word,

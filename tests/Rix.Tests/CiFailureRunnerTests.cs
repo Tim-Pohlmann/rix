@@ -11,7 +11,8 @@ public class CiFailureRunnerTests
     private static readonly RepoIdentifier Repo = new RepoIdentifier("owner/repo");
     private static readonly RunId Run = new(1);
 
-    /// <summary>Only the shell's tests need this; the detector writes nothing.</summary>
+    /// <summary>A real directory, because the runner writes into it: the check's files are its
+    /// product, so there is no running it without somewhere to put them.</summary>
     private string _outputDir = null!;
 
     [TestInitialize]
@@ -27,11 +28,11 @@ public class CiFailureRunnerTests
     /// restated by the tests that aren't about the loop guard. The repo host is defaulted too: most
     /// of these are about reading the run, and an unstubbed one answers "no open PR, no rix commits"
     /// rather than needing to be spelled out.</summary>
-    private static Task<ICiFailureResult> Detect(
+    private Task<ICiFailureResult> Detect(
         StubCiHost ci,
         StubCiFailureRepoHost? repoHost = null,
         int maxRixCommits = CiFailureConfig.DefaultMaxRixCommits)
-    => CiFailureRunner.RunAsync(Repo, Run, ci, repoHost ?? new StubCiFailureRepoHost(), new MaxRixCommits(maxRixCommits), CancellationToken.None);
+    => CiFailureRunner.RunAsync(Config(maxRixCommits), Context(ci, repoHost), CancellationToken.None);
 
     [TestMethod]
     public async Task RunAsync_ReturnsSkipped_WhenRunDidNotFail()
@@ -232,6 +233,23 @@ public class CiFailureRunnerTests
         StringAssert.Contains(error.Error, "commit listing failed");
     }
 
+    /// <summary>The verdict the check hands back is complete: it names the prompt file, and the
+    /// file is there. The write living inside the check is what makes that true - while it was the
+    /// caller's, this result carried an empty path and only the caller's patched copy had one.
+    /// </summary>
+    [TestMethod]
+    public async Task RunAsync_NamesThePromptItWrote_WhenRunFailed()
+    {
+        var ci = new StubCiHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "rix/fix")),
+            getLogs: _ => Task.FromResult("boom: it broke"));
+
+        var detected = AssertDetected(await Detect(ci));
+
+        Assert.AreEqual(Path.Combine(_outputDir, "prompt.md"), detected.PromptFile);
+        StringAssert.Contains(await File.ReadAllTextAsync(detected.PromptFile), "boom: it broke");
+    }
+
     /// <summary>The imperative shell's own tests, beside the core's like
     /// <c>JobRunnerTests</c>'s are: <see cref="CiFailureCommand.ExecuteAsync"/> adds exactly two
     /// things to a detection - the exit code it maps the verdict to, and the files it drops in the
@@ -349,12 +367,16 @@ public class CiFailureRunnerTests
         CollectionAssert.Contains(log.Lines, "warning: failed to write result.json: disk full");
     }
 
-    private CiFailureConfig Config() => TestConfig.ValidCiFailure(outputDir: _outputDir);
+    private CiFailureConfig Config(int maxRixCommits = CiFailureConfig.DefaultMaxRixCommits)
+    => TestConfig.ValidCiFailure(outputDir: _outputDir, maxRixCommits: maxRixCommits);
+
+    private static CiFailureContext Context(StubCiHost ci, StubCiFailureRepoHost? repoHost = null)
+    => new(ci, repoHost ?? new StubCiFailureRepoHost(), new LocalFileSystem(), new StubLog());
 
     /// <summary>The shell's counterpart to <see cref="Detect"/>, defaulting the repo host the same
     /// way.</summary>
     private Task<int> Execute(StubCiHost ci, StubCiFailureRepoHost? repoHost = null)
-    => CiFailureCommand.ExecuteAsync(Config(), new CiFailureContext(ci, repoHost ?? new StubCiFailureRepoHost(), new LocalFileSystem(), new StubLog()), CancellationToken.None);
+    => CiFailureCommand.ExecuteAsync(Config(), Context(ci, repoHost), CancellationToken.None);
 
     private JsonObject WrittenResult()
     => JsonNode.Parse(File.ReadAllText(Path.Combine(_outputDir, "result.json")))!.AsObject();
