@@ -17,7 +17,17 @@ internal interface ICodingAgent
     /// side-effect seam as the rest of the job, from <paramref name="workingDirectory"/>, a scratch
     /// directory outside any repo.
     /// </summary>
-    Task<InstallResult> EnsureInstalledAsync(IProcessRunner processRunner, DirectoryPath workingDirectory, CancellationToken cancellationToken);
+    /// <param name="reportDiagnostic">Where what the installer writes to stderr goes - npm's
+    /// warnings, and whatever it says about a failure the reason only summarizes. An
+    /// <see cref="InstallFailed"/> names the command that failed; this is how the detail behind it
+    /// reaches whoever is watching the run.</param>
+    Task<InstallResult> EnsureInstalledAsync
+    (
+        IProcessRunner processRunner,
+        DirectoryPath workingDirectory,
+        Action<string> reportDiagnostic,
+        CancellationToken cancellationToken
+    );
 
     /// <summary>Builds the process invocation that launches the agent for this job (pure).</summary>
     AgentInvocation BuildInvocation(JobConfig config, string systemPrompt);
@@ -67,10 +77,16 @@ internal static class CodingAgentHelper
         DirectoryPath workingDirectory,
         string fileName,
         IEnumerable<string> args,
+        Action<string> reportDiagnostic,
         CancellationToken cancellationToken
     )
     {
-        var result = await processRunner.RunAsync(fileName, args, workingDirectory.Value, null, null, cancellationToken);
+        // No stdout sink: what these commands print is a version string or npm's progress, and all
+        // this needs from them is whether they worked.
+        var result = await processRunner.RunAsync
+        (
+            fileName, args, workingDirectory.Value, null, null, reportDiagnostic, cancellationToken
+        );
         if (result is ProcessFailure failure)
             return failure.Reason;
         return null;
@@ -87,11 +103,12 @@ internal static class CodingAgentHelper
         DirectoryPath workingDirectory,
         string cliName,
         string npmPackage,
+        Action<string> reportDiagnostic,
         CancellationToken cancellationToken
     )
     {
         Task<string?> Run(string fileName, IEnumerable<string> args)
-        => RunCommandAsync(processRunner, workingDirectory, fileName, args, cancellationToken);
+        => RunCommandAsync(processRunner, workingDirectory, fileName, args, reportDiagnostic, cancellationToken);
 
         if (await Run(cliName, ["--version"]) is null) return new Installed();
 

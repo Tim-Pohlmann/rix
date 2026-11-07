@@ -44,7 +44,7 @@ internal static class Composition
     /// place the GitHub host is spelled out. Commands that need no local repo run from
     /// <paramref name="workDir"/>.</summary>
     internal static GitCli GitHubGit(GitReadToken token, DirectoryPath workDir)
-    => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessRunner(), workDir);
+    => new(new UriBuilder(Uri.UriSchemeHttps, "github.com").Uri, token, ProcessRunner(), workDir, Log());
 
     /// <summary>The coding agent <paramref name="agent"/> names. The one factory that can't be
     /// typed as its implementation: which one it is is the input.</summary>

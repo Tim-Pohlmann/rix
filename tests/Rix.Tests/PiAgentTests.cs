@@ -12,7 +12,7 @@ public class PiAgentTests
 
     // Adapts a simple (fileName, args) -> ProcessResult stub to the full IProcessRunner shape.
     private static StubProcessRunner Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)
-    => new StubProcessRunner((fileName, args, _, _, _, _) => run(fileName, args));
+    => new StubProcessRunner((fileName, args, _, _, _, _, _) => run(fileName, args));
 
     // ---- EnsureInstalledAsync ----
 
@@ -23,7 +23,7 @@ public class PiAgentTests
             Runner((f, _) => Task.FromResult<ProcessResult>(f == "pi"
                 ? new ProcessSuccess()
                 : new ProcessFailure("exited with code 1"))),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<Installed>(result);
     }
@@ -41,7 +41,7 @@ public class PiAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
             }),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<Installed>(result);
     }
@@ -51,7 +51,7 @@ public class PiAgentTests
     {
         var result = await Agent.EnsureInstalledAsync(
             Runner((_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"))),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "npm");
@@ -68,7 +68,7 @@ public class PiAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
                 _ => throw new NotSupportedException(f),
             }),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "npm install");
@@ -94,7 +94,7 @@ public class PiAgentTests
                     _ => throw new NotSupportedException(f),
                 };
             }),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.AreEqual("@earendil-works/pi-coding-agent", installedPackage);
     }
@@ -109,7 +109,7 @@ public class PiAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
             }),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "could not be verified");

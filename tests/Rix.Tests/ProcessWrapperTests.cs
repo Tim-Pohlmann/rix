@@ -7,6 +7,29 @@ public class ProcessWrapperTests
 {
     private static readonly ProcessWrapper Wrapper = new();
 
+    // RunAsync takes both line sinks on every call - stderr has no optional reader, see
+    // IProcessRunner - while most tests here care about neither, so this supplies the ones a given
+    // test doesn't look at. The working directory is the same temp directory throughout.
+    private static Task<ProcessResult> RunAsync
+    (
+        string fileName,
+        IEnumerable<string> arguments,
+        IReadOnlyDictionary<string, string>? environmentOverrides = null,
+        Action<string>? reportOutput = null,
+        Action<string>? reportDiagnostic = null,
+        CancellationToken cancellationToken = default
+    )
+    => Wrapper.RunAsync
+    (
+        fileName,
+        arguments,
+        Path.GetTempPath(),
+        environmentOverrides,
+        reportOutput,
+        reportDiagnostic ?? (_ => { }),
+        cancellationToken
+    );
+
     private static string Shell => OperatingSystem.IsWindows() switch { true => "pwsh", false => "/bin/sh" };
 
     private static string Echo(string text)
@@ -34,14 +57,23 @@ public class ProcessWrapperTests
     {
         var lines = new List<string>();
 
-        var result = await Wrapper.RunAsync(
-            Shell, ["-c", Echo("hello")],
-            workingDirectory: Path.GetTempPath(),
-            onStdoutLine: lines.Add,
-            cancellationToken: CancellationToken.None);
+        var result = await RunAsync(Shell, ["-c", Echo("hello")], reportOutput: lines.Add);
 
         Assert.IsInstanceOfType<ProcessSuccess>(result);
         Assert.IsTrue(lines.Any(l => l.Contains("hello")), $"Expected 'hello' in output. Got: [{string.Join(", ", lines)}]");
+    }
+
+    // Stderr is redirected, so a reader that drops it fills the pipe and wedges the child: the sink
+    // is where those lines go, and nothing else in rix can see them.
+    [TestMethod]
+    public async Task RunAsync_ReportsStderrLines()
+    {
+        var diagnostics = new List<string>();
+
+        var result = await RunAsync(Shell, ["-c", EchoToStderr("careful")], reportDiagnostic: diagnostics.Add);
+
+        Assert.IsInstanceOfType<ProcessSuccess>(result);
+        Assert.IsTrue(diagnostics.Any(l => l.Contains("careful")), $"Expected 'careful' in diagnostics. Got: [{string.Join(", ", diagnostics)}]");
     }
 
     [TestMethod]
@@ -51,10 +83,7 @@ public class ProcessWrapperTests
             ? "Write-Output 'first'; Write-Output 'last'"
             : "echo first; echo last";
 
-        var result = await Wrapper.RunAsync(
-            Shell, ["-c", command],
-            workingDirectory: Path.GetTempPath(),
-            cancellationToken: CancellationToken.None);
+        var result = await RunAsync(Shell, ["-c", command]);
 
         Assert.IsInstanceOfType<ProcessSuccess>(result);
         Assert.AreEqual("last", ((ProcessSuccess)result).Output);
@@ -63,10 +92,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_Output_IsNull_WhenNoStdout()
     {
-        var result = await Wrapper.RunAsync(
-            Shell, ["-c", "exit 0"],
-            workingDirectory: Path.GetTempPath(),
-            cancellationToken: CancellationToken.None);
+        var result = await RunAsync(Shell, ["-c", "exit 0"]);
 
         Assert.IsInstanceOfType<ProcessSuccess>(result);
         Assert.IsNull(((ProcessSuccess)result).Output);
@@ -75,10 +101,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_ReportsNonZeroExitCode()
     {
-        var result = await Wrapper.RunAsync(
-            Shell, ["-c", "exit 1"],
-            workingDirectory: Path.GetTempPath(),
-            cancellationToken: CancellationToken.None);
+        var result = await RunAsync(Shell, ["-c", "exit 1"]);
 
         Assert.IsInstanceOfType<ProcessFailure>(result);
         Assert.AreEqual("exited with code 1", ((ProcessFailure)result).Reason);
@@ -87,10 +110,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_Diagnostic_IsLastStderrLine_OnFailure()
     {
-        var result = await Wrapper.RunAsync(
-            Shell, ["-c", $"{EchoToStderr("boom")}; exit 1"],
-            workingDirectory: Path.GetTempPath(),
-            cancellationToken: CancellationToken.None);
+        var result = await RunAsync(Shell, ["-c", $"{EchoToStderr("boom")}; exit 1"]);
 
         Assert.IsInstanceOfType<ProcessFailure>(result);
         Assert.AreEqual("boom", ((ProcessFailure)result).Diagnostic);
@@ -99,10 +119,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_Diagnostic_FallsBackToStdout_WhenStderrEmpty()
     {
-        var result = await Wrapper.RunAsync(
-            Shell, ["-c", $"{Echo("last stdout line")}; exit 1"],
-            workingDirectory: Path.GetTempPath(),
-            cancellationToken: CancellationToken.None);
+        var result = await RunAsync(Shell, ["-c", $"{Echo("last stdout line")}; exit 1"]);
 
         Assert.IsInstanceOfType<ProcessFailure>(result);
         StringAssert.Contains(((ProcessFailure)result).Diagnostic, "last stdout line");
@@ -111,24 +128,19 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_Diagnostic_IsNull_WhenNoOutputOnFailure()
     {
-        var result = await Wrapper.RunAsync(
-            Shell, ["-c", "exit 1"],
-            workingDirectory: Path.GetTempPath(),
-            cancellationToken: CancellationToken.None);
+        var result = await RunAsync(Shell, ["-c", "exit 1"]);
 
         Assert.IsInstanceOfType<ProcessFailure>(result);
         Assert.IsNull(((ProcessFailure)result).Diagnostic);
     }
 
     [TestMethod]
-    public async Task RunAsync_PropagatesOnStdoutLineException()
+    public async Task RunAsync_PropagatesReportOutputException()
     {
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => Wrapper.RunAsync(
+            () => RunAsync(
                 Shell, ["-c", Echo("hello")],
-                workingDirectory: Path.GetTempPath(),
-                onStdoutLine: _ => throw new InvalidOperationException("callback failed"),
-                cancellationToken: CancellationToken.None));
+                reportOutput: _ => throw new InvalidOperationException("callback failed")));
     }
 
     // Real stdout/stderr delivery from an OS pipe can't be forced to overlap on demand (stdout is
@@ -141,7 +153,7 @@ public class ProcessWrapperTests
     {
         using var firstEntered = new ManualResetEventSlim();
         using var releaseFirst = new ManualResetEventSlim();
-        var synced = ProcessWrapper.Synchronize(line =>
+        var synced = ProcessWrapper.Synchronize(new object(), line =>
         {
             if (line != "first") return;
             firstEntered.Set();
@@ -160,18 +172,42 @@ public class ProcessWrapperTests
         Assert.IsTrue(Task.WaitAll([firstCall, secondCall], TimeSpan.FromSeconds(5)));
     }
 
+    // What keeps a line of stderr out of the middle of a line of stdout is that the two sinks lock
+    // the same gate - each being serial on its own would not.
+    [TestMethod]
+    public void Synchronize_BlocksASinkSharingAGate_UntilTheOtherReturns()
+    {
+        using var outputEntered = new ManualResetEventSlim();
+        using var releaseOutput = new ManualResetEventSlim();
+        var gate = new object();
+        var output = ProcessWrapper.Synchronize(gate, _ =>
+        {
+            outputEntered.Set();
+            Assert.IsTrue(releaseOutput.Wait(TimeSpan.FromSeconds(5)), "test setup: never released");
+        })!;
+        var diagnostic = ProcessWrapper.Synchronize(gate, _ => { })!;
+
+        var outputCall = Task.Run(() => output("out"));
+        Assert.IsTrue(outputEntered.Wait(TimeSpan.FromSeconds(5)), "the output sink never entered its callback");
+
+        var diagnosticCall = Task.Run(() => diagnostic("err"));
+        Assert.IsFalse(
+            diagnosticCall.Wait(TimeSpan.FromMilliseconds(200)),
+            "the diagnostic sink ran while the output sink held the gate");
+
+        releaseOutput.Set();
+        Assert.IsTrue(Task.WaitAll([outputCall, diagnosticCall], TimeSpan.FromSeconds(5)));
+    }
+
     [TestMethod]
     public void Synchronize_ReturnsNull_WhenCallbackIsNull()
-    => Assert.IsNull(ProcessWrapper.Synchronize(null));
+    => Assert.IsNull(ProcessWrapper.Synchronize(new object(), null));
 
     [TestMethod]
     public async Task RunAsync_TimesOut_WhenCancelled()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        var result = await Wrapper.RunAsync(
-            Shell, ["-c", SleepSeconds(60)],
-            workingDirectory: Path.GetTempPath(),
-            cancellationToken: cts.Token);
+        var result = await RunAsync(Shell, ["-c", SleepSeconds(60)], cancellationToken: cts.Token);
 
         Assert.IsInstanceOfType<ProcessFailure>(result);
         Assert.AreEqual("timed out", ((ProcessFailure)result).Reason);
@@ -180,10 +216,7 @@ public class ProcessWrapperTests
     [TestMethod]
     public async Task RunAsync_ReturnsFailure_WhenExecutableNotFound()
     {
-        var result = await Wrapper.RunAsync(
-            "rix-no-such-executable", [],
-            workingDirectory: Path.GetTempPath(),
-            cancellationToken: CancellationToken.None);
+        var result = await RunAsync("rix-no-such-executable", []);
 
         Assert.IsInstanceOfType<ProcessFailure>(result);
         StringAssert.Contains(((ProcessFailure)result).Reason, "rix-no-such-executable");
@@ -196,11 +229,7 @@ public class ProcessWrapperTests
         scope.Set("RIX_TEST_INHERIT", "inherited-value");
 
         var lines = new List<string>();
-        await Wrapper.RunAsync(
-            Shell, ["-c", PrintEnvOrFallback("RIX_TEST_INHERIT", "ABSENT")],
-            workingDirectory: Path.GetTempPath(),
-            onStdoutLine: lines.Add,
-            cancellationToken: CancellationToken.None);
+        await RunAsync(Shell, ["-c", PrintEnvOrFallback("RIX_TEST_INHERIT", "ABSENT")], reportOutput: lines.Add);
 
         Assert.IsTrue(lines.Any(l => l.Contains("inherited-value")), "Child should inherit parent env");
     }
@@ -215,20 +244,18 @@ public class ProcessWrapperTests
         var overrides = new Dictionary<string, string> { ["RIX_TEST_OVERRIDE"] = "overridden-value" };
 
         var inheritLines = new List<string>();
-        await Wrapper.RunAsync(
-            Shell, ["-c", PrintEnvOrFallback("RIX_TEST_INHERIT", "ABSENT")],
-            workingDirectory: Path.GetTempPath(),
+        await RunAsync(
+            Shell,
+            ["-c", PrintEnvOrFallback("RIX_TEST_INHERIT", "ABSENT")],
             environmentOverrides: overrides,
-            onStdoutLine: inheritLines.Add,
-            cancellationToken: CancellationToken.None);
+            reportOutput: inheritLines.Add);
 
         var overrideLines = new List<string>();
-        await Wrapper.RunAsync(
-            Shell, ["-c", PrintEnvOrFallback("RIX_TEST_OVERRIDE", "ABSENT")],
-            workingDirectory: Path.GetTempPath(),
+        await RunAsync(
+            Shell,
+            ["-c", PrintEnvOrFallback("RIX_TEST_OVERRIDE", "ABSENT")],
             environmentOverrides: overrides,
-            onStdoutLine: overrideLines.Add,
-            cancellationToken: CancellationToken.None);
+            reportOutput: overrideLines.Add);
 
         Assert.IsTrue(inheritLines.Any(l => l.Contains("inherited-value")), "Child should still inherit parent env when overrides provided");
         Assert.IsTrue(overrideLines.Any(l => l.Contains("overridden-value")), "Override should replace the original value");

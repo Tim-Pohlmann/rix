@@ -27,9 +27,10 @@ internal sealed class ProcessWrapper : IProcessRunner
         string fileName,
         IEnumerable<string> arguments,
         string workingDirectory,
-        IReadOnlyDictionary<string, string>? environmentOverrides = null,
-        Action<string>? onStdoutLine = null,
-        CancellationToken cancellationToken = default
+        IReadOnlyDictionary<string, string>? environmentOverrides,
+        Action<string>? reportOutput,
+        Action<string> reportDiagnostic,
+        CancellationToken cancellationToken
     )
     {
         var startInfo = BuildStartInfo(fileName, arguments, workingDirectory, environmentOverrides);
@@ -38,15 +39,15 @@ internal sealed class ProcessWrapper : IProcessRunner
         try { process.Start(); }
         catch (Win32Exception ex) { return new ProcessFailure(ex.Message); }
 
-        // Stdout and stderr are drained by two concurrent tasks (see below), so a caller-supplied
-        // callback can now be invoked from either one at the same time. Synchronizing it here - once,
-        // shared by both call sites - keeps calls serialized regardless of which stream a line came
-        // from, instead of leaving every future caller to notice and guard against the race itself.
-        var syncedOnStdoutLine = Synchronize(onStdoutLine);
-        var stdoutTask = ReadLinesAsync(process.StandardOutput, syncedOnStdoutLine, cancellationToken);
+        // Stdout and stderr are drained by two concurrent tasks (see below), so either sink can be
+        // invoked from either one at the same time. One gate shared by both - rather than one each -
+        // keeps every call serialized regardless of which stream a line came from, which is what a
+        // caller sending both to the same log needs and what no caller can arrange for itself.
+        var gate = new object();
+        var stdoutTask = ReadLinesAsync(process.StandardOutput, Synchronize(gate, reportOutput), cancellationToken);
         // Both streams must be drained concurrently (not just stdout), or a child that fills its
         // stderr pipe while nothing is reading it can deadlock the whole run.
-        var stderrTask = ReadLinesAsync(process.StandardError, BuildStderrForwarder(syncedOnStdoutLine), cancellationToken);
+        var stderrTask = ReadLinesAsync(process.StandardError, Synchronize(gate, reportDiagnostic), cancellationToken);
         var processTask = process.WaitForExitAsync(cancellationToken);
 
         await Task.WhenAny(processTask, stdoutTask, stderrTask);
@@ -127,30 +128,18 @@ internal sealed class ProcessWrapper : IProcessRunner
         return startInfo;
     }
 
-    /// <summary>Wraps <paramref name="callback"/> so calls through the returned delegate never
-    /// overlap, even when made concurrently from stdout's and stderr's independent reader tasks -
-    /// callers (test spies, non-thread-safe loggers) are entitled to assume one line is fully
-    /// handled before the next arrives. Internal (rather than private) so this guarantee can be
-    /// pinned down directly, deterministically, from a test - real stdout/stderr delivery from an
-    /// actual OS pipe can't be forced to overlap on demand across platforms.</summary>
-    internal static Action<string>? Synchronize(Action<string>? callback)
+    /// <summary>Wraps <paramref name="sink"/> so calls through the returned delegate never overlap
+    /// with any other call holding <paramref name="gate"/> - including the other stream's sink, when
+    /// both are given the same gate, which is how stdout's and stderr's independent reader tasks are
+    /// kept from interleaving two lines into one log. Callers (test spies, non-thread-safe loggers)
+    /// are entitled to assume one line is fully handled before the next arrives. Internal (rather
+    /// than private) so this guarantee can be pinned down directly, deterministically, from a test -
+    /// real stdout/stderr delivery from an actual OS pipe can't be forced to overlap on demand
+    /// across platforms.</summary>
+    internal static Action<string>? Synchronize(object gate, Action<string>? sink)
     {
-        if (callback is null) return null;
-        var gate = new object();
-        return line => { lock (gate) { callback(line); } };
-    }
-
-    /// <summary>When a callback is supplied, stderr is forwarded through it prefixed, since stdout
-    /// is forwarded through that same callback and the prefix is what keeps the two
-    /// distinguishable there. Callers that pass <c>onStdoutLine: null</c> (git, npm) relied on
-    /// stderr being inherited straight from the console before this method started
-    /// redirecting/capturing it, so those get the raw line written straight to
-    /// <see cref="Console.Error"/> instead - its own stream, so no prefix is needed to
-    /// disambiguate it.</summary>
-    private static Action<string> BuildStderrForwarder(Action<string>? onStdoutLine)
-    {
-        if (onStdoutLine is null) return Console.Error.WriteLine;
-        return line => onStdoutLine($"[stderr] {line}");
+        if (sink is null) return null;
+        return line => { lock (gate) { sink(line); } };
     }
 
     /// <summary>Forwards each line read from <paramref name="reader"/> to <paramref name="onLine"/>

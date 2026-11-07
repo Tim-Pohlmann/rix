@@ -201,7 +201,8 @@ internal delegate Task<ProcessResult> RunProcess
     IEnumerable<string> arguments,
     string workingDirectory,
     IReadOnlyDictionary<string, string>? environmentOverrides,
-    Action<string>? onStdoutLine,
+    Action<string>? reportOutput,
+    Action<string> reportDiagnostic,
     CancellationToken cancellationToken
 );
 
@@ -213,11 +214,12 @@ internal sealed class StubProcessRunner(RunProcess run) : IProcessRunner
         string fileName,
         IEnumerable<string> arguments,
         string workingDirectory,
-        IReadOnlyDictionary<string, string>? environmentOverrides = null,
-        Action<string>? onStdoutLine = null,
-        CancellationToken cancellationToken = default
+        IReadOnlyDictionary<string, string>? environmentOverrides,
+        Action<string>? reportOutput,
+        Action<string> reportDiagnostic,
+        CancellationToken cancellationToken
     )
-    => run(fileName, arguments, workingDirectory, environmentOverrides, onStdoutLine, cancellationToken);
+    => run(fileName, arguments, workingDirectory, environmentOverrides, reportOutput, reportDiagnostic, cancellationToken);
 }
 
 /// <summary>A log that keeps every line it was given, so a test asserts what a run reported the
@@ -292,7 +294,13 @@ internal sealed class StubAgent(Func<CancellationToken, Task<InstallResult>> ins
 {
     private readonly ClaudeAgent _real = new();
 
-    public Task<InstallResult> EnsureInstalledAsync(IProcessRunner _, DirectoryPath workingDirectory, CancellationToken cancellationToken)
+    public Task<InstallResult> EnsureInstalledAsync
+    (
+        IProcessRunner _,
+        DirectoryPath workingDirectory,
+        Action<string> reportDiagnostic,
+        CancellationToken cancellationToken
+    )
     => install(cancellationToken);
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
