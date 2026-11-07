@@ -22,8 +22,17 @@ internal sealed class PiAgent : ICodingAgent
 {
     private const string Package = "@earendil-works/pi-coding-agent";
 
-    public Task<InstallResult> EnsureInstalledAsync(IProcessRunner processRunner, DirectoryPath workingDirectory, CancellationToken cancellationToken)
-    => CodingAgentHelper.EnsureInstalledViaNpmAsync(processRunner, workingDirectory, "pi", Package, cancellationToken);
+    public Task<InstallResult> EnsureInstalledAsync
+    (
+        IProcessRunner processRunner,
+        DirectoryPath workingDirectory,
+        Action<string> reportDiagnostic,
+        CancellationToken cancellationToken
+    )
+    => CodingAgentHelper.EnsureInstalledViaNpmAsync
+    (
+        processRunner, workingDirectory, "pi", Package, reportDiagnostic, cancellationToken
+    );
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
     {

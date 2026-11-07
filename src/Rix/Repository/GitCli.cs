@@ -12,16 +12,22 @@ internal sealed class GitCli : IGit
 {
     private readonly Uri _host;
     private readonly IProcessRunner _processRunner;
+    private readonly ILog _log;
     private readonly string _workingDirectory;
     private readonly IReadOnlyDictionary<string, string> _authEnv;
 
     /// <param name="workingDirectory">Where the commands that need no local repo (clone,
     /// ls-remote) run from: a scratch directory, so git never picks up the config of a repo it
     /// happens to be started in.</param>
-    internal GitCli(Uri host, GitReadToken token, IProcessRunner processRunner, DirectoryPath workingDirectory)
+    /// <param name="log">Where git's own stderr goes. Git reports progress and the reason a
+    /// command failed there, and those lines are the only account of it beyond an exit code - so
+    /// the thing that runs git is the thing that has to say where they end up, rather than the
+    /// subprocess seam guessing on its behalf.</param>
+    internal GitCli(Uri host, GitReadToken token, IProcessRunner processRunner, DirectoryPath workingDirectory, ILog log)
     {
         _host = host;
         _processRunner = processRunner;
+        _log = log;
         // Unwrapped once here: below this point every directory is a bare path on its way into a
         // git subprocess, including the clone targets that don't exist yet.
         _workingDirectory = workingDirectory.Value;
@@ -85,6 +91,7 @@ internal sealed class GitCli : IGit
             _workingDirectory,
             _authEnv,
             listed.Add,
+            line => _log.WriteLine(line),
             cancellationToken
         );
         if (result is ProcessFailure { Reason: not "exited with code 2" } f)
@@ -189,6 +196,11 @@ internal sealed class GitCli : IGit
             true => (IReadOnlyDictionary<string, string>?)_authEnv,
             false => null,
         };
-        return _processRunner.RunAsync("git", args, workingDirectory, env, null, cancellationToken);
+        // No stdout sink: every caller here wants the outcome, and the one that wants the listing
+        // (ls-remote) asks for it directly rather than through this.
+        return _processRunner.RunAsync
+        (
+            "git", args, workingDirectory, env, null, line => _log.WriteLine(line), cancellationToken
+        );
     }
 }

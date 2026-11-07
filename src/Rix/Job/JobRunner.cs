@@ -113,7 +113,10 @@ internal static class JobRunner
 
         // The install and both clones are mostly network waits and touch nothing the others do,
         // so they overlap. Failures are still reported in this order, whichever finishes first.
-        var install = context.Agent.EnsureInstalledAsync(context.ProcessRunner, config.WorkDir, ct);
+        var install = context.Agent.EnsureInstalledAsync
+        (
+            context.ProcessRunner, config.WorkDir, line => context.Log.WriteLine(line), ct
+        );
         var clone = CloneAsync(config, context, cloneDir, ct);
         var agentHomeFetch = FetchAgentHomeAsync(config, context, agentHomeCheckout, ct);
         await Task.WhenAll(install, clone, agentHomeFetch);
@@ -216,11 +219,16 @@ internal static class JobRunner
             invocation.Arguments,
             cloneDir,
             WithApiKey(invocation.EnvironmentOverrides, config.Agent),
-            ForwardLine,
+            LogAndTranscribe,
+            // Prefixed because both streams land in one log, and only here: which of the two a line
+            // came from is a fact about this log's layout, not about running a process. Not
+            // transcribed - the transcript is what the agent said, and this is what it complained
+            // about on the way.
+            line => context.Log.WriteLine($"[stderr] {line}"),
             ct
         );
 
-        void ForwardLine(string line)
+        void LogAndTranscribe(string line)
         {
             context.Log.WriteLine(line);
             if (context.Agent.ParseTranscriptLine(line) is { } transcriptLine)

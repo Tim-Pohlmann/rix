@@ -268,7 +268,7 @@ public class JobRunnerTests
     {
         var statusCodes = new List<HttpStatusCode>();
 
-        RunProcess runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude")
             {
@@ -317,7 +317,7 @@ public class JobRunnerTests
             return Task.CompletedTask;
         });
         string? agentWorkingDir = null;
-        RunProcess tracker = (f, a, d, e, onLine, ct) =>
+        RunProcess tracker = (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude") agentWorkingDir = d;
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -350,7 +350,7 @@ public class JobRunnerTests
     {
         string? capturedCloneDir = null;
 
-        RunProcess tracker = async (f, a, d, e, onLine, ct) =>
+        RunProcess tracker = async (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude") capturedCloneDir = d;
             return new ProcessSuccess();
@@ -369,7 +369,7 @@ public class JobRunnerTests
     {
         string? capturedCloneDir = null;
 
-        RunProcess tracker = (f, a, d, e, onLine, ct) =>
+        RunProcess tracker = (f, a, d, e, reportOutput, _, ct) =>
         {
             capturedCloneDir = d;
             return Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"));
@@ -388,11 +388,11 @@ public class JobRunnerTests
     {
         Action<string>? claudeCallback = null;
 
-        RunProcess capture = async (f, a, d, e, onLine, ct) =>
+        RunProcess capture = async (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude")
             {
-                claudeCallback = onLine;
+                claudeCallback = reportOutput;
                 var apiUrl = ExtractApiUrlFromSystemPrompt(a);
                 using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
                 {
@@ -415,9 +415,9 @@ public class JobRunnerTests
     {
         var log = new StubLog();
 
-        RunProcess runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, reportOutput, _, ct) =>
         {
-            if (f == "claude") onLine?.Invoke("test line");
+            if (f == "claude") reportOutput?.Invoke("test line");
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
@@ -428,6 +428,33 @@ public class JobRunnerTests
             CancellationToken.None);
 
         CollectionAssert.Contains(log.Lines, "test line");
+    }
+
+    /// <summary>What the agent complained about on the way is only visible if someone is handed it,
+    /// so its stderr reaches the log as well - marked, because both of its streams land in the one
+    /// log, and left out of the transcript, which is what the agent said rather than what went
+    /// wrong around it.</summary>
+    [TestMethod]
+    public async Task RunAsync_ForwardsClaudeStderrLines_ToLogSink_Marked()
+    {
+        var log = new StubLog();
+
+        RunProcess runner = (f, a, d, e, _, reportDiagnostic, ct) =>
+        {
+            if (f == "claude") reportDiagnostic("npm warn deprecated");
+            return Task.FromResult<ProcessResult>(new ProcessSuccess());
+        };
+
+        await JobRunner.RunAsync(MakeConfig(),
+            Context(new StubGit(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed()),
+                log: log),
+            CancellationToken.None);
+
+        CollectionAssert.Contains(log.Lines, "[stderr] npm warn deprecated");
+        Assert.IsFalse(
+            File.Exists(Path.Combine(_outputDir, "transcript.md")),
+            "stderr is not what the agent said, so it must not be transcribed");
     }
 
     [TestMethod]
@@ -445,7 +472,7 @@ public class JobRunnerTests
     {
         const string resultLine = """{"type":"result","subtype":"success","total_cost_usd":0.028521,"usage":{"input_tokens":2036,"output_tokens":14}}""";
 
-        RunProcess runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, reportOutput, _, ct) =>
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
 
         await JobCommand.ExecuteAsync(MakeConfig(),
@@ -460,7 +487,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_CostIsZero_WhenClaudeOutputIsNotAResultLine()
     {
-        RunProcess runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, reportOutput, _, ct) =>
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => "thinking...", false => null }));
 
         await JobCommand.ExecuteAsync(MakeConfig(),
@@ -475,7 +502,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_Returns1_WhenGitBundleFails()
     {
-        RunProcess runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, reportOutput, _, ct) =>
         {
             var apiUrl = ExtractApiUrlFromSystemPrompt(a);
             using var response = await HttpClient.PostAsJsonAsync(new Uri(new Uri(apiUrl), "/pr"), new
@@ -501,7 +528,7 @@ public class JobRunnerTests
     {
         const string resultLine = """{"type":"result","total_cost_usd":"not-a-number"}""";
 
-        RunProcess runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, reportOutput, _, ct) =>
             Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
 
         await JobCommand.ExecuteAsync(MakeConfig(),
@@ -517,7 +544,7 @@ public class JobRunnerTests
     public async Task RunAsync_ResultJson_ContainsPendingPushRequests()
     {
         var host = new StubGit(branchExists: _ => Task.FromResult(true));
-        RunProcess runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude")
             {
@@ -544,7 +571,7 @@ public class JobRunnerTests
     public async Task RunAsync_CreatesBundleFile_ForPush()
     {
         var host = new StubGit(branchExists: _ => Task.FromResult(true));
-        RunProcess runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude")
             {
@@ -570,7 +597,7 @@ public class JobRunnerTests
     {
         var statusCodes = new List<HttpStatusCode>();
         var host = new StubGit(branchExists: _ => Task.FromResult(true));
-        RunProcess runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude")
             {
@@ -621,7 +648,7 @@ public class JobRunnerTests
     public async Task RunAsync_RejectsPush_ToDisallowedBranch()
     {
         var host = new StubGit(branchExists: _ => Task.FromResult(true));
-        RunProcess runner = async (f, a, d, e, onLine, ct) =>
+        RunProcess runner = async (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude")
             {
@@ -687,9 +714,9 @@ public class JobRunnerTests
     {
         const string assistantLine = """{"type":"assistant","message":{"content":[{"type":"text","text":"I will fix the bug"},{"type":"tool_use","name":"Bash","input":{}}]}}""";
 
-        RunProcess runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, reportOutput, _, ct) =>
         {
-            if (f == "claude") onLine?.Invoke(assistantLine);
+            if (f == "claude") reportOutput?.Invoke(assistantLine);
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
@@ -707,9 +734,9 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_OmitsTranscriptMd_WhenNothingExtracted()
     {
-        RunProcess runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, reportOutput, _, ct) =>
         {
-            if (f == "claude") onLine?.Invoke("""{"type":"result","subtype":"success","total_cost_usd":0.5}""");
+            if (f == "claude") reportOutput?.Invoke("""{"type":"result","subtype":"success","total_cost_usd":0.5}""");
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
         };
 
@@ -724,7 +751,7 @@ public class JobRunnerTests
     [TestMethod]
     public async Task RunAsync_JobFailureError_IncludesAgentDiagnostic_WhenPresent()
     {
-        RunProcess runner = (f, a, d, e, onLine, ct) =>
+        RunProcess runner = (f, a, d, e, reportOutput, _, ct) =>
             Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1", Diagnostic: "Invalid API key"));
 
         var result = await RunJobAsync(MakeConfig(),
@@ -772,7 +799,7 @@ public class JobRunnerTests
     public async Task RunAsync_AddsResolvedApiKey_ToAgentProcessEnvironment()
     {
         IReadOnlyDictionary<string, string>? capturedEnv = null;
-        RunProcess capture = (f, a, d, e, onLine, ct) =>
+        RunProcess capture = (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude") capturedEnv = e;
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -790,7 +817,7 @@ public class JobRunnerTests
     public async Task RunAsync_DoesNotAddApiKey_ToAgentProcessEnvironment_WhenNoneSupplied()
     {
         IReadOnlyDictionary<string, string>? capturedEnv = null;
-        RunProcess capture = (f, a, d, e, onLine, ct) =>
+        RunProcess capture = (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude") capturedEnv = e;
             return Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -924,7 +951,7 @@ public class JobRunnerTests
     /// <summary>A process runner that succeeds at everything and calls <paramref name="onAgent"/>
     /// when the agent is started.</summary>
     private static RunProcess OnAgent(Action onAgent)
-    => (f, a, d, e, onLine, ct) =>
+    => (f, a, d, e, reportOutput, _, ct) =>
     {
         if (f == "claude") onAgent();
         return Task.FromResult<ProcessResult>(new ProcessSuccess());
@@ -954,7 +981,7 @@ public class JobRunnerTests
         int claudeExitCode = 0,
         bool claudeTimedOut = false,
         QueuedPrSpec? pr = null)
-    => async (fileName, args, workDir, envOverrides, onLine, ct) => fileName switch
+    => async (fileName, args, workDir, envOverrides, reportOutput, _, ct) => fileName switch
     {
         "claude" => await SimulateClaudeAsync(claudeExitCode, claudeTimedOut, pr, args, ct),
         _ => throw new NotSupportedException($"Unexpected process: {fileName}"),
@@ -965,7 +992,7 @@ public class JobRunnerTests
     private static async Task<string?> CaptureSystemPromptAsync(JobConfig config)
     {
         string? systemPrompt = null;
-        RunProcess capture = (f, a, d, e, onLine, ct) =>
+        RunProcess capture = (f, a, d, e, reportOutput, _, ct) =>
         {
             if (f == "claude")
             {

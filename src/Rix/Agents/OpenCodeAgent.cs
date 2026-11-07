@@ -37,8 +37,17 @@ internal sealed class OpenCodeAgent : ICodingAgent
 {
     private const string Package = "opencode-ai";
 
-    public Task<InstallResult> EnsureInstalledAsync(IProcessRunner processRunner, DirectoryPath workingDirectory, CancellationToken cancellationToken)
-    => CodingAgentHelper.EnsureInstalledViaNpmAsync(processRunner, workingDirectory, "opencode", Package, cancellationToken);
+    public Task<InstallResult> EnsureInstalledAsync
+    (
+        IProcessRunner processRunner,
+        DirectoryPath workingDirectory,
+        Action<string> reportDiagnostic,
+        CancellationToken cancellationToken
+    )
+    => CodingAgentHelper.EnsureInstalledViaNpmAsync
+    (
+        processRunner, workingDirectory, "opencode", Package, reportDiagnostic, cancellationToken
+    );
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
     {

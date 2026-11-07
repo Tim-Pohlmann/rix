@@ -12,7 +12,7 @@ public class ClaudeAgentTests
 
     // Adapts a simple (fileName, args) -> ProcessResult stub to the full IProcessRunner shape.
     private static StubProcessRunner Runner(Func<string, IEnumerable<string>, Task<ProcessResult>> run)
-    => new StubProcessRunner((fileName, args, _, _, _, _) => run(fileName, args));
+    => new StubProcessRunner((fileName, args, _, _, _, _, _) => run(fileName, args));
 
     // ---- EnsureInstalledAsync ----
 
@@ -21,12 +21,12 @@ public class ClaudeAgentTests
     {
         var workingDirs = new List<string>();
         await Agent.EnsureInstalledAsync(
-            new StubProcessRunner((_, _, workingDir, _, _, _) =>
+            new StubProcessRunner((_, _, workingDir, _, _, _, _) =>
             {
                 workingDirs.Add(workingDir);
                 return Task.FromResult<ProcessResult>(new ProcessSuccess());
             }),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.AreEqual(WorkDir.Value, workingDirs.Single());
     }
@@ -38,7 +38,7 @@ public class ClaudeAgentTests
             Runner((f, _) => Task.FromResult<ProcessResult>(f == "claude"
                 ? new ProcessSuccess()
                 : new ProcessFailure("exited with code 1"))),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<Installed>(result);
     }
@@ -56,7 +56,7 @@ public class ClaudeAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
             }),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<Installed>(result);
     }
@@ -66,7 +66,7 @@ public class ClaudeAgentTests
     {
         var result = await Agent.EnsureInstalledAsync(
             Runner((_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1"))),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "npm");
@@ -83,7 +83,7 @@ public class ClaudeAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessFailure("exited with code 1")),
                 _ => throw new NotSupportedException(f),
             }),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "npm install");
@@ -109,7 +109,7 @@ public class ClaudeAgentTests
                     _ => throw new NotSupportedException(f),
                 };
             }),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.AreEqual("@anthropic-ai/claude-code", installedPackage);
     }
@@ -119,7 +119,7 @@ public class ClaudeAgentTests
     {
         var result = await Agent.EnsureInstalledAsync(
             Runner((_, _) => Task.FromResult<ProcessResult>(new ProcessFailure("timed out"))),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "timed out");
@@ -135,10 +135,29 @@ public class ClaudeAgentTests
                 "npm" => Task.FromResult<ProcessResult>(new ProcessSuccess()),
                 _ => throw new NotSupportedException(f),
             }),
-            WorkDir, CancellationToken.None);
+            WorkDir, _ => { }, CancellationToken.None);
 
         Assert.IsInstanceOfType<InstallFailed>(result, out var failed);
         StringAssert.Contains(failed.Reason, "could not be verified");
+    }
+
+    // npm says what it is doing on stderr, and the process wrapper redirects it, so the sink the
+    // caller supplies is the only way those lines are seen. Covers CodingAgentHelper, which all
+    // three agents install through.
+    [TestMethod]
+    public async Task EnsureInstalled_HandsTheDiagnosticSink_ToTheProcess()
+    {
+        var diagnostics = new List<string>();
+
+        await Agent.EnsureInstalledAsync(
+            new StubProcessRunner((_, _, _, _, _, reportDiagnostic, _) =>
+            {
+                reportDiagnostic("npm notice");
+                return Task.FromResult<ProcessResult>(new ProcessSuccess());
+            }),
+            WorkDir, diagnostics.Add, CancellationToken.None);
+
+        CollectionAssert.Contains(diagnostics, "npm notice");
     }
 
     // ---- BuildInvocation / ParseCost ----

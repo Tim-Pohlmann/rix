@@ -12,8 +12,17 @@ internal sealed class ClaudeAgent : ICodingAgent
 {
     private const string Package = "@anthropic-ai/claude-code";
 
-    public Task<InstallResult> EnsureInstalledAsync(IProcessRunner processRunner, DirectoryPath workingDirectory, CancellationToken cancellationToken)
-    => CodingAgentHelper.EnsureInstalledViaNpmAsync(processRunner, workingDirectory, "claude", Package, cancellationToken);
+    public Task<InstallResult> EnsureInstalledAsync
+    (
+        IProcessRunner processRunner,
+        DirectoryPath workingDirectory,
+        Action<string> reportDiagnostic,
+        CancellationToken cancellationToken
+    )
+    => CodingAgentHelper.EnsureInstalledViaNpmAsync
+    (
+        processRunner, workingDirectory, "claude", Package, reportDiagnostic, cancellationToken
+    );
 
     public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
     {
