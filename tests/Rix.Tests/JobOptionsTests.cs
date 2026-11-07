@@ -23,7 +23,7 @@ public class JobOptionsTests
     private static readonly string ExistingSubDir = Directory.CreateTempSubdirectory("rix-options-").FullName;
 
     private static ParseResult Parse(params string[] args)
-    => CommandArgs.Parse(JobCommand.Build(), ["job", .. args]);
+    => CommandArgs.Parse(JobCommand.Build(), args);
 
     private static string ErrorOf(Action read) => Assert.ThrowsExactly<InvalidInputException>(read).Message;
 

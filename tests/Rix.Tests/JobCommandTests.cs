@@ -8,7 +8,7 @@ namespace Rix.Tests;
 public class JobCommandTests
 {
     private static JobConfig Read(params string[] args)
-    => JobCommand.CreateConfig(CommandArgs.Parse(JobCommand.Build(), ["job", .. args]), new LocalFileSystem());
+    => JobCommand.CreateConfig(CommandArgs.Parse(JobCommand.Build(), args), new LocalFileSystem());
 
     /// <summary>Reads <c>job</c> with valid values for every required flag, then
     /// <paramref name="extra"/>.</summary>

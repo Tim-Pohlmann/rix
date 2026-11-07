@@ -1,5 +1,6 @@
 using Rix.Cli;
 using Rix.Initialize;
+using System.CommandLine;
 
 namespace Rix.Tests;
 
@@ -13,13 +14,24 @@ public class InitializeCommandTests
     => Read(args, null);
 
     [TestMethod]
-    [DataRow("initialize")]
-    [DataRow("init")]
-    public void Command_PassesDirFlag_ToConfig(string verb)
+    public void Command_PassesDirFlag_ToConfig()
     {
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
 
-        var config = Read(verb, "--dir", dir);
+        var config = Read("--dir", dir);
+
+        Assert.AreEqual(Path.GetFullPath(dir), config.TargetDir.Value);
+    }
+
+    [TestMethod]
+    public void Command_AcceptsTheInitAlias()
+    {
+        var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
+        // Parsed by hand: CommandArgs always spells the verb the way the command names it, and the
+        // spelling is the point here.
+        var parsed = new RootCommand { InitializeCommand.Build() }.Parse(["init", "--dir", dir]);
+
+        var config = InitializeCommand.CreateConfig(parsed, new LocalFileSystem());
 
         Assert.AreEqual(Path.GetFullPath(dir), config.TargetDir.Value);
     }
@@ -29,7 +41,7 @@ public class InitializeCommandTests
     {
         var currentDirectory = Path.GetTempPath();
 
-        var config = Read(["initialize"], new StubFileSystem(currentDirectory: currentDirectory));
+        var config = Read([], new StubFileSystem(currentDirectory: currentDirectory));
 
         Assert.AreEqual(Path.GetFullPath(currentDirectory), config.TargetDir.Value);
     }
@@ -37,20 +49,20 @@ public class InitializeCommandTests
     [TestMethod]
     public void Command_DefaultsRefToThisBuildsMajorTag_WhenFlagAbsentOrBlank()
     {
-        Assert.AreEqual(WorkflowRef.ForThisBuild, Read("initialize").Ref);
-        Assert.AreEqual(WorkflowRef.ForThisBuild, Read("initialize", "--ref", "  ").Ref);
+        Assert.AreEqual(WorkflowRef.ForThisBuild, Read().Ref);
+        Assert.AreEqual(WorkflowRef.ForThisBuild, Read("--ref", "  ").Ref);
     }
 
     [TestMethod]
     public void Command_PassesRefFlag_ToConfig()
     {
-        Assert.AreEqual("v1.2.3", Read("initialize", "--ref", "v1.2.3").Ref.Value);
+        Assert.AreEqual("v1.2.3", Read("--ref", "v1.2.3").Ref.Value);
     }
 
     [TestMethod]
     public void Command_ReportsTheFlag_WhenRefIsMalformed()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("initialize", "--ref", "main branch"));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--ref", "main branch"));
 
         StringAssert.StartsWith(ex.Message, "--ref: 'main branch' is not a valid workflow ref");
     }
@@ -58,7 +70,7 @@ public class InitializeCommandTests
     [TestMethod]
     public void Command_ReportsTheFlag_WhenDirDoesNotExist()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("initialize", "--dir", "/nonexistent/path/xyz"));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--dir", "/nonexistent/path/xyz"));
 
         Assert.AreEqual("--dir: directory does not exist: /nonexistent/path/xyz", ex.Message);
     }
@@ -68,7 +80,7 @@ public class InitializeCommandTests
     [DataRow("   ")]
     public void Command_ReportsTheFlag_WhenDirIsBlank(string dir)
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("initialize", "--dir", dir));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--dir", dir));
 
         Assert.AreEqual("--dir is required", ex.Message);
     }

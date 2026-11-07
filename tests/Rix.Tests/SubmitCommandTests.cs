@@ -13,7 +13,7 @@ public class SubmitCommandTests
     private static readonly string[] ExpectedUnusualBranches = ["--not-a-flag", "feature/ünïcode"];
 
     private static SubmitConfig ReadArgs(params string[] args)
-    => SubmitCommand.CreateConfig(CommandArgs.Parse(SubmitCommand.Build(), ["submit", .. args]), new LocalFileSystem());
+    => SubmitCommand.CreateConfig(CommandArgs.Parse(SubmitCommand.Build(), args), new LocalFileSystem());
 
     /// <summary>Reads <c>submit</c> with the given flags, filling in valid values for the required
     /// ones the test doesn't care about.</summary>
@@ -65,7 +65,7 @@ public class SubmitCommandTests
         CommandArgs.Parse
         (
             SubmitCommand.Build(),
-            ["submit", "--repo", "owner/repo", "--write-token", "write-tok", "--input-dir", ExistingDir, .. extra]
+            ["--repo", "owner/repo", "--write-token", "write-tok", "--input-dir", ExistingDir, .. extra]
         ),
         fileSystem
     );
