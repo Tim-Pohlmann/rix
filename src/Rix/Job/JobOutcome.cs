@@ -1,3 +1,5 @@
+using Rix.Artifacts;
+
 namespace Rix.Job;
 
 /// <summary>What a finished run leaves a caller with: the job's own outcome, and whether

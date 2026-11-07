@@ -1,3 +1,4 @@
+using Rix.Artifacts;
 using Rix.Repository;
 
 namespace Rix.CiFailure;

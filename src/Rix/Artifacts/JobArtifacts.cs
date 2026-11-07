@@ -1,6 +1,7 @@
+using Rix.Job;
 using System.Text.Json;
 
-namespace Rix.Job;
+namespace Rix.Artifacts;
 
 /// <summary>What a job leaves in its output directory: <c>result.json</c> always, and
 /// <c>transcript.md</c> when the agent said anything worth keeping. These are the job's product

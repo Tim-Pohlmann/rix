@@ -1,4 +1,4 @@
-namespace Rix;
+namespace Rix.Artifacts;
 
 /// <summary>Writing a file whose content is already settled: a job's <c>result.json</c> and
 /// <c>transcript.md</c>, <c>ci-failure</c>'s verdict and prompt. By the time one of these runs the

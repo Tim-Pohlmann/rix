@@ -1,3 +1,4 @@
+using Rix.Artifacts;
 using Rix.CiFailure;
 using System.CommandLine;
 

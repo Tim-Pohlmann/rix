@@ -1,4 +1,5 @@
 using Rix.Agents;
+using Rix.Artifacts;
 using Rix.Cli;
 using Rix.Job;
 using Rix.Process;

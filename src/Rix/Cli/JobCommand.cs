@@ -1,3 +1,4 @@
+using Rix.Artifacts;
 using Rix.Job;
 using System.CommandLine;
 

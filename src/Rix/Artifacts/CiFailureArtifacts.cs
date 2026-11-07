@@ -1,6 +1,7 @@
+using Rix.CiFailure;
 using System.Text.Json;
 
-namespace Rix.CiFailure;
+namespace Rix.Artifacts;
 
 /// <summary>What a check leaves in its output directory: <c>result.json</c> always, and
 /// <c>prompt.md</c> when a failure was detected. The counterpart of <see cref="Job.JobArtifacts"/>

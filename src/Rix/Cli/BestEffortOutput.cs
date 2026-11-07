@@ -1,3 +1,5 @@
+using Rix.Artifacts;
+
 namespace Rix.Cli;
 
 /// <summary>The lines a command writes to a console stream once its outcome is already decided:
