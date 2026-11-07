@@ -82,6 +82,26 @@ public class TypesTests
     }
 
     [TestMethod]
+    public void DirectoryPath_ResolvesARelativePathAgainstTheFileSystemsCurrentDirectory()
+    {
+        var currentDirectory = Path.GetFullPath("/only/on/the/stub");
+        var expected = Path.Combine(currentDirectory, "out");
+        var fileSystem = new StubFileSystem(directoryExists: path => path == expected, currentDirectory: currentDirectory);
+
+        Assert.AreEqual(expected, new DirectoryPath("out", fileSystem).Value);
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("   ")]
+    public void DirectoryPath_RejectsABlankPath_RatherThanResolvingItToTheCurrentDirectory(string blank)
+    {
+        var fileSystem = new StubFileSystem(directoryExists: _ => true);
+
+        Assert.ThrowsExactly<InvalidInputException>(() => _ = new DirectoryPath(blank, fileSystem));
+    }
+
+    [TestMethod]
     public void DirectoryPath_RejectsNonExistent()
     {
         var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new DirectoryPath("/nonexistent/path/xyz", new LocalFileSystem()));

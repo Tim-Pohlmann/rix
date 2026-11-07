@@ -153,7 +153,8 @@ internal sealed record SubDirectoryPath
 
 /// <summary>A directory path that existed on <see cref="IFileSystem"/> when the instance was
 /// constructed, stored as an absolute path — the constructor throws
-/// <see cref="InvalidInputException"/> otherwise.
+/// <see cref="InvalidInputException"/> otherwise. A relative path is resolved against
+/// <see cref="IFileSystem.CurrentDirectory"/>, not read from the process behind its back.
 /// Normalising to absolute at the boundary means paths derived from it (e.g. via
 /// <see cref="System.IO.Path.Combine(string, string)"/>) stay rooted, so a subprocess run from a
 /// different working directory resolves them where the caller intended.</summary>
@@ -163,9 +164,14 @@ internal sealed record DirectoryPath
 
     internal DirectoryPath(string path, IFileSystem fileSystem)
     {
-        if (!fileSystem.DirectoryExists(path))
+        // Blank is rejected before resolving, which would turn it into the current directory: an
+        // unset home has to fail here rather than become wherever rix happens to be running.
+        if (string.IsNullOrWhiteSpace(path))
             throw new InvalidInputException($"directory does not exist: {path}");
-        Value = Path.GetFullPath(path);
+        var fullPath = Path.GetFullPath(path, fileSystem.CurrentDirectory);
+        if (!fileSystem.DirectoryExists(fullPath))
+            throw new InvalidInputException($"directory does not exist: {path}");
+        Value = fullPath;
     }
 
     public override string ToString() => Value;
