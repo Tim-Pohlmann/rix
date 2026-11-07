@@ -57,6 +57,13 @@ internal static class JobOptions
             "Provider-specific; forwarded verbatim. Omit to use the agent CLI's own default model."
     };
 
+    internal static readonly Option<string> EffortOption = new("--effort")
+    {
+        Description = "Reasoning effort passed to the agent CLI: --effort for claude (e.g. 'high'), --variant for " +
+            "opencode (provider-specific, e.g. 'high'), --thinking for pi (e.g. 'high'). Forwarded verbatim. " +
+            "Omit to use the agent CLI's own default effort."
+    };
+
     internal static readonly Option<string> AgentApiKeyOption = new("--agent-api-key")
     {
         Description = "API key for the selected agent's model provider; optional (opencode's free default model needs none)"
@@ -105,6 +112,7 @@ internal static class JobOptions
         command.Options.Add(OutputDirOption);
         command.Options.Add(AgentOption);
         command.Options.Add(ModelOption);
+        command.Options.Add(EffortOption);
         command.Options.Add(AgentApiKeyOption);
         command.Options.Add(AgentApiKeyEnvOption);
     }
@@ -180,6 +188,9 @@ internal static class JobOptions
 
     internal static string? ReadModel(ParseResult parsed)
     => parsed.OptionalText(ModelOption, "RIX_MODEL");
+
+    internal static string? ReadEffort(ParseResult parsed)
+    => parsed.OptionalText(EffortOption, "RIX_EFFORT");
 
     /// <summary>No key is required when <c>--model</c> is left unset - opencode then picks its own
     /// free model - so this is simply <c>null</c> when nothing was supplied.</summary>
