@@ -169,26 +169,9 @@ jobs:
           # same way prepare-rix-env does for max-tokens/timeout, so it holds for every caller of
           # that action rather than only for this workflow.
           max-rix-commits: ${{ inputs.max-rix-commits }}
+          prompt-artifact: rix-prompt
           rix-version: ${{ inputs.rix-version }}
           rix-bin: ${{ inputs.rix-bin }}
-
-      # The prompt travels as a file rather than a job output for two reasons: it is built from the
-      # failing run's log output, so it has no size bound a job output could honour, and keeping it
-      # out of $GITHUB_OUTPUT leaves that channel carrying only the short values rix validated -
-      # nothing long enough or arbitrary enough to forge a second output alongside it.
-      - name: Upload prompt
-        if: steps.detect.outputs.branch != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: rix-prompt
-          path: out/prompt.md
-          # A branch here means rix wrote the prompt: it writes the file before it reports the
-          # verdict, and a failed write is reported as an error instead, which names no branch.
-          # So a missing file is a broken invariant rather than a case to handle, and the default
-          # (warn, upload nothing) would let it surface one job later as the `run` job failing to
-          # download an artifact that was never created - pointing at the wrong step. Fail here,
-          # where it actually broke.
-          if-no-files-found: error
 
   run:
     name: Run rix job
@@ -206,17 +189,11 @@ jobs:
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
-      - name: Download prompt
-        uses: actions/download-artifact@v4
-        with:
-          name: rix-prompt
-          path: prompt
-
       - name: Run rix job
         uses: ./.github/actions/run-rix-job
         with:
           repo: ${{ inputs.repo || github.repository }}
-          prompt-file: prompt/prompt.md
+          prompt-artifact: rix-prompt
           read-token: ${{ secrets.read-token }}
           agent: ${{ inputs.agent }}
           model: ${{ inputs.model }}
@@ -237,14 +214,9 @@ jobs:
           timeout: ${{ inputs.timeout }}
           factory-repo: ${{ inputs.factory-repo }}
           agent-home-path: ${{ inputs.agent-home-path }}
+          output-artifact: rix-output
           rix-version: ${{ inputs.rix-version }}
           rix-bin: ${{ inputs.rix-bin }}
-
-      - name: Upload job output
-        uses: actions/upload-artifact@v4
-        with:
-          name: rix-output
-          path: out/
 
   create-pr:
     name: Create PRs
@@ -263,12 +235,6 @@ jobs:
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
-      - name: Download job output
-        uses: actions/download-artifact@v4
-        with:
-          name: rix-output
-          path: out
-
       - name: Submit rix job
         uses: ./.github/actions/submit-rix-job
         with:
@@ -281,5 +247,6 @@ jobs:
           # answering, and to nothing else.
           allowed-push-branches: ${{ needs.detect.outputs.branch }}
           input-dir: out
+          input-artifact: rix-output
           rix-version: ${{ inputs.rix-version }}
           rix-bin: ${{ inputs.rix-bin }}

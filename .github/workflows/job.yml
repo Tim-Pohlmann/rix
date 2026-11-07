@@ -140,13 +140,8 @@ jobs:
           allowed-push-branches: ${{ inputs.allowed-push-branches }}
           factory-repo: ${{ inputs.factory-repo }}
           agent-home-path: ${{ inputs.agent-home-path }}
+          output-artifact: rix-output
           rix-version: ${{ inputs.rix-version }}
-
-      - name: Upload job output
-        uses: actions/upload-artifact@v4
-        with:
-          name: rix-output
-          path: out/
 
   create-pr:
     name: Create PRs
@@ -162,12 +157,6 @@ jobs:
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
-      - name: Download job output
-        uses: actions/download-artifact@v4
-        with:
-          name: rix-output
-          path: out
-
       - name: Submit rix job
         uses: ./.github/actions/submit-rix-job
         with:
@@ -177,4 +166,5 @@ jobs:
           # never from the artifact, which the agent could have rewritten before it was uploaded.
           allowed-push-branches: ${{ inputs.allowed-push-branches }}
           input-dir: out
+          input-artifact: rix-output
           rix-version: ${{ inputs.rix-version }}

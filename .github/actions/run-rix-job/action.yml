@@ -8,12 +8,12 @@ inputs:
     required: true
   prompt:
     description: >-
-      Task prompt for the coding agent. Required unless prompt-file is given.
+      Task prompt for the coding agent. Required unless prompt-artifact is given.
     required: false
-  prompt-file:
+  prompt-artifact:
     description: >-
-      Path to a file rix reads the task prompt from, given instead of prompt. For a prompt that was
-      built somewhere else and carried here — rix ci-failure's, say, which is assembled from a
+      Name of an artifact holding the task prompt as prompt.md, given instead of prompt. For a
+      prompt that was built in an earlier job — rix ci-failure's, say, which is assembled from a
       failing run's log output and so is both long and arbitrary. A file crosses a job boundary as
       an artifact without a size cap, and without its content ever having to survive being quoted
       through a job output.
@@ -65,6 +65,12 @@ inputs:
       the agent starts (existing files are kept). Requires factory-repo; defaults to
       .rix/agent-home.
     required: false
+  output-artifact:
+    description: >-
+      Name to upload ./out under once the job has succeeded, for a later job to pick up with
+      submit-rix-job's input-artifact. Omit when that step runs in this same job, where ./out is
+      already there.
+    required: false
   rix-version:
     description: "Rix release tag to download, or 'latest'"
     required: false
@@ -83,6 +89,13 @@ runs:
         rix-version: ${{ inputs.rix-version }}
         rix-bin: ${{ inputs.rix-bin }}
 
+    - name: Download prompt
+      if: inputs.prompt-artifact != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.prompt-artifact }}
+        path: prompt
+
     - name: Run rix job
       env:
         AGENT_API_KEY: ${{ inputs.agent-api-key }}
@@ -93,7 +106,7 @@ runs:
         RIX_READ_TOKEN: ${{ inputs.read-token }}
         RIX_REPO: ${{ inputs.repo }}
         RIX_PROMPT: ${{ inputs.prompt }}
-        RIX_PROMPT_FILE: ${{ inputs.prompt-file }}
+        RIX_PROMPT_FILE: ${{ inputs.prompt-artifact && 'prompt/prompt.md' || '' }}
         RIX_ALLOWED_PUSH_BRANCHES: ${{ inputs.allowed-push-branches }}
         RIX_FACTORY_REPO: ${{ inputs.factory-repo }}
         RIX_AGENT_HOME_PATH: ${{ inputs.agent-home-path }}
@@ -106,8 +119,8 @@ runs:
         # that name in this shell or in $GITHUB_ENV.
         mkdir -p out work
 
-        # Both prompt inputs are forwarded as they arrived: rix reads the file itself, and reports
-        # a missing one, an empty one, or both inputs at once the same way it reports every other
+        # Both prompts are forwarded as they arrived: rix reads the file itself, and reports a
+        # missing one, an empty one, or both at once the same way it reports every other
         # bad flag. The file's content never passes through this shell, so nothing a failing run's
         # logs put in it can be re-parsed on the way.
         "$RIX_BIN" job --agent "$RIX_AGENT" --output-dir out --work-dir work
@@ -121,3 +134,10 @@ runs:
       with:
         result-file: ${{ github.workspace }}/out/result.json
         transcript-file: ${{ github.workspace }}/out/transcript.md
+
+    - name: Upload job output
+      if: inputs.output-artifact != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.output-artifact }}
+        path: out/
