@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Lint workflows (actionlint)
-        uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2
         with:
           # actionlint (as of v1.7.12) doesn't yet know about the job.workflow_repository /
           # job.workflow_sha context properties, even though they're documented and supported by
@@ -713,7 +713,7 @@ jobs:
           PY
 
       - name: Lint the written workflows (actionlint)
-        uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2
         with:
           files: init-out/.github/workflows/*.yml
           # The matcher annotates a PR's changed lines, which these files are not - they are
