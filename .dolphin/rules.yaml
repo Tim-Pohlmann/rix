@@ -202,18 +202,16 @@ rules:
     message: >-
       Async methods in this codebase take and propagate a CancellationToken.
       Add one and forward it to any awaited call. What is excluded is the
-      writes that record an outcome already decided - the CLI shell, and the
-      files a command leaves behind in BestEffortArtifact, JobArtifacts and
-      CiFailureArtifacts:
-      those must finish even once cancellation has been requested, so they are
-      handed no token to honour.
+      writes that record an outcome already decided - the CLI shell, and
+      everything in Artifacts/, the files a command leaves behind: those must
+      finish even once cancellation has been requested, so they are handed no
+      token to honour. A new one belongs in that folder rather than on this
+      list.
     paths:
       exclude:
         - src/Rix/Startup.cs
         - src/Rix/Cli/**
-        - src/Rix/BestEffortArtifact.cs
-        - src/Rix/Job/JobArtifacts.cs
-        - src/Rix/CiFailure/CiFailureArtifacts.cs
+        - src/Rix/Artifacts/**
     patterns:
       - pattern-either:
           - pattern: "async Task $M(...) { ... }"

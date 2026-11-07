@@ -139,7 +139,7 @@ rix_post_job_summary() {
     echo "## Rix job summary"
     echo ""
     if [[ ! -f "$result_file" ]]; then
-      echo "The rix job produced no result.json - it never completed."
+      echo "The rix job produced no result.json - it never completed, or it ran and could not write the file (rix exits 3 for that, and the reason is in the step log above)."
       echo ""
       return 0
     fi

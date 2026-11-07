@@ -1,5 +1,6 @@
 using Rix.Agents;
 using Rix.Api;
+using Rix.Artifacts;
 using Rix.Process;
 using Rix.Repository;
 using System.Diagnostics;
@@ -21,8 +22,10 @@ internal static class JobRunner
     /// happen here rather than in the caller because <c>result.json</c> and <c>transcript.md</c> are
     /// the job's product (see <see cref="JobArtifacts"/>), and because every way the run can end -
     /// including a setup failure before the agent started - has to leave the same artifacts behind.
-    /// What the caller adds is a CLI's own: printing the result and choosing an exit code.</summary>
-    internal static async Task<IJobResult> RunAsync
+    /// What the caller adds is a CLI's own: printing the result and choosing an exit code - which
+    /// is why what comes back is a <see cref="JobOutcome"/> and not just the result: the exit code
+    /// depends on whether <c>result.json</c> got there, and only this knows.</summary>
+    internal static async Task<JobOutcome> RunAsync
     (
         JobConfig config,
         JobContext context,
@@ -31,8 +34,8 @@ internal static class JobRunner
     {
         var transcript = new List<string>();
         var result = await RunCoreAsync(config, context, transcript, cancellationToken);
-        await JobArtifacts.WriteAsync(config, context, result, transcript);
-        return result;
+        var resultFile = await JobArtifacts.WriteAsync(config, context, result, transcript);
+        return new JobOutcome(result, resultFile);
     }
 
     /// <summary>The run itself, in one method so each way it can end is a plain <c>return</c> and

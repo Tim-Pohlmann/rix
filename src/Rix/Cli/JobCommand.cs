@@ -1,3 +1,4 @@
+using Rix.Artifacts;
 using Rix.Job;
 using System.CommandLine;
 
@@ -73,14 +74,29 @@ internal static class JobCommand
     /// <summary>What a CLI adds to a run: the result on stdout for a human or a shell watching the
     /// command, and an exit code. The artifacts the job itself produces are
     /// <see cref="JobRunner.RunAsync"/>'s (see <see cref="JobArtifacts"/>), so nothing here can leave a
-    /// job half-recorded. The same JSON has already gone to <c>result.json</c>, which is why losing
-    /// stdout to a broken pipe costs nothing but the echo.</summary>
+    /// job half-recorded. Stdout is still written when <c>result.json</c> was not, and is then the
+    /// only copy of the outcome left - which is also why losing stdout to a broken pipe normally
+    /// costs nothing but the echo.</summary>
     internal static async Task<int> ExecuteAsync(JobConfig config, JobContext context, CancellationToken cancellationToken)
     {
-        var result = await JobRunner.RunAsync(config, context, cancellationToken);
-        await BestEffortOutput.WriteLineAsync(Console.Out, JobArtifacts.Serialize(result));
-        return ExitCode(result);
+        var outcome = await JobRunner.RunAsync(config, context, cancellationToken);
+        await BestEffortOutput.WriteLineAsync(Console.Out, JobArtifacts.Serialize(outcome.Result));
+        return ExitCode(outcome);
     }
+
+    /// <summary>A lost <c>result.json</c> first, whatever the job's own outcome was: the file is
+    /// what <c>rix submit</c> and the job summary read, so a caller that got
+    /// <see cref="ExitCodes.Success"/> or <see cref="ExitCodes.JobFailed"/> would go on to read a
+    /// file that isn't there, and a green run is the worst of the two mistakes. The outcome itself
+    /// is on stdout either way, so nothing is hidden by reporting the lost file
+    /// instead.</summary>
+    private static int ExitCode(JobOutcome outcome)
+    => outcome.ResultFile switch
+    {
+        ArtifactLost => ExitCodes.ResultNotWritten,
+        ArtifactWritten => ExitCode(outcome.Result),
+        _ => throw new NotSupportedException($"Unexpected artifact write type: {outcome.ResultFile.GetType()}"),
+    };
 
     /// <summary>The three ways a job ends, as the three exit codes a caller distinguishes. Matches
     /// disjoint concrete types, so adding a fourth result breaks here rather than being reported as

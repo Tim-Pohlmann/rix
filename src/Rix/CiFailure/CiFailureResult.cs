@@ -1,3 +1,4 @@
+using Rix.Artifacts;
 using System.Text.Json.Serialization;
 
 namespace Rix.CiFailure;
