@@ -6,11 +6,6 @@ namespace Rix.Tests;
 [TestClass]
 public class StartupTests
 {
-    private static string Shell => OperatingSystem.IsWindows() ? "pwsh" : "/bin/sh";
-
-    private static string Echo(string text) =>
-        OperatingSystem.IsWindows() ? $"Write-Output '{text}'" : $"echo {text}";
-
     [TestMethod]
     public async Task RunAsync_WithHelpFlag_ReturnsZero()
     {

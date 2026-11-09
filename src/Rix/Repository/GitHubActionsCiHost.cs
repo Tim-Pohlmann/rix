@@ -9,9 +9,9 @@ namespace Rix.Repository;
 ///
 /// Shares its <see cref="GitHubApi"/> transport with <see cref="GitHubCiFailureRepoHost"/>, because
 /// on GitHub the CI provider and the repo host happen to be the same service behind the same
-/// credential. That is a fact about GitHub, not about the seam: <see cref="Startup"/> hands both the
-/// same instance, and a setup where they weren't the same service would hand them different
-/// ones.</summary>
+/// credential. That is a fact about GitHub, not about the seam:
+/// <see cref="Composition.GitHubCiHosts"/> hands both the same instance, and a setup where they
+/// weren't the same service would hand them different ones.</summary>
 internal sealed class GitHubActionsCiHost : ICiHost
 {
     private readonly GitHubApi _api;

@@ -498,7 +498,8 @@ jobs:
           sudo apt-get install -y bats python3-jsonschema
 
       - name: Run rix job e2e tests
-        # rix forwards every line the agent CLI prints to stderr (see JobRunner.ForwardLine), and
+        # rix logs every line the agent CLI prints - its stdout, and its stderr marked `[stderr]`
+        # (see the two line sinks JobRunner hands the process) - onto rix's own stderr, and
         # `run` merges that into $output - print it on failure instead of silently discarding it,
         # so a failing assertion here comes with the agent's actual raw output instead of just the
         # failed jq/status check.
