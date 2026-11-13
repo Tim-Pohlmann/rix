@@ -71,14 +71,17 @@ internal static class InitializeCommand
     }
 
     /// <summary>The steps <c>rix initialize</c> can't do itself: it only writes files, so setting
-    /// secrets, naming the watched CI workflow, and committing are left to the user.</summary>
+    /// up the secret and the environment that holds the write token, naming the watched CI
+    /// workflow, and committing are left to the user.</summary>
     private const string NextStepsGuidance = """
 
         Next steps:
-          1. Add repo secrets (Settings -> Secrets and variables -> Actions):
+          1. Add the read token as a repo secret (Settings -> Secrets and variables -> Actions):
                RIX_READ_TOKEN   PAT, contents:read  (+ actions:read for the CI-failure workflow)
+          2. Add the write token to an environment named 'rix' (Settings -> Environments), and
+             limit that environment's deployment branches to the ones these workflows run on:
                RIX_WRITE_TOKEN  PAT, contents:write + pull-requests:write
-          2. In rix-on-ci-failure.yml, set workflows: ["CI"] to your CI workflow's name.
-          3. Commit and push the two workflow files.
+          3. In rix-on-ci-failure.yml, set workflows: ["CI"] to your CI workflow's name.
+          4. Commit and push the two workflow files.
         """;
 }
