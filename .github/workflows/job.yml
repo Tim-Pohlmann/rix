@@ -80,12 +80,26 @@ on:
         required: false
         type: string
         default: ubuntu-latest
+      environment:
+        description: >-
+          GitHub Environment the PR-creating job runs in, named in the *calling* repo. With the
+          write token stored in that environment behind a deployment branch policy, GitHub refuses
+          to hand it to a run on any other branch - the same bound as allowed-push-branches, but
+          enforced outside the agent's reach rather than inside rix's own process. A name matching
+          no environment in the caller is created on first use with no protection rules, so this
+          buys nothing until that environment exists.
+        required: false
+        type: string
+        default: rix
     secrets:
       read-token:
         description: GitHub PAT with read access to the target repo (used to clone)
         required: true
       write-token:
-        description: "GitHub PAT with contents:write + pull-requests:write on the target repo"
+        description: >-
+          GitHub PAT with contents:write + pull-requests:write on the target repo. Best stored in
+          the environment named by the environment input rather than as a plain repo secret, so
+          that environment's branch policy gates it; it is passed the same way either way.
         required: true
       agent-api-key:
         description: >-
@@ -147,6 +161,15 @@ jobs:
     name: Create PRs
     needs: run
     runs-on: ${{ inputs.runner }}
+    # Where the write token comes from: an environment in the calling repo, whose deployment
+    # branch policy decides whether a run on this branch may be handed the token at all. That
+    # matters most once the token is allowed to push workflow files, because rix's own
+    # allowed-push-branches check runs inside rix - this one does not. `deployment: false` keeps
+    # the secret scoping and the branch policy and records no deployment per run; rix deploys
+    # nothing, so that history would only be noise.
+    environment:
+      name: ${{ inputs.environment }}
+      deployment: false
     steps:
       # See the comment on the equivalent step in the `run` job above.
       - name: Get rix repo (for local composite actions)

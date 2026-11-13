@@ -24,7 +24,8 @@ Their `uses:` lines point at the floating major-version tag of the release this 
 from (`@v0` for any 0.x build), so the caller workflows call the reusable workflows they were
 released with. Then:
 
-1. Add repo secrets `RIX_READ_TOKEN` and `RIX_WRITE_TOKEN` (see [Secrets](#secrets)).
+1. Add the repo secret `RIX_READ_TOKEN`, and add `RIX_WRITE_TOKEN` to an environment named
+   `rix` (see [Secrets](#secrets)).
 2. In `rix-on-ci-failure.yml`, change `workflows: ["CI"]` to the `name:` of the workflow rix
    should react to.
 3. Commit and push the two files.
@@ -180,11 +181,27 @@ names, it asks for a binary that isn't published yet.
 | Secret | Purpose |
 | --- | --- |
 | `read-token` | Required. PAT with read access to the target repo; used to clone it during the agent run. |
-| `write-token` | Required. PAT with `contents:write` + `pull-requests:write` on the target repo; used to push branches and open PRs. |
+| `write-token` | Required. PAT with `contents:write` + `pull-requests:write` on the target repo; used to push branches and open PRs. Belongs in an environment — see below. |
 | `agent-api-key` | Optional. API key for the selected agent's model provider, exported as the env var named by `agent-api-key-env` (default `OPENCODE_API_KEY` for opencode, `ANTHROPIC_API_KEY` for claude; for pi, `agent-api-key-env` must be set explicitly whenever `agent-api-key` is provided, since pi has no per-agent default). Not needed when leaving `model` unset, since opencode then picks its own free default model. |
 
 The read/write split keeps the agent run (which executes untrusted, model-generated work)
 on a read-only token; only the final, deterministic PR-creation step holds write access.
+
+That PR-creation job runs in a [GitHub
+Environment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
+belonging to the *calling* repo, named by the optional `environment` input (default `rix`).
+Create it under Settings → Environments, add `RIX_WRITE_TOKEN` to it as an environment secret,
+and restrict its deployment branches to the branches the caller workflow runs on — "protected
+branches only", with `main` protected, is the usual choice. GitHub then refuses to hand the
+token to a run on any other branch. That is the bound that still holds if the token is ever
+widened enough to push workflow files, which rix's own `allowed-push-branches` check cannot
+promise on its own: that check runs inside rix, on the same side of the fence as the inputs it
+reads. Callers pass the secret exactly as the examples here show — an environment secret can be
+passed by name even though it exists nowhere else.
+
+An environment name that does not exist in the calling repo is created on first use, with no
+protection rules: the run succeeds and nothing is enforced. So a caller holding the write token
+as a plain repo secret keeps working unchanged, just without this bound.
 
 The workflow downloads the `rix` release binary belonging to the workflow ref you pinned in
 `uses:` — not whatever was published most recently — and verifies it against that release's
