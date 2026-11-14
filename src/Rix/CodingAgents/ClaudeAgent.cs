@@ -2,7 +2,7 @@ using Rix.Job;
 using Rix.Process;
 using System.Text.Json;
 
-namespace Rix.Agents;
+namespace Rix.CodingAgents;
 
 /// <summary>
 /// <see cref="ICodingAgent"/> backed by Anthropic's Claude Code CLI: installs it via npm,

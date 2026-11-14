@@ -2,19 +2,19 @@ using Rix.Job;
 using Rix.Process;
 using System.Text.Json;
 
-namespace Rix.Agents;
+namespace Rix.CodingAgents;
 
 /// <summary>
 /// <see cref="ICodingAgent"/> backed by the open-source Pi coding agent CLI: installs it via npm,
 /// launches it in non-interactive JSON event mode, and reads cost from that stream.
 /// </summary>
 /// <remarks>
-/// Like <see cref="OpenCodeAgent"/>, Pi is multi-provider — <see cref="AgentConfig.Model"/> is
+/// Like <see cref="OpenCodeAgent"/>, Pi is multi-provider — <see cref="CodingAgentConfig.Model"/> is
 /// forwarded verbatim as <c>--model</c> (e.g. <c>openai/gpt-4o</c>), and <see cref="Job.JobRunner"/>
 /// adds whatever credential env var that provider expects to this invocation's environment (see
 /// <see cref="AgentCredential"/>), so this method itself carries no override for it. Pi has no
 /// per-run output-token cap equivalent to <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so
-/// <see cref="AgentConfig.MaxTokens"/> is not forwarded either. Unlike OpenCode, Pi does support
+/// <see cref="CodingAgentConfig.MaxTokens"/> is not forwarded either. Unlike OpenCode, Pi does support
 /// <c>--append-system-prompt</c>, so rix's system prompt is passed the same way as for
 /// <see cref="ClaudeAgent"/>.
 /// </remarks>

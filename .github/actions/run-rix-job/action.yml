@@ -115,7 +115,7 @@ runs:
         # AGENT_API_KEY/AGENT_API_KEY_ENV are forwarded to rix as-is - it resolves which single env
         # var to export the key under (defaulting per agent, validating a caller-supplied name) and
         # adds it directly to the agent CLI subprocess's own environment (see
-        # Rix.Agents.AgentCredential and Rix.Job.JobRunner). The key never needs to exist under
+        # Rix.CodingAgents.AgentCredential and Rix.Job.JobRunner). The key never needs to exist under
         # that name in this shell or in $GITHUB_ENV.
         mkdir -p out work
 

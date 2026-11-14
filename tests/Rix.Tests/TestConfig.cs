@@ -1,4 +1,4 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 using Rix.CiFailure;
 using Rix.Initialize;
 using Rix.Job;
@@ -45,7 +45,7 @@ internal static class TestConfig
             new TimeoutMinutes(timeoutMinutes),
             WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath(), new LocalFileSystem()),
             OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath(), new LocalFileSystem()),
-            new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, effort, credential),
+            new CodingAgentConfig(agent, prompt, new MaxTokens(maxTokens), model, effort, credential),
             allowedPushBranches ?? [],
             agentHome
         );

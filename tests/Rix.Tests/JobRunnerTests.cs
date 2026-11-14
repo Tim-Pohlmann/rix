@@ -1,4 +1,4 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 using Rix.Artifacts;
 using Rix.Cli;
 using Rix.Job;

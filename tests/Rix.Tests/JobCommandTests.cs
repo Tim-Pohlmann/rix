@@ -1,4 +1,4 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 using Rix.Cli;
 using Rix.Job;
 
@@ -54,7 +54,7 @@ public class JobCommandTests
     [TestMethod]
     public void Command_SelectsAgent_FromFlag()
     {
-        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, ReadValid("--agent", "opencode").Agent.Kind);
+        Assert.AreEqual(Rix.CodingAgents.AgentKind.OpenCode, ReadValid("--agent", "opencode").Agent.Kind);
     }
 
     [TestMethod]
@@ -63,7 +63,7 @@ public class JobCommandTests
         using var env = new EnvScope();
         env.Set("RIX_AGENT", "opencode");
 
-        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, ReadValid().Agent.Kind);
+        Assert.AreEqual(Rix.CodingAgents.AgentKind.OpenCode, ReadValid().Agent.Kind);
     }
 
     [TestMethod]
@@ -75,7 +75,7 @@ public class JobCommandTests
     [TestMethod]
     public void Command_DefaultsToOpenCode_WhenAgentUnset()
     {
-        Assert.AreEqual(Rix.Agents.AgentKind.OpenCode, ReadValid().Agent.Kind);
+        Assert.AreEqual(Rix.CodingAgents.AgentKind.OpenCode, ReadValid().Agent.Kind);
     }
 
     [TestMethod]

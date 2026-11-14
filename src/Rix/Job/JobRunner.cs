@@ -1,4 +1,4 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 using Rix.Api;
 using Rix.Artifacts;
 using Rix.Process;
@@ -244,7 +244,7 @@ internal static class JobRunner
     /// resolve it in the first place.</summary>
     private static IReadOnlyDictionary<string, string> WithApiKey
     (
-        IReadOnlyDictionary<string, string> environmentOverrides, AgentConfig agent
+        IReadOnlyDictionary<string, string> environmentOverrides, CodingAgentConfig agent
     )
     {
         if (agent.Credential is not { } credential)

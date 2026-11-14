@@ -1,4 +1,4 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 
 namespace Rix.Job;
 
@@ -24,7 +24,7 @@ internal record JobConfig
     // why call sites pass them by name while the rest of the list stays positional.
     DirectoryPath WorkDir,
     DirectoryPath OutputDir,
-    AgentConfig Agent,
+    CodingAgentConfig Agent,
     IReadOnlyList<BranchName> AllowedPushBranches,
     AgentHomeInfo? AgentHome = null
 )
@@ -50,7 +50,7 @@ internal record JobConfig
 /// <see cref="AgentCredential.Resolve"/>) is <see cref="JobRunner"/>'s instruction for which single
 /// env var to add to the agent invocation's <see cref="AgentInvocation.EnvironmentOverrides"/> —
 /// null when no key was supplied, and carrying both halves whenever it is not.</summary>
-internal sealed record AgentConfig
+internal sealed record CodingAgentConfig
 (
     AgentKind Kind,
     string Prompt,

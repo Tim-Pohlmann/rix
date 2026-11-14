@@ -1,7 +1,7 @@
 using Rix.Job;
 using Rix.Process;
 
-namespace Rix.Agents;
+namespace Rix.CodingAgents;
 
 /// <summary>
 /// A pluggable coding agent (e.g. Claude Code). Captures everything agent-specific behind a

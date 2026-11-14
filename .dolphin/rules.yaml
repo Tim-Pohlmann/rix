@@ -224,7 +224,7 @@ rules:
     severity: ERROR
     message: >-
       Rix.Cli is a leaf layer the entry point wires up; reference it from
-      Startup.cs only, not from Job/Agents/Process/Repository/Submit/Api.
+      Startup.cs only, not from Job/CodingAgents/Process/Repository/Submit/Api.
     paths:
       exclude:
         - src/Rix/Startup.cs

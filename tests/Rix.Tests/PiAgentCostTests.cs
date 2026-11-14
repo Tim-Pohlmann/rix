@@ -1,4 +1,4 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 
 namespace Rix.Tests;
 

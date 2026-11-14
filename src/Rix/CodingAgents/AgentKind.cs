@@ -1,4 +1,4 @@
-namespace Rix.Agents;
+namespace Rix.CodingAgents;
 
 /// <summary>Selects which <see cref="ICodingAgent"/> implementation a job runs with.</summary>
 internal enum AgentKind

@@ -46,7 +46,7 @@ internal static class JobCommand
             timeout,
             WorkDir: workDir,
             OutputDir: outputDir,
-            new AgentConfig(agent, prompt, maxTokens, model, effort, credential),
+            new CodingAgentConfig(agent, prompt, maxTokens, model, effort, credential),
             allowedPushBranches,
             agentHome
         );

@@ -1,4 +1,4 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 using Rix.CiFailure;
 using Rix.Job;
 using Rix.Process;

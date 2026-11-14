@@ -2,7 +2,7 @@ using Rix.Job;
 using Rix.Process;
 using System.Text.Json;
 
-namespace Rix.Agents;
+namespace Rix.CodingAgents;
 
 /// <summary>
 /// <see cref="ICodingAgent"/> backed by the open-source OpenCode CLI: installs it via npm,
@@ -15,7 +15,7 @@ namespace Rix.Agents;
 /// <item>OpenCode has no <c>--append-system-prompt</c> flag, so rix's system prompt (which carries
 /// the local PR API URL) is folded into the run message ahead of the user's prompt.</item>
 /// <item>OpenCode exposes no per-run output-token cap equivalent to
-/// <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so <see cref="AgentConfig.MaxTokens"/> is not forwarded;
+/// <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so <see cref="CodingAgentConfig.MaxTokens"/> is not forwarded;
 /// the invocation carries no environment overrides.</item>
 /// <item>The invocation always carries <c>--auto</c>. Without it, an unattended run has no way to
 /// answer an "ask"-level permission request (there's no terminal to prompt), so OpenCode
@@ -26,7 +26,7 @@ namespace Rix.Agents;
 /// disposable <see cref="Rix.TempDirectory"/> clone on an ephemeral CI runner.</item>
 /// </list>
 /// Unlike Claude (Anthropic-only), OpenCode supports many model providers via
-/// <see cref="AgentConfig.Model"/> (a <c>provider/model</c> string forwarded verbatim as
+/// <see cref="CodingAgentConfig.Model"/> (a <c>provider/model</c> string forwarded verbatim as
 /// <c>--model</c>); <see cref="Job.JobRunner"/> adds whatever credential env var that provider
 /// expects to this invocation's environment — see <see cref="AgentCredential"/> — so this method
 /// itself carries no override for it. Local/self-hosted backends (Ollama, LM Studio) aren't
