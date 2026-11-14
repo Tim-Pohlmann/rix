@@ -72,12 +72,46 @@ public class InitializeCommandTests
     }
 
     [TestMethod]
+    public void Command_SetsUpARepoServedByTheNamedFactory_WhenFactoryRepoFlagPresent()
+    {
+        var setup = Read("--factory-repo", "acme/rix-factory").Setup;
+
+        Assert.IsInstanceOfType<FactoryServedSetup>(setup, out var served);
+        Assert.AreEqual(new RepoIdentifier("acme/rix-factory"), served.FactoryRepo);
+    }
+
+    [TestMethod]
+    public void Command_ReportsTheFlag_WhenFactoryRepoIsMalformed()
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--factory-repo", "rix-factory"));
+
+        StringAssert.StartsWith(ex.Message, "--factory-repo: 'rix-factory' is not a valid repo identifier");
+    }
+
+    [TestMethod]
+    public void Command_Rejects_FactoryCombinedWithFactoryRepo()
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--factory", "--factory-repo", "acme/rix-factory"));
+
+        StringAssert.StartsWith(ex.Message, "--factory and --factory-repo cannot be combined");
+    }
+
+    [TestMethod]
+    public void NextSteps_ScopeTheDispatchTokenToTheNamedFactory()
+    {
+        var steps = InitializeCommand.NextSteps(new FactoryServedSetup(new("acme/rix-factory")));
+
+        StringAssert.Contains(steps, "RIX_FACTORY_DISPATCH_TOKEN   PAT, contents:write on acme/rix-factory only");
+        StringAssert.Contains(steps, "In notify-rix-factory.yml, set workflows: [\"CI\"]");
+    }
+
+    [TestMethod]
     public void NextSteps_PointAFactoryAtTheReposItServes()
     {
         var steps = InitializeCommand.NextSteps(new FactorySetup());
 
         StringAssert.Contains(steps, "on every repo this factory serves");
-        StringAssert.Contains(steps, "In each repo this factory serves");
+        StringAssert.Contains(steps, "rix initialize --factory-repo <this repo's owner/name>");
         // A factory answers dispatched failures, so there is no watched workflow to rename.
         Assert.IsFalse(steps.Contains("workflows: [\"CI\"]", StringComparison.Ordinal));
     }
