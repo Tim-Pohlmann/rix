@@ -44,7 +44,7 @@ public class StartupTests
     public async Task RunInitializeAsync_WritesCallerWorkflows_AndReturnsZero()
     {
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
-        var exitCode = await Startup.RunAsync(["initialize", "--dir", dir]);
+        var exitCode = await Startup.RunAsync(["initialize", "--single-repo", "--dir", dir]);
 
         Assert.AreEqual(0, exitCode);
         Assert.IsTrue(File.Exists(Path.Combine(dir, ".github/workflows/rix.yml")));
@@ -67,7 +67,7 @@ public class StartupTests
     public async Task RunInitializeAsync_Returns2_WhenTargetDirDoesNotExist()
     {
         using var stderr = new ConsoleErrorScope();
-        var exitCode = await Startup.RunAsync(["initialize", "--dir", "/nonexistent/path/xyz"]);
+        var exitCode = await Startup.RunAsync(["initialize", "--single-repo", "--dir", "/nonexistent/path/xyz"]);
 
         Assert.AreEqual(2, exitCode);
         StringAssert.Contains(stderr.Text, "error: --dir: directory does not exist: /nonexistent/path/xyz");

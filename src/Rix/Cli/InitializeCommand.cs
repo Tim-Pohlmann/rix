@@ -30,6 +30,19 @@ internal static class InitializeCommand
     /// variation of the one <c>rix init</c> sets up.</summary>
     private static readonly Command FactoryCommand = new("factory", "Write the workflows of a factory repo, which runs rix against the repos it serves");
 
+    /// <summary>What a bare <c>rix init</c> asks for: a factory serves many repos, so a served repo
+    /// is the setup most often written.</summary>
+    private static readonly Argument<string> FactoryRepoArgument = new("factory-repo")
+    {
+        Arity = ArgumentArity.ZeroOrOne,
+        Description = "The factory repo (owner/name) that serves this one: write only the workflow that dispatches this repo's CI failures to it"
+    };
+
+    private static readonly Option<bool> SingleRepoOption = new("--single-repo")
+    {
+        Description = "Set up a repo that runs rix on itself, with no factory"
+    };
+
     internal static Command Build()
     {
         var command = new Command("initialize", "Write the rix caller workflows into a cloned repo's .github/workflows/");
@@ -38,6 +51,8 @@ internal static class InitializeCommand
         command.Options.Add(DirOption);
         command.Options.Add(RefOption);
         command.Options.Add(CiWorkflowOption);
+        command.Arguments.Add(FactoryRepoArgument);
+        command.Options.Add(SingleRepoOption);
         command.Subcommands.Add(FactoryCommand);
 
         return command;
@@ -55,15 +70,31 @@ internal static class InitializeCommand
         );
     }
 
-    /// <summary>Which of the commands <see cref="Build"/> returns was invoked: they share one
-    /// action (see <see cref="Startup"/>), and this is where they part.</summary>
+    /// <summary>Which of the commands <see cref="Build"/> returns was invoked, and with what: they
+    /// share one action (see <see cref="Startup"/>), and this is where they part. A repo is the
+    /// factory, is served by one, or runs rix on itself, so naming more than one is refused rather
+    /// than resolved by precedence.</summary>
     private static IInitializeSetup Setup(ParseResult parsed)
     {
         var reference = Input.Optional(RefOption.Name, parsed.GetValue(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild);
+        var factoryRepo = parsed.GetValue(FactoryRepoArgument);
+        var singleRepo = parsed.GetValue(SingleRepoOption);
         if (parsed.CommandResult.Command == FactoryCommand)
+        {
+            if (singleRepo || !string.IsNullOrWhiteSpace(factoryRepo))
+                throw new InvalidInputException($"{FactoryCommand.Name} takes neither a factory repo nor {SingleRepoOption.Name}; it sets up the factory itself");
             return new FactorySetup(reference);
-        var ciWorkflow = Input.Optional(CiWorkflowOption.Name, parsed.GetValue(CiWorkflowOption), value => new CiWorkflowName(value), CiWorkflowName.Default);
-        return new StandaloneSetup(reference, ciWorkflow);
+        }
+        if (singleRepo)
+        {
+            if (!string.IsNullOrWhiteSpace(factoryRepo))
+                throw new InvalidInputException($"{SingleRepoOption.Name} and a factory repo cannot be combined; a single repo runs rix on itself");
+            var ciWorkflow = Input.Optional(CiWorkflowOption.Name, parsed.GetValue(CiWorkflowOption), value => new CiWorkflowName(value), CiWorkflowName.Default);
+            return new StandaloneSetup(reference, ciWorkflow);
+        }
+        if (string.IsNullOrWhiteSpace(factoryRepo))
+            throw new InvalidInputException($"name the factory repo that serves this one (rix initialize <owner/name>), pass {SingleRepoOption.Name} for a repo that runs rix on itself, or run rix initialize {FactoryCommand.Name} in the factory repo");
+        return Input.Named($"<{FactoryRepoArgument.Name}>", () => new FactoryServedSetup(new RepoIdentifier(factoryRepo)));
     }
 
     /// <summary>Runs <paramref name="config"/> against the production context. Separate from

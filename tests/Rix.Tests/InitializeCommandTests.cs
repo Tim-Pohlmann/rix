@@ -21,6 +21,11 @@ public class InitializeCommandTests
         _ => throw new AssertFailedException($"setup {config.Setup.GetType().Name} has no ref"),
     };
 
+    /// <summary>For the tests about the options every setup shares: a bare <c>rix init</c> names
+    /// no factory and is refused, so these pick the setup that needs nothing else.</summary>
+    private static InitializeConfig ReadSingleRepo(params string[] args)
+    => Read(["--single-repo", .. args], null);
+
     /// <summary>The workflow a standalone setup's CI-failure caller watches.</summary>
     private static CiWorkflowName CiWorkflowOf(InitializeConfig config) => config.Setup switch
     {
@@ -33,7 +38,7 @@ public class InitializeCommandTests
     {
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
 
-        var config = Read("--dir", dir);
+        var config = ReadSingleRepo("--dir", dir);
 
         Assert.AreEqual(Path.GetFullPath(dir), config.TargetDir.Value);
     }
@@ -44,7 +49,7 @@ public class InitializeCommandTests
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
         // Parsed by hand: CommandArgs always spells the verb the way the command names it, and the
         // spelling is the point here.
-        var parsed = new RootCommand { InitializeCommand.Build() }.Parse(["init", "--dir", dir]);
+        var parsed = new RootCommand { InitializeCommand.Build() }.Parse(["init", "--single-repo", "--dir", dir]);
 
         var config = InitializeCommand.CreateConfig(parsed, new LocalFileSystem());
 
@@ -56,7 +61,7 @@ public class InitializeCommandTests
     {
         var currentDirectory = Path.GetTempPath();
 
-        var config = Read([], new StubFileSystem(currentDirectory: currentDirectory));
+        var config = Read(["--single-repo"], new StubFileSystem(currentDirectory: currentDirectory));
 
         Assert.AreEqual(Path.GetFullPath(currentDirectory), config.TargetDir.Value);
     }
@@ -64,33 +69,33 @@ public class InitializeCommandTests
     [TestMethod]
     public void Command_DefaultsRefToThisBuildsMajorTag_WhenFlagAbsentOrBlank()
     {
-        Assert.AreEqual(WorkflowRef.ForThisBuild, RefOf(Read()));
-        Assert.AreEqual(WorkflowRef.ForThisBuild, RefOf(Read("--ref", "  ")));
+        Assert.AreEqual(WorkflowRef.ForThisBuild, RefOf(ReadSingleRepo()));
+        Assert.AreEqual(WorkflowRef.ForThisBuild, RefOf(ReadSingleRepo("--ref", "  ")));
     }
 
     [TestMethod]
     public void Command_PassesRefFlag_ToConfig()
     {
-        Assert.AreEqual("v1.2.3", RefOf(Read("--ref", "v1.2.3")).Value);
+        Assert.AreEqual("v1.2.3", RefOf(ReadSingleRepo("--ref", "v1.2.3")).Value);
     }
 
     [TestMethod]
     public void Command_DefaultsTheCiWorkflowToCI_WhenFlagAbsentOrBlank()
     {
-        Assert.AreEqual(CiWorkflowName.Default, CiWorkflowOf(Read()));
-        Assert.AreEqual(CiWorkflowName.Default, CiWorkflowOf(Read("--ci-workflow", "  ")));
+        Assert.AreEqual(CiWorkflowName.Default, CiWorkflowOf(ReadSingleRepo()));
+        Assert.AreEqual(CiWorkflowName.Default, CiWorkflowOf(ReadSingleRepo("--ci-workflow", "  ")));
     }
 
     [TestMethod]
     public void Command_PassesCiWorkflowFlag_ToConfig()
     {
-        Assert.AreEqual("Build and test", CiWorkflowOf(Read("--ci-workflow", "Build and test")).Value);
+        Assert.AreEqual("Build and test", CiWorkflowOf(ReadSingleRepo("--ci-workflow", "Build and test")).Value);
     }
 
     [TestMethod]
     public void Command_ReportsTheFlag_WhenCiWorkflowCannotBeWritten()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--ci-workflow", "say \"hi\""));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => ReadSingleRepo("--ci-workflow", "say \"hi\""));
 
         StringAssert.StartsWith(ex.Message, "--ci-workflow: 'say \"hi\"' is not a workflow name rix can write");
     }
@@ -105,9 +110,17 @@ public class InitializeCommandTests
     }
 
     [TestMethod]
-    public void Command_SetsUpARepoRunningRixOnItself_WithoutASubcommand()
+    public void Command_SetsUpARepoRunningRixOnItself_ForSingleRepo()
     {
-        Assert.IsInstanceOfType<StandaloneSetup>(Read().Setup);
+        Assert.IsInstanceOfType<StandaloneSetup>(Read("--single-repo").Setup);
+    }
+
+    [TestMethod]
+    public void Command_RefusesToGuessTheSetup_WhenNamingNoFactory()
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read());
+
+        StringAssert.StartsWith(ex.Message, "name the factory repo that serves this one (rix initialize <owner/name>), pass --single-repo");
     }
 
     [TestMethod]
@@ -130,9 +143,46 @@ public class InitializeCommandTests
     }
 
     [TestMethod]
+    public void Command_SetsUpARepoServedByTheNamedFactory()
+    {
+        var setup = Read("acme/rix-factory").Setup;
+
+        Assert.IsInstanceOfType<FactoryServedSetup>(setup, out var served);
+        Assert.AreEqual(new RepoIdentifier("acme/rix-factory"), served.FactoryRepo);
+    }
+
+    [TestMethod]
+    public void Command_ReportsTheArgument_WhenFactoryRepoIsMalformed()
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("rix-factory"));
+
+        StringAssert.StartsWith(ex.Message, "<factory-repo>: 'rix-factory' is not a valid repo identifier");
+    }
+
+    [TestMethod]
+    public void Command_Rejects_SingleRepoCombinedWithAFactoryRepo()
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--single-repo", "acme/rix-factory"));
+
+        StringAssert.StartsWith(ex.Message, "--single-repo and a factory repo cannot be combined");
+    }
+
+    /// <summary>Both are the parent's, so they parse ahead of the subcommand: without the check
+    /// they would be dropped without a word.</summary>
+    [TestMethod]
+    [DataRow("acme/rix-factory")]
+    [DataRow("--single-repo")]
+    public void FactorySubcommand_Rejects_ThePartsOfTheOtherSetups(string other)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read(other, "factory"));
+
+        StringAssert.StartsWith(ex.Message, "factory takes neither a factory repo nor --single-repo");
+    }
+
+    [TestMethod]
     public void Command_ReportsTheFlag_WhenRefIsMalformed()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--ref", "main branch"));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => ReadSingleRepo("--ref", "main branch"));
 
         StringAssert.StartsWith(ex.Message, "--ref: 'main branch' is not a valid workflow ref");
     }
@@ -140,7 +190,7 @@ public class InitializeCommandTests
     [TestMethod]
     public void Command_ReportsTheFlag_WhenDirDoesNotExist()
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--dir", "/nonexistent/path/xyz"));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => ReadSingleRepo("--dir", "/nonexistent/path/xyz"));
 
         Assert.AreEqual("--dir: directory does not exist: /nonexistent/path/xyz", ex.Message);
     }
@@ -150,7 +200,7 @@ public class InitializeCommandTests
     [DataRow("   ")]
     public void Command_ReportsTheFlag_WhenDirIsBlank(string dir)
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--dir", dir));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => ReadSingleRepo("--dir", dir));
 
         Assert.AreEqual("--dir is required", ex.Message);
     }

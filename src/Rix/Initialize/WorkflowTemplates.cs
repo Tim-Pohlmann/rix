@@ -18,6 +18,10 @@ internal static class WorkflowTemplates
     /// answers.</summary>
     internal const string CiWorkflowPlaceholder = "__RIX_CI_WORKFLOW__";
 
+    /// <summary>What a <see cref="FactoryServedSetup"/>'s template carries in place of the factory
+    /// repo it dispatches to.</summary>
+    internal const string FactoryRepoPlaceholder = "__RIX_FACTORY_REPO__";
+
     internal const string ResourcePrefix = "Rix.Cli.Templates.";
 
     /// <summary>The templates of <paramref name="setup"/> with its placeholders filled in, each
@@ -34,7 +38,8 @@ internal static class WorkflowTemplates
     /// setup must not carry it.</summary>
     /// <param name="Ref">What replaces <see cref="RefPlaceholder"/>.</param>
     /// <param name="CiWorkflow">What replaces <see cref="CiWorkflowPlaceholder"/>.</param>
-    private sealed record TemplateValues(WorkflowRef? Ref = null, CiWorkflowName? CiWorkflow = null);
+    /// <param name="FactoryRepo">What replaces <see cref="FactoryRepoPlaceholder"/>.</param>
+    private sealed record TemplateValues(WorkflowRef? Ref = null, CiWorkflowName? CiWorkflow = null, RepoIdentifier? FactoryRepo = null);
 
     /// <summary>The folder under <c>Cli/Templates/</c> holding <paramref name="setup"/>'s templates,
     /// and the values their placeholders are filled in with.</summary>
@@ -42,6 +47,7 @@ internal static class WorkflowTemplates
     {
         StandaloneSetup standalone => ("Standalone", new(Ref: standalone.Ref, CiWorkflow: standalone.CiWorkflow)),
         FactorySetup factory => ("Factory", new(Ref: factory.Ref)),
+        FactoryServedSetup served => ("FactoryServed", new(FactoryRepo: served.FactoryRepo)),
         _ => throw new NotSupportedException($"Unexpected initialize setup type: {setup.GetType()}"),
     };
 
@@ -51,6 +57,7 @@ internal static class WorkflowTemplates
         [
             (RefPlaceholder, values.Ref?.Value),
             (CiWorkflowPlaceholder, values.CiWorkflow?.Value),
+            (FactoryRepoPlaceholder, values.FactoryRepo?.Value),
         ];
         return fills.Aggregate(template.Content, (content, fill) => FillIn(content, fill.Placeholder, fill.Value, template.RelativePath));
     }

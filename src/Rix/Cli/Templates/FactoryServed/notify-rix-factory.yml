@@ -1,0 +1,33 @@
+name: notify rix factory
+on:
+  workflow_run:
+    workflows: ["CI"] # change "CI" to the name: of the workflow rix should react to
+    types: [completed]
+jobs:
+  notify:
+    # The factory re-checks both conditions against the API, so this only saves the round trip. The
+    # head_repository check keeps runs from forks' pull requests out: anyone can push to a fork.
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    # The dispatch goes through RIX_FACTORY_DISPATCH_TOKEN; this job needs no GITHUB_TOKEN access.
+    permissions: {}
+    steps:
+      - name: Dispatch to the factory repo
+        # Every value reaches the script through env, never through ${{ }} inside `run:` - an
+        # expression there is pasted into the script before bash sees it. A fork PR's branch name
+        # is chosen by its author and git allows `$(...)` and backticks in one, so interpolating
+        # it would run the author's command in this step, which holds the dispatch token.
+        env:
+          GH_TOKEN: ${{ secrets.RIX_FACTORY_DISPATCH_TOKEN }}
+          FACTORY_REPO: __RIX_FACTORY_REPO__
+          PROJECT_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          gh api "repos/$FACTORY_REPO/dispatches" \
+            -f event_type=rix-ci-failure \
+            -f "client_payload[repo]=$PROJECT_REPO" \
+            -f "client_payload[run_id]=$RUN_ID" \
+            -f "client_payload[branch]=$HEAD_BRANCH"
