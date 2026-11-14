@@ -13,6 +13,10 @@ public class InitializeCommandTests
     private static InitializeConfig Read(params string[] args)
     => Read(args, null);
 
+    /// <summary>The ref the setup fills its templates in with.</summary>
+    private static WorkflowRef RefOf(InitializeConfig config)
+    => new(config.Setup.Placeholders[WorkflowTemplates.RefPlaceholder]);
+
     [TestMethod]
     public void Command_PassesDirFlag_ToConfig()
     {
@@ -49,14 +53,14 @@ public class InitializeCommandTests
     [TestMethod]
     public void Command_DefaultsRefToThisBuildsMajorTag_WhenFlagAbsentOrBlank()
     {
-        Assert.AreEqual(WorkflowRef.ForThisBuild, Read().Ref);
-        Assert.AreEqual(WorkflowRef.ForThisBuild, Read("--ref", "  ").Ref);
+        Assert.AreEqual(WorkflowRef.ForThisBuild, RefOf(Read()));
+        Assert.AreEqual(WorkflowRef.ForThisBuild, RefOf(Read("--ref", "  ")));
     }
 
     [TestMethod]
     public void Command_PassesRefFlag_ToConfig()
     {
-        Assert.AreEqual("v1.2.3", Read("--ref", "v1.2.3").Ref.Value);
+        Assert.AreEqual("v1.2.3", RefOf(Read("--ref", "v1.2.3")).Value);
     }
 
     [TestMethod]
@@ -80,7 +84,7 @@ public class InitializeCommandTests
         {
             Assert.IsInstanceOfType<FactorySetup>(config.Setup);
             Assert.AreEqual(Path.GetFullPath(dir), config.TargetDir.Value);
-            Assert.AreEqual("v1.2.3", config.Ref.Value);
+            Assert.AreEqual("v1.2.3", RefOf(config).Value);
         }
     }
 

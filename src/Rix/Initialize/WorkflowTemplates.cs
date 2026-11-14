@@ -16,17 +16,21 @@ internal static class WorkflowTemplates
 
     internal const string ResourcePrefix = "Rix.Cli.Templates.";
 
-    /// <summary>Each template of <paramref name="setup"/> as embedded, still carrying
-    /// <see cref="RefPlaceholder"/>, paired with the repo-relative path it is written to, in the
+    /// <summary>Each template of <paramref name="setup"/> as embedded, still carrying its
+    /// placeholders, paired with the repo-relative path it is written to, in the
     /// order <see cref="InitializeRunner"/> writes (and reports) them.</summary>
     internal static IReadOnlyList<(string RelativePath, string Content)> Of(IInitializeSetup setup)
     => Load(setup.TemplateFolder);
 
-    /// <summary>The templates of <paramref name="setup"/> pinned to <paramref name="reference"/>,
-    /// each paired with the repo-relative path it is written to, in the order
-    /// <see cref="InitializeRunner"/> writes (and reports) them.</summary>
-    internal static IReadOnlyList<(string RelativePath, string Content)> For(IInitializeSetup setup, WorkflowRef reference)
-    => [.. Of(setup).Select(template => (template.RelativePath, template.Content.Replace(RefPlaceholder, reference.Value, StringComparison.Ordinal)))];
+    /// <summary>The templates of <paramref name="setup"/> with its
+    /// <see cref="IInitializeSetup.Placeholders"/> filled in, each paired with the repo-relative
+    /// path it is written to, in the order <see cref="InitializeRunner"/> writes (and reports)
+    /// them.</summary>
+    internal static IReadOnlyList<(string RelativePath, string Content)> For(IInitializeSetup setup)
+    => [.. Of(setup).Select(template => (template.RelativePath, Fill(template.Content, setup.Placeholders)))];
+
+    private static string Fill(string content, IReadOnlyDictionary<string, string> placeholders)
+    => placeholders.Aggregate(content, (filled, placeholder) => filled.Replace(placeholder.Key, placeholder.Value, StringComparison.Ordinal));
 
     /// <summary>Every template in <c>Cli/Templates/{folder}/</c>, read afresh on each call (an init
     /// writes once, so there is nothing to cache for), discovered from the embedded

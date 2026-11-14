@@ -1,13 +1,17 @@
 namespace Rix.Initialize;
 
 /// <summary>Which kind of repo <c>rix initialize</c> sets up, carrying what that kind needs: the
-/// templates it writes and the steps it leaves to the user. Adding a setup is adding a record and
-/// its template folder; nothing switches over them.</summary>
+/// templates it writes, what fills them in, and the steps it leaves to the user. Adding a setup is
+/// adding a record and its template folder; nothing switches over them.</summary>
 internal interface IInitializeSetup
 {
     /// <summary>The folder under <c>Cli/Templates/</c> holding this setup's workflow templates (see
     /// <see cref="WorkflowTemplates"/>).</summary>
     string TemplateFolder { get; }
+
+    /// <summary>Each placeholder this setup's templates carry (see <see cref="WorkflowTemplates"/>),
+    /// with what replaces it.</summary>
+    IReadOnlyDictionary<string, string> Placeholders { get; }
 
     /// <summary>What <c>rix initialize</c> can't do itself: it only writes files, so the secrets,
     /// the environment that holds the write token, and the commit are left to the user, along with
@@ -15,11 +19,15 @@ internal interface IInitializeSetup
     string NextSteps { get; }
 }
 
-/// <summary>A repo that runs rix on itself and holds its own tokens. Its next steps also name the
+/// <summary>A repo that runs rix on itself and holds its own tokens. Its workflows call rix's at
+/// <see cref="Ref"/>. Its next steps also name the
 /// watched CI workflow, which only a repo answering its own failures has.</summary>
-internal sealed record StandaloneSetup : IInitializeSetup
+internal sealed record StandaloneSetup(WorkflowRef Ref) : IInitializeSetup
 {
     public string TemplateFolder => "Standalone";
+
+    public IReadOnlyDictionary<string, string> Placeholders
+    => new Dictionary<string, string> { [WorkflowTemplates.RefPlaceholder] = Ref.Value };
 
     public string NextSteps => """
 
@@ -34,13 +42,16 @@ internal sealed record StandaloneSetup : IInitializeSetup
         """;
 }
 
-/// <summary>A factory repo: it runs rix against the repos it serves, holds the tokens for all of
+/// <summary>A factory repo: it runs rix, at <see cref="Ref"/>, against the repos it serves, holds the tokens for all of
 /// them, and answers the CI failures they dispatch to it. The tokens span every served repo, and
 /// the write token's reach is what bounds the factory, so its next steps spell out the scope. The
 /// served repos still need a trigger of their own, since a workflow_run cannot cross repos.</summary>
-internal sealed record FactorySetup : IInitializeSetup
+internal sealed record FactorySetup(WorkflowRef Ref) : IInitializeSetup
 {
     public string TemplateFolder => "Factory";
+
+    public IReadOnlyDictionary<string, string> Placeholders
+    => new Dictionary<string, string> { [WorkflowTemplates.RefPlaceholder] = Ref.Value };
 
     public string NextSteps => """
 

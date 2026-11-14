@@ -10,24 +10,24 @@ public class WorkflowTemplatesTests
 
     /// <summary>Looks a template up by the path it lands on rather than by position, so a template
     /// added to <c>Cli/Templates/</c> shifts the discovered order without breaking every assertion
-    /// about the two that were already there. Resolved against <see cref="Ref"/>, because what the
-    /// assertions are about is the text a caller is actually handed.</summary>
+    /// about the two that were already there. Filled in, because what the assertions are about is
+    /// the text a caller is actually handed.</summary>
     private static string ContentOf(IInitializeSetup setup, string fileName)
-    => WorkflowTemplates.For(setup, Ref).Single(t => t.RelativePath == $".github/workflows/{fileName}").Content;
+    => WorkflowTemplates.For(setup).Single(t => t.RelativePath == $".github/workflows/{fileName}").Content;
 
     private static readonly WorkflowRef Ref = new("v9");
 
     [TestMethod]
     public void For_ResolvesBothEmbeddedTemplates_Nonempty()
-    => AssertBothTemplatesResolve(new StandaloneSetup());
+    => AssertBothTemplatesResolve(new StandaloneSetup(Ref));
 
     [TestMethod]
     public void For_Factory_ResolvesBothEmbeddedTemplates_Nonempty()
-    => AssertBothTemplatesResolve(new FactorySetup());
+    => AssertBothTemplatesResolve(new FactorySetup(Ref));
 
     private static void AssertBothTemplatesResolve(IInitializeSetup setup)
     {
-        var templates = WorkflowTemplates.For(setup, Ref);
+        var templates = WorkflowTemplates.For(setup);
         CollectionAssert.AreEqual(ExpectedRelativePaths, templates.Select(t => t.RelativePath).ToArray());
         Assert.IsTrue(templates.All(t => t.Content.Contains("jobs:") && t.Content.Contains("uses:")));
     }
@@ -42,7 +42,7 @@ public class WorkflowTemplatesTests
         var embedded = typeof(WorkflowTemplates).Assembly.GetManifestResourceNames()
             .Count(name => name.StartsWith(WorkflowTemplates.ResourcePrefix, StringComparison.Ordinal));
 
-        IInitializeSetup[] setups = [new StandaloneSetup(), new FactorySetup()];
+        IInitializeSetup[] setups = [new StandaloneSetup(Ref), new FactorySetup(Ref)];
 
         Assert.AreEqual(setups.Sum(setup => WorkflowTemplates.Of(setup).Count), embedded);
     }
@@ -50,7 +50,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_RixCaller_TargetsAgentReusableWorkflow_AtTheGivenRef()
     {
-        var content = ContentOf(new StandaloneSetup(), "rix.yml");
+        var content = ContentOf(new StandaloneSetup(Ref), "rix.yml");
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@v9");
         StringAssert.Contains(content, "workflow_dispatch:");
         StringAssert.Contains(content, "repo: ${{ github.repository }}");
@@ -59,7 +59,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_CiFailureCaller_TargetsOnCiFailureReusableWorkflow_AtTheGivenRef()
     {
-        var content = ContentOf(new StandaloneSetup(), "rix-on-ci-failure.yml");
+        var content = ContentOf(new StandaloneSetup(Ref), "rix-on-ci-failure.yml");
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v9");
         StringAssert.Contains(content, "workflow_run:");
         // Rix refuses a fork's run itself (see CiFailureRunner), but the generated caller must
@@ -70,7 +70,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_FactoryRixCaller_TargetsTheRepoTheDispatchNames_DefaultingToItself()
     {
-        var content = ContentOf(new FactorySetup(), "rix.yml");
+        var content = ContentOf(new FactorySetup(Ref), "rix.yml");
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@v9");
         StringAssert.Contains(content, "repo: ${{ inputs.repo || github.repository }}");
     }
@@ -78,7 +78,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_FactoryCiFailureCaller_AnswersTheDispatchedRun()
     {
-        var content = ContentOf(new FactorySetup(), "rix-on-ci-failure.yml");
+        var content = ContentOf(new FactorySetup(Ref), "rix-on-ci-failure.yml");
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v9");
         StringAssert.Contains(content, "types: [rix-ci-failure]");
         StringAssert.Contains(content, "repo: ${{ github.event.client_payload.repo }}");
@@ -92,8 +92,8 @@ public class WorkflowTemplatesTests
         // process with different refs must not have the first one's ref baked into the second's.
         Assert.AreEqual
         (
-            WorkflowTemplates.For(new StandaloneSetup(), new("v1"))[0].Content.Replace("@v1", "@v2", StringComparison.Ordinal),
-            WorkflowTemplates.For(new StandaloneSetup(), new("v2"))[0].Content
+            WorkflowTemplates.For(new StandaloneSetup(new("v1")))[0].Content.Replace("@v1", "@v2", StringComparison.Ordinal),
+            WorkflowTemplates.For(new StandaloneSetup(new("v2")))[0].Content
         );
     }
 }

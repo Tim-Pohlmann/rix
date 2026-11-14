@@ -85,6 +85,6 @@ internal static class TestConfig
         new MaxRixCommits(maxRixCommits)
     );
 
-    internal static InitializeConfig ValidInitialize(string? dir = null, string? workflowRef = null, IInitializeSetup? setup = null)
-    => new(new DirectoryPath(dir ?? Path.GetTempPath(), new LocalFileSystem()), new WorkflowRef(workflowRef ?? "v0"), setup ?? new StandaloneSetup());
+    internal static InitializeConfig ValidInitialize(string? dir = null, IInitializeSetup? setup = null)
+    => new(new DirectoryPath(dir ?? Path.GetTempPath(), new LocalFileSystem()), setup ?? new StandaloneSetup(new("v0")));
 }

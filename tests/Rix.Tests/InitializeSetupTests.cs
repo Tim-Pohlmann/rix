@@ -9,7 +9,7 @@ public partial class InitializeSetupTests
     [TestMethod]
     public void NextSteps_PointAFactoryAtTheReposItServes()
     {
-        var steps = new FactorySetup().NextSteps;
+        var steps = new FactorySetup(new("v0")).NextSteps;
 
         StringAssert.Contains(steps, "on every repo this factory serves");
         StringAssert.Contains(steps, "In each repo this factory serves");
@@ -22,7 +22,7 @@ public partial class InitializeSetupTests
     [TestMethod]
     public void NextSteps_NameOnlyWorkflowsTheSetupWrites()
     {
-        IInitializeSetup[] setups = [new StandaloneSetup(), new FactorySetup()];
+        IInitializeSetup[] setups = [new StandaloneSetup(new("v0")), new FactorySetup(new("v0"))];
 
         foreach (var setup in setups)
         {

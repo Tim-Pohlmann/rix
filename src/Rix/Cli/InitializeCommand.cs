@@ -43,7 +43,6 @@ internal static class InitializeCommand
         return new InitializeConfig
         (
             Input.Required(DirOption.Name, dir, path => new DirectoryPath(path, fileSystem)),
-            Input.Optional(RefOption.Name, parsed.GetValue(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild),
             Setup(parsed)
         );
     }
@@ -52,9 +51,10 @@ internal static class InitializeCommand
     /// action (see <see cref="Startup"/>), and this is where they part.</summary>
     private static IInitializeSetup Setup(ParseResult parsed)
     {
+        var reference = Input.Optional(RefOption.Name, parsed.GetValue(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild);
         if (parsed.CommandResult.Command == FactoryCommand)
-            return new FactorySetup();
-        return new StandaloneSetup();
+            return new FactorySetup(reference);
+        return new StandaloneSetup(reference);
     }
 
     /// <summary>Runs <paramref name="config"/> against the production context. Separate from

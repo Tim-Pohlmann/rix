@@ -36,7 +36,7 @@ public class InitializeRunnerTests
 
         CollectionAssert.AreEqual
         (
-            WorkflowTemplates.For(new StandaloneSetup(), WorkflowRef.ForThisBuild).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
+            WorkflowTemplates.For(new StandaloneSetup(new("v0"))).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
             _writes.Select(w => w.Path).ToArray()
         );
     }
@@ -44,7 +44,7 @@ public class InitializeRunnerTests
     [TestMethod]
     public async Task RunAsync_WritesTemplateContent_WithReusableWorkflowRefsAndCiPlaceholder()
     {
-        AssertSuccess(await Run(TestConfig.ValidInitialize(workflowRef: "release/2.x"), Context()));
+        AssertSuccess(await Run(TestConfig.ValidInitialize(setup: new StandaloneSetup(new("release/2.x"))), Context()));
 
         var rixYml = _writes.Single(w => w.Path.EndsWith("workflows/rix.yml", StringComparison.Ordinal)).Content;
         var ciYml = _writes.Single(w => w.Path.EndsWith("rix-on-ci-failure.yml", StringComparison.Ordinal)).Content;
@@ -61,11 +61,11 @@ public class InitializeRunnerTests
     public async Task RunAsync_WritesTheFactoryTemplates_ForAFactorySetup()
     {
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
-        AssertSuccess(await Run(TestConfig.ValidInitialize(dir, "v9", new FactorySetup()), Context()));
+        AssertSuccess(await Run(TestConfig.ValidInitialize(dir, new FactorySetup(new("v9"))), Context()));
 
         CollectionAssert.AreEqual
         (
-            WorkflowTemplates.For(new FactorySetup(), new("v9")).Select(t => (Path.Combine(dir, t.RelativePath), t.Content)).ToArray(),
+            WorkflowTemplates.For(new FactorySetup(new("v9"))).Select(t => (Path.Combine(dir, t.RelativePath), t.Content)).ToArray(),
             _writes.ToArray()
         );
     }
@@ -80,7 +80,7 @@ public class InitializeRunnerTests
         _writes.Clear();
         AssertSuccess(await Run(config, Context()));
 
-        Assert.AreEqual(WorkflowTemplates.For(new StandaloneSetup(), WorkflowRef.ForThisBuild).Count, _writes.Count);
+        Assert.AreEqual(WorkflowTemplates.For(new StandaloneSetup(new("v0"))).Count, _writes.Count);
     }
 
     [TestMethod]
@@ -97,7 +97,7 @@ public class InitializeRunnerTests
         // Names whichever template the runner reached first rather than a literal, so the
         // assertion keeps testing "the message says which file failed" if the discovered
         // order of the standalone templates changes.
-        StringAssert.Contains(failure.Error, WorkflowTemplates.Of(new StandaloneSetup())[0].RelativePath);
+        StringAssert.Contains(failure.Error, WorkflowTemplates.Of(new StandaloneSetup(new("v0")))[0].RelativePath);
         StringAssert.Contains(failure.Error, "disk full");
     }
 }
