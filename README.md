@@ -371,16 +371,10 @@ on:
 
 jobs:
   rix:
-    # Bounds which repos the factory will act on, but does not say who asked — see the
-    # trust caveat below.
-    if: contains(fromJSON(vars.RIX_FACTORY_ALLOWED_REPOS), github.event.client_payload.repo)
-    # The factory's equivalent of the simple pattern's group, on the job for the same reason and
-    # below the allowlist so a payload naming a repo this factory does not serve never reaches it.
-    # `repository_dispatch` carries neither repo nor branch of its own, so the key comes from the
-    # payload. Those fields are unauthenticated: an onboarded repo can name another one's pair and
-    # cancel its queued response. That is a real denial rather than mere serialization, and it is
-    # the same mutual trust the allowlist already asks for - not something the allowlist bounds.
-    # See the caveat below.
+    # The factory's equivalent of the simple pattern's group. `repository_dispatch` carries
+    # neither repo nor branch of its own, so the key comes from the payload. Those fields are
+    # unauthenticated: an onboarded repo can name another one's pair and cancel its queued
+    # response. That is a real denial rather than mere serialization - see the caveat below.
     concurrency:
       group: rix-on-ci-failure-${{ github.event.client_payload.repo }}-${{ github.event.client_payload.branch }}
       cancel-in-progress: false
@@ -397,25 +391,27 @@ The factory repo's `read-token`/`write-token` need access across every project r
 (e.g. a GitHub App installation token), which is the trade-off of centralizing: one PAT with a
 much bigger blast radius than the per-repo tokens in the simple pattern.
 
-**Validate the dispatch payload:** `RIX_FACTORY_DISPATCH_TOKEN` can only dispatch to the
-factory repo, but the `repo`/`run-id` values inside `client_payload` are unauthenticated free
-text — any repo holding that token can ask the factory to act against *any* `repo`/`run-id`,
-not just its own. Since the factory's `read-token`/`write-token` span every project repo it
-serves, an unvalidated payload lets one onboarded repo trigger rix runs (and PR writes) against
-another. Gate the factory job on an explicit allowlist of onboarded repos (as shown above with
-`RIX_FACTORY_ALLOWED_REPOS`) rather than trusting `client_payload.repo` directly.
+**The tokens bound the factory, not the payload:** `RIX_FACTORY_DISPATCH_TOKEN` can only
+dispatch to the factory repo, but the `repo`/`run_id`/`branch` values inside `client_payload` are
+unauthenticated free text — any repo holding that token can ask the factory to act on *any* repo
+and run, not just its own. The factory does not check the payload against a list of onboarded
+repos; what limits it is what its own tokens reach. A PR can only land where `write-token` can
+push, so scope that token to exactly the repos the factory serves. Outside that set a request gets
+as far as `read-token` reaches, and a fine-grained PAT can read every public repo: a payload naming
+a real failing run in someone else's public repo starts the agent there, and the run fails only
+when it tries to open the PR. That costs agent spend and writes nothing — the trade for not keeping
+a list of onboarded repos in step with the tokens that already define it.
 
-**Onboarding a repo is mutual trust:** the allowlist bounds *which* repos the factory will act
-on, but nothing in a `repository_dispatch` says *who asked*. All project repos share one
-`RIX_FACTORY_DISPATCH_TOKEN`, so an onboarded repo can name any other onboarded repo in
-`client_payload[repo]` along with a real failing run ID from it, and every check downstream
-passes — the run exists, it failed, and its head repo matches. rix then spends the factory's
-cross-repo write token on that other repo. What an attacker gets is the trigger, not the
+**Onboarding a repo is mutual trust:** nothing in a `repository_dispatch` says *who asked*. All
+project repos share one `RIX_FACTORY_DISPATCH_TOKEN`, so an onboarded repo can name any other
+onboarded repo in `client_payload[repo]` along with a real failing run ID from it, and every check
+downstream passes — the run exists, it failed, and its head repo matches. rix then spends the
+factory's cross-repo write token on that other repo. What an attacker gets is the trigger, not the
 content: rix still answers a genuine CI failure and still opens an ordinary `rix/*` PR. But the
 timing and the target are theirs to pick, and the reachable set is exactly the repos worth
 reaching. The same holds in the other direction: `client_payload` also supplies the concurrency
-key, so an onboarded repo can name another's `repo`/`branch` and cancel a response that repo
-had queued. Read the allowlist as a blast-radius bound, not as authentication.
+key, so an onboarded repo can name another's `repo`/`branch` and cancel a response that repo had
+queued.
 
 Two things that don't close this, despite looking like they should: `github.event.sender`
 names the account or App that called the dispatch API, not the repo it was called from, so with
@@ -426,8 +422,8 @@ So either **run one factory per trust domain**, keeping the onboarded set small 
 members may as well trust each other (usually what an org reaching for a factory wants anyway),
 or, when the set spans trust boundaries, **make each project prove who it is**: have it send an
 HMAC of `repo`/`run_id` under a per-project secret, and have the factory recompute it using the
-secret it holds *for the repo the payload claims to be*. That lookup is what the allowlist is
-missing — claiming to be another repo then requires that repo's secret. The cost is that the
+secret it holds *for the repo the payload claims to be*. That lookup is what the payload alone
+cannot give — claiming to be another repo then requires that repo's secret. The cost is that the
 factory now stores one secret per project, which is most of the per-repo key management
 centralizing was meant to avoid; that trade is the reason to prefer the first option when the
 trust domain allows it.
