@@ -3,10 +3,10 @@ namespace Rix.Repository;
 /// <summary>The git operations rix performs: against a repo on the one host the instance was
 /// created for (clone, the remote branch check), and inside the local clones made from it (push goes
 /// to the clone's <c>origin</c>). Which repo is a per-call value, since one credential reaches every
-/// repo it grants - a job reads both its target and the factory repo with the same token. The seam every
+/// repo it grants - a run reads both its target and the factory repo with the same token. The seam every
 /// git command goes through, so tests can stand in for git without a real repository or remote.
 /// Pushing only succeeds with a write-capable token behind it, which only <c>rix submit</c> is
-/// given; the job path runs with a read token, so a push from it would be refused by the remote.</summary>
+/// given; the agent path runs with a read token, so a push from it would be refused by the remote.</summary>
 internal interface IGit
 {
     /// <summary>Clones <paramref name="repo"/> into <paramref name="targetDirectory"/>.</summary>

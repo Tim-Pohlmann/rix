@@ -7,7 +7,7 @@ namespace Rix.Cli;
 internal static class CiFailureCommand
 {
     /// <summary>The two options this command adds on top of the few it borrows, kept private for
-    /// the same reason <c>job</c> keeps <c>--prompt</c> to itself: no other command takes
+    /// the same reason <c>agent</c> keeps <c>--prompt</c> to itself: no other command takes
     /// them.</summary>
     private static readonly Option<string> RunIdOption = new("--run-id")
     {
@@ -30,11 +30,11 @@ internal static class CiFailureCommand
             "Check whether a workflow run failed and, if so, write the prompt a coding agent should answer it with"
         );
 
-        // Three shared options, not JobOptions.AddTo's whole agent-running set: this command decides
+        // Three shared options, not AgentOptions.AddTo's whole agent-running set: this command decides
         // whether to act and stops. Whoever runs the agent takes the agent's own flags.
         command.Options.Add(CommonOptions.RepoOption);
-        command.Options.Add(JobOptions.ReadTokenOption);
-        command.Options.Add(JobOptions.OutputDirOption);
+        command.Options.Add(AgentOptions.ReadTokenOption);
+        command.Options.Add(AgentOptions.OutputDirOption);
         command.Options.Add(RunIdOption);
         command.Options.Add(MaxRixCommitsOption);
 
@@ -43,11 +43,11 @@ internal static class CiFailureCommand
 
     internal static CiFailureConfig CreateConfig(ParseResult parsed, IFileSystem fileSystem)
     {
-        // Same order as `job` for the shared options, so both commands report the same first
+        // Same order as `agent` for the shared options, so both commands report the same first
         // problem for the same mistake; this command's own two come last.
         var repo = CommonOptions.ReadRepo(parsed);
-        var readToken = JobOptions.ReadReadToken(parsed);
-        var outputDir = JobOptions.ReadOutputDir(parsed, fileSystem);
+        var readToken = AgentOptions.ReadReadToken(parsed);
+        var outputDir = AgentOptions.ReadOutputDir(parsed, fileSystem);
         var runId = parsed.Required(RunIdOption, "RIX_RUN_ID", raw => new RunId(Input.WholeNumber<long>(raw)));
         var maxRixCommits = parsed.Optional
         (
@@ -104,7 +104,7 @@ internal static class CiFailureCommand
     => result switch
     {
         CiFailureDetected or CiFailureSkipped or CiFailureLoopGuarded or CiFailureUntrustedRun => ExitCodes.Success,
-        CiFailureError => ExitCodes.JobFailed,
+        CiFailureError => ExitCodes.Failed,
         _ => throw new NotSupportedException($"Unexpected ci-failure result type: {result.GetType()}"),
     };
 }

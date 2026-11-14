@@ -34,13 +34,13 @@ public class SubmitRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_Fails_WhenJobWasNotSuccessful()
+    public async Task RunAsync_Fails_WhenTheAgentWasNotSuccessful()
     {
         WriteResultJson("""{"status":"failure","error":"boom","costUsd":0,"durationSeconds":1}""");
 
         var result = await Run(new StubGit());
 
-        AssertFailure(result, "does not describe a successful job");
+        AssertFailure(result, "does not describe a successful run");
     }
 
     [TestMethod]

@@ -4,7 +4,7 @@ namespace Rix.CiFailure;
 
 /// <summary>The side-effecting collaborators <c>rix ci-failure</c> needs: the CI host it reads the
 /// run from, the repo host it judges that run against, the file system it writes its verdict to,
-/// and the log a lost verdict is reported through. No <see cref="Job.JobContext"/> among them —
+/// and the log a lost verdict is reported through. No <see cref="Agent.AgentContext"/> among them —
 /// detection stops at a verdict, so nothing here can clone, run a process, or write to a
 /// remote.
 ///

@@ -1,19 +1,19 @@
 using Rix.CodingAgents;
 using Rix.Cli;
-using Rix.Job;
+using Rix.Agent;
 using System.CommandLine;
 
 namespace Rix.Tests;
 
-/// <summary>Covers the readers behind every flag <c>job</c> and <c>ci-failure</c> share, the
+/// <summary>Covers the readers behind every flag <c>agent</c> and <c>ci-failure</c> share, the
 /// boundary that turns each one into the value their configs take: defaults, parsing, and the
-/// message each malformed flag produces. Reached through the <c>job</c> command's own flag surface,
-/// so the <see cref="CommonOptions"/> readers registered alongside <see cref="JobOptions"/>' own are
+/// message each malformed flag produces. Reached through the <c>agent</c> command's own flag surface,
+/// so the <see cref="CommonOptions"/> readers registered alongside <see cref="AgentOptions"/>' own are
 /// covered here too rather than separately. Which problem a command reports first, and the two flags
-/// only <c>job</c> owns (<c>--prompt</c>, <c>--allowed-push-branches</c>), are covered by
-/// <see cref="JobCommandTests"/> and <see cref="CiFailureCommandTests"/>.</summary>
+/// only <c>agent</c> owns (<c>--prompt</c>, <c>--allowed-push-branches</c>), are covered by
+/// <see cref="AgentCommandTests"/> and <see cref="CiFailureCommandTests"/>.</summary>
 [TestClass]
-public class JobOptionsTests
+public class AgentOptionsTests
 {
     private static readonly string ExistingDir = Path.GetTempPath();
     private static readonly LocalFileSystem Disk = new();
@@ -23,7 +23,7 @@ public class JobOptionsTests
     private static readonly string ExistingSubDir = Directory.CreateTempSubdirectory("rix-options-").FullName;
 
     private static ParseResult Parse(params string[] args)
-    => CommandArgs.Parse(JobCommand.Build(), args);
+    => CommandArgs.Parse(AgentCommand.Build(), args);
 
     private static string ErrorOf(Action read) => Assert.ThrowsExactly<InvalidInputException>(read).Message;
 
@@ -49,19 +49,19 @@ public class JobOptionsTests
 
     [TestMethod]
     public void ReadReadToken_ReadsValue()
-    => Assert.AreEqual("read-tok", JobOptions.ReadReadToken(Parse("--read-token", "read-tok")).Value);
+    => Assert.AreEqual("read-tok", AgentOptions.ReadReadToken(Parse("--read-token", "read-tok")).Value);
 
     [TestMethod]
     public void ReadReadToken_RejectsEmpty()
-    => Assert.AreEqual("--read-token is required", ErrorOf(() => JobOptions.ReadReadToken(Parse("--read-token", ""))));
+    => Assert.AreEqual("--read-token is required", ErrorOf(() => AgentOptions.ReadReadToken(Parse("--read-token", ""))));
 
     [TestMethod]
     public void ReadMaxTokens_AppliesDefault()
-    => Assert.AreEqual(JobConfig.DefaultMaxTokens, JobOptions.ReadMaxTokens(Parse()).Value);
+    => Assert.AreEqual(AgentConfig.DefaultMaxTokens, AgentOptions.ReadMaxTokens(Parse()).Value);
 
     [TestMethod]
     public void ReadMaxTokens_OverridesDefault()
-    => Assert.AreEqual(1000, JobOptions.ReadMaxTokens(Parse("--max-tokens", "1000")).Value);
+    => Assert.AreEqual(1000, AgentOptions.ReadMaxTokens(Parse("--max-tokens", "1000")).Value);
 
     /// <summary>Both halves of the check reach the user under the flag, though they are raised in
     /// different places: "not a number" by the reader's parse, "not a usable one" by the
@@ -70,21 +70,21 @@ public class JobOptionsTests
     [DataRow("abc", "must be a whole number, got 'abc'")]
     [DataRow("0", "must be a positive integer, got '0'")]
     public void ReadMaxTokens_RejectsNonPositiveInteger(string raw, string expected)
-    => Assert.AreEqual($"--max-tokens: {expected}", ErrorOf(() => JobOptions.ReadMaxTokens(Parse("--max-tokens", raw))));
+    => Assert.AreEqual($"--max-tokens: {expected}", ErrorOf(() => AgentOptions.ReadMaxTokens(Parse("--max-tokens", raw))));
 
     [TestMethod]
     public void ReadTimeout_AppliesDefault()
-    => Assert.AreEqual(JobConfig.DefaultTimeoutMinutes, JobOptions.ReadTimeout(Parse()).Value);
+    => Assert.AreEqual(AgentConfig.DefaultTimeoutMinutes, AgentOptions.ReadTimeout(Parse()).Value);
 
     [TestMethod]
     public void ReadTimeout_OverridesDefault()
-    => Assert.AreEqual(5, JobOptions.ReadTimeout(Parse("--timeout", "5")).Value);
+    => Assert.AreEqual(5, AgentOptions.ReadTimeout(Parse("--timeout", "5")).Value);
 
     [TestMethod]
     [DataRow("abc", "must be a whole number, got 'abc'")]
     [DataRow("-1", "must be a positive integer, got '-1'")]
     public void ReadTimeout_RejectsNonPositiveInteger(string raw, string expected)
-    => Assert.AreEqual($"--timeout: {expected}", ErrorOf(() => JobOptions.ReadTimeout(Parse("--timeout", raw))));
+    => Assert.AreEqual($"--timeout: {expected}", ErrorOf(() => AgentOptions.ReadTimeout(Parse("--timeout", raw))));
 
     [TestMethod]
     public void ReadWorkDir_DefaultsToAPrivateTempDirectory_WhenBlank()
@@ -106,31 +106,31 @@ public class JobOptionsTests
 
     [TestMethod]
     public void ReadOutputDir_UsesExistingDirectory()
-    => Assert.AreEqual(Path.GetFullPath(ExistingDir), JobOptions.ReadOutputDir(Parse("--output-dir", ExistingDir), Disk).Value);
+    => Assert.AreEqual(Path.GetFullPath(ExistingDir), AgentOptions.ReadOutputDir(Parse("--output-dir", ExistingDir), Disk).Value);
 
     [TestMethod]
     public void ReadOutputDir_RejectsEmpty()
-    => Assert.AreEqual("--output-dir is required", ErrorOf(() => JobOptions.ReadOutputDir(Parse("--output-dir", ""), Disk)));
+    => Assert.AreEqual("--output-dir is required", ErrorOf(() => AgentOptions.ReadOutputDir(Parse("--output-dir", ""), Disk)));
 
     [TestMethod]
     public void ReadOutputDir_RejectsNonExistent()
-    => Assert.AreEqual("--output-dir: directory does not exist: /nonexistent/out", ErrorOf(() => JobOptions.ReadOutputDir(Parse("--output-dir", "/nonexistent/out"), Disk)));
+    => Assert.AreEqual("--output-dir: directory does not exist: /nonexistent/out", ErrorOf(() => AgentOptions.ReadOutputDir(Parse("--output-dir", "/nonexistent/out"), Disk)));
 
     [TestMethod]
     public void ReadAgent_DefaultsToOpenCode()
-    => Assert.AreEqual(JobConfig.DefaultAgent, JobOptions.ReadAgent(Parse()));
+    => Assert.AreEqual(AgentConfig.DefaultAgent, AgentOptions.ReadAgent(Parse()));
 
     [TestMethod]
     public void ReadAgent_SelectsAgent()
     {
-        Assert.AreEqual(AgentKind.Claude, JobOptions.ReadAgent(Parse("--agent", "claude")));
-        Assert.AreEqual(AgentKind.Pi, JobOptions.ReadAgent(Parse("--agent", "pi")));
+        Assert.AreEqual(AgentKind.Claude, AgentOptions.ReadAgent(Parse("--agent", "claude")));
+        Assert.AreEqual(AgentKind.Pi, AgentOptions.ReadAgent(Parse("--agent", "pi")));
     }
 
     [TestMethod]
     public void ReadAgent_RejectsUnknown()
     {
-        var error = ErrorOf(() => JobOptions.ReadAgent(Parse("--agent", "devin")));
+        var error = ErrorOf(() => AgentOptions.ReadAgent(Parse("--agent", "devin")));
         StringAssert.StartsWith(error, "--agent: ");
         StringAssert.Contains(error, "devin");
     }
@@ -140,47 +140,47 @@ public class JobOptionsTests
     {
         // Unset means "let the agent CLI pick its own default" for every agent — opencode and
         // claude both fall back to a free/default model on their own when --model is omitted.
-        Assert.IsNull(JobOptions.ReadModel(Parse()));
-        Assert.IsNull(JobOptions.ReadModel(Parse("--model", "")));
+        Assert.IsNull(AgentOptions.ReadModel(Parse()));
+        Assert.IsNull(AgentOptions.ReadModel(Parse("--model", "")));
     }
 
     [TestMethod]
     public void ReadModel_PassesThroughExplicitValue()
-    => Assert.AreEqual("openai/gpt-4o", JobOptions.ReadModel(Parse("--model", "openai/gpt-4o")));
+    => Assert.AreEqual("openai/gpt-4o", AgentOptions.ReadModel(Parse("--model", "openai/gpt-4o")));
 
     [TestMethod]
     public void ReadEffort_IsNull_WhenBlank()
     {
         // Unset means "keep the agent CLI's own default effort", so no flag is passed at all.
-        Assert.IsNull(JobOptions.ReadEffort(Parse()));
-        Assert.IsNull(JobOptions.ReadEffort(Parse("--effort", "")));
+        Assert.IsNull(AgentOptions.ReadEffort(Parse()));
+        Assert.IsNull(AgentOptions.ReadEffort(Parse("--effort", "")));
     }
 
     [TestMethod]
     public void ReadEffort_PassesThroughExplicitValue()
-    => Assert.AreEqual("high", JobOptions.ReadEffort(Parse("--effort", "high")));
+    => Assert.AreEqual("high", AgentOptions.ReadEffort(Parse("--effort", "high")));
 
     [TestMethod]
     public void ReadAgentApiKey_IsNull_WhenNotSupplied()
-    => Assert.IsNull(JobOptions.ReadAgentApiKey(Parse()));
+    => Assert.IsNull(AgentOptions.ReadAgentApiKey(Parse()));
 
     [TestMethod]
     public void ReadAgentApiKey_PassesThroughExplicitValue()
-    => Assert.AreEqual("secret", JobOptions.ReadAgentApiKey(Parse("--agent-api-key", "secret")));
+    => Assert.AreEqual("secret", AgentOptions.ReadAgentApiKey(Parse("--agent-api-key", "secret")));
 
     [TestMethod]
     public void ReadAgentCredential_IsNull_WhenNoKeySupplied()
     {
         // Even an explicit env name is ignored without a key: there is nothing to export under it.
         var parsed = Parse("--agent-api-key-env", "ANTHROPIC_API_KEY");
-        Assert.IsNull(JobOptions.ReadAgentCredential(parsed, AgentKind.OpenCode, apiKey: null));
+        Assert.IsNull(AgentOptions.ReadAgentCredential(parsed, AgentKind.OpenCode, apiKey: null));
     }
 
     [TestMethod]
     public void ReadAgentCredential_DefaultsPerAgent_WhenKeySuppliedWithoutOverride()
     {
-        Assert.AreEqual(new AgentCredential("OPENCODE_API_KEY", "secret"), JobOptions.ReadAgentCredential(Parse(), AgentKind.OpenCode, "secret"));
-        Assert.AreEqual(new AgentCredential("ANTHROPIC_API_KEY", "secret"), JobOptions.ReadAgentCredential(Parse(), AgentKind.Claude, "secret"));
+        Assert.AreEqual(new AgentCredential("OPENCODE_API_KEY", "secret"), AgentOptions.ReadAgentCredential(Parse(), AgentKind.OpenCode, "secret"));
+        Assert.AreEqual(new AgentCredential("ANTHROPIC_API_KEY", "secret"), AgentOptions.ReadAgentCredential(Parse(), AgentKind.Claude, "secret"));
     }
 
     [TestMethod]
@@ -188,7 +188,7 @@ public class JobOptionsTests
     => Assert.AreEqual
     (
         new AgentCredential("OPENAI_API_KEY", "secret"),
-        JobOptions.ReadAgentCredential(Parse("--agent-api-key-env", "OPENAI_API_KEY"), AgentKind.OpenCode, "secret")
+        AgentOptions.ReadAgentCredential(Parse("--agent-api-key-env", "OPENAI_API_KEY"), AgentKind.OpenCode, "secret")
     );
 
     [TestMethod]
@@ -196,7 +196,7 @@ public class JobOptionsTests
     {
         // The composed line, because that is what the user is shown and the half either side of
         // the colon is chosen to read as one sentence with the other.
-        var error = ErrorOf(() => JobOptions.ReadAgentCredential(Parse(), AgentKind.Pi, "secret"));
+        var error = ErrorOf(() => AgentOptions.ReadAgentCredential(Parse(), AgentKind.Pi, "secret"));
         Assert.AreEqual("--agent-api-key-env: is required when agent=pi and agent-api-key is set", error);
     }
 
@@ -207,33 +207,33 @@ public class JobOptionsTests
     [DataRow("RIX_AGENT")]
     public void ReadAgentCredential_RejectsName_ThatIsNotCredentialShaped(string envName)
     {
-        var error = ErrorOf(() => JobOptions.ReadAgentCredential(Parse("--agent-api-key-env", envName), AgentKind.OpenCode, "secret"));
+        var error = ErrorOf(() => AgentOptions.ReadAgentCredential(Parse("--agent-api-key-env", envName), AgentKind.OpenCode, "secret"));
         StringAssert.StartsWith(error, "--agent-api-key-env: ");
         StringAssert.Contains(error, envName);
     }
 
     [TestMethod]
     public void ReadAgentHome_IsNull_WhenNoFactoryRepo()
-    => Assert.IsNull(JobOptions.ReadAgentHome(Parse(), Disk));
+    => Assert.IsNull(AgentOptions.ReadAgentHome(Parse(), Disk));
 
     [TestMethod]
     public void ReadAgentHome_DefaultsPath_WhenOnlyRepoSupplied()
     {
-        var factory = JobOptions.ReadAgentHome
+        var factory = AgentOptions.ReadAgentHome
         (
             Parse("--factory-repo", "acme/factory"), new StubFileSystem(userHomeDirectory: ExistingSubDir)
         );
 
         Assert.IsNotNull(factory);
         Assert.AreEqual("acme/factory", factory.Repo.Value);
-        Assert.AreEqual(JobConfig.DefaultAgentHomePath, factory.SourcePath.Value);
+        Assert.AreEqual(AgentConfig.DefaultAgentHomePath, factory.SourcePath.Value);
         Assert.AreEqual(ExistingSubDir, factory.Home.Value);
     }
 
     [TestMethod]
     public void ReadAgentHome_NormalisesExplicitPath()
     {
-        var factory = JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "./config/home/"), Disk);
+        var factory = AgentOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "./config/home/"), Disk);
 
         Assert.IsNotNull(factory);
         Assert.AreEqual("config/home", factory.SourcePath.Value);
@@ -246,8 +246,8 @@ public class JobOptionsTests
     public void ReadAgentHome_FallsBackToDefault_WhenPathIsBlank()
     => Assert.AreEqual
     (
-        JobConfig.DefaultAgentHomePath,
-        JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "   "), Disk)!.SourcePath.Value
+        AgentConfig.DefaultAgentHomePath,
+        AgentOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", "   "), Disk)!.SourcePath.Value
     );
 
     [TestMethod]
@@ -255,13 +255,13 @@ public class JobOptionsTests
     => Assert.AreEqual
     (
         "--agent-home-path requires --factory-repo",
-        ErrorOf(() => JobOptions.ReadAgentHome(Parse("--agent-home-path", ".rix/agent-home"), Disk))
+        ErrorOf(() => AgentOptions.ReadAgentHome(Parse("--agent-home-path", ".rix/agent-home"), Disk))
     );
 
     [TestMethod]
     public void ReadAgentHome_RejectsMalformedRepo()
     {
-        var error = ErrorOf(() => JobOptions.ReadAgentHome(Parse("--factory-repo", "not-a-repo"), Disk));
+        var error = ErrorOf(() => AgentOptions.ReadAgentHome(Parse("--factory-repo", "not-a-repo"), Disk));
         StringAssert.StartsWith(error, "--factory-repo: ");
     }
 
@@ -271,7 +271,7 @@ public class JobOptionsTests
     [DataRow("a/../../b")]
     public void ReadAgentHome_RejectsMalformedPath(string path)
     {
-        var error = ErrorOf(() => JobOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", path), Disk));
+        var error = ErrorOf(() => AgentOptions.ReadAgentHome(Parse("--factory-repo", "acme/factory", "--agent-home-path", path), Disk));
         StringAssert.StartsWith(error, "--agent-home-path: ");
     }
 }

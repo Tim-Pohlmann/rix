@@ -2,7 +2,7 @@
 
 AI software factory.
 
-`rix job` clones a target repo, runs a coding agent against it, and emits one git
+`rix agent` clones a target repo, runs a coding agent against it, and emits one git
 bundle per proposed change. It is read-only — it never pushes or opens PRs itself, so the
 agent run needs only a read token. A separate, trusted step turns the bundles into PRs.
 
@@ -12,7 +12,7 @@ of guessed metadata.
 
 ## Run via GitHub Actions
 
-`rix` ships a reusable workflow (`.github/workflows/job.yml`) that runs the job and opens
+`rix` ships a reusable workflow (`.github/workflows/job.yml`) that runs the agent and opens
 the resulting PRs. Each repo drives it through a small caller workflow.
 
 ### Quick start: `rix initialize`
@@ -60,14 +60,14 @@ Pick the coding agent with the optional `agent` input — `opencode` (default), 
 `pi`. All three install their CLI via npm at run time. With no `model` set, `opencode` picks
 its own free default model, so the example above needs no `agent-api-key` at all.
 
-The workflow posts a job summary to the run page after `rix submit`: the job's status, cost and
+The workflow posts a job summary to the run page after `rix submit`: the run's status, cost and
 duration, plus the pull requests that were actually opened (with links). The `run` job posts an
-early summary too, so a failed job still reports its outcome even when the PR-creation job is
+early summary too, so a failed agent run still reports its outcome even when the PR-creation job is
 skipped.
 
 ### Allowing the agent to push (resuming a run)
 
-`rix job` exposes a local API to the agent, described by an OpenAPI 3 document the agent fetches
+`rix agent` exposes a local API to the agent, described by an OpenAPI 3 document the agent fetches
 from `/openapi.json` (the system prompt only points at it). Besides opening PRs (`/pr`), the agent
 can push new commits onto a branch that already exists on the remote (`/push`, e.g. resuming a
 previous run).
@@ -89,7 +89,7 @@ that already exists on the remote, not just `rix/*` — e.g. a human's own branc
 to resume.
 
 The same list is given to `rix submit`, which checks it again before pushing. That repetition is
-the point: `rix job` writes what the agent asked for into `result.json`, the agent runs as an
+the point: `rix agent` writes what the agent asked for into `result.json`, the agent runs as an
 ordinary process in the same workspace and can rewrite that file afterwards, and `rix submit` is
 where the write token actually is. Only the second check decides what reaches the remote, so
 `submit` takes the list from its own input and never from `result.json`. The `job.yml` workflow
@@ -127,7 +127,7 @@ bundle are recreated as symlinks, not followed.
 
 The existing `read-token` is reused to clone the factory repo, so that PAT must also grant **read
 access to `factory-repo`**. If the clone fails, `agent-home-path` is absent from the repo, or
-the copy into home fails, the job stops with a setup failure and the agent never runs.
+the copy into home fails, the run stops with a setup failure and the agent never runs.
 `agent-home-path` without `factory-repo` is rejected. The inputs forward as
 `--factory-repo` / `--agent-home-path` (env `RIX_FACTORY_REPO` / `RIX_AGENT_HOME_PATH`).
 

@@ -16,9 +16,9 @@ internal sealed record CreatedPr
 );
 
 /// <summary>Every pending PR was pushed and opened, and every pending push was delivered.
-/// <see cref="CreatedPrs"/> lists the pull requests that were created (empty when the job produced
+/// <see cref="CreatedPrs"/> lists the pull requests that were created (empty when the run produced
 /// no PRs); <see cref="PushedBranches"/> lists the branches commits were pushed to via <c>/push</c>
-/// (empty when the job queued no pushes).</summary>
+/// (empty when the run queued no pushes).</summary>
 internal sealed record SubmitSuccess
 (
     [property: JsonPropertyName("createdPrs")] IReadOnlyList<CreatedPr> CreatedPrs,

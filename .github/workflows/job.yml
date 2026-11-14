@@ -1,6 +1,6 @@
 name: Rix Job
 
-# Reusable workflow: run `rix job` against a target repo and turn its output into PRs.
+# Reusable workflow: run `rix agent` against a target repo and turn its output into PRs.
 # Other repos call it with a tiny caller workflow (see README "Run via GitHub Actions").
 on:
   workflow_call:

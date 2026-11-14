@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Rix.Artifacts;
 
 /// <summary>What a check leaves in its output directory: <c>result.json</c> always, and
-/// <c>prompt.md</c> when a failure was detected. The counterpart of <see cref="Job.JobArtifacts"/>
+/// <c>prompt.md</c> when a failure was detected. The counterpart of <see cref="Agent.AgentArtifacts"/>
 /// for <c>rix ci-failure</c> - the files are the check's product rather than the CLI's
 /// presentation of them, so <see cref="CiFailureRunner.RunAsync"/> produces them as part of
 /// checking, and a check that returns is a check whose output is on disk.

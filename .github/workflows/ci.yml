@@ -499,7 +499,7 @@ jobs:
 
       - name: Run rix job e2e tests
         # rix logs every line the agent CLI prints - its stdout, and its stderr marked `[stderr]`
-        # (see the two line sinks JobRunner hands the process) - onto rix's own stderr, and
+        # (see the two line sinks AgentRunner hands the process) - onto rix's own stderr, and
         # `run` merges that into $output - print it on failure instead of silently discarding it,
         # so a failing assertion here comes with the agent's actual raw output instead of just the
         # failed jq/status check.

@@ -1,4 +1,4 @@
-using Rix.Job;
+using Rix.Agent;
 using Rix.Process;
 using System.Text.Json;
 
@@ -10,7 +10,7 @@ namespace Rix.CodingAgents;
 /// </summary>
 /// <remarks>
 /// Like <see cref="OpenCodeAgent"/>, Pi is multi-provider — <see cref="CodingAgentConfig.Model"/> is
-/// forwarded verbatim as <c>--model</c> (e.g. <c>openai/gpt-4o</c>), and <see cref="Job.JobRunner"/>
+/// forwarded verbatim as <c>--model</c> (e.g. <c>openai/gpt-4o</c>), and <see cref="Agent.AgentRunner"/>
 /// adds whatever credential env var that provider expects to this invocation's environment (see
 /// <see cref="AgentCredential"/>), so this method itself carries no override for it. Pi has no
 /// per-run output-token cap equivalent to <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so
@@ -34,7 +34,7 @@ internal sealed class PiAgent : ICodingAgent
         processRunner, workingDirectory, "pi", Package, reportDiagnostic, cancellationToken
     );
 
-    public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
+    public AgentInvocation BuildInvocation(AgentConfig config, string systemPrompt)
     {
         List<string> args =
         [

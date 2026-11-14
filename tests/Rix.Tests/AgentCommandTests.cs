@@ -1,18 +1,18 @@
 using Rix.CodingAgents;
 using Rix.Cli;
-using Rix.Job;
+using Rix.Agent;
 
 namespace Rix.Tests;
 
 [TestClass]
-public class JobCommandTests
+public class AgentCommandTests
 {
-    private static JobConfig Read(params string[] args)
-    => JobCommand.CreateConfig(CommandArgs.Parse(JobCommand.Build(), args), new LocalFileSystem());
+    private static AgentConfig Read(params string[] args)
+    => AgentCommand.CreateConfig(CommandArgs.Parse(AgentCommand.Build(), args), new LocalFileSystem());
 
-    /// <summary>Reads <c>job</c> with valid values for every required flag, then
+    /// <summary>Reads <c>agent</c> with valid values for every required flag, then
     /// <paramref name="extra"/>.</summary>
-    private static JobConfig ReadValid(params string[] extra)
+    private static AgentConfig ReadValid(params string[] extra)
     => Read(["--repo", "o/r", "--prompt", "p", "--read-token", "r", "--output-dir", Path.GetTempPath(), .. extra]);
 
     [TestMethod]
@@ -220,15 +220,15 @@ public class JobCommandTests
         Assert.AreEqual("--repo is required", ex.Message);
     }
 
-    /// <summary>The one thing a <see cref="JobContext"/> takes from its config: which coding agent
+    /// <summary>The one thing a <see cref="AgentContext"/> takes from its config: which coding agent
     /// to run. Every kind is pinned here rather than one per <c>[DataRow]</c>, which can't carry an
     /// internal <see cref="AgentKind"/> into a public test method — the mapping is a switch a new
     /// kind can be added to without anything else noticing.</summary>
     [TestMethod]
     public void DefaultContext_RunsTheAgentTheConfigNames()
     {
-        Assert.IsInstanceOfType<ClaudeAgent>(JobCommand.DefaultContext(TestConfig.Valid(agent: AgentKind.Claude)).Agent);
-        Assert.IsInstanceOfType<OpenCodeAgent>(JobCommand.DefaultContext(TestConfig.Valid(agent: AgentKind.OpenCode)).Agent);
-        Assert.IsInstanceOfType<PiAgent>(JobCommand.DefaultContext(TestConfig.Valid(agent: AgentKind.Pi)).Agent);
+        Assert.IsInstanceOfType<ClaudeAgent>(AgentCommand.DefaultContext(TestConfig.Valid(agent: AgentKind.Claude)).Agent);
+        Assert.IsInstanceOfType<OpenCodeAgent>(AgentCommand.DefaultContext(TestConfig.Valid(agent: AgentKind.OpenCode)).Agent);
+        Assert.IsInstanceOfType<PiAgent>(AgentCommand.DefaultContext(TestConfig.Valid(agent: AgentKind.Pi)).Agent);
     }
 }

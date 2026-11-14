@@ -12,7 +12,7 @@ REPO_ROOT="${BATS_TEST_DIRNAME}/../.."
 ACTION="${REPO_ROOT}/.github/actions/detect-ci-failure/action.yml"
 
 # `rix ci-failure` prints an ICiFailureResult and nothing else - it reports a verdict and stops,
-# leaving the agent run (and its own IJobResult) to a separate job - so this one union is the whole
+# leaving the agent run (and its own IAgentResult) to a separate job - so this one union is the whole
 # set the action has to answer for, "detected" included.
 emitted_statuses() {
   grep -hoP 'JsonDerivedType\([^,]+, "\K[^"]+' \

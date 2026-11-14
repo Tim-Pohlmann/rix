@@ -128,7 +128,7 @@ public class SubmitCommandTests
 
     /// <summary>Both outcomes map to an exit code here rather than in the runner, so the one place
     /// that decides is covered for each: a submit that delivered nothing still succeeded, and a
-    /// refused one is a failed job rather than bad setup. Built on a stub context, so nothing is
+    /// refused one is a failed run rather than bad setup. Built on a stub context, so nothing is
     /// cloned and the write token is never used.</summary>
     [TestMethod]
     public async Task ExecuteAsync_Returns0_WhenThereWasNothingToSubmit()

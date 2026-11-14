@@ -1,5 +1,5 @@
 using Rix.CodingAgents;
-using Rix.Job;
+using Rix.Agent;
 using System.CommandLine;
 
 namespace Rix.Cli;
@@ -14,7 +14,7 @@ namespace Rix.Cli;
 ///
 /// <c>ci-failure</c> runs no agent, so it borrows only <see cref="ReadTokenOption"/> and
 /// <see cref="OutputDirOption"/> by name — see <see cref="CiFailureCommand"/>.</summary>
-internal static class JobOptions
+internal static class AgentOptions
 {
     internal static readonly Option<string> ReadTokenOption = new("--read-token")
     {
@@ -33,12 +33,12 @@ internal static class JobOptions
 
     internal static readonly Option<string> MaxTokensOption = new("--max-tokens")
     {
-        Description = $"Coding agent token budget cap (default: {JobConfig.DefaultMaxTokens})"
+        Description = $"Coding agent token budget cap (default: {AgentConfig.DefaultMaxTokens})"
     };
 
     internal static readonly Option<string> TimeoutOption = new("--timeout")
     {
-        Description = $"Wall-clock timeout in minutes (default: {JobConfig.DefaultTimeoutMinutes})"
+        Description = $"Wall-clock timeout in minutes (default: {AgentConfig.DefaultTimeoutMinutes})"
     };
 
     internal static readonly Option<string> OutputDirOption = new("--output-dir")
@@ -84,7 +84,7 @@ internal static class JobOptions
     internal static readonly Option<string> AllowedPushBranchesOption = new("--allowed-push-branches")
     {
         Description = "Comma-separated list of branches rix may push onto. Defaults to none, which " +
-            "refuses every push onto an already-existing branch. Enforced twice: by `job`, which " +
+            "refuses every push onto an already-existing branch. Enforced twice: by `agent`, which " +
             "turns down the agent's /push request, and again by `submit`, which does the pushing"
     };
 
@@ -97,10 +97,10 @@ internal static class JobOptions
     internal static readonly Option<string> AgentHomePathOption = new("--agent-home-path")
     {
         Description = "Directory inside --factory-repo whose contents are copied into the runner's home " +
-            $"directory, skipping files that already exist. Requires --factory-repo (default: {JobConfig.DefaultAgentHomePath})"
+            $"directory, skipping files that already exist. Requires --factory-repo (default: {AgentConfig.DefaultAgentHomePath})"
     };
 
-    /// <summary>Registers every option in this set in one call; <c>job</c>'s <c>CreateConfig</c> then
+    /// <summary>Registers every option in this set in one call; <c>agent</c>'s <c>CreateConfig</c> then
     /// reads each via the matching reader below.</summary>
     internal static void AddTo(Command command)
     {
@@ -159,7 +159,7 @@ internal static class JobOptions
     => parsed.Required(ReadTokenOption, "RIX_READ_TOKEN", value => new GitReadToken(value));
 
     internal static AgentKind ReadAgent(ParseResult parsed)
-    => parsed.Optional(AgentOption, "RIX_AGENT", AgentKindParser.Parse, JobConfig.DefaultAgent);
+    => parsed.Optional(AgentOption, "RIX_AGENT", AgentKindParser.Parse, AgentConfig.DefaultAgent);
 
     /// <summary>Constructing inside the reader's callback, rather than around it, is what puts the
     /// constructor's complaint under the flag: <see cref="Input.Named{T}"/> only prefixes what runs
@@ -171,7 +171,7 @@ internal static class JobOptions
         MaxTokensOption,
         "RIX_MAX_TOKENS",
         raw => new MaxTokens(Input.WholeNumber<int>(raw)),
-        new MaxTokens(JobConfig.DefaultMaxTokens)
+        new MaxTokens(AgentConfig.DefaultMaxTokens)
     );
 
     internal static TimeoutMinutes ReadTimeout(ParseResult parsed)
@@ -180,7 +180,7 @@ internal static class JobOptions
         TimeoutOption,
         "RIX_TIMEOUT",
         raw => new TimeoutMinutes(Input.WholeNumber<int>(raw)),
-        new TimeoutMinutes(JobConfig.DefaultTimeoutMinutes)
+        new TimeoutMinutes(AgentConfig.DefaultTimeoutMinutes)
     );
 
     internal static DirectoryPath ReadOutputDir(ParseResult parsed, IFileSystem fileSystem)
@@ -225,7 +225,7 @@ internal static class JobOptions
             AgentHomePathOption,
             "RIX_AGENT_HOME_PATH",
             raw => new SubDirectoryPath(raw),
-            new SubDirectoryPath(JobConfig.DefaultAgentHomePath)
+            new SubDirectoryPath(AgentConfig.DefaultAgentHomePath)
         );
         var home = Input.Named("runner home directory", () => new DirectoryPath(fileSystem.UserHomeDirectory, fileSystem));
         return new AgentHomeInfo(repo, sourcePath, home);

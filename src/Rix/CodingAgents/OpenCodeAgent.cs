@@ -1,4 +1,4 @@
-using Rix.Job;
+using Rix.Agent;
 using Rix.Process;
 using System.Text.Json;
 
@@ -20,14 +20,14 @@ namespace Rix.CodingAgents;
 /// <item>The invocation always carries <c>--auto</c>. Without it, an unattended run has no way to
 /// answer an "ask"-level permission request (there's no terminal to prompt), so OpenCode
 /// auto-rejects it — and, unlike Claude Code, OpenCode's session then stops outright rather than
-/// letting the agent recover, silently abandoning the job while still exiting 0. <c>--auto</c>
+/// letting the agent recover, silently abandoning the run while still exiting 0. <c>--auto</c>
 /// resolves "ask" to allowed instead (explicit <c>deny</c> rules, of which rix configures none,
 /// would still be enforced); acceptable here because the agent already runs confined to a
 /// disposable <see cref="Rix.TempDirectory"/> clone on an ephemeral CI runner.</item>
 /// </list>
 /// Unlike Claude (Anthropic-only), OpenCode supports many model providers via
 /// <see cref="CodingAgentConfig.Model"/> (a <c>provider/model</c> string forwarded verbatim as
-/// <c>--model</c>); <see cref="Job.JobRunner"/> adds whatever credential env var that provider
+/// <c>--model</c>); <see cref="Agent.AgentRunner"/> adds whatever credential env var that provider
 /// expects to this invocation's environment — see <see cref="AgentCredential"/> — so this method
 /// itself carries no override for it. Local/self-hosted backends (Ollama, LM Studio) aren't
 /// covered by this — they need a generated <c>opencode.json</c> config rather than a model string
@@ -49,7 +49,7 @@ internal sealed class OpenCodeAgent : ICodingAgent
         processRunner, workingDirectory, "opencode", Package, reportDiagnostic, cancellationToken
     );
 
-    public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
+    public AgentInvocation BuildInvocation(AgentConfig config, string systemPrompt)
     {
         List<string> args = ["run", $"{systemPrompt}\n\n{config.Agent.Prompt}", "--auto"];
         if (!string.IsNullOrWhiteSpace(config.Agent.Model))

@@ -13,29 +13,29 @@ public class StartupTests
         Assert.AreEqual(0, exitCode);
     }
 
-    /// <summary><c>job</c> and <c>ci-failure</c> register the same static <c>JobOptions</c>
+    /// <summary><c>agent</c> and <c>ci-failure</c> register the same static <c>AgentOptions</c>
     /// instances, so both of them living under one root is the case that would break if a shared
     /// option could belong to only one command. Pinned explicitly rather than left to the help test,
     /// which would fail for this reason without naming it.</summary>
     [TestMethod]
-    public async Task RunAsync_BuildsBothCommands_ThatShareJobOptionInstances()
+    public async Task RunAsync_BuildsBothCommands_ThatShareAgentOptionInstances()
     {
-        Assert.AreEqual(0, await Startup.RunAsync(["job", "--help"]));
+        Assert.AreEqual(0, await Startup.RunAsync(["agent", "--help"]));
         Assert.AreEqual(0, await Startup.RunAsync(["ci-failure", "--help"]));
     }
 
     [TestMethod]
-    public async Task RunJobAsync_Returns2_WhenConfigIsInvalid()
+    public async Task RunAgentAsync_Returns2_WhenConfigIsInvalid()
     {
-        var exitCode = await Startup.RunAsync(["job"]);
+        var exitCode = await Startup.RunAsync(["agent"]);
         Assert.AreEqual(2, exitCode);
     }
 
     [TestMethod]
-    public async Task RunJobAsync_Returns2_WhenRepoFormatIsInvalid()
+    public async Task RunAgentAsync_Returns2_WhenRepoFormatIsInvalid()
     {
         var exitCode = await Startup.RunAsync(
-            ["job", "--repo", "invalid-no-slash", "--prompt", "p", "--read-token", "r",
+            ["agent", "--repo", "invalid-no-slash", "--prompt", "p", "--read-token", "r",
              "--output-dir", Path.GetTempPath()]);
         Assert.AreEqual(2, exitCode);
     }

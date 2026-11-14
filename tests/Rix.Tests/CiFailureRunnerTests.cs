@@ -250,7 +250,7 @@ public class CiFailureRunnerTests
     }
 
     /// <summary>The imperative shell's own tests, beside the core's like
-    /// <c>JobRunnerTests</c>'s are: <see cref="CiFailureCommand.ExecuteAsync"/> adds exactly two
+    /// <c>AgentRunnerTests</c>'s are: <see cref="CiFailureCommand.ExecuteAsync"/> adds exactly two
     /// things to a detection - the exit code it maps the verdict to, and the files it drops in the
     /// output directory - and both are only meaningful next to the verdict that produced
     /// them.</summary>

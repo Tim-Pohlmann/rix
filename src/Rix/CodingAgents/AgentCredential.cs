@@ -5,7 +5,7 @@ namespace Rix.CodingAgents;
 /// <summary>
 /// The credential for the child agent CLI process: the raw <c>--agent-api-key</c> and the
 /// environment variable name it should be exported under, kept together because neither is any use
-/// without the other. Resolved by the CLI when building a <see cref="Job.JobConfig"/> and attached
+/// without the other. Resolved by the CLI when building a <see cref="Agent.AgentConfig"/> and attached
 /// to the run's <see cref="AgentInvocation.EnvironmentOverrides"/> — the child process gets the
 /// credential without it ever needing to exist under that name in rix's own process environment.
 ///

@@ -13,20 +13,20 @@ internal static class SubmitCommand
 
     private static readonly Option<string> InputDirOption = new("--input-dir")
     {
-        Description = "Directory holding result.json and the git bundles produced by `rix job`"
+        Description = "Directory holding result.json and the git bundles produced by `rix agent`"
     };
 
     internal static Command Build()
     {
-        var command = new Command("submit", "Push the branches from a `rix job` result and open their pull requests");
+        var command = new Command("submit", "Push the branches from a `rix agent` result and open their pull requests");
 
         command.Options.Add(CommonOptions.RepoOption);
         command.Options.Add(WriteTokenOption);
         command.Options.Add(InputDirOption);
         command.Options.Add(CommonOptions.WorkDirOption);
-        // The same Option instance job registers, so neither command can drift into a different
+        // The same Option instance agent registers, so neither command can drift into a different
         // flag name or a different environment variable for the same list.
-        command.Options.Add(JobOptions.AllowedPushBranchesOption);
+        command.Options.Add(AgentOptions.AllowedPushBranchesOption);
 
         return command;
     }
@@ -40,7 +40,7 @@ internal static class SubmitCommand
         WorkDir: CommonOptions.ReadWorkDir(parsed, fileSystem),
         // Unparseable input is impossible: every branch name is acceptable, and a blank value
         // means the empty list, which is the safe end of the range rather than an error.
-        BranchName.ParseAllowList(parsed.Str(JobOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"))
+        BranchName.ParseAllowList(parsed.Str(AgentOptions.AllowedPushBranchesOption, "RIX_ALLOWED_PUSH_BRANCHES"))
     );
 
     /// <summary>Runs <paramref name="config"/> against the production context. Separate from
@@ -72,7 +72,7 @@ internal static class SubmitCommand
         return result switch
         {
             SubmitSuccess => ExitCodes.Success,
-            SubmitFailure => ExitCodes.JobFailed,
+            SubmitFailure => ExitCodes.Failed,
             _ => throw new NotSupportedException($"Unexpected submit result type: {result.GetType()}"),
         };
     }

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Rix.Job;
+namespace Rix.Agent;
 
 /// <summary>
 /// Shared scaffold for the agent output-line parsers (cost, transcript). Guards a single stdout

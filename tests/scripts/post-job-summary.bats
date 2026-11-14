@@ -23,7 +23,7 @@ summary() {
 }
 
 write_result() {
-  assert_matches_schema job-result.schema.json "$1"
+  assert_matches_schema agent-result.schema.json "$1"
   printf '%s' "$1" > "$RESULT"
 }
 
@@ -208,7 +208,7 @@ assistant: explored the codebase and applied the fix
   # The sourced tests above call rix_post_job_summary directly, which never trips the script's
   # `set -euo pipefail` guard (only armed when run as its own process, not sourced) - so they
   # can't catch a local left unbound on some code path. Invoke the real script as a subprocess,
-  # exactly like the composite action does for a plain `rix job` run (no submit step, so both
+  # exactly like the composite action does for a plain `rix agent` run (no submit step, so both
   # submit args are ""), to reproduce that class of bug.
   write_result '{"status":"success","pendingPrRequests":[],"pendingPushRequests":[],"costUsd":0,"durationSeconds":1}'
 

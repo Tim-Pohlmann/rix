@@ -1,12 +1,12 @@
-using Rix.Job;
+using Rix.Agent;
 using Rix.Process;
 
 namespace Rix.CodingAgents;
 
 /// <summary>
 /// A pluggable coding agent (e.g. Claude Code). Captures everything agent-specific behind a
-/// single boundary: how to install the CLI, how to launch it for a job, and how to read the
-/// run's cost from its output. The job core (<see cref="JobRunner.RunAsync"/>) depends only on
+/// single boundary: how to install the CLI, how to launch it for a run, and how to read the
+/// run's cost from its output. The core (<see cref="AgentRunner.RunAsync"/>) depends only on
 /// this interface, so swapping agents requires no core changes.
 /// </summary>
 internal interface ICodingAgent
@@ -14,7 +14,7 @@ internal interface ICodingAgent
     /// <summary>
     /// Ensures the agent CLI is available, installing it if necessary. All subprocesses run
     /// through the injected <paramref name="processRunner"/> so installation stays on the same
-    /// side-effect seam as the rest of the job, from <paramref name="workingDirectory"/>, a scratch
+    /// side-effect seam as the rest of the run, from <paramref name="workingDirectory"/>, a scratch
     /// directory outside any repo.
     /// </summary>
     /// <param name="reportDiagnostic">Where what the installer writes to stderr goes - npm's
@@ -29,8 +29,8 @@ internal interface ICodingAgent
         CancellationToken cancellationToken
     );
 
-    /// <summary>Builds the process invocation that launches the agent for this job (pure).</summary>
-    AgentInvocation BuildInvocation(JobConfig config, string systemPrompt);
+    /// <summary>Builds the process invocation that launches the agent for this run (pure).</summary>
+    AgentInvocation BuildInvocation(AgentConfig config, string systemPrompt);
 
     /// <summary>
     /// Extracts the run's cumulative USD cost from a single agent output line, or <c>null</c>

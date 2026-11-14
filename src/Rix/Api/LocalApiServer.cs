@@ -27,7 +27,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
 
     /// <param name="log">Sink for the server's own diagnostic log lines, forwarded live so they
     /// interleave with the agent's output on the same seam. When <c>null</c>, server logs are dropped.</param>
-    /// <param name="cloneDir">The job's own clone of the target repo — the only directory a queued
+    /// <param name="cloneDir">The run's own clone of the target repo — the only directory a queued
     /// branch is accepted from, since it's also the directory <c>rix</c> later bundles from.</param>
     /// <param name="allowedPushBranches">The only branches <c>/push</c> may deliver to; when
     /// <c>null</c> or empty, <c>/push</c> rejects every branch — an operator opts in by naming the
@@ -120,10 +120,10 @@ internal sealed class LocalApiServer : IAsyncDisposable
     private static string BuildApiDescription(IReadOnlyList<BranchName> allowedPushBranches)
     {
         const string overview =
-            "Local delivery API for a `rix job` coding-agent run. Hand finished work back to rix by " +
+            "Local delivery API for a `rix agent` coding-agent run. Hand finished work back to rix by " +
             "queuing a branch: POST /pr opens it as a pull request, POST /push adds commits to a branch " +
             "that already exists on the remote. Queued requests are listed with GET and cancelled with " +
-            "DELETE on the same path, and nothing is delivered until the job ends.\n\n" +
+            "DELETE on the same path, and nothing is delivered until the run ends.\n\n" +
             "Conventions: work on branches named rix/<short-description> and commit locally before " +
             "queuing them; split unrelated changes into separate pull requests.";
 
@@ -148,7 +148,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
             CancellationToken cancellationToken
         )
         {
-            document.Info.Title = "rix job delivery API";
+            document.Info.Title = "rix agent delivery API";
             document.Info.Description = description;
             return Task.CompletedTask;
         }
@@ -187,7 +187,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 "Call this once a rix/<short-description> branch is committed locally in your working " +
                 "directory and you are satisfied with it. The branch must not already exist on the remote. " +
                 "baseBranch is the branch the PR targets; stacked PRs are allowed as long as the queued base " +
-                "branches form no cycle. The pull request is opened after the job ends, not immediately.";
+                "branches form no cycle. The pull request is opened after the run ends, not immediately.";
 
             // Includes this run's allow-list so the agent sees what /push will accept without having
             // to trigger a rejection first.
@@ -251,7 +251,7 @@ internal sealed class LocalApiServer : IAsyncDisposable
                 BaseBranch: Input.Required("baseBranch", req.BaseBranch, value => new BranchName(value))
             );
 
-            // The job's configuration names the only branches /push may deliver to (e.g. just the branch
+            // The run's configuration names the only branches /push may deliver to (e.g. just the branch
             // this run is resuming); an empty/unset list means none are allowed. Enforced here, before
             // any remote/local checks, so a push the operator never allowed is refused regardless of
             // where the branch lives.
