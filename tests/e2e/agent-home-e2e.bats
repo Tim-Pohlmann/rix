@@ -139,7 +139,7 @@ fixture_status_on_default_branch() {
   run "$RIX_BIN" agent
 
   # 2 rather than 1: the operator's configuration is wrong, which is a different thing from the
-  # agent's work failing (see ExitCodes.SetupFailed), and job.yml reports the two differently.
+  # agent's work failing (see ExitCodes.SetupFailed), and agent.yml reports the two differently.
   [ "$status" -eq 2 ]
   assert_result_matches_schema
   [ "$(result_field status)" = setupFailure ]

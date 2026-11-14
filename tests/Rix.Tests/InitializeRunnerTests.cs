@@ -49,7 +49,7 @@ public class InitializeRunnerTests
         var rixYml = _writes.Single(w => w.Path.EndsWith("workflows/rix.yml", StringComparison.Ordinal)).Content;
         var ciYml = _writes.Single(w => w.Path.EndsWith("rix-on-ci-failure.yml", StringComparison.Ordinal)).Content;
 
-        StringAssert.Contains(rixYml, "uses: Tim-Pohlmann/rix/.github/workflows/job.yml@release/2.x");
+        StringAssert.Contains(rixYml, "uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@release/2.x");
         StringAssert.Contains(rixYml, "read-token: ${{ secrets.RIX_READ_TOKEN }}");
         StringAssert.Contains(ciYml, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@release/2.x");
         StringAssert.Contains(ciYml, "workflows: [\"CI\"] # change \"CI\" to the name:");

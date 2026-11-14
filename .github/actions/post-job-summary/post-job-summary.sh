@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Appends a markdown summary of a rix agent run to the GitHub Actions step summary file named by
 # $GITHUB_STEP_SUMMARY, so the workflow run page shows the job outcome (status, cost, duration)
-# and the pull requests that were actually opened. Used by the run-rix-agent and run-rix-submit
+# and the pull requests that were actually opened. Used by the rix-agent and rix-submit
 # composite actions.
 #
 # Usage: post-job-summary.sh <result.json> [submit-result.json] [submit-error.log] [transcript.md]

@@ -68,7 +68,7 @@ inputs:
   output-artifact:
     description: >-
       Name to upload ./out under once the job has succeeded, for a later job to pick up with
-      run-rix-submit's input-artifact. Omit when that step runs in this same job, where ./out is
+      rix-submit's input-artifact. Omit when that step runs in this same job, where ./out is
       already there.
     required: false
   rix-version:

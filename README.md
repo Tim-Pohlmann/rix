@@ -12,7 +12,7 @@ of guessed metadata.
 
 ## Run via GitHub Actions
 
-`rix` ships a reusable workflow (`.github/workflows/job.yml`) that runs the agent and opens
+`rix` ships a reusable workflow (`.github/workflows/agent.yml`) that runs the agent and opens
 the resulting PRs. Each repo drives it through a small caller workflow.
 
 ### Quick start: `rix initialize`
@@ -46,7 +46,7 @@ on:
         required: true
 jobs:
   rix:
-    uses: Tim-Pohlmann/rix/.github/workflows/job.yml@v0
+    uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@v0
     with:
       repo: ${{ github.repository }}
       prompt: ${{ inputs.prompt }}
@@ -92,9 +92,9 @@ The same list is given to `rix submit`, which checks it again before pushing. Th
 the point: `rix agent` writes what the agent asked for into `result.json`, the agent runs as an
 ordinary process in the same workspace and can rewrite that file afterwards, and `rix submit` is
 where the write token actually is. Only the second check decides what reaches the remote, so
-`submit` takes the list from its own input and never from `result.json`. The `job.yml` workflow
+`submit` takes the list from its own input and never from `result.json`. The `agent.yml` workflow
 passes your `allowed-push-branches` to both jobs; if you drive the composite actions yourself,
-give `run-rix-submit` the same value you gave `run-rix-agent`, or its pushes will all be refused.
+give `rix-submit` the same value you gave `rix-agent`, or its pushes will all be refused.
 
 Pending pull requests need no such input. A PR names a branch that cannot exist yet, and the
 `rix/*` rule bounding it is carried by `result.json`'s own type (`RixBranchName`), so it is
@@ -104,7 +104,7 @@ re-applied when `rix submit` parses the file.
 
 The coding agent CLIs read configuration and context from the runner's user home (`~/.config/...`,
 `~/.claude/...`, house style guides, MCP configs, and so on). Point rix at a second repo — a
-"factory repo" — to copy files into that home directory before the agent starts. `job.yml` and
+"factory repo" — to copy files into that home directory before the agent starts. `agent.yml` and
 `on-ci-failure.yml` both take the same two inputs:
 
 ```yaml
@@ -172,7 +172,7 @@ separate mechanism this workflow doesn't build today.
 
 `@v0` is the floating major-version tag: it moves to each new 0.x release, so callers pick up
 fixes without re-pinning, and the workflow keeps fetching the binary belonging to that release.
-Pin an exact tag (e.g. `...job.yml@v0.5.0`) or a commit SHA for byte-for-byte reproducible,
+Pin an exact tag (e.g. `...agent.yml@v0.5.0`) or a commit SHA for byte-for-byte reproducible,
 supply-chain-safe runs. `@main` is not recommended: between a version bump and the release it
 names, it asks for a binary that isn't published yet.
 
@@ -229,7 +229,7 @@ run URL, failing step logs), and runs the agent against it. It's the building bl
 patterns below — write the "turn a failure into a prompt" logic once, reuse it either way.
 
 It runs as three jobs, one composite action each: `detect-ci-failure` decides whether to act and
-writes the prompt, `run-rix-agent` runs the agent against it, and `run-rix-submit` pushes the result
+writes the prompt, `rix-agent` runs the agent against it, and `rix-submit` pushes the result
 and opens the PRs. They are separate jobs rather than steps because only the middle one executes
 code from the failing branch — see [What the agent's machine is trusted
 with](#what-the-agents-machine-is-trusted-with).

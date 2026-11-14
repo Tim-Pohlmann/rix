@@ -1,4 +1,4 @@
-name: Rix Job
+name: Rix Agent
 
 # Reusable workflow: run `rix agent` against a target repo and turn its output into PRs.
 # Other repos call it with a tiny caller workflow (see README "Run via GitHub Actions").
@@ -126,7 +126,7 @@ jobs:
       # resolve. download-rix's own download script is covered by this same sparse-checkout: it
       # sits inside .github/actions/download-rix rather than in .github/scripts.
       #
-      # Pinned to job.workflow_sha - the exact commit of *this* job.yml file that's actually
+      # Pinned to job.workflow_sha - the exact commit of *this* agent.yml file that's actually
       # running - rather than rix-version. rix-version only selects which release binary to
       # download; it's a separate, caller-controlled input that can point at a tag cut before
       # this composite-action refactor existed, which would leave these actions missing here.
@@ -139,7 +139,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Run rix agent
-        uses: ./.github/actions/run-rix-agent
+        uses: ./.github/actions/rix-agent
         with:
           repo: ${{ inputs.repo }}
           prompt: ${{ inputs.prompt }}
@@ -181,7 +181,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Run rix submit
-        uses: ./.github/actions/run-rix-submit
+        uses: ./.github/actions/rix-submit
         with:
           repo: ${{ inputs.repo }}
           write-token: ${{ secrets.write-token }}

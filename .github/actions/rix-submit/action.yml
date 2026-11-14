@@ -18,7 +18,7 @@ inputs:
     default: out
   input-artifact:
     description: >-
-      Name of the artifact run-rix-agent uploaded with output-artifact, downloaded into input-dir
+      Name of the artifact rix-agent uploaded with output-artifact, downloaded into input-dir
       first. Omit when `rix agent` ran in this same job, where input-dir is already there.
     required: false
   allowed-push-branches:

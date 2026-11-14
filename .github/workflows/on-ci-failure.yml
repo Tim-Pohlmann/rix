@@ -204,7 +204,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Run rix agent
-        uses: ./.github/actions/run-rix-agent
+        uses: ./.github/actions/rix-agent
         with:
           repo: ${{ inputs.repo || github.repository }}
           prompt-artifact: rix-prompt
@@ -259,7 +259,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Run rix submit
-        uses: ./.github/actions/run-rix-submit
+        uses: ./.github/actions/rix-submit
         with:
           repo: ${{ inputs.repo || github.repository }}
           write-token: ${{ secrets.write-token }}
