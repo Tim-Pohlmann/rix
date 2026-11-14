@@ -611,9 +611,10 @@ jobs:
         run: |
           # --dir must already exist (DirectoryPath rejects a missing one); the .github/workflows
           # path under it is rix's to create.
-          mkdir -p init-out/standalone init-out/factory
+          mkdir -p init-out/standalone init-out/factory init-out/factory-served
           ./rix-bin/rix initialize --dir init-out/standalone
           ./rix-bin/rix initialize --factory --dir init-out/factory
+          ./rix-bin/rix initialize --factory-repo acme/rix-factory --dir init-out/factory-served
 
           # Compared as a set, not file by file: the steps below glob whatever is there, so a new
           # template would otherwise sail through them without anyone deciding what else it needs.
@@ -621,6 +622,7 @@ jobs:
           # LC_ALL=C because a locale that ignores punctuation while sorting orders rix.yml and
           # rix-on-ci-failure.yml the other way round.
           expected="$(printf '%s\n' \
+            init-out/factory-served/.github/workflows/notify-rix-factory.yml \
             init-out/factory/.github/workflows/rix-on-ci-failure.yml \
             init-out/factory/.github/workflows/rix.yml \
             init-out/standalone/.github/workflows/rix-on-ci-failure.yml \
@@ -633,9 +635,10 @@ jobs:
           fi
 
           # A template that failed to substitute would still be valid YAML, so actionlint below
-          # would pass it - and every `uses:` in it would resolve to a ref that cannot exist.
-          if grep -rn '__RIX_REF__' init-out; then
-            echo "a template reached the target repo with its ref placeholder unsubstituted" >&2
+          # would pass it - and every `uses:` in it would resolve to a ref that cannot exist, or
+          # the dispatch to a factory repo that cannot.
+          if grep -rnE '__RIX_[A-Z_]+__' init-out; then
+            echo "a template reached the target repo with a placeholder unsubstituted" >&2
             exit 1
           fi
 
@@ -685,7 +688,10 @@ jobs:
               for job_name, job in caller["jobs"].items():
                   uses = job.get("uses")
                   if uses is None:
-                      errors.append(f"{caller_path}: job {job_name} calls no reusable workflow")
+                      # A job of steps (the factory-served repo's dispatch) has no callee to pair
+                      # with; one with neither is a template that lost its `uses:`.
+                      if "steps" not in job:
+                          errors.append(f"{caller_path}: job {job_name} calls no reusable workflow and runs no steps")
                       continue
                   repo_and_path, _, ref = uses.partition("@")
                   owner, repo, callee_path = repo_and_path.split("/", 2)

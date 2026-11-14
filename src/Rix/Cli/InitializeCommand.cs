@@ -20,6 +20,11 @@ internal static class InitializeCommand
         Description = "Set up a factory repo, which runs rix against the repos it serves, instead of a repo that runs rix on itself"
     };
 
+    private static readonly Option<string> FactoryRepoOption = new("--factory-repo")
+    {
+        Description = "Set up a repo that a factory serves: write only the workflow that dispatches its CI failures to this factory repo (owner/name)"
+    };
+
     internal static Command Build()
     {
         var command = new Command("initialize", "Write the rix caller workflows into a cloned repo's .github/workflows/");
@@ -28,6 +33,7 @@ internal static class InitializeCommand
         command.Options.Add(DirOption);
         command.Options.Add(RefOption);
         command.Options.Add(FactoryOption);
+        command.Options.Add(FactoryRepoOption);
 
         return command;
     }
@@ -45,11 +51,24 @@ internal static class InitializeCommand
         );
     }
 
+    /// <summary>A repo is the factory or is served by one, never both: a factory has no CI of its
+    /// own to dispatch.</summary>
     private static IInitializeSetup Setup(ParseResult parsed)
     {
+        var factoryRepo = parsed.GetValue(FactoryRepoOption);
         if (parsed.GetValue(FactoryOption))
+        {
+            if (!string.IsNullOrWhiteSpace(factoryRepo))
+                throw new InvalidInputException($"{FactoryOption.Name} and {FactoryRepoOption.Name} cannot be combined; a factory repo dispatches to no other factory");
             return new FactorySetup();
-        return new StandaloneSetup();
+        }
+        return Input.Optional<IInitializeSetup>
+        (
+            FactoryRepoOption.Name,
+            factoryRepo,
+            value => new FactoryServedSetup(new RepoIdentifier(value)),
+            new StandaloneSetup()
+        );
     }
 
     /// <summary>Runs <paramref name="config"/> against the production context. Separate from
@@ -91,6 +110,7 @@ internal static class InitializeCommand
     {
         StandaloneSetup => StandaloneNextSteps,
         FactorySetup => FactoryNextSteps,
+        FactoryServedSetup served => FactoryServedNextSteps(served.FactoryRepo),
         _ => throw new NotSupportedException($"Unexpected initialize setup type: {setup.GetType()}"),
     };
 
@@ -121,7 +141,20 @@ internal static class InitializeCommand
                RIX_WRITE_TOKEN  PAT, contents:write + pull-requests:write on exactly the repos
                                 this factory serves; it bounds where rix can open PRs
           3. Commit and push the two workflow files.
-          4. In each repo this factory serves, add the workflow that dispatches its CI failures
-             here (README: "Advanced: a central factory repo").
+          4. In each repo this factory serves, write the workflow that dispatches its CI
+             failures here:
+               rix initialize --factory-repo <this repo's owner/name>
+        """;
+
+    /// <summary>The dispatch token is the only secret a served repo holds. The factory's own
+    /// tokens have to reach this repo too, which nothing on this side can check.</summary>
+    private static string FactoryServedNextSteps(RepoIdentifier factoryRepo) => $"""
+
+        Next steps:
+          1. Add the dispatch token as a repo secret (Settings -> Secrets and variables -> Actions):
+               RIX_FACTORY_DISPATCH_TOKEN   PAT, contents:write on {factoryRepo} only
+          2. In notify-rix-factory.yml, set workflows: ["CI"] to your CI workflow's name.
+          3. Make sure the factory's RIX_READ_TOKEN and RIX_WRITE_TOKEN include this repo.
+          4. Commit and push the workflow file.
         """;
 }

@@ -33,7 +33,8 @@ released with. Then:
 Pass `--dir <path>` to target a repo other than the current directory, and `--ref <git-ref>` to
 pin the written workflows to a different tag, branch, or commit SHA of this repo. The sections
 below describe the files it writes and how to customize them further. To set up a factory repo
-that serves several repos instead, pass `--factory` (see
+that serves several repos instead, pass `--factory` in the factory repo and
+`--factory-repo <owner/name>` in each repo it serves (see
 [Advanced: a central factory repo](#advanced-a-central-factory-repo)).
 
 ### The `rix` caller workflow
@@ -324,32 +325,36 @@ Two consequences worth stating outright:
 Useful when several project repos should share one set of `read-token`/`write-token`/
 `agent-api-key` secrets instead of each holding its own. `workflow_run` can't cross repos, so
 each project repo still needs a small local trigger — but it only *notifies* the factory repo
-instead of running rix itself, using a PAT scoped just to dispatch to that one repo:
+instead of running rix itself, using a PAT scoped just to dispatch to that one repo. Run
+`rix initialize --factory-repo <owner/name>` in each project repo to write it, with the factory
+repo's name filled in:
 
 ```yaml
 # In each project repo: .github/workflows/notify-rix-factory.yml
 name: notify rix factory
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI"] # change "CI" to the name: of the workflow rix should react to
     types: [completed]
 jobs:
   notify:
-    # Same two conditions as the simple pattern: rix re-checks both against the API, so this only
-    # saves the round trip through the factory.
+    # The factory re-checks both conditions against the API, so this only saves the round trip. The
+    # head_repository check keeps runs from forks' pull requests out: anyone can push to a fork.
     if: >-
       github.event.workflow_run.conclusion == 'failure' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    # The dispatch goes through RIX_FACTORY_DISPATCH_TOKEN; this job needs no GITHUB_TOKEN access.
+    permissions: {}
     steps:
-      - name: Dispatch to factory repo
+      - name: Dispatch to the factory repo
         # Every value reaches the script through env, never through ${{ }} inside `run:` - an
         # expression there is pasted into the script before bash sees it. A fork PR's branch name
         # is chosen by its author and git allows `$(...)` and backticks in one, so interpolating
         # it would run the author's command in this step, which holds the dispatch token.
         env:
           GH_TOKEN: ${{ secrets.RIX_FACTORY_DISPATCH_TOKEN }}
-          FACTORY_REPO: ${{ vars.RIX_FACTORY_REPO }}
+          FACTORY_REPO: my-org/rix-factory
           PROJECT_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}

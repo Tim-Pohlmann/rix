@@ -14,6 +14,10 @@ internal static class WorkflowTemplates
     /// happened to be checked in.</summary>
     internal const string RefPlaceholder = "__RIX_REF__";
 
+    /// <summary>What a <see cref="FactoryServedSetup"/>'s template carries in place of the factory
+    /// repo it dispatches to.</summary>
+    internal const string FactoryRepoPlaceholder = "__RIX_FACTORY_REPO__";
+
     internal const string ResourcePrefix = "Rix.Cli.Templates.";
 
     /// <summary>The templates of a repo that runs rix on itself
@@ -23,21 +27,31 @@ internal static class WorkflowTemplates
     /// <summary>The templates of a factory repo (<c>Cli/Templates/Factory/</c>).</summary>
     internal static IReadOnlyList<(string RelativePath, string Content)> Factory { get; } = Load("Factory");
 
+    /// <summary>The templates of a repo a factory serves (<c>Cli/Templates/FactoryServed/</c>).</summary>
+    internal static IReadOnlyList<(string RelativePath, string Content)> FactoryServed { get; } = Load("FactoryServed");
+
     /// <summary>Each template of <paramref name="setup"/> as embedded, still carrying
-    /// <see cref="RefPlaceholder"/>, paired with the repo-relative path it is written to, in the
+    /// its placeholders, paired with the repo-relative path it is written to, in the
     /// order <see cref="InitializeRunner"/> writes (and reports) them.</summary>
     internal static IReadOnlyList<(string RelativePath, string Content)> Of(IInitializeSetup setup) => setup switch
     {
         StandaloneSetup => Standalone,
         FactorySetup => Factory,
+        FactoryServedSetup => FactoryServed,
         _ => throw new NotSupportedException($"Unexpected initialize setup type: {setup.GetType()}"),
     };
 
     /// <summary>The templates of <paramref name="setup"/> pinned to <paramref name="reference"/>,
-    /// each paired with the repo-relative path it is written to, in the order
-    /// <see cref="InitializeRunner"/> writes (and reports) them.</summary>
+    /// with whatever else the setup names filled in, each paired with the repo-relative path it is
+    /// written to, in the order <see cref="InitializeRunner"/> writes (and reports) them.</summary>
     internal static IReadOnlyList<(string RelativePath, string Content)> For(IInitializeSetup setup, WorkflowRef reference)
-    => [.. Of(setup).Select(template => (template.RelativePath, template.Content.Replace(RefPlaceholder, reference.Value, StringComparison.Ordinal)))];
+    => [.. Of(setup).Select(template => (template.RelativePath, Substitute(setup, template.Content.Replace(RefPlaceholder, reference.Value, StringComparison.Ordinal))))];
+
+    private static string Substitute(IInitializeSetup setup, string content) => setup switch
+    {
+        FactoryServedSetup served => content.Replace(FactoryRepoPlaceholder, served.FactoryRepo.Value, StringComparison.Ordinal),
+        _ => content,
+    };
 
     /// <summary>Every template in <c>Cli/Templates/{folder}/</c>, discovered from the embedded
     /// resources rather than a hand-kept list, so the glob in <c>Rix.csproj</c> is the only place a

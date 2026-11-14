@@ -42,7 +42,7 @@ public class WorkflowTemplatesTests
         var embedded = typeof(WorkflowTemplates).Assembly.GetManifestResourceNames()
             .Count(name => name.StartsWith(WorkflowTemplates.ResourcePrefix, StringComparison.Ordinal));
 
-        Assert.AreEqual(WorkflowTemplates.Standalone.Count + WorkflowTemplates.Factory.Count, embedded);
+        Assert.AreEqual(WorkflowTemplates.Standalone.Count + WorkflowTemplates.Factory.Count + WorkflowTemplates.FactoryServed.Count, embedded);
     }
 
     [TestMethod]
@@ -81,6 +81,42 @@ public class WorkflowTemplatesTests
         StringAssert.Contains(content, "types: [rix-ci-failure]");
         StringAssert.Contains(content, "repo: ${{ github.event.client_payload.repo }}");
         StringAssert.Contains(content, "run-id: ${{ github.event.client_payload.run_id }}");
+    }
+
+    [TestMethod]
+    public void For_FactoryServed_WritesOnlyTheNotifyWorkflow_DispatchingToTheNamedFactory()
+    {
+        var templates = WorkflowTemplates.For(new FactoryServedSetup(new("acme/rix-factory")), Ref);
+
+        CollectionAssert.AreEqual(new[] { ".github/workflows/notify-rix-factory.yml" }, templates.Select(t => t.RelativePath).ToArray());
+        var content = templates[0].Content;
+        StringAssert.Contains(content, "FACTORY_REPO: acme/rix-factory");
+        StringAssert.Contains(content, "workflow_run:");
+        StringAssert.Contains(content, "github.event.workflow_run.head_repository.full_name == github.repository");
+        Assert.IsFalse(content.Contains("__RIX_", StringComparison.Ordinal));
+    }
+
+    /// <summary>The event type is the whole contract between the two sides, and each lives in a
+    /// different repo, so a mismatch would only show as dispatches nothing answers.</summary>
+    [TestMethod]
+    public void For_FactoryServed_DispatchesTheEventTypeTheFactoryAnswers()
+    {
+        var notify = ContentOf(new FactoryServedSetup(new("acme/rix-factory")), "notify-rix-factory.yml");
+        var receiver = ContentOf(new FactorySetup(), "rix-on-ci-failure.yml");
+
+        StringAssert.Contains(notify, "-f event_type=rix-ci-failure");
+        StringAssert.Contains(receiver, "types: [rix-ci-failure]");
+    }
+
+    [TestMethod]
+    [DataRow("acme/rix factory")]
+    [DataRow("acme/\"rix\"")]
+    [DataRow("acme/rix-factory\n")]
+    public void FactoryServedSetup_RejectsANameThatNeedsYamlQuoting(string name)
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => new FactoryServedSetup(new(name)));
+
+        StringAssert.Contains(ex.Message, "is not a GitHub repo name");
     }
 
     [TestMethod]
