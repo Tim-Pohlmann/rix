@@ -33,8 +33,9 @@ internal interface ICodingAgent
     AgentInvocation BuildInvocation(AgentConfig config, string systemPrompt);
 
     /// <summary>
-    /// Extracts the run's cumulative USD cost from a single agent output line, or <c>null</c>
-    /// when the line carries no cost (pure).
+    /// Extracts the USD cost a single agent output line adds to the run, or <c>null</c> when the
+    /// line carries no cost (pure). Every stdout line is offered, and the run's cost is the sum,
+    /// so an agent that reports a cumulative total must report it on one line only.
     /// </summary>
     decimal? ParseCost(string outputLine);
 

@@ -67,7 +67,7 @@ internal static class AgentRunner
         );
 
         var systemPrompt = BuildSystemPrompt(apiServer.BaseUrl, config.AllowedPushBranches);
-        var agentResult = await RunAgentAsync(config, context, transcript, systemPrompt, cloneDir.Path, ct);
+        var (agentResult, costUsd) = await RunAgentAsync(config, context, transcript, systemPrompt, cloneDir.Path, ct);
 
         if (agentResult is ProcessFailure agentFailure)
         {
@@ -82,12 +82,6 @@ internal static class AgentRunner
                 stopwatch.Elapsed
             );
         }
-
-        var costUsd = agentResult switch
-        {
-            ProcessSuccess { Output: { } resultLine } => context.Agent.ParseCost(resultLine) ?? 0m,
-            _ => 0m,
-        };
 
         var delivery = await BundlePendingAsync(config, context, apiServer.GetQueuedPrRequests(), apiServer.GetQueuedPushRequests(), cloneDir.Path, ct);
 
@@ -204,22 +198,26 @@ internal static class AgentRunner
         }
     }
 
-    /// <summary>Runs the coding agent in the cloned repo and returns its raw process result,
-    /// appending every transcript line it recognizes to <paramref name="transcript"/>.</summary>
-    private static Task<ProcessResult> RunAgentAsync
+    /// <summary>Runs the coding agent in the cloned repo and returns its raw process result with the
+    /// cost it reported, appending every transcript line it recognizes to
+    /// <paramref name="transcript"/>. Every stdout line is offered to
+    /// <see cref="ICodingAgent.ParseCost"/> and what they report is summed: where in the stream the
+    /// cost rides, and on how many lines, is the agent's business.</summary>
+    private static async Task<AgentRun> RunAgentAsync
     (
         AgentConfig config, AgentContext context, List<string> transcript, string systemPrompt, string cloneDir,
         CancellationToken ct
     )
     {
+        var costUsd = 0m;
         var invocation = context.Agent.BuildInvocation(config, systemPrompt);
-        return context.ProcessRunner.RunAsync
+        var result = await context.ProcessRunner.RunAsync
         (
             invocation.FileName,
             invocation.Arguments,
             cloneDir,
             WithApiKey(invocation.EnvironmentOverrides, config.Agent),
-            LogAndTranscribe,
+            ReadOutputLine,
             // Prefixed because both streams land in one log, and only here: which of the two a line
             // came from is a fact about this log's layout, not about running a process. Not
             // transcribed - the transcript is what the agent said, and this is what it complained
@@ -227,14 +225,20 @@ internal static class AgentRunner
             line => context.Log.WriteLine($"[stderr] {line}"),
             ct
         );
+        return new AgentRun(result, costUsd);
 
-        void LogAndTranscribe(string line)
+        void ReadOutputLine(string line)
         {
             context.Log.WriteLine(line);
+            costUsd += context.Agent.ParseCost(line) ?? 0m;
             if (context.Agent.ParseTranscriptLine(line) is { } transcriptLine)
                 transcript.Add(transcriptLine);
         }
     }
+
+    /// <summary>What <see cref="RunAgentAsync"/> hands back: the agent process's outcome and the
+    /// cost it reported, <c>0</c> when it reported none.</summary>
+    private sealed record AgentRun(ProcessResult Result, decimal CostUsd);
 
     /// <summary>Adds the resolved agent credential (see <see cref="AgentCredential.Resolve"/>)
     /// to the agent's own environment overrides, under whichever single env var name it was resolved

@@ -57,32 +57,43 @@ internal sealed class PiAgent : ICodingAgent
     /// <summary>
     /// Reads cost from Pi's JSON event stream. Pi emits per-message cost (<c>usage.cost.total</c>
     /// on each assistant message), not a single cumulative total, so this sums every assistant
-    /// message's cost from the <c>agent_end</c> event, which carries the full message list.
+    /// message's cost from an <c>agent_end</c> event, which carries the message list of one agent
+    /// run. A job can see several: a retry, or the run that resumes after compacting an overflowed
+    /// context, ends with an <c>agent_end</c> of its own that lists only its own messages, so each
+    /// one's cost adds to the job's.
     /// </summary>
-    /// <remarks>
-    /// Only <c>agent_end</c> lines carry the message list; the caller's other stdout lines only
-    /// ever have <c>agent_settled</c> as the final line, so this reliably returns <c>null</c>
-    /// (reported cost <c>0</c>) in normal operation today.
-    /// </remarks>
     public decimal? ParseCost(string outputLine) => JsonLine.Read(outputLine, "\"agent_end\"", ReadCost);
 
     /// <summary>
     /// Reads transcript content from Pi's JSON event stream, reusing the <c>agent_end</c> line that
     /// <see cref="ParseCost"/> already relies on: every assistant message's text and tool-call
-    /// content is rendered into one combined chunk. Other lines yield <c>null</c>, so — exactly as
-    /// with cost — the transcript stays empty until <c>agent_end</c> reliably appears in the stream.
+    /// content is rendered into one combined chunk. Other lines yield <c>null</c>.
     /// </summary>
     public string? ParseTranscriptLine(string outputLine) => JsonLine.Read(outputLine, "\"agent_end\"", ReadTranscript);
 
     private static decimal? ReadCost(JsonElement root)
     {
-        if (!root.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
+        if (ReadAgentEndMessages(root) is not { } messages)
             return null;
 
         decimal total = 0m;
         foreach (var message in messages.EnumerateArray())
             total += ReadAssistantCost(message);
         return total;
+    }
+
+    /// <summary>The message list of an <c>agent_end</c> event, or <c>null</c> for any other line.
+    /// The marker <see cref="JsonLine"/> matches on is only a substring - an assistant message
+    /// quoting it would pass - and a line counted twice would bill its run twice.</summary>
+    private static JsonElement? ReadAgentEndMessages(JsonElement root)
+    {
+        if
+        (
+            root.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String && type.GetString() == "agent_end" &&
+            root.TryGetProperty("messages", out var messages) && messages.ValueKind == JsonValueKind.Array
+        )
+            return messages;
+        return null;
     }
 
     private static decimal ReadAssistantCost(JsonElement message)
@@ -102,7 +113,7 @@ internal sealed class PiAgent : ICodingAgent
 
     private static string? ReadTranscript(JsonElement root)
     {
-        if (!root.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
+        if (ReadAgentEndMessages(root) is not { } messages)
             return null;
 
         return TranscriptLine.JoinNonNull(messages.EnumerateArray().Select(ReadAssistantTranscript));

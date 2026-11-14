@@ -472,8 +472,7 @@ public class AgentRunnerTests
     {
         const string resultLine = """{"type":"result","subtype":"success","total_cost_usd":0.028521,"usage":{"input_tokens":2036,"output_tokens":14}}""";
 
-        RunProcess runner = (f, a, d, e, reportOutput, _, ct) =>
-            Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
+        RunProcess runner = AgentPrints(resultLine);
 
         await AgentCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
@@ -485,10 +484,42 @@ public class AgentRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_ReadsCost_FromALineThatIsNotTheLast()
+    {
+        // Pi's cost rides on agent_end, which an agent_settled line follows.
+        RunProcess runner = AgentPrints("""{"type":"result","total_cost_usd":0.25}""", "done");
+
+        var result = await RunJobAsync(MakeConfig(),
+            Context(new StubGit(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
+
+        Assert.IsInstanceOfType<JobSuccess>(result, out var success);
+        Assert.AreEqual(0.25m, success.CostUsd);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_SumsCost_AcrossLines()
+    {
+        // Pi ends every agent run (a retry, the run after a compaction) with its own agent_end, and
+        // OpenCode reports each step's cost on its own step_finish.
+        RunProcess runner = AgentPrints
+        (
+            """{"type":"result","total_cost_usd":0.25}""",
+            """{"type":"result","total_cost_usd":0.5}"""
+        );
+
+        var result = await RunJobAsync(MakeConfig(),
+            Context(new StubGit(), runner,
+                _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
+
+        Assert.IsInstanceOfType<JobSuccess>(result, out var success);
+        Assert.AreEqual(0.75m, success.CostUsd);
+    }
+
+    [TestMethod]
     public async Task RunAsync_CostIsZero_WhenClaudeOutputIsNotAResultLine()
     {
-        RunProcess runner = (f, a, d, e, reportOutput, _, ct) =>
-            Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => "thinking...", false => null }));
+        RunProcess runner = AgentPrints("thinking...");
 
         await AgentCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
@@ -528,8 +559,7 @@ public class AgentRunnerTests
     {
         const string resultLine = """{"type":"result","total_cost_usd":"not-a-number"}""";
 
-        RunProcess runner = (f, a, d, e, reportOutput, _, ct) =>
-            Task.FromResult<ProcessResult>(new ProcessSuccess((f == "claude") switch { true => resultLine, false => null }));
+        RunProcess runner = AgentPrints(resultLine);
 
         await AgentCommand.ExecuteAsync(MakeConfig(),
             Context(new StubGit(), runner,
@@ -908,6 +938,17 @@ public class AgentRunnerTests
         ILog? log = null,
         IFileSystem? fileSystem = null)
     => new(git, new StubProcessRunner(processRunner), new StubAgent(install), log ?? new StubLog(), fileSystem ?? new LocalFileSystem());
+
+    /// <summary>A runner under which the agent writes <paramref name="lines"/> to stdout and
+    /// succeeds, and every other process just succeeds.</summary>
+    private static RunProcess AgentPrints(params string[] lines)
+    => (f, a, d, e, reportOutput, _, ct) =>
+    {
+        if (f == "claude")
+            foreach (var line in lines)
+                reportOutput?.Invoke(line);
+        return Task.FromResult<ProcessResult>(new ProcessSuccess());
+    };
 
     private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null)
     => AgentCommand.ExecuteAsync(MakeConfig(),

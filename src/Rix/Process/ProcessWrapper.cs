@@ -7,10 +7,8 @@ internal abstract record ProcessResult
 {
     private protected ProcessResult() { }
 }
-/// <summary>A successful run. <paramref name="Output"/> is the final non-empty stdout line, or
-/// <c>null</c> if the process wrote nothing — enough to read a terminal summary line without
-/// buffering the whole stream.</summary>
-internal sealed record ProcessSuccess(string? Output = null) : ProcessResult;
+/// <summary>A successful run. What it wrote went to the caller's sinks as it arrived.</summary>
+internal sealed record ProcessSuccess : ProcessResult;
 /// <summary><paramref name="Diagnostic"/> is <c>null</c> unless the process actually ran and
 /// exited non-zero, in which case it's the last non-empty line it wrote (stderr preferred,
 /// falling back to stdout) — the closest thing to "why" a CLI that doesn't structure its errors
@@ -81,7 +79,7 @@ internal sealed class ProcessWrapper : IProcessRunner
         var lastLine = await stdoutTask;
         var lastErrLine = await stderrTask;
         if (process.ExitCode == 0)
-            return new ProcessSuccess(lastLine);
+            return new ProcessSuccess();
         return new ProcessFailure($"exited with code {process.ExitCode}", Diagnostic: lastErrLine ?? lastLine);
     }
 

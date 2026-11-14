@@ -8,8 +8,7 @@ internal interface IProcessRunner
     /// <summary>Runs <paramref name="fileName"/> to completion and reports how it went.</summary>
     /// <param name="reportOutput">Where each line the child writes to stdout goes as it arrives,
     /// for a caller that wants the run as it happens rather than only its outcome. <c>null</c> for
-    /// a caller that doesn't: the last line is in the <see cref="ProcessResult"/> either way, which
-    /// is all a <c>git</c> call needs.</param>
+    /// a caller that doesn't, such as a <c>git</c> call, which needs only whether it worked.</param>
     /// <param name="reportDiagnostic">Where each line the child writes to stderr goes. Not
     /// optional, because this is the only copy: stderr is redirected so the pipe cannot fill and
     /// deadlock the run, so a line nobody is given is a line nobody can see. Separate from
