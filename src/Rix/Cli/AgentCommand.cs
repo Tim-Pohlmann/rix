@@ -80,7 +80,7 @@ internal static class AgentCommand
     internal static async Task<int> ExecuteAsync(AgentConfig config, AgentContext context, CancellationToken cancellationToken)
     {
         var outcome = await AgentRunner.RunAsync(config, context, cancellationToken);
-        await BestEffortOutput.WriteLineAsync(Console.Out, AgentArtifacts.Serialize(outcome.Result));
+        BestEffortOutput.WriteResult(context.Log, AgentArtifacts.Serialize(outcome.Result));
         return ExitCode(outcome);
     }
 

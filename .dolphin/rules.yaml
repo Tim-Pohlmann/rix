@@ -97,17 +97,19 @@ rules:
     message: >-
       Keep console I/O at the composition root: confine Console.Write*
       calls to Startup.cs and the Cli/ layer; return typed results elsewhere.
-      The exception is StderrLog, the ILog implementation that exists to be
-      stderr - naming the stream is its whole content.
+      The exception is ConsoleLog, the ILog implementation that exists to be
+      stdout and stderr - naming the streams is its whole content.
     paths:
       exclude:
         - src/Rix/Startup.cs
         - src/Rix/Cli/**
-        - src/Rix/StderrLog.cs
+        - src/Rix/ConsoleLog.cs
     patterns:
       - pattern-either:
           - pattern: Console.WriteLine(...)
           - pattern: Console.Write(...)
+          - pattern: Console.Out.WriteLine(...)
+          - pattern: Console.Out.Write(...)
           - pattern: Console.Error.WriteLine(...)
           - pattern: Console.Error.Write(...)
 
@@ -236,7 +238,7 @@ rules:
     severity: ERROR
     message: >-
       Choose a production implementation (GitCli, the GitHub hosts, a coding
-      agent, the local file system, the stderr log, the subprocess runner)
+      agent, the local file system, the console log, the subprocess runner)
       only in Composition.cs, the composition root. Everywhere else takes the seam it needs as a
       parameter.
     paths:
@@ -249,7 +251,7 @@ rules:
           - pattern: new GitHubCiFailureRepoHost(...)
           - pattern: new GitHubSubmitRepoHost(...)
           - pattern: new LocalFileSystem(...)
-          - pattern: new StderrLog(...)
+          - pattern: new ConsoleLog(...)
           - pattern: new ProcessWrapper(...)
           - pattern: new ClaudeAgent()
           - pattern: new OpenCodeAgent()

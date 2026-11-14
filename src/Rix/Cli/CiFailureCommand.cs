@@ -91,7 +91,7 @@ internal static class CiFailureCommand
     internal static async Task<int> ExecuteAsync(CiFailureConfig config, CiFailureContext context, CancellationToken cancellationToken)
     {
         var result = await CiFailureRunner.RunAsync(config, context, cancellationToken);
-        await BestEffortOutput.WriteLineAsync(Console.Out, CiFailureArtifacts.Serialize(result));
+        BestEffortOutput.WriteResult(context.Log, CiFailureArtifacts.Serialize(result));
         return ExitCode(result);
     }
 

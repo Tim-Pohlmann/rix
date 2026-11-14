@@ -68,7 +68,9 @@ internal static class SubmitCommand
     {
         var result = await SubmitRunner.RunAsync(config, context, cancellationToken);
         var json = JsonSerializer.Serialize(result, SubmitJsonContext.Default.ISubmitResult);
-        Console.WriteLine(json);
+        // Not best-effort: unlike agent and ci-failure, submit records its result nowhere else, so
+        // a lost line is a failure of the command.
+        context.Log.WriteResult(json);
         return result switch
         {
             SubmitSuccess => ExitCodes.Success,

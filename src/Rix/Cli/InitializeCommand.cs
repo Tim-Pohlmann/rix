@@ -120,7 +120,7 @@ internal static class InitializeCommand
             case InitializeSuccess:
                 return ExitCodes.Success;
             case InitializeFailure failure:
-                await Console.Error.WriteLineAsync($"error: {failure.Error}");
+                context.Log.WriteLine($"error: {failure.Error}");
                 return ExitCodes.SetupFailed;
             default:
                 throw new NotSupportedException($"Unexpected initialize result type: {result.GetType()}");

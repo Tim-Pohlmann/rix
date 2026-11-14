@@ -205,27 +205,20 @@ public class AgentRunnerTests
 
     private async Task AssertSurvivesStdoutFailure(Exception writeException)
     {
-        var original = Console.Out;
-        Console.SetOut(new ThrowingWriter(writeException));
-        int result;
-        try { result = await Run(); }
-        finally { Console.SetOut(original); }
+        var result = await Run(log: new StubLog(resultWriteFails: writeException));
 
         Assert.AreEqual(0, result);
         Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "result.json")));
     }
 
-    /// <summary>Simulates a broken/closed stdout: every line write fails with
-    /// <paramref name="exception"/>, e.g. <see cref="IOException"/> for a broken pipe or
-    /// <see cref="ObjectDisposedException"/> for an already-disposed stream. Overrides the
-    /// synchronous <see cref="WriteLine(string?)"/> rather than <c>WriteLineAsync</c> -
-    /// <see cref="Console.SetOut"/> wraps the writer in a synchronized <see cref="TextWriter"/>
-    /// whose async methods delegate to the synchronous ones under a lock, so an override of the
-    /// async method alone is never reached.</summary>
-    private sealed class ThrowingWriter(Exception exception) : TextWriter
+    [TestMethod]
+    public async Task ExecuteAgentAsync_WritesTheResultJson_AsTheResult()
     {
-        public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
-        public override void WriteLine(string? value) => throw exception;
+        var log = new StubLog();
+
+        await Run(log: log);
+
+        Assert.AreEqual(await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json")), log.Results.Single());
     }
 
     [TestMethod]
@@ -950,12 +943,13 @@ public class AgentRunnerTests
         return Task.FromResult<ProcessResult>(new ProcessSuccess());
     };
 
-    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null)
+    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null, ILog? log = null)
     => AgentCommand.ExecuteAsync(MakeConfig(),
         Context(new StubGit(),
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
             _ => Task.FromResult<InstallResult>(new Installed()),
-            fileSystem: fileSystem), CancellationToken.None);
+            log,
+            fileSystem), CancellationToken.None);
 
     /// <summary>The run's own result, for the tests that are about what the run did rather than
     /// about whether <c>result.json</c> landed. The few that are about the file call

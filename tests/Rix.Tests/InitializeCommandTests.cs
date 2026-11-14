@@ -219,17 +219,32 @@ public class InitializeCommandTests
     [TestMethod]
     public async Task ExecuteAsync_ReportsTheError_AndReturns2_WhenATemplateCannotBeWritten()
     {
-        using var stderr = new ConsoleErrorScope();
+        var log = new StubLog();
 
         var exitCode = await InitializeCommand.ExecuteAsync
         (
             TestConfig.ValidInitialize(),
-            new InitializeContext(new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full")), new StubLog()),
+            new InitializeContext(new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full")), log),
             CancellationToken.None
         );
 
         Assert.AreEqual(2, exitCode);
-        StringAssert.Contains(stderr.Text, "error: could not write ");
-        StringAssert.Contains(stderr.Text, "disk full");
+        var error = log.Lines.Single();
+        StringAssert.StartsWith(error, "error: could not write ");
+        StringAssert.Contains(error, "disk full");
+    }
+
+    /// <summary>Everything an init reports is for the human at the terminal, so none of it is a
+    /// result on stdout.</summary>
+    [TestMethod]
+    public async Task ExecuteAsync_Returns0_AndWritesNoResult_WhenEveryTemplateIsWritten()
+    {
+        var log = new StubLog();
+
+        var exitCode = await InitializeCommand.ExecuteAsync(TestConfig.ValidInitialize(), new InitializeContext(new StubFileSystem(), log), CancellationToken.None);
+
+        Assert.AreEqual(0, exitCode);
+        Assert.IsNotEmpty(log.Lines);
+        Assert.IsEmpty(log.Results);
     }
 }
