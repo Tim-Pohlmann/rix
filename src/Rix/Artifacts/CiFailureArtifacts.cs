@@ -15,7 +15,7 @@ namespace Rix.Artifacts;
 /// never reached disk would send a caller to a file that isn't there, and reporting a
 /// <see cref="CiFailureError"/> instead leaves it with no branch and no agent started.
 /// <c>result.json</c> is written after, records a verdict already decided, and its loss costs
-/// nothing but a warning - unlike a job's <c>result.json</c>, which is the file something
+/// nothing but a warning - unlike an agent run's <c>result.json</c>, which is the file something
 /// downstream reads back. Nothing reads this one: <c>rix ci-failure</c> prints the same JSON to
 /// stdout, which is where the action gating a run on it reads the verdict, and the file is there
 /// for a caller who would rather read a file.</summary>

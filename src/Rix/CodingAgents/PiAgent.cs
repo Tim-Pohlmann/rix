@@ -58,9 +58,9 @@ internal sealed class PiAgent : ICodingAgent
     /// Reads cost from Pi's JSON event stream. Pi emits per-message cost (<c>usage.cost.total</c>
     /// on each assistant message), not a single cumulative total, so this sums every assistant
     /// message's cost from an <c>agent_end</c> event, which carries the message list of one agent
-    /// run. A job can see several: a retry, or the run that resumes after compacting an overflowed
+    /// run. A rix run can see several: a retry, or the run that resumes after compacting an overflowed
     /// context, ends with an <c>agent_end</c> of its own that lists only its own messages, so each
-    /// one's cost adds to the job's.
+    /// one's cost adds to the rix run's total.
     /// </summary>
     public decimal? ParseCost(string outputLine) => JsonLine.Read(outputLine, "\"agent_end\"", ReadCost);
 

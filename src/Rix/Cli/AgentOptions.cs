@@ -208,7 +208,7 @@ internal static class AgentOptions
 
     /// <summary>Reads <c>--factory-repo</c>/<c>--agent-home-path</c> as a pair, because whether
     /// the path means anything depends on the repo — a path without a repo is reported, not
-    /// ignored. The runner home is resolved only when a repo is given, so a job that doesn't use
+    /// ignored. The runner home is resolved only when a repo is given, so a run that doesn't use
     /// the feature never depends on having one.</summary>
     internal static AgentHomeInfo? ReadAgentHome(ParseResult parsed, IFileSystem fileSystem)
     {

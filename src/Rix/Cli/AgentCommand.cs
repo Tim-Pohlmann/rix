@@ -58,7 +58,7 @@ internal static class AgentCommand
     internal static Task<int> ExecuteDefaultAsync(AgentConfig config, CancellationToken cancellationToken)
     => ExecuteAsync(config, DefaultContext(config), cancellationToken);
 
-    /// <summary>What a job runs against in production: git and a coding agent, both chosen from
+    /// <summary>What the agent command runs against in production: git and a coding agent, both chosen from
     /// <paramref name="config"/>, plus the process runner, the log and the disk. The one git client
     /// reads both the run's repo and the factory repo holding the agent home files.</summary>
     internal static AgentContext DefaultContext(AgentConfig config)

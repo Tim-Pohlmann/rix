@@ -1,6 +1,6 @@
 namespace Rix.CodingAgents;
 
-/// <summary>Selects which <see cref="ICodingAgent"/> implementation a job runs with.</summary>
+/// <summary>Selects which <see cref="ICodingAgent"/> implementation a run uses.</summary>
 internal enum AgentKind
 {
     /// <summary>Anthropic's Claude Code CLI (<see cref="ClaudeAgent"/>).</summary>
