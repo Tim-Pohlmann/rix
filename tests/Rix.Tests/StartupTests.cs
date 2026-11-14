@@ -51,6 +51,18 @@ public class StartupTests
         Assert.IsTrue(File.Exists(Path.Combine(dir, ".github/workflows/rix-on-ci-failure.yml")));
     }
 
+    /// <summary>The subcommand runs at all: <see cref="Startup"/> has to hand it the parent's
+    /// action, since System.CommandLine does not.</summary>
+    [TestMethod]
+    public async Task RunInitializeAsync_WritesTheFactoryWorkflows_ForTheFactorySubcommand()
+    {
+        var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
+        var exitCode = await Startup.RunAsync(["initialize", "factory", "--dir", dir]);
+
+        Assert.AreEqual(0, exitCode);
+        StringAssert.Contains(File.ReadAllText(Path.Combine(dir, ".github/workflows/rix-on-ci-failure.yml")), "repository_dispatch:");
+    }
+
     [TestMethod]
     public async Task RunInitializeAsync_Returns2_WhenTargetDirDoesNotExist()
     {

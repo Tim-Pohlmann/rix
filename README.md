@@ -33,7 +33,7 @@ released with. Then:
 Pass `--dir <path>` to target a repo other than the current directory, and `--ref <git-ref>` to
 pin the written workflows to a different tag, branch, or commit SHA of this repo. The sections
 below describe the files it writes and how to customize them further. To set up a factory repo
-that serves several repos instead, pass `--factory` (see
+that serves several repos instead, run `rix initialize factory` in it (see
 [Advanced: a central factory repo](#advanced-a-central-factory-repo)).
 
 ### The `rix` caller workflow
@@ -364,7 +364,7 @@ jobs:
 `RIX_FACTORY_DISPATCH_TOKEN` needs `contents:write` on the factory repo (required by the
 `dispatches` API) and nothing else — it never touches RIX's own credentials.
 
-Run `rix initialize --factory` in a checkout of the factory repo to write its two workflows. The
+Run `rix initialize factory` in a checkout of the factory repo to write its two workflows. The
 first answers the dispatched failures:
 
 ```yaml

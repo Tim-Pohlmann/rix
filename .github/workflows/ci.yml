@@ -613,7 +613,7 @@ jobs:
           # path under it is rix's to create.
           mkdir -p init-out/standalone init-out/factory
           ./rix-bin/rix initialize --dir init-out/standalone
-          ./rix-bin/rix initialize --factory --dir init-out/factory
+          ./rix-bin/rix initialize factory --dir init-out/factory
 
           # Compared as a set, not file by file: the steps below glob whatever is there, so a new
           # template would otherwise sail through them without anyone deciding what else it needs.

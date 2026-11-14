@@ -5,20 +5,23 @@ namespace Rix.Cli;
 
 internal static class InitializeCommand
 {
+    // Recursive: `rix init factory` writes into a target directory at a ref just as `rix init`
+    // does, so both options apply to the subcommand too.
     private static readonly Option<string> DirOption = new("--dir")
     {
+        Recursive = true,
         Description = "Target repo directory to write the workflow files into (default: current directory)"
     };
 
     private static readonly Option<string> RefOption = new("--ref")
     {
+        Recursive = true,
         Description = $"Ref of the rix repo the written workflows call, i.e. what follows '@' in their uses: lines (default: {WorkflowRef.ForThisBuild}, the major-version tag of this binary's release)"
     };
 
-    private static readonly Option<bool> FactoryOption = new("--factory")
-    {
-        Description = "Set up a factory repo, which runs rix against the repos it serves, instead of a repo that runs rix on itself"
-    };
+    /// <summary>A subcommand rather than a flag: a factory is a different kind of repo, not a
+    /// variation of the one <c>rix init</c> sets up.</summary>
+    private static readonly Command FactoryCommand = new("factory", "Write the workflows of a factory repo, which runs rix against the repos it serves");
 
     internal static Command Build()
     {
@@ -27,7 +30,7 @@ internal static class InitializeCommand
         command.Aliases.Add("init");
         command.Options.Add(DirOption);
         command.Options.Add(RefOption);
-        command.Options.Add(FactoryOption);
+        command.Subcommands.Add(FactoryCommand);
 
         return command;
     }
@@ -45,9 +48,11 @@ internal static class InitializeCommand
         );
     }
 
+    /// <summary>Which of the commands <see cref="Build"/> returns was invoked: they share one
+    /// action (see <see cref="Startup"/>), and this is where they part.</summary>
     private static IInitializeSetup Setup(ParseResult parsed)
     {
-        if (parsed.GetValue(FactoryOption))
+        if (parsed.CommandResult.Command == FactoryCommand)
             return new FactorySetup();
         return new StandaloneSetup();
     }

@@ -60,15 +60,28 @@ public class InitializeCommandTests
     }
 
     [TestMethod]
-    public void Command_SetsUpARepoRunningRixOnItself_WhenFactoryFlagAbsent()
+    public void Command_SetsUpARepoRunningRixOnItself_WithoutASubcommand()
     {
         Assert.IsInstanceOfType<StandaloneSetup>(Read().Setup);
     }
 
     [TestMethod]
-    public void Command_SetsUpAFactory_WhenFactoryFlagPresent()
+    public void Command_SetsUpAFactory_ForTheFactorySubcommand()
     {
-        Assert.IsInstanceOfType<FactorySetup>(Read("--factory").Setup);
+        Assert.IsInstanceOfType<FactorySetup>(Read("factory").Setup);
+    }
+
+    [TestMethod]
+    public void FactorySubcommand_TakesDirAndRef_OnEitherSideOfIt()
+    {
+        var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
+
+        foreach (var config in new[] { Read("factory", "--dir", dir, "--ref", "v1.2.3"), Read("--dir", dir, "--ref", "v1.2.3", "factory") })
+        {
+            Assert.IsInstanceOfType<FactorySetup>(config.Setup);
+            Assert.AreEqual(Path.GetFullPath(dir), config.TargetDir.Value);
+            Assert.AreEqual("v1.2.3", config.Ref.Value);
+        }
     }
 
     [TestMethod]
