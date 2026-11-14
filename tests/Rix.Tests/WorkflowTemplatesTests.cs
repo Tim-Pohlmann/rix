@@ -8,7 +8,7 @@ public class WorkflowTemplatesTests
     private static readonly string[] ExpectedRelativePaths =
         [".github/workflows/rix-on-ci-failure.yml", ".github/workflows/rix.yml"];
 
-    private static readonly string[] ExpectedFactoryServedPaths = [".github/workflows/notify-rix-factory.yml"];
+    private static readonly string[] ExpectedFactoryServedPaths = [".github/workflows/rix-notify-factory.yml"];
 
     /// <summary>Looks a template up by the path it lands on rather than by position, so a template
     /// added to <c>Cli/Templates/</c> shifts the discovered order without breaking every assertion
@@ -112,7 +112,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_FactoryServed_DispatchesTheEventTypeTheFactoryAnswers()
     {
-        var notify = ContentOf(new FactoryServedSetup(new("acme/rix-factory")), "notify-rix-factory.yml");
+        var notify = ContentOf(new FactoryServedSetup(new("acme/rix-factory")), "rix-notify-factory.yml");
         var receiver = ContentOf(new FactorySetup(Ref), "rix-on-ci-failure.yml");
 
         StringAssert.Contains(notify, "-f event_type=rix-ci-failure");

@@ -623,7 +623,7 @@ jobs:
           # LC_ALL=C because a locale that ignores punctuation while sorting orders rix.yml and
           # rix-on-ci-failure.yml the other way round.
           expected="$(printf '%s\n' \
-            init-out/factory-served/.github/workflows/notify-rix-factory.yml \
+            init-out/factory-served/.github/workflows/rix-notify-factory.yml \
             init-out/factory/.github/workflows/rix-on-ci-failure.yml \
             init-out/factory/.github/workflows/rix.yml \
             init-out/standalone/.github/workflows/rix-on-ci-failure.yml \

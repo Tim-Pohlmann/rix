@@ -330,8 +330,8 @@ instead of running rix itself, using a PAT scoped just to dispatch to that one r
 repo's name filled in:
 
 ```yaml
-# In each project repo: .github/workflows/notify-rix-factory.yml
-name: notify rix factory
+# In each project repo: .github/workflows/rix-notify-factory.yml
+name: rix (notify factory)
 on:
   workflow_run:
     workflows: ["CI"] # change "CI" to the name: of the workflow rix should react to
@@ -386,7 +386,7 @@ first answers the dispatched failures:
 # In the factory repo: .github/workflows/rix-on-ci-failure.yml
 name: rix (on CI failure)
 # Answers the CI failures that the repos this factory serves dispatch here, each from its own
-# notify-rix-factory.yml. Nothing in a repository_dispatch says who sent it, so on-ci-failure.yml
+# rix-notify-factory.yml. Nothing in a repository_dispatch says who sent it, so on-ci-failure.yml
 # re-checks the payload against the API: the run must exist, have failed, and have run on a branch
 # of the repo the payload names.
 on:

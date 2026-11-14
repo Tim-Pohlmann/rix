@@ -1,6 +1,6 @@
 name: rix (on CI failure)
 # Answers the CI failures that the repos this factory serves dispatch here, each from its own
-# notify-rix-factory.yml. Nothing in a repository_dispatch says who sent it, so on-ci-failure.yml
+# rix-notify-factory.yml. Nothing in a repository_dispatch says who sent it, so on-ci-failure.yml
 # re-checks the payload against the API: the run must exist, have failed, and have run on a branch
 # of the repo the payload names.
 on:
