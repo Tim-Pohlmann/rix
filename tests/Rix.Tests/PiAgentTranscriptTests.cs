@@ -45,6 +45,8 @@ public class PiAgentTranscriptTests
     [DataRow("not json at all")]
     [DataRow("""{"type":"message_end","messages":[]}""")]
     [DataRow("""{"type":"agent_end"}""")]
+    [DataRow("""{"type":"agent_settled","aborted":false}""")]
+    [DataRow("""{"type":"message_end","note":"agent_end","messages":[{"role":"assistant","content":[{"type":"text","text":"hi"}]}]}""")]
     [DataRow("{invalid json}")]
     [DataRow("""{"type":123}""")]
     [DataRow("[]")]

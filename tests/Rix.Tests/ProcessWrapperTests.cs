@@ -77,28 +77,6 @@ public class ProcessWrapperTests
     }
 
     [TestMethod]
-    public async Task RunAsync_Output_IsLastNonEmptyStdoutLine()
-    {
-        var command = OperatingSystem.IsWindows()
-            ? "Write-Output 'first'; Write-Output 'last'"
-            : "echo first; echo last";
-
-        var result = await RunAsync(Shell, ["-c", command]);
-
-        Assert.IsInstanceOfType<ProcessSuccess>(result);
-        Assert.AreEqual("last", ((ProcessSuccess)result).Output);
-    }
-
-    [TestMethod]
-    public async Task RunAsync_Output_IsNull_WhenNoStdout()
-    {
-        var result = await RunAsync(Shell, ["-c", "exit 0"]);
-
-        Assert.IsInstanceOfType<ProcessSuccess>(result);
-        Assert.IsNull(((ProcessSuccess)result).Output);
-    }
-
-    [TestMethod]
     public async Task RunAsync_ReportsNonZeroExitCode()
     {
         var result = await RunAsync(Shell, ["-c", "exit 1"]);

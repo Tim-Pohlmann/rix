@@ -21,6 +21,29 @@ public class PiAgentCostTests
     }
 
     [TestMethod]
+    public void ParseCost_CountsEachAgentRunOnce_AcrossAStream()
+    {
+        // The shape Pi 1.5.2 writes in --mode json: each message is reported as it ends, each agent
+        // run ends with an agent_end listing that run's messages - a retry is a run of its own -
+        // and agent_settled is the last line.
+        string[] stream =
+        [
+            """{"type":"session","version":3,"id":"s1"}""",
+            """{"type":"agent_start"}""",
+            """{"type":"message_end","message":{"role":"assistant","usage":{"cost":{"total":0.01}}}}""",
+            """{"type":"agent_end","willRetry":true,"messages":[{"role":"user","content":"hi"},{"role":"assistant","usage":{"cost":{"total":0.01}}}]}""",
+            """{"type":"agent_start"}""",
+            """{"type":"message_end","message":{"role":"assistant","usage":{"cost":{"total":0.02}}}}""",
+            """{"type":"message_end","message":{"role":"assistant","usage":{"cost":{"total":0.04}}}}""",
+            """{"type":"agent_end","willRetry":false,"messages":[{"role":"assistant","usage":{"cost":{"total":0.02}}},{"role":"assistant","usage":{"cost":{"total":0.04}}}]}""",
+            """{"type":"agent_settled","aborted":false}""",
+        ];
+        var agent = new PiAgent();
+
+        Assert.AreEqual(0.07m, stream.Sum(line => agent.ParseCost(line) ?? 0m));
+    }
+
+    [TestMethod]
     public void ParseCost_ReturnsZero_WhenAgentEndHasNoCostedMessages()
     {
         const string line = """{"type":"agent_end","messages":[{"role":"user","content":"hi"}]}""";
@@ -31,6 +54,8 @@ public class PiAgentCostTests
     [TestMethod]
     [DataRow("not json at all")]
     [DataRow("""{"type":"message_end","messages":[]}""")]
+    [DataRow("""{"type":"agent_settled","aborted":false}""")]
+    [DataRow("""{"type":"message_end","note":"agent_end","messages":[{"role":"assistant","usage":{"cost":{"total":1}}}]}""")]
     [DataRow("{invalid json}")]
     [DataRow("""{"type":123}""")]
     [DataRow("[]")]

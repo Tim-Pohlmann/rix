@@ -71,9 +71,10 @@ internal sealed class OpenCodeAgent : ICodingAgent
     /// <summary>
     /// Reads cost from an OpenCode JSON event line. The cost (when known) rides on a
     /// <c>step_finish</c> event inside <c>part.cost</c>, with a top-level <c>cost</c> fallback.
-    /// Unlike Claude, OpenCode emits no single authoritative total and frequently reports <c>0</c>
-    /// (costs derive from external LiteLLM pricing that may be unavailable), so a missing cost is
-    /// treated as unknown (<c>null</c>).
+    /// Unlike Claude, OpenCode emits no single authoritative total: each step reports only its own
+    /// cost, which the caller sums into the run's. It frequently reports <c>0</c> (costs derive
+    /// from external LiteLLM pricing that may be unavailable), and a missing cost is treated as
+    /// unknown (<c>null</c>).
     /// </summary>
     public decimal? ParseCost(string outputLine) => JsonLine.Read(outputLine, "\"cost\"", ReadCost);
 

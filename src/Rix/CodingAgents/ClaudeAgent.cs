@@ -52,7 +52,7 @@ internal sealed class ClaudeAgent : ICodingAgent
     /// <summary>
     /// Reads cost from Claude's NDJSON output. Claude emits a single terminal <c>result</c> line
     /// whose <c>total_cost_usd</c> is the run's cumulative cost; other lines (and results without a
-    /// cost) yield <c>null</c> so the caller keeps the last known value.
+    /// cost) yield <c>null</c>, so that one line is the whole of the cost the caller sums.
     /// </summary>
     public decimal? ParseCost(string outputLine) => JsonLine.Read(outputLine, "\"total_cost_usd\"", ReadCost);
 
