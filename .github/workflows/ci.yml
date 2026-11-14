@@ -84,7 +84,7 @@ jobs:
         run: dotnet publish src/Rix/Rix.csproj -r linux-x64 -c Release -o rix-bin
 
       - name: Upload rix binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rix-bin
           path: rix-bin/rix
