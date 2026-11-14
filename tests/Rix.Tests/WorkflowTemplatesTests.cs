@@ -8,6 +8,8 @@ public class WorkflowTemplatesTests
     private static readonly string[] ExpectedRelativePaths =
         [".github/workflows/rix-on-ci-failure.yml", ".github/workflows/rix.yml"];
 
+    private static readonly string[] ExpectedFactoryServedPaths = [".github/workflows/notify-rix-factory.yml"];
+
     /// <summary>Looks a template up by the path it lands on rather than by position, so a template
     /// added to <c>Cli/Templates/</c> shifts the discovered order without breaking every assertion
     /// about the two that were already there. Filled in, because what the assertions are about is
@@ -97,7 +99,7 @@ public class WorkflowTemplatesTests
     {
         var templates = WorkflowTemplates.For(new FactoryServedSetup(new("acme/rix-factory")));
 
-        CollectionAssert.AreEqual(new[] { ".github/workflows/notify-rix-factory.yml" }, templates.Select(t => t.RelativePath).ToArray());
+        CollectionAssert.AreEqual(ExpectedFactoryServedPaths, templates.Select(t => t.RelativePath).ToArray());
         var content = templates[0].Content;
         StringAssert.Contains(content, "FACTORY_REPO: acme/rix-factory");
         StringAssert.Contains(content, "workflow_run:");
@@ -123,7 +125,7 @@ public class WorkflowTemplatesTests
     [DataRow("acme/rix-factory\n")]
     public void FactoryServedSetup_RejectsANameThatNeedsYamlQuoting(string name)
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => new FactoryServedSetup(new(name)));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new FactoryServedSetup(new(name)));
 
         StringAssert.Contains(ex.Message, "is not a GitHub repo name");
     }
