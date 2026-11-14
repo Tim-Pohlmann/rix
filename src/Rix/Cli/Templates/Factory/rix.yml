@@ -1,0 +1,21 @@
+name: rix
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: Task for the agent
+        required: true
+      repo:
+        description: "Target repo (owner/name); defaults to this repo"
+        required: false
+jobs:
+  rix:
+    uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@__RIX_REF__
+    with:
+      # Any repo read-token reaches; the PR only opens where write-token can push.
+      repo: ${{ inputs.repo || github.repository }}
+      prompt: ${{ inputs.prompt }}
+      # agent: claude   # optional; defaults to 'opencode'
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}

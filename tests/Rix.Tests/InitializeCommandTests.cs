@@ -60,6 +60,29 @@ public class InitializeCommandTests
     }
 
     [TestMethod]
+    public void Command_SetsUpARepoRunningRixOnItself_WhenFactoryFlagAbsent()
+    {
+        Assert.IsInstanceOfType<StandaloneSetup>(Read().Setup);
+    }
+
+    [TestMethod]
+    public void Command_SetsUpAFactory_WhenFactoryFlagPresent()
+    {
+        Assert.IsInstanceOfType<FactorySetup>(Read("--factory").Setup);
+    }
+
+    [TestMethod]
+    public void NextSteps_PointAFactoryAtTheReposItServes()
+    {
+        var steps = InitializeCommand.NextSteps(new FactorySetup());
+
+        StringAssert.Contains(steps, "on every repo this factory serves");
+        StringAssert.Contains(steps, "In each repo this factory serves");
+        // A factory answers dispatched failures, so there is no watched workflow to rename.
+        Assert.IsFalse(steps.Contains("workflows: [\"CI\"]", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void Command_ReportsTheFlag_WhenRefIsMalformed()
     {
         var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--ref", "main branch"));

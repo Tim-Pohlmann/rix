@@ -32,7 +32,9 @@ released with. Then:
 
 Pass `--dir <path>` to target a repo other than the current directory, and `--ref <git-ref>` to
 pin the written workflows to a different tag, branch, or commit SHA of this repo. The sections
-below describe the files it writes and how to customize them further.
+below describe the files it writes and how to customize them further. To set up a factory repo
+that serves several repos instead, pass `--factory` (see
+[Advanced: a central factory repo](#advanced-a-central-factory-repo)).
 
 ### The `rix` caller workflow
 
@@ -362,19 +364,25 @@ jobs:
 `RIX_FACTORY_DISPATCH_TOKEN` needs `contents:write` on the factory repo (required by the
 `dispatches` API) and nothing else — it never touches RIX's own credentials.
 
+Run `rix initialize --factory` in a checkout of the factory repo to write its two workflows. The
+first answers the dispatched failures:
+
 ```yaml
-# In the factory repo: .github/workflows/rix-on-failure.yml
-name: rix (dispatched CI failure)
+# In the factory repo: .github/workflows/rix-on-ci-failure.yml
+name: rix (on CI failure)
+# Answers the CI failures that the repos this factory serves dispatch here, each from its own
+# notify-rix-factory.yml. Nothing in a repository_dispatch says who sent it, so on-ci-failure.yml
+# re-checks the payload against the API: the run must exist, have failed, and have run on a branch
+# of the repo the payload names.
 on:
   repository_dispatch:
     types: [rix-ci-failure]
-
 jobs:
   rix:
-    # The factory's equivalent of the simple pattern's group. `repository_dispatch` carries
-    # neither repo nor branch of its own, so the key comes from the payload. Those fields are
-    # unauthenticated: an onboarded repo can name another one's pair and cancel its queued
-    # response. That is a real denial rather than mere serialization - see the caveat below.
+    # One rix run per branch at a time, as in a single repo's rix-on-ci-failure.yml. A
+    # repository_dispatch carries neither repo nor branch of its own, so the key comes from the
+    # payload, and a repo holding the dispatch token can name another one's branch and cancel the
+    # run it had queued.
     concurrency:
       group: rix-on-ci-failure-${{ github.event.client_payload.repo }}-${{ github.event.client_payload.branch }}
       cancel-in-progress: false
@@ -382,6 +390,34 @@ jobs:
     with:
       repo: ${{ github.event.client_payload.repo }}
       run-id: ${{ github.event.client_payload.run_id }}
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
+```
+
+The second is the factory's `rix.yml`, a manual run like the simple pattern's, with a `repo` input
+naming the repo to work on:
+
+```yaml
+# In the factory repo: .github/workflows/rix.yml
+name: rix
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: Task for the agent
+        required: true
+      repo:
+        description: "Target repo (owner/name); defaults to this repo"
+        required: false
+jobs:
+  rix:
+    uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@v0
+    with:
+      # Any repo read-token reaches; the PR only opens where write-token can push.
+      repo: ${{ inputs.repo || github.repository }}
+      prompt: ${{ inputs.prompt }}
+      # agent: claude   # optional; defaults to 'opencode'
     secrets:
       read-token: ${{ secrets.RIX_READ_TOKEN }}
       write-token: ${{ secrets.RIX_WRITE_TOKEN }}

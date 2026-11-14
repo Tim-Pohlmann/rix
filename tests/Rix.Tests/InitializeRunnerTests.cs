@@ -36,7 +36,7 @@ public class InitializeRunnerTests
 
         CollectionAssert.AreEqual
         (
-            WorkflowTemplates.For(WorkflowRef.ForThisBuild).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
+            WorkflowTemplates.For(new StandaloneSetup(), WorkflowRef.ForThisBuild).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
             _writes.Select(w => w.Path).ToArray()
         );
     }
@@ -58,6 +58,19 @@ public class InitializeRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_WritesTheFactoryTemplates_ForAFactorySetup()
+    {
+        var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
+        AssertSuccess(await Run(TestConfig.ValidInitialize(dir, "v9", new FactorySetup()), Context()));
+
+        CollectionAssert.AreEqual
+        (
+            WorkflowTemplates.For(new FactorySetup(), new("v9")).Select(t => (Path.Combine(dir, t.RelativePath), t.Content)).ToArray(),
+            _writes.ToArray()
+        );
+    }
+
+    [TestMethod]
     public async Task RunAsync_OverwritesSilently_WhenFilesAlreadyExist()
     {
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
@@ -67,7 +80,7 @@ public class InitializeRunnerTests
         _writes.Clear();
         AssertSuccess(await Run(config, Context()));
 
-        Assert.AreEqual(WorkflowTemplates.For(WorkflowRef.ForThisBuild).Count, _writes.Count);
+        Assert.AreEqual(WorkflowTemplates.For(new StandaloneSetup(), WorkflowRef.ForThisBuild).Count, _writes.Count);
     }
 
     [TestMethod]
@@ -83,8 +96,8 @@ public class InitializeRunnerTests
         };
         // Names whichever template the runner reached first rather than a literal, so the
         // assertion keeps testing "the message says which file failed" if the discovered
-        // order of WorkflowTemplates.All changes.
-        StringAssert.Contains(failure.Error, WorkflowTemplates.All[0].RelativePath);
+        // order of WorkflowTemplates.Standalone changes.
+        StringAssert.Contains(failure.Error, WorkflowTemplates.Standalone[0].RelativePath);
         StringAssert.Contains(failure.Error, "disk full");
     }
 }
