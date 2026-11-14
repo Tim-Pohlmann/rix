@@ -367,7 +367,17 @@ jobs:
 ```
 
 `RIX_FACTORY_DISPATCH_TOKEN` needs `contents:write` on the factory repo (required by the
-`dispatches` API) and nothing else — it never touches RIX's own credentials.
+`dispatches` API) and nothing else — it never touches RIX's own credentials. That grant is more
+than a dispatch, though: `contents:write` can also push to the factory, and every project repo
+holds the token. Changing a workflow file takes the separate Workflows permission, which the token
+lacks, but everything else in the factory is open to it, including an agent home rix copies into
+the runner (`factory-repo` above). So **protect the factory's default branch** with a ruleset that
+requires a pull request (Settings → Rules → Rulesets), and keep the token's owner off its bypass
+list: a PAT acts as its owner, so a bypass the owner has is one every project repo has. Other
+branches don't matter, since the factory's workflows answer dispatches on the default branch and
+the `rix` environment releases the write token only there. Don't trade the token for
+`workflow_dispatch` either: its `actions:write` would let every project repo start the factory's
+`rix.yml` with a prompt of its own.
 
 Run `rix initialize factory` in a checkout of the factory repo to write its two workflows. The
 first answers the dispatched failures:
@@ -432,8 +442,8 @@ The factory repo's `read-token`/`write-token` need access across every project r
 (e.g. a GitHub App installation token), which is the trade-off of centralizing: one PAT with a
 much bigger blast radius than the per-repo tokens in the simple pattern.
 
-**The tokens bound the factory, not the payload:** `RIX_FACTORY_DISPATCH_TOKEN` can only
-dispatch to the factory repo, but the `repo`/`run_id`/`branch` values inside `client_payload` are
+**The tokens bound the factory, not the payload:** `RIX_FACTORY_DISPATCH_TOKEN` reaches
+only the factory repo, but the `repo`/`run_id`/`branch` values inside `client_payload` are
 unauthenticated free text — any repo holding that token can ask the factory to act on *any* repo
 and run, not just its own. The factory does not check the payload against a list of onboarded
 repos; what limits it is what its own tokens reach. A PR can only land where `write-token` can
