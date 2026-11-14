@@ -22,7 +22,7 @@ internal sealed class PrQueue() : BranchQueue<QueuedPr>("PR", pr => pr.Branch)
 
     /// <summary>Orders items by branch/base-branch dependency so an item whose base branch is
     /// another item's branch (a stacked PR) comes after it. Repeated selection is O(n²), which
-    /// is fine for the handful of PRs a single job run queues. Returns <c>null</c> if the
+    /// is fine for the handful of PRs a single run queues. Returns <c>null</c> if the
     /// base-branch relationships form a cycle.</summary>
     /// <param name="remaining">Consumed and emptied by this call — callers must pass a list they
     /// own, not a live view of shared state.</param>

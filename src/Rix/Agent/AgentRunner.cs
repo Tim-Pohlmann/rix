@@ -1,4 +1,4 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 using Rix.Api;
 using Rix.Artifacts;
 using Rix.Process;
@@ -6,45 +6,45 @@ using Rix.Repository;
 using System.Diagnostics;
 using System.Text.Json.Serialization;
 
-namespace Rix.Job;
+namespace Rix.Agent;
 
-[JsonSerializable(typeof(IJobResult))]
-[JsonSerializable(typeof(JobSuccess))]
-[JsonSerializable(typeof(JobFailure))]
+[JsonSerializable(typeof(IAgentResult))]
+[JsonSerializable(typeof(AgentSuccess))]
+[JsonSerializable(typeof(AgentFailure))]
 [JsonSerializable(typeof(SetupFailure))]
 [JsonSerializable(typeof(PendingPr))]
 [JsonSerializable(typeof(PendingPush))]
-internal partial class JobJsonContext : JsonSerializerContext { }
+internal partial class AgentJsonContext : JsonSerializerContext { }
 
-internal static class JobRunner
+internal static class AgentRunner
 {
-    /// <summary>Runs a job and leaves its output in <see cref="JobConfig.OutputDir"/>. The writes
+    /// <summary>Runs the agent and leaves its output in <see cref="AgentConfig.OutputDir"/>. The writes
     /// happen here rather than in the caller because <c>result.json</c> and <c>transcript.md</c> are
-    /// the job's product (see <see cref="JobArtifacts"/>), and because every way the run can end -
+    /// the run's product (see <see cref="AgentArtifacts"/>), and because every way the run can end -
     /// including a setup failure before the agent started - has to leave the same artifacts behind.
     /// What the caller adds is a CLI's own: printing the result and choosing an exit code - which
-    /// is why what comes back is a <see cref="JobOutcome"/> and not just the result: the exit code
+    /// is why what comes back is a <see cref="AgentOutcome"/> and not just the result: the exit code
     /// depends on whether <c>result.json</c> got there, and only this knows.</summary>
-    internal static async Task<JobOutcome> RunAsync
+    internal static async Task<AgentOutcome> RunAsync
     (
-        JobConfig config,
-        JobContext context,
+        AgentConfig config,
+        AgentContext context,
         CancellationToken cancellationToken
     )
     {
         var transcript = new List<string>();
         var result = await RunCoreAsync(config, context, transcript, cancellationToken);
-        var resultFile = await JobArtifacts.WriteAsync(config, context, result, transcript);
-        return new JobOutcome(result, resultFile);
+        var resultFile = await AgentArtifacts.WriteAsync(config, context, result, transcript);
+        return new AgentOutcome(result, resultFile);
     }
 
     /// <summary>The run itself, in one method so each way it can end is a plain <c>return</c> and
     /// the artifacts are written once, by <see cref="RunAsync"/>, whichever one it took. Appends
     /// whatever the agent said to <paramref name="transcript"/> as it streams.</summary>
-    private static async Task<IJobResult> RunCoreAsync
+    private static async Task<IAgentResult> RunCoreAsync
     (
-        JobConfig config,
-        JobContext context,
+        AgentConfig config,
+        AgentContext context,
         List<string> transcript,
         CancellationToken cancellationToken
     )
@@ -75,7 +75,7 @@ internal static class JobRunner
             var detail = agentFailure.Reason;
             if (!string.IsNullOrWhiteSpace(agentFailure.Diagnostic))
                 detail = $"{agentFailure.Reason}: {agentFailure.Diagnostic}";
-            return new JobFailure
+            return new AgentFailure
             (
                 $"agent failed: {detail}",
                 0m,
@@ -90,17 +90,17 @@ internal static class JobRunner
         return delivery switch
         {
             Delivered { PendingPrs: var pendingPrs, PendingPushes: var pendingPushes }
-                => new JobSuccess(pendingPrs, pendingPushes, CostUsd: costUsd, Duration: stopwatch.Elapsed),
+                => new AgentSuccess(pendingPrs, pendingPushes, CostUsd: costUsd, Duration: stopwatch.Elapsed),
             DeliveryFailed { Branch: var branch }
-                => new JobFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
+                => new AgentFailure($"git bundle failed for branch {branch}", CostUsd: costUsd, stopwatch.Elapsed),
             _ => throw new NotSupportedException($"Unexpected delivery outcome: {delivery.GetType()}"),
         };
     }
 
-    /// <summary>Installs the agent, clones the job's repo into <paramref name="cloneDir"/> and puts
+    /// <summary>Installs the agent, clones the run's repo into <paramref name="cloneDir"/> and puts
     /// the agent home files in place. Returns the <see cref="SetupFailure"/> to end the run with, or
     /// <c>null</c> once everything is ready.</summary>
-    private static async Task<SetupFailure?> SetUpAsync(JobConfig config, JobContext context, string cloneDir, CancellationToken ct)
+    private static async Task<SetupFailure?> SetUpAsync(AgentConfig config, AgentContext context, string cloneDir, CancellationToken ct)
     {
         // Scoped to setup: the factory repo needn't sit in the work dir for the whole run.
         using var agentHomeCheckout = CreateAgentHomeCheckout(config, context);
@@ -126,10 +126,10 @@ internal static class JobRunner
         return CopyAgentHome(config, context, agentHomeCheckout);
     }
 
-    /// <summary>Clones the job's repo and sets the commit identity before the agent starts, so it
+    /// <summary>Clones the run's repo and sets the commit identity before the agent starts, so it
     /// can commit without guessing author metadata. Returns the <see cref="SetupFailure"/> to end
     /// the run with, or <c>null</c> once the clone is ready.</summary>
-    private static async Task<SetupFailure?> CloneAsync(JobConfig config, JobContext context, string cloneDir, CancellationToken ct)
+    private static async Task<SetupFailure?> CloneAsync(AgentConfig config, AgentContext context, string cloneDir, CancellationToken ct)
     {
         try
         {
@@ -145,7 +145,7 @@ internal static class JobRunner
 
     /// <summary>The directory the agent home files are fetched into, or <c>null</c> when the run
     /// has none configured.</summary>
-    private static TempDirectory? CreateAgentHomeCheckout(JobConfig config, JobContext context)
+    private static TempDirectory? CreateAgentHomeCheckout(AgentConfig config, AgentContext context)
     {
         if (config.AgentHome is null)
             return null;
@@ -153,12 +153,12 @@ internal static class JobRunner
     }
 
     /// <summary>Fetches the operator-supplied agent home files into <paramref name="checkout"/>:
-    /// a sparse clone of just the requested directory of the factory repo, read with the job's own
+    /// a sparse clone of just the requested directory of the factory repo, read with the run's own
     /// credential. Returns the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once
     /// the files are there or when the run has none configured.</summary>
     private static async Task<SetupFailure?> FetchAgentHomeAsync
     (
-        JobConfig config, JobContext context, TempDirectory? checkout, CancellationToken ct
+        AgentConfig config, AgentContext context, TempDirectory? checkout, CancellationToken ct
     )
     {
         if (config.AgentHome is not { } agentHome || checkout is null)
@@ -182,7 +182,7 @@ internal static class JobRunner
     /// starts, so its config/context files are in place when the agent first reads them. Returns
     /// the <see cref="SetupFailure"/> to end the run with, or <c>null</c> once the files are in
     /// place or when the run has none configured.</summary>
-    private static SetupFailure? CopyAgentHome(JobConfig config, JobContext context, TempDirectory? checkout)
+    private static SetupFailure? CopyAgentHome(AgentConfig config, AgentContext context, TempDirectory? checkout)
     {
         if (config.AgentHome is not { } agentHome || checkout is null)
             return null;
@@ -205,7 +205,7 @@ internal static class JobRunner
     /// cost rides, and on how many lines, is the agent's business.</summary>
     private static async Task<AgentRun> RunAgentAsync
     (
-        JobConfig config, JobContext context, List<string> transcript, string systemPrompt, string cloneDir,
+        AgentConfig config, AgentContext context, List<string> transcript, string systemPrompt, string cloneDir,
         CancellationToken ct
     )
     {
@@ -248,7 +248,7 @@ internal static class JobRunner
     /// resolve it in the first place.</summary>
     private static IReadOnlyDictionary<string, string> WithApiKey
     (
-        IReadOnlyDictionary<string, string> environmentOverrides, AgentConfig agent
+        IReadOnlyDictionary<string, string> environmentOverrides, CodingAgentConfig agent
     )
     {
         if (agent.Credential is not { } credential)
@@ -261,14 +261,14 @@ internal static class JobRunner
     /// Creates a git bundle for each queued PR and each queued push. Returns
     /// <see cref="Delivered"/> with the bundled PRs and pushes, or — if a bundle fails —
     /// <see cref="DeliveryFailed"/> naming the branch, so the caller can map it to a
-    /// <see cref="JobFailure"/> while preserving the accumulated cost. PRs and pushes share one
+    /// <see cref="AgentFailure"/> while preserving the accumulated cost. PRs and pushes share one
     /// dedup set: the same branch must not be bundled twice in a single run, no matter which
     /// queue it was queued from.
     /// </summary>
     private static async Task<DeliveryOutcome> BundlePendingAsync
     (
-        JobConfig config,
-        JobContext context,
+        AgentConfig config,
+        AgentContext context,
         IEnumerable<QueuedPr> queuedPrs,
         IEnumerable<QueuedPush> queuedPushes,
         string cloneDir,
@@ -321,8 +321,8 @@ internal static class JobRunner
     /// and, if new, creates its git bundle.</summary>
     private static async Task<BundleOutcome> BundleBranchAsync
     (
-        JobConfig config,
-        JobContext context,
+        AgentConfig config,
+        AgentContext context,
         string cloneDir,
         BundleRequest request,
         HashSet<string> seenBranches,
@@ -376,7 +376,7 @@ internal static class JobRunner
     {
         var specUri = new Uri(apiBaseUrl, "/openapi.json");
         return $$"""
-        You are `rix job`, an autonomous coding agent and part of the `rix` autonomous software factory.
+        You are `rix agent`, an autonomous coding agent and part of the `rix` autonomous software factory.
 
         A local API is available at {{apiBaseUrl}}
         Its full OpenAPI 3 specification — every endpoint, request body, and usage note — is served at
@@ -385,7 +385,7 @@ internal static class JobRunner
         In short: do your work on one or more branches named rix/<short-description>, commit locally on
         each, then queue it — POST /pr to open a pull request, or POST /push to add commits to a branch
         that already exists on the remote. Split unrelated changes into separate PRs. You can list (GET)
-        or cancel (DELETE) a queued request any time before the job ends.
+        or cancel (DELETE) a queued request any time before the run ends.
 
         {{AllowedPushBranchesPrompt(allowedPushBranches)}}
         """;
@@ -398,7 +398,7 @@ internal static class JobRunner
     private static string AllowedPushBranchesPrompt(IReadOnlyList<BranchName> allowedPushBranches)
     => allowedPushBranches.Count switch
     {
-        0 => "This job has not allowed any push branches, so /push will reject every request; use /pr for all changes.",
-        _ => $"This job's push endpoint is restricted: you may only push onto the branches: {string.Join(", ", allowedPushBranches.Select(b => b.Value))}.",
+        0 => "This run has not allowed any push branches, so /push will reject every request; use /pr for all changes.",
+        _ => $"This run's push endpoint is restricted: you may only push onto the branches: {string.Join(", ", allowedPushBranches.Select(b => b.Value))}.",
     };
 }

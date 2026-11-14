@@ -1,11 +1,11 @@
 using System.Text.RegularExpressions;
 
-namespace Rix.Agents;
+namespace Rix.CodingAgents;
 
 /// <summary>
 /// The credential for the child agent CLI process: the raw <c>--agent-api-key</c> and the
 /// environment variable name it should be exported under, kept together because neither is any use
-/// without the other. Resolved by the CLI when building a <see cref="Job.JobConfig"/> and attached
+/// without the other. Resolved by the CLI when building a <see cref="Agent.AgentConfig"/> and attached
 /// to the run's <see cref="AgentInvocation.EnvironmentOverrides"/> — the child process gets the
 /// credential without it ever needing to exist under that name in rix's own process environment.
 ///
@@ -26,7 +26,7 @@ internal sealed partial record AgentCredential(string EnvName, string Key)
     /// A name is only resolved once there is a key to export under it, so no key means no
     /// credential and no complaint about the name — e.g. opencode's free default model needs
     /// neither. That rule lives here rather than at each call site so the CLI and anything else
-    /// building an <see cref="AgentConfig"/> can't disagree about when the name is required.
+    /// building a <see cref="CodingAgentConfig"/> can't disagree about when the name is required.
     /// </summary>
     internal static AgentCredential? Resolve(AgentKind agent, string? apiKey, string? apiKeyEnv)
     {

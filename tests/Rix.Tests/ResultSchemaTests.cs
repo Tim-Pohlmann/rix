@@ -1,5 +1,5 @@
 using Rix.CiFailure;
-using Rix.Job;
+using Rix.Agent;
 using Rix.Submit;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -25,7 +25,7 @@ public class ResultSchemaTests
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true, NewLine = "\n" };
 
     [TestMethod]
-    [DataRow("job-result.schema.json")]
+    [DataRow("agent-result.schema.json")]
     [DataRow("submit-result.schema.json")]
     [DataRow("ci-failure-result.schema.json")]
     public void CommittedSchema_MatchesTheResultTypes(string fileName)
@@ -56,12 +56,12 @@ public class ResultSchemaTests
     [TestMethod]
     public void EveryVariant_WritesExactlyTheFieldsItsSchemaRequires()
     {
-        const string job = "job-result.schema.json", submit = "submit-result.schema.json", ciFailure = "ci-failure-result.schema.json";
+        const string agent = "agent-result.schema.json", submit = "submit-result.schema.json", ciFailure = "ci-failure-result.schema.json";
         (string Schema, string Json)[] written =
         [
-            (job, JsonSerializer.Serialize<IJobResult>(new JobSuccess([], [], 0m, TimeSpan.Zero), JobJsonContext.Default.IJobResult)),
-            (job, JsonSerializer.Serialize<IJobResult>(new JobFailure("boom", 0m, TimeSpan.Zero), JobJsonContext.Default.IJobResult)),
-            (job, JsonSerializer.Serialize<IJobResult>(new SetupFailure("boom"), JobJsonContext.Default.IJobResult)),
+            (agent, JsonSerializer.Serialize<IAgentResult>(new AgentSuccess([], [], 0m, TimeSpan.Zero), AgentJsonContext.Default.IAgentResult)),
+            (agent, JsonSerializer.Serialize<IAgentResult>(new AgentFailure("boom", 0m, TimeSpan.Zero), AgentJsonContext.Default.IAgentResult)),
+            (agent, JsonSerializer.Serialize<IAgentResult>(new SetupFailure("boom"), AgentJsonContext.Default.IAgentResult)),
             (submit, JsonSerializer.Serialize<ISubmitResult>(new SubmitSuccess([], []), SubmitJsonContext.Default.ISubmitResult)),
             (submit, JsonSerializer.Serialize<ISubmitResult>(new SubmitFailure("boom"), SubmitJsonContext.Default.ISubmitResult)),
             (ciFailure, JsonSerializer.Serialize<ICiFailureResult>(new CiFailureDetected("fix it", "https://example.test/run", "main", 7, "out/prompt.md"), CiFailureJsonContext.Default.ICiFailureResult)),
@@ -88,9 +88,9 @@ public class ResultSchemaTests
 
     private static JsonObject Generate(string fileName) => fileName switch
     {
-        "job-result.schema.json" => Document(
-            "The result rix job prints and writes to result.json.",
-            Variants(JobJsonContext.Default, typeof(IJobResult))),
+        "agent-result.schema.json" => Document(
+            "The result rix agent prints and writes to result.json.",
+            Variants(AgentJsonContext.Default, typeof(IAgentResult))),
         "submit-result.schema.json" => Document(
             "The result rix submit prints.",
             Variants(SubmitJsonContext.Default, typeof(ISubmitResult))),

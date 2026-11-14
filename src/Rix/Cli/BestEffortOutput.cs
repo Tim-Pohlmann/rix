@@ -9,7 +9,7 @@ namespace Rix.Cli;
 /// the work finished, must not stop the correct exit code from being returned. Only the line is
 /// lost.
 ///
-/// Files don't come through here, whether they are a job's artifacts or <c>ci-failure</c>'s
+/// Files don't come through here, whether they are an agent run's artifacts or <c>ci-failure</c>'s
 /// verdict: <see cref="ArtifactFile"/> writes those, and what a lost one costs is decided per
 /// file there rather than always being nothing.</summary>
 internal static class BestEffortOutput

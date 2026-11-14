@@ -1,20 +1,20 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 
-namespace Rix.Job;
+namespace Rix.Agent;
 
-/// <summary>Everything <c>rix job</c> needs, already strongly typed: every field is a value object
-/// that validated itself on construction, so a <see cref="JobConfig"/> can't exist in an invalid
+/// <summary>Everything <c>rix agent</c> needs, already strongly typed: every field is a value object
+/// that validated itself on construction, so a <see cref="AgentConfig"/> can't exist in an invalid
 /// state and nothing downstream re-checks it. Turning raw CLI/environment text into these values
-/// is the CLI layer's job (see <see cref="Cli.JobOptions"/>), which reads each option straight
+/// is the CLI layer's job (see <see cref="Cli.AgentOptions"/>), which reads each option straight
 /// into the value the constructor takes.</summary>
 /// <param name="AllowedPushBranches">The only branches <c>/push</c> may deliver to. Empty means
 /// <c>/push</c> is disabled — an operator opts in by naming the branches this run may touch. Any
 /// branch name is acceptable (unlike <c>rix/*</c>-restricted branches the agent creates via
-/// <c>/pr</c>), since these already exist on the remote before the job ever runs.</param>
+/// <c>/pr</c>), since these already exist on the remote before the agent ever runs.</param>
 /// <param name="AgentHome">Optional agent home files: when set, a directory from another repo is
 /// copied into the runner's home before the agent starts. <c>null</c> (the
 /// default) means no <c>--factory-repo</c> was given and the runner home is left untouched.</param>
-internal record JobConfig
+internal record AgentConfig
 (
     RepoIdentifier Repo,
     GitReadToken ReadToken,
@@ -24,7 +24,7 @@ internal record JobConfig
     // why call sites pass them by name while the rest of the list stays positional.
     DirectoryPath WorkDir,
     DirectoryPath OutputDir,
-    AgentConfig Agent,
+    CodingAgentConfig Agent,
     IReadOnlyList<BranchName> AllowedPushBranches,
     AgentHomeInfo? AgentHome = null
 )
@@ -47,10 +47,10 @@ internal record JobConfig
 /// for opencode, per provider. Groups the inputs the <c>--agent</c>, <c>--prompt</c>,
 /// <c>--max-tokens</c>, <c>--model</c>, and <c>--effort</c> flags configure.
 /// <paramref name="Credential"/> (already resolved and validated by
-/// <see cref="AgentCredential.Resolve"/>) is <see cref="JobRunner"/>'s instruction for which single
+/// <see cref="AgentCredential.Resolve"/>) is <see cref="AgentRunner"/>'s instruction for which single
 /// env var to add to the agent invocation's <see cref="AgentInvocation.EnvironmentOverrides"/> —
 /// null when no key was supplied, and carrying both halves whenever it is not.</summary>
-internal sealed record AgentConfig
+internal sealed record CodingAgentConfig
 (
     AgentKind Kind,
     string Prompt,

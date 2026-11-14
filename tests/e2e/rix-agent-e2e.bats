@@ -34,7 +34,7 @@
 #   - Unlike opencode/claude, an invalid key does not fail pi's process at all: pi embeds the
 #     failure in its own JSON event stream as a per-turn error (stopReason:"error", errorMessage)
 #     and still exits 0. So the "reached the CLI's own request/auth-failure protocol" case for pi
-#     looks like rix job *succeeding* with no PRs produced, not a JobFailure - the discriminator
+#     looks like rix agent *succeeding* with no PRs produced, not an AgentFailure - the discriminator
 #     against a real regression (our flags rejected as unknown) is the same exit-0/success shape,
 #     since a rejected flag instead fails the process outright with a plain "Unknown option" line.
 #
@@ -81,14 +81,14 @@ teardown() {
 # The real binary's output is the one thing the schema can be checked against that nobody wrote by
 # hand - fixtures elsewhere only prove the bash agrees with the schema.
 assert_result_matches_schema() {
-  assert_matches_schema job-result.schema.json "$(cat "$RIX_OUTPUT_DIR/result.json")"
+  assert_matches_schema agent-result.schema.json "$(cat "$RIX_OUTPUT_DIR/result.json")"
 }
 
 result_field() {
   jq -r ".$1" "$RIX_OUTPUT_DIR/result.json"
 }
 
-# Strips rix's own "agent failed: exited with code N: " wrapper (see JobRunner.RunAsync) to get
+# Strips rix's own "agent failed: exited with code N: " wrapper (see AgentRunner.RunAsync) to get
 # at the agent CLI's own diagnostic line (see ProcessWrapper.Diagnostic).
 diagnostic_of() {
   sed -E 's/^agent failed: exited with code [0-9]+: //'
@@ -96,7 +96,7 @@ diagnostic_of() {
 
 @test "claude with an explicit model fails without a key with a structured (not plain-text) diagnostic" {
   export RIX_AGENT=claude RIX_MODEL=claude-opus-4-1
-  run "$RIX_BIN" job
+  run "$RIX_BIN" agent
   [ "$status" -eq 1 ]
   assert_result_matches_schema
   [ "$(result_field status)" = failure ]
@@ -107,7 +107,7 @@ diagnostic_of() {
 
 @test "pi fails without a key, pointing at a real doc file it ships" {
   export RIX_AGENT=pi
-  run "$RIX_BIN" job
+  run "$RIX_BIN" agent
   [ "$status" -eq 1 ]
   assert_result_matches_schema
   [ "$(result_field status)" = failure ]
@@ -120,7 +120,7 @@ diagnostic_of() {
 @test "pi treats an invalid key as a successful run producing no PRs, not a failure" {
   export RIX_AGENT=pi RIX_MODEL=openai/gpt-4o
   export OPENAI_API_KEY=sk-invalid-0000000000000000000000000000000000000000
-  run "$RIX_BIN" job
+  run "$RIX_BIN" agent
   # See the file header: pi swallows a per-turn auth error into its JSON stream and still exits 0.
   [ "$status" -eq 0 ]
   assert_result_matches_schema
@@ -130,8 +130,8 @@ diagnostic_of() {
 
 # Every test above tells the agent *not* to call /pr, so nothing here had ever exercised the one
 # path the whole job exists for: the agent commits work, POSTs it, and rix turns that into a bundle
-# on disk. That path spans the local API server, the /pr guards, and JobRunner's delivery step, and
-# until now only in-process tests (JobRunnerTests) covered it - with a fake agent POSTing on the
+# on disk. That path spans the local API server, the /pr guards, and AgentRunner's delivery step, and
+# until now only in-process tests (AgentRunnerTests) covered it - with a fake agent POSTing on the
 # real agent's behalf, so nothing proved a real agent can drive it from the system prompt alone.
 #
 # A real agent, not the tests/e2e/stub-opencode that stands in elsewhere: a stub following
@@ -158,10 +158,10 @@ diagnostic_of() {
 2. Run: printf "rix e2e\n" > rix-e2e-check.txt
 3. Run: git add rix-e2e-check.txt && git commit -m "rix e2e check"
 4. POST to the pull request endpoint of the local API with exactly this JSON body:
-   {"branch":"rix/e2e-pr-check","baseBranch":"main","title":"rix e2e check","body":"queued by the rix job e2e test"}
+   {"branch":"rix/e2e-pr-check","baseBranch":"main","title":"rix e2e check","body":"queued by the rix agent e2e test"}
 Make no other changes and run no other commands.'
 
-  run "$RIX_BIN" job
+  run "$RIX_BIN" agent
   [ "$status" -eq 0 ]
   [ "$(result_field status)" = success ]
   [ "$(result_field pendingPrRequests | jq 'length')" = 1 ]

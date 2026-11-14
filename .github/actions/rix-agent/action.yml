@@ -1,6 +1,6 @@
-name: Run rix job
+name: Run rix agent
 description: >-
-  Runs `rix job` against a target repo, writing result.json and any git bundles to ./out.
+  Runs `rix agent` against a target repo, writing result.json and any git bundles to ./out.
 
 inputs:
   repo:
@@ -68,7 +68,7 @@ inputs:
   output-artifact:
     description: >-
       Name to upload ./out under once the job has succeeded, for a later job to pick up with
-      submit-rix-job's input-artifact. Omit when that step runs in this same job, where ./out is
+      rix-submit's input-artifact. Omit when that step runs in this same job, where ./out is
       already there.
     required: false
   rix-version:
@@ -96,7 +96,7 @@ runs:
         name: ${{ inputs.prompt-artifact }}
         path: prompt
 
-    - name: Run rix job
+    - name: Run rix agent
       env:
         AGENT_API_KEY: ${{ inputs.agent-api-key }}
         AGENT_API_KEY_ENV: ${{ inputs.agent-api-key-env }}
@@ -115,7 +115,7 @@ runs:
         # AGENT_API_KEY/AGENT_API_KEY_ENV are forwarded to rix as-is - it resolves which single env
         # var to export the key under (defaulting per agent, validating a caller-supplied name) and
         # adds it directly to the agent CLI subprocess's own environment (see
-        # Rix.Agents.AgentCredential and Rix.Job.JobRunner). The key never needs to exist under
+        # Rix.CodingAgents.AgentCredential and Rix.Agent.AgentRunner). The key never needs to exist under
         # that name in this shell or in $GITHUB_ENV.
         mkdir -p out work
 
@@ -123,10 +123,10 @@ runs:
         # missing one, an empty one, or both at once the same way it reports every other
         # bad flag. The file's content never passes through this shell, so nothing a failing run's
         # logs put in it can be re-parsed on the way.
-        "$RIX_BIN" job --agent "$RIX_AGENT" --output-dir out --work-dir work
+        "$RIX_BIN" agent --agent "$RIX_AGENT" --output-dir out --work-dir work
 
     - name: Post job summary
-      # rix job writes result.json whatever its outcome - on failure too (see JobRunner.RunAsync)
+      # rix agent writes result.json whatever its outcome - on failure too (see AgentRunner.RunAsync)
       # - so this renders the job outcome even when the step above failed and the later create-pr
       # job is skipped. The one case with no file to render is a run that could not write it, which
       # rix reports as exit code 3 rather than as its own outcome; the summary says so.

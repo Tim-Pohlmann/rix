@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Rix.Artifacts;
 
 /// <summary>What a check leaves in its output directory: <c>result.json</c> always, and
-/// <c>prompt.md</c> when a failure was detected. The counterpart of <see cref="Job.JobArtifacts"/>
+/// <c>prompt.md</c> when a failure was detected. The counterpart of <see cref="Agent.AgentArtifacts"/>
 /// for <c>rix ci-failure</c> - the files are the check's product rather than the CLI's
 /// presentation of them, so <see cref="CiFailureRunner.RunAsync"/> produces them as part of
 /// checking, and a check that returns is a check whose output is on disk.
@@ -15,7 +15,7 @@ namespace Rix.Artifacts;
 /// never reached disk would send a caller to a file that isn't there, and reporting a
 /// <see cref="CiFailureError"/> instead leaves it with no branch and no agent started.
 /// <c>result.json</c> is written after, records a verdict already decided, and its loss costs
-/// nothing but a warning - unlike a job's <c>result.json</c>, which is the file something
+/// nothing but a warning - unlike an agent run's <c>result.json</c>, which is the file something
 /// downstream reads back. Nothing reads this one: <c>rix ci-failure</c> prints the same JSON to
 /// stdout, which is where the action gating a run on it reads the verdict, and the file is there
 /// for a caller who would rather read a file.</summary>

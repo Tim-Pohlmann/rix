@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Rix.Job;
+namespace Rix.Agent;
 
 /// <summary>
 /// Rendering helpers shared by the agent transcript parsers (line-guarding itself is

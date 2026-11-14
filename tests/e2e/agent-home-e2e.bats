@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
-# End-to-end tests for `rix job`'s factory-repo agent home (--factory-repo/--agent-home-path): the
+# End-to-end tests for `rix agent`'s factory-repo agent home (--factory-repo/--agent-home-path): the
 # files an operator keeps in one repo and wants in place in the runner's home before the agent
 # starts. The pieces are unit tested separately - GitCliTests for the sparse clone's git commands,
-# JobRunnerTests against a stubbed git, DirectoryMergeTests against a temp tree - so what is only
+# AgentRunnerTests against a stubbed git, DirectoryMergeTests against a temp tree - so what is only
 # observable here is them meeting for real: a sparse clone of a real GitHub repo, merged into the
 # home the agent actually reads, in a job that still succeeds afterwards.
 #
 # HOME is redirected per test. rix resolves the runner home via
-# Environment.GetFolderPath(UserProfile), which consults $HOME on Unix (see JobOptions.ReadAgentHome
+# Environment.GetFolderPath(UserProfile), which consults $HOME on Unix (see AgentOptions.ReadAgentHome
 # and the note there), so this is enough to keep every copy inside $BATS_TEST_TMPDIR and out of the
 # real home of whoever runs these.
 #
@@ -36,7 +36,7 @@ setup() {
   # does run: the copy has to survive a real job. So it is the stub (see tests/e2e/stub-opencode),
   # put on PATH ahead of any real opencode, which rix then uses without an npm install or a key.
   # These legs never needed a particular model's judgement, and after opencode withdrew its keyless
-  # tier no real CLI runs here for free - see rix-job-e2e.bats for the legs that do want a real one.
+  # tier no real CLI runs here for free - see rix-agent-e2e.bats for the legs that do want a real one.
   export RIX_AGENT=opencode
   # Installed under the name rix looks up, not its own: rix resolves the agent CLI by name on PATH
   # and accepts whatever answers `opencode --version`, which is what lets a stub stand in with no
@@ -58,7 +58,7 @@ setup() {
 
   local_fixture="$BATS_TEST_DIRNAME/../../$AGENT_HOME_PATH"
 
-  # Both of these are explained in rix-job-e2e.bats's setup: a relative RIX_BIN has to be resolved
+  # Both of these are explained in rix-agent-e2e.bats's setup: a relative RIX_BIN has to be resolved
   # while the caller's directory is still current, and rix is then launched from a directory these
   # tests own rather than from the caller's checkout.
   case "$RIX_BIN" in
@@ -69,17 +69,17 @@ setup() {
   cd "$BATS_TEST_TMPDIR" || return 1
 
   # The home under test. Empty except for what each test puts there itself - although rix installs
-  # the agent CLI before it copies anything (see JobRunner.RunAsync), so npm's own files land here
+  # the agent CLI before it copies anything (see AgentRunner.RunAsync), so npm's own files land here
   # too and "nothing else is in HOME" is not something these tests can assert.
   export HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$HOME"
 }
 
-# Same check rix-job-e2e.bats makes for the same reason, and for one this file has to itself: it is
+# Same check rix-agent-e2e.bats makes for the same reason, and for one this file has to itself: it is
 # the only place a real binary prints a setupFailure, so the schema's setupFailure variant would
 # otherwise only ever be checked against results written by hand.
 assert_result_matches_schema() {
-  assert_matches_schema job-result.schema.json "$(cat "$RIX_OUTPUT_DIR/result.json")"
+  assert_matches_schema agent-result.schema.json "$(cat "$RIX_OUTPUT_DIR/result.json")"
 }
 
 result_field() {
@@ -121,7 +121,7 @@ fixture_status_on_default_branch() {
   printf 'runner\n' >"$HOME/.rix-e2e-marker"
 
   export RIX_AGENT_HOME_PATH="$AGENT_HOME_PATH"
-  run "$RIX_BIN" job
+  run "$RIX_BIN" agent
   [ "$status" -eq 0 ]
   assert_result_matches_schema
   [ "$(result_field status)" = success ]
@@ -136,10 +136,10 @@ fixture_status_on_default_branch() {
 
 @test "a path the factory repo does not have ends the job as a setup failure naming that path" {
   export RIX_AGENT_HOME_PATH=tests/fixtures/not-an-agent-home
-  run "$RIX_BIN" job
+  run "$RIX_BIN" agent
 
   # 2 rather than 1: the operator's configuration is wrong, which is a different thing from the
-  # agent's work failing (see ExitCodes.SetupFailed), and job.yml reports the two differently.
+  # agent's work failing (see ExitCodes.SetupFailed), and agent.yml reports the two differently.
   [ "$status" -eq 2 ]
   assert_result_matches_schema
   [ "$(result_field status)" = setupFailure ]

@@ -1,6 +1,6 @@
 namespace Rix.Repository;
 
-/// <summary>The single source of truth for the git commit identity <c>rix job</c> configures in the
+/// <summary>The single source of truth for the git commit identity <c>rix agent</c> configures in the
 /// cloned repo before handing it to the coding agent, so the agent never has to guess author
 /// metadata. Used by <see cref="GitCli.ConfigureIdentityAsync"/>.</summary>
 internal static class GitIdentity

@@ -1,7 +1,7 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 using Rix.CiFailure;
 using Rix.Initialize;
-using Rix.Job;
+using Rix.Agent;
 using Rix.Submit;
 
 namespace Rix.Tests;
@@ -17,16 +17,16 @@ internal static class TestConfig
     internal static DirectoryPath AnyDirectory(string path)
     => new(path, new StubFileSystem(directoryExists: _ => true));
 
-    internal static JobConfig Valid
+    internal static AgentConfig Valid
     (
         string repo = "owner/repo",
         string prompt = "do it",
         string readToken = "tok",
-        int maxTokens = JobConfig.DefaultMaxTokens,
-        int timeoutMinutes = JobConfig.DefaultTimeoutMinutes,
+        int maxTokens = AgentConfig.DefaultMaxTokens,
+        int timeoutMinutes = AgentConfig.DefaultTimeoutMinutes,
         string? workDir = null,
         string? outputDir = null,
-        AgentKind agent = JobConfig.DefaultAgent,
+        AgentKind agent = AgentConfig.DefaultAgent,
         string? model = null,
         string? effort = null,
         string? agentApiKey = null,
@@ -38,14 +38,14 @@ internal static class TestConfig
         // The same call the CLI makes, so a change to when the credential is required reaches
         // the fixtures too instead of leaving them asserting a rule the CLI no longer follows.
         var credential = AgentCredential.Resolve(agent, agentApiKey, agentApiKeyEnv);
-        return new JobConfig
+        return new AgentConfig
         (
             new RepoIdentifier(repo),
             new GitReadToken(readToken),
             new TimeoutMinutes(timeoutMinutes),
             WorkDir: new DirectoryPath(workDir ?? Path.GetTempPath(), new LocalFileSystem()),
             OutputDir: new DirectoryPath(outputDir ?? Path.GetTempPath(), new LocalFileSystem()),
-            new AgentConfig(agent, prompt, new MaxTokens(maxTokens), model, effort, credential),
+            new CodingAgentConfig(agent, prompt, new MaxTokens(maxTokens), model, effort, credential),
             allowedPushBranches ?? [],
             agentHome
         );

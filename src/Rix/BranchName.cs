@@ -11,9 +11,9 @@ internal record BranchName(string Value)
     /// means nothing is permitted, so the result is the empty list: an operator must opt in to
     /// pushing onto an existing branch at all. Unlike the <c>rix/*</c>-restricted branches the agent
     /// creates via <c>/pr</c>, any branch name is acceptable here, since these already exist on the
-    /// remote before the job ever runs. Duplicates are dropped.
+    /// remote before the agent ever runs. Duplicates are dropped.
     ///
-    /// Shared by <c>rix job</c> and <c>rix submit</c> so the same text can't mean two different
+    /// Shared by <c>rix agent</c> and <c>rix submit</c> so the same text can't mean two different
     /// lists at the two points that enforce it. The comma-separated form cannot express a branch
     /// whose name contains a comma.</summary>
     internal static List<BranchName> ParseAllowList(string? raw)

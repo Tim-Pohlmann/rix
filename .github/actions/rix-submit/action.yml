@@ -1,8 +1,8 @@
-name: Submit rix job
+name: Run rix submit
 description: >-
-  Pushes the branches from a `rix job` result and opens their pull requests via `rix submit`.
+  Pushes the branches from a `rix agent` result and opens their pull requests via `rix submit`.
   Assumes the calling job has already checked out Tim-Pohlmann/rix (see
-  .github/actions/download-rix), and that a prior `rix job` run's result.json is in input-dir or
+  .github/actions/download-rix), and that a prior `rix agent` run's result.json is in input-dir or
   in the artifact input-artifact names.
 
 inputs:
@@ -13,17 +13,17 @@ inputs:
     description: "GitHub PAT with contents:write + pull-requests:write on the target repo"
     required: true
   input-dir:
-    description: Directory holding result.json and the git bundles produced by `rix job`
+    description: Directory holding result.json and the git bundles produced by `rix agent`
     required: false
     default: out
   input-artifact:
     description: >-
-      Name of the artifact run-rix-job uploaded with output-artifact, downloaded into input-dir
-      first. Omit when `rix job` ran in this same job, where input-dir is already there.
+      Name of the artifact rix-agent uploaded with output-artifact, downloaded into input-dir
+      first. Omit when `rix agent` ran in this same job, where input-dir is already there.
     required: false
   allowed-push-branches:
     description: >-
-      Comma-separated branches a pending push may deliver to; must repeat whatever the `rix job`
+      Comma-separated branches a pending push may deliver to; must repeat whatever the `rix agent`
       run was given. Omit to refuse every push (pull requests are unaffected). Passed here rather
       than read back out of result.json because the agent that wrote that file runs unsandboxed in
       the same workspace and can rewrite it — this is the copy of the list it cannot reach.

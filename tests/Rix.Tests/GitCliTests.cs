@@ -235,7 +235,7 @@ public class GitCliTests
         Assert.AreEqual(expected, capturedEnv["GIT_CONFIG_VALUE_0"]);
     }
 
-    /// <summary>One instance serves every repo on its host - a job reads its target and the factory
+    /// <summary>One instance serves every repo on its host - a run reads its target and the factory
     /// repo with the same client - so each call's URL comes from that call's repo.</summary>
     [TestMethod]
     public async Task CloneAsync_ClonesTheRepoItIsGiven_UnderTheSameCredential()

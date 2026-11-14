@@ -1,6 +1,6 @@
 namespace Rix.Process;
 
-/// <summary>The single side-effect seam for running a subprocess. Every part of a job — agent
+/// <summary>The single side-effect seam for running a subprocess. Every part of a run — agent
 /// install, the agent run itself, and git operations — flows through one of these so effects stay
 /// in one place and can be stubbed in tests.</summary>
 internal interface IProcessRunner

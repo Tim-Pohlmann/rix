@@ -32,7 +32,7 @@ internal static class Startup
             var fileSystem = Composition.FileSystem();
             var rootCommand = new RootCommand("RIX - AI-powered code automation")
             {
-                Runs(JobCommand.Build(), parsed => JobCommand.CreateConfig(parsed, fileSystem), JobCommand.ExecuteDefaultAsync),
+                Runs(AgentCommand.Build(), parsed => AgentCommand.CreateConfig(parsed, fileSystem), AgentCommand.ExecuteDefaultAsync),
                 Runs(SubmitCommand.Build(), parsed => SubmitCommand.CreateConfig(parsed, fileSystem), SubmitCommand.ExecuteDefaultAsync),
                 Runs(CiFailureCommand.Build(), parsed => CiFailureCommand.CreateConfig(parsed, fileSystem), CiFailureCommand.ExecuteDefaultAsync),
                 Runs(InitializeCommand.Build(), parsed => InitializeCommand.CreateConfig(parsed, fileSystem), InitializeCommand.ExecuteDefaultAsync),

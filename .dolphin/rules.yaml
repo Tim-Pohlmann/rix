@@ -7,7 +7,7 @@ rules:
     languages: [csharp]
     severity: ERROR
     message: >-
-      Assign a named ExitCodes constant (ExitCodes.Success / JobFailed /
+      Assign a named ExitCodes constant (ExitCodes.Success / Failed /
       SetupFailed) instead of a magic integer. The project centralizes process
       exit codes in ExitCodes.cs.
     patterns:
@@ -28,8 +28,8 @@ rules:
           - pattern: ((ProcessSuccess)$X)
           - pattern: ((InstallFailed)$X)
           - pattern: ((Installed)$X)
-          - pattern: ((JobSuccess)$X)
-          - pattern: ((JobFailure)$X)
+          - pattern: ((AgentSuccess)$X)
+          - pattern: ((AgentFailure)$X)
           - pattern: ((SetupFailure)$X)
           - pattern: ((SubmitSuccess)$X)
           - pattern: ((SubmitFailure)$X)
@@ -189,7 +189,7 @@ rules:
       (cond switch { true => ..., false => ... }, or a multi-arm switch for
       more than two branches) instead of an if/else-assign chain; this
       codebase prefers the switch-expression idiom for resolving
-      optional/defaultable values (see JobConfig.cs, SubmitConfig.cs).
+      optional/defaultable values (see AgentConfig.cs, SubmitConfig.cs).
     pattern: |
       if ($COND)
           $VAR = $A;
@@ -224,7 +224,7 @@ rules:
     severity: ERROR
     message: >-
       Rix.Cli is a leaf layer the entry point wires up; reference it from
-      Startup.cs only, not from Job/Agents/Process/Repository/Submit/Api.
+      Startup.cs only, not from Agent/CodingAgents/Process/Repository/Submit/Api.
     paths:
       exclude:
         - src/Rix/Startup.cs

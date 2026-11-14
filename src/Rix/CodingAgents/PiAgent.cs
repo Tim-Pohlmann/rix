@@ -1,20 +1,20 @@
-using Rix.Job;
+using Rix.Agent;
 using Rix.Process;
 using System.Text.Json;
 
-namespace Rix.Agents;
+namespace Rix.CodingAgents;
 
 /// <summary>
 /// <see cref="ICodingAgent"/> backed by the open-source Pi coding agent CLI: installs it via npm,
 /// launches it in non-interactive JSON event mode, and reads cost from that stream.
 /// </summary>
 /// <remarks>
-/// Like <see cref="OpenCodeAgent"/>, Pi is multi-provider — <see cref="AgentConfig.Model"/> is
-/// forwarded verbatim as <c>--model</c> (e.g. <c>openai/gpt-4o</c>), and <see cref="Job.JobRunner"/>
+/// Like <see cref="OpenCodeAgent"/>, Pi is multi-provider — <see cref="CodingAgentConfig.Model"/> is
+/// forwarded verbatim as <c>--model</c> (e.g. <c>openai/gpt-4o</c>), and <see cref="Agent.AgentRunner"/>
 /// adds whatever credential env var that provider expects to this invocation's environment (see
 /// <see cref="AgentCredential"/>), so this method itself carries no override for it. Pi has no
 /// per-run output-token cap equivalent to <c>CLAUDE_CODE_MAX_OUTPUT_TOKENS</c>, so
-/// <see cref="AgentConfig.MaxTokens"/> is not forwarded either. Unlike OpenCode, Pi does support
+/// <see cref="CodingAgentConfig.MaxTokens"/> is not forwarded either. Unlike OpenCode, Pi does support
 /// <c>--append-system-prompt</c>, so rix's system prompt is passed the same way as for
 /// <see cref="ClaudeAgent"/>.
 /// </remarks>
@@ -34,7 +34,7 @@ internal sealed class PiAgent : ICodingAgent
         processRunner, workingDirectory, "pi", Package, reportDiagnostic, cancellationToken
     );
 
-    public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
+    public AgentInvocation BuildInvocation(AgentConfig config, string systemPrompt)
     {
         List<string> args =
         [
@@ -58,9 +58,9 @@ internal sealed class PiAgent : ICodingAgent
     /// Reads cost from Pi's JSON event stream. Pi emits per-message cost (<c>usage.cost.total</c>
     /// on each assistant message), not a single cumulative total, so this sums every assistant
     /// message's cost from an <c>agent_end</c> event, which carries the message list of one agent
-    /// run. A job can see several: a retry, or the run that resumes after compacting an overflowed
+    /// run. A rix run can see several: a retry, or the run that resumes after compacting an overflowed
     /// context, ends with an <c>agent_end</c> of its own that lists only its own messages, so each
-    /// one's cost adds to the job's.
+    /// one's cost adds to the rix run's total.
     /// </summary>
     public decimal? ParseCost(string outputLine) => JsonLine.Read(outputLine, "\"agent_end\"", ReadCost);
 

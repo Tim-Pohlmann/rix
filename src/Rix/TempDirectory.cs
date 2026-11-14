@@ -3,7 +3,7 @@ namespace Rix;
 /// <summary>A uniquely-named working directory under a base dir that recursively deletes itself on
 /// dispose. Cleanup is best-effort: any I/O failure (already removed, locked file, denied access) is
 /// swallowed so a leftover temp dir never fails the command or masks an earlier exception. Replaces
-/// the hand-rolled guid-dir + try/finally cleanup duplicated by the job and submit runners.</summary>
+/// the hand-rolled guid-dir + try/finally cleanup duplicated by the agent and submit runners.</summary>
 internal sealed class TempDirectory : IDisposable
 {
     private readonly IFileSystem _fileSystem;

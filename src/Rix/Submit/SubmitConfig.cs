@@ -4,7 +4,7 @@ namespace Rix.Submit;
 /// flags into these values (see <see cref="Cli.SubmitCommand"/>).</summary>
 /// <param name="AllowedPushBranches">The branches a pending push may deliver to. Empty — the
 /// default — rejects every push, so an operator opts in by naming the branches this submit may
-/// touch. Deliberately duplicates the list <c>rix job</c> gave its <c>/push</c> endpoint rather
+/// touch. Deliberately duplicates the list <c>rix agent</c> gave its <c>/push</c> endpoint rather
 /// than reading it back out of <c>result.json</c>: that file sits in the agent's own workspace and
 /// the agent can rewrite it, so a list taken from it would be the attacker's list. Supplied by the
 /// caller that holds the write credential instead.</param>

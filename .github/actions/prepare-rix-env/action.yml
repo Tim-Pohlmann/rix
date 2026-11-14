@@ -1,6 +1,6 @@
 name: Prepare rix environment
 description: >-
-  Setup for `rix job`, the one subcommand that runs the coding agent: installs the agent CLI,
+  Setup for `rix agent`, the one subcommand that runs the coding agent: installs the agent CLI,
   downloads rix (exporting RIX_BIN), and normalizes max-tokens/timeout. Exports everything via
   $GITHUB_ENV so it reaches whichever later step in the calling job actually invokes rix.
   `ci-failure` shared this back when it ran the agent too; it needs only the binary now, and

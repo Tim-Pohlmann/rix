@@ -1,7 +1,7 @@
 namespace Rix.CiFailure;
 
 /// <summary>Everything <c>rix ci-failure</c> needs, already strongly typed. Detection only: the
-/// agent-running values <c>rix job</c> takes (agent, model, effort, credential, token budget,
+/// agent-running values <c>rix agent</c> takes (agent, model, effort, credential, token budget,
 /// timeout, a working directory to clone into) are deliberately absent, because this command never
 /// starts an agent — it reports what it found and stops, leaving the run to a separate job that
 /// cannot reach back into the machine this check ran on.</summary>

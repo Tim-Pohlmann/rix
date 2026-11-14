@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Appends a markdown summary of a rix job run to the GitHub Actions step summary file named by
+# Appends a markdown summary of a rix agent run to the GitHub Actions step summary file named by
 # $GITHUB_STEP_SUMMARY, so the workflow run page shows the job outcome (status, cost, duration)
-# and the pull requests that were actually opened. Used by the run-rix-job and submit-rix-job
+# and the pull requests that were actually opened. Used by the rix-agent and rix-submit
 # composite actions.
 #
 # Usage: post-job-summary.sh <result.json> [submit-result.json] [submit-error.log] [transcript.md]
 #
-#   result.json        the result of `rix job` (always present in a completed run)
+#   result.json        the result of `rix agent` (always present in a completed run)
 #   submit-result.json the stdout of `rix submit` (absent when the submit step wrote nothing)
 #   submit-error.log   the stderr of `rix submit` (used to explain a submit failure)
 #   transcript.md      the coding agent's session transcript (absent when none was written)
@@ -130,16 +130,16 @@ rix_post_job_summary() {
   local summary_file="${GITHUB_STEP_SUMMARY:-}"
 
   if [[ -z "$summary_file" ]]; then
-    echo "GITHUB_STEP_SUMMARY is not set; skipping rix job summary." >&2
+    echo "GITHUB_STEP_SUMMARY is not set; skipping rix agent summary." >&2
     return 0
   fi
   [[ -f "$summary_file" ]] || : > "$summary_file"
 
   {
-    echo "## Rix job summary"
+    echo "## Rix agent summary"
     echo ""
     if [[ ! -f "$result_file" ]]; then
-      echo "The rix job produced no result.json - it never completed, or it ran and could not write the file (rix exits 3 for that, and the reason is in the step log above)."
+      echo "The rix agent run produced no result.json - it never completed, or it ran and could not write the file (rix exits 3 for that, and the reason is in the step log above)."
       echo ""
       return 0
     fi

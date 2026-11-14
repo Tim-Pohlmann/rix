@@ -1,6 +1,6 @@
-using Rix.Agents;
+using Rix.CodingAgents;
 using Rix.CiFailure;
-using Rix.Job;
+using Rix.Agent;
 using Rix.Process;
 using Rix.Repository;
 
@@ -303,7 +303,7 @@ internal sealed class StubAgent(Func<CancellationToken, Task<InstallResult>> ins
     )
     => install(cancellationToken);
 
-    public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
+    public AgentInvocation BuildInvocation(AgentConfig config, string systemPrompt)
     => _real.BuildInvocation(config, systemPrompt);
 
     public decimal? ParseCost(string outputLine) => _real.ParseCost(outputLine);

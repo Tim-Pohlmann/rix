@@ -1,5 +1,5 @@
 using Rix.CiFailure;
-using Rix.Job;
+using Rix.Agent;
 using System.Text.Json;
 
 namespace Rix.Tests;
@@ -310,12 +310,12 @@ public class TypesTests
     }
 
     [TestMethod]
-    public void JobSuccess_SerializesCorrectly()
+    public void AgentSuccess_SerializesCorrectly()
     {
         var prs = new[] { new PendingPr(new RixBranchName("rix/fix"), new BranchName("main"), new PrTitle("Fix bug"), new PrBody("body"), "rix-fix.bundle") };
-        var outcome = new JobSuccess(prs, PendingPushRequests: [], CostUsd: 0.0125m, Duration: TimeSpan.FromSeconds(42));
+        var outcome = new AgentSuccess(prs, PendingPushRequests: [], CostUsd: 0.0125m, Duration: TimeSpan.FromSeconds(42));
 
-        var json = JsonSerializer.Serialize<IJobResult>(outcome);
+        var json = JsonSerializer.Serialize<IAgentResult>(outcome);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
@@ -329,11 +329,11 @@ public class TypesTests
     }
 
     [TestMethod]
-    public void JobFailure_SerializesCorrectly()
+    public void AgentFailure_SerializesCorrectly()
     {
-        var outcome = new JobFailure("Something went wrong", CostUsd: 0.005m, Duration: TimeSpan.FromSeconds(10));
+        var outcome = new AgentFailure("Something went wrong", CostUsd: 0.005m, Duration: TimeSpan.FromSeconds(10));
 
-        var json = JsonSerializer.Serialize<IJobResult>(outcome);
+        var json = JsonSerializer.Serialize<IAgentResult>(outcome);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
@@ -348,7 +348,7 @@ public class TypesTests
     {
         var outcome = new SetupFailure("Claude install failed: nope");
 
-        var json = JsonSerializer.Serialize<IJobResult>(outcome);
+        var json = JsonSerializer.Serialize<IAgentResult>(outcome);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 

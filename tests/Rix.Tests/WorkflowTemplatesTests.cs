@@ -26,10 +26,10 @@ public class WorkflowTemplatesTests
     }
 
     [TestMethod]
-    public void For_RixCaller_TargetsJobReusableWorkflow_AtTheGivenRef()
+    public void For_RixCaller_TargetsAgentReusableWorkflow_AtTheGivenRef()
     {
         var content = ContentOf("rix.yml");
-        StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/job.yml@v9");
+        StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@v9");
         StringAssert.Contains(content, "workflow_dispatch:");
     }
 

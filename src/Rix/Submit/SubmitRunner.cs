@@ -1,11 +1,11 @@
-using Rix.Job;
+using Rix.Agent;
 using Rix.Repository;
 using System.Text.Json;
 
 namespace Rix.Submit;
 
 /// <summary>
-/// Turns the read-only output of <c>rix job</c> (a <c>result.json</c> plus one git bundle per
+/// Turns the read-only output of <c>rix agent</c> (a <c>result.json</c> plus one git bundle per
 /// proposed change) into real remote state: clone the target with a write credential, then for
 /// each pending PR fetch its bundle, push the branch, and open the PR, and for each pending push
 /// fetch its bundle and push the commits onto the branch it already exists on. Fails fast if a
@@ -31,13 +31,13 @@ internal static class SubmitRunner
         if (!context.FileSystem.FileExists(resultPath))
             return new SubmitFailure($"result.json not found in {config.InputDir.Value}");
 
-        IJobResult? jobResult;
+        IAgentResult? jobResult;
         try
         {
             await using var stream = context.FileSystem.OpenRead(resultPath);
             jobResult = await JsonSerializer.DeserializeAsync
             (
-                stream, JobJsonContext.Default.IJobResult, cancellationToken
+                stream, AgentJsonContext.Default.IAgentResult, cancellationToken
             );
         }
         catch (JsonException ex)
@@ -45,8 +45,8 @@ internal static class SubmitRunner
             return new SubmitFailure($"could not parse result.json: {ex.Message}");
         }
 
-        if (jobResult is not JobSuccess success)
-            return new SubmitFailure("result.json does not describe a successful job");
+        if (jobResult is not AgentSuccess success)
+            return new SubmitFailure("result.json does not describe a successful run");
 
         var pendingPushes = success.PendingPushRequests ?? [];
 
@@ -146,7 +146,7 @@ internal static class SubmitRunner
 
     /// <summary>Fetches one push's bundle and pushes the commits onto its branch — which already
     /// exists on the remote by construction, so no PR is opened. Git's own fast-forward check
-    /// protects a branch that advanced on the remote while the job ran; that surfaces here as a
+    /// protects a branch that advanced on the remote while the agent ran; that surfaces here as a
     /// failed push rather than an overwrite.</summary>
     private static async Task<SubmitOneOutcome> SubmitPushAsync
     (
@@ -157,7 +157,7 @@ internal static class SubmitRunner
         CancellationToken cancellationToken
     )
     {
-        // Checked again here even though rix job's /push endpoint already refused anything outside
+        // Checked again here even though rix agent's /push endpoint already refused anything outside
         // this list. That check bound only what the agent asked for: the agent is an ordinary
         // process on the same runner as the result.json carrying its answer here, so it can name
         // any branch it likes in the file afterwards. This is the copy of the check that stands
@@ -199,7 +199,7 @@ internal static class SubmitRunner
 
     /// <summary>The result of submitting one pending PR: either the opened PR's URL, or a failure
     /// (nested so the caller keeps the typed <see cref="SubmitFailure"/> rather than re-deriving it).
-    /// Modeled on <see cref="Rix.Job.JobRunner"/>'s delivery outcome, so the loop below pattern
+    /// Modeled on <see cref="Rix.Agent.AgentRunner"/>'s delivery outcome, so the loop below pattern
     /// matches rather than distinguishing by nullability.</summary>
     private abstract record SubmitOneOutcome
     {

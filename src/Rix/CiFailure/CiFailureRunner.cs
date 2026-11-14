@@ -12,9 +12,9 @@ namespace Rix.CiFailure;
 /// rix isn't allowed to answer because it came from a fork, or one whose branch rix has already
 /// been fixing on its own for too long. Deciding what to do with the outcome is the caller's job,
 /// not this one's: reaching a verdict is the whole of <c>rix ci-failure</c>, and answering the
-/// failure is a separate <c>rix job</c> run on a machine this one never touches.
+/// failure is a separate <c>rix agent</c> run on a machine this one never touches.
 ///
-/// Named for the command it is the whole of, like <see cref="Rix.Job.JobRunner"/> and
+/// Named for the command it is the whole of, like <see cref="Rix.Agent.AgentRunner"/> and
 /// <see cref="Rix.Submit.SubmitRunner"/>, rather than for the one thing it does.
 /// </summary>
 internal static class CiFailureRunner

@@ -1,5 +1,5 @@
-using Rix.Agents;
-using Rix.Job;
+using Rix.CodingAgents;
+using Rix.Agent;
 
 namespace Rix.Tests;
 

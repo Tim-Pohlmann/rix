@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The result rix job prints and writes to result.json.",
+  "description": "The result rix agent prints and writes to result.json.",
   "type": "object",
   "required": [
     "status"

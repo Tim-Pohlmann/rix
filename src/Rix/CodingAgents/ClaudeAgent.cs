@@ -1,8 +1,8 @@
-using Rix.Job;
+using Rix.Agent;
 using Rix.Process;
 using System.Text.Json;
 
-namespace Rix.Agents;
+namespace Rix.CodingAgents;
 
 /// <summary>
 /// <see cref="ICodingAgent"/> backed by Anthropic's Claude Code CLI: installs it via npm,
@@ -24,7 +24,7 @@ internal sealed class ClaudeAgent : ICodingAgent
         processRunner, workingDirectory, "claude", Package, reportDiagnostic, cancellationToken
     );
 
-    public AgentInvocation BuildInvocation(JobConfig config, string systemPrompt)
+    public AgentInvocation BuildInvocation(AgentConfig config, string systemPrompt)
     {
         List<string> args =
         [
