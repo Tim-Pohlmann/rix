@@ -41,8 +41,15 @@ internal static class InitializeCommand
         (
             Input.Required(DirOption.Name, dir, path => new DirectoryPath(path, fileSystem)),
             Input.Optional(RefOption.Name, parsed.GetValue(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild),
-            parsed.GetValue(FactoryOption) ? new FactorySetup() : new StandaloneSetup()
+            Setup(parsed)
         );
+    }
+
+    private static IInitializeSetup Setup(ParseResult parsed)
+    {
+        if (parsed.GetValue(FactoryOption))
+            return new FactorySetup();
+        return new StandaloneSetup();
     }
 
     /// <summary>Runs <paramref name="config"/> against the production context. Separate from

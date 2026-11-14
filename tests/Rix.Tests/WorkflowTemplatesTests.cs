@@ -18,11 +18,16 @@ public class WorkflowTemplatesTests
     private static readonly WorkflowRef Ref = new("v9");
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void For_ResolvesBothEmbeddedTemplates_Nonempty(bool factory)
+    public void For_ResolvesBothEmbeddedTemplates_Nonempty()
+    => AssertBothTemplatesResolve(new StandaloneSetup());
+
+    [TestMethod]
+    public void For_Factory_ResolvesBothEmbeddedTemplates_Nonempty()
+    => AssertBothTemplatesResolve(new FactorySetup());
+
+    private static void AssertBothTemplatesResolve(IInitializeSetup setup)
     {
-        var templates = WorkflowTemplates.For(factory ? new FactorySetup() : new StandaloneSetup(), Ref);
+        var templates = WorkflowTemplates.For(setup, Ref);
         CollectionAssert.AreEqual(ExpectedRelativePaths, templates.Select(t => t.RelativePath).ToArray());
         Assert.IsTrue(templates.All(t => t.Content.Contains("jobs:") && t.Content.Contains("uses:")));
     }
