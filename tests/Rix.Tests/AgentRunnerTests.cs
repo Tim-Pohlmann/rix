@@ -489,11 +489,11 @@ public class AgentRunnerTests
         // Pi's cost rides on agent_end, which an agent_settled line follows.
         RunProcess runner = AgentPrints("""{"type":"result","total_cost_usd":0.25}""", "done");
 
-        var result = await RunJobAsync(MakeConfig(),
+        var result = await RunAgentAsync(MakeConfig(),
             Context(new StubGit(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
-        Assert.IsInstanceOfType<JobSuccess>(result, out var success);
+        Assert.IsInstanceOfType<AgentSuccess>(result, out var success);
         Assert.AreEqual(0.25m, success.CostUsd);
     }
 
@@ -508,11 +508,11 @@ public class AgentRunnerTests
             """{"type":"result","total_cost_usd":0.5}"""
         );
 
-        var result = await RunJobAsync(MakeConfig(),
+        var result = await RunAgentAsync(MakeConfig(),
             Context(new StubGit(), runner,
                 _ => Task.FromResult<InstallResult>(new Installed())), CancellationToken.None);
 
-        Assert.IsInstanceOfType<JobSuccess>(result, out var success);
+        Assert.IsInstanceOfType<AgentSuccess>(result, out var success);
         Assert.AreEqual(0.75m, success.CostUsd);
     }
 
