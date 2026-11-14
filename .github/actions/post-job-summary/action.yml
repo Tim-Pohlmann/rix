@@ -2,7 +2,7 @@ name: Post job summary
 description: >-
   Appends a markdown summary of a rix agent run (status, cost, duration, and any pull requests
   opened) to the GitHub Actions step summary. Best-effort: never fails the step it's called
-  from. Used by the run-rix-job and submit-rix-job composite actions.
+  from. Used by the run-rix-agent and run-rix-submit composite actions.
 
 inputs:
   result-file:

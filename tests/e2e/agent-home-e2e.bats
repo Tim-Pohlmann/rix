@@ -36,7 +36,7 @@ setup() {
   # does run: the copy has to survive a real job. So it is the stub (see tests/e2e/stub-opencode),
   # put on PATH ahead of any real opencode, which rix then uses without an npm install or a key.
   # These legs never needed a particular model's judgement, and after opencode withdrew its keyless
-  # tier no real CLI runs here for free - see rix-job-e2e.bats for the legs that do want a real one.
+  # tier no real CLI runs here for free - see rix-agent-e2e.bats for the legs that do want a real one.
   export RIX_AGENT=opencode
   # Installed under the name rix looks up, not its own: rix resolves the agent CLI by name on PATH
   # and accepts whatever answers `opencode --version`, which is what lets a stub stand in with no
@@ -58,7 +58,7 @@ setup() {
 
   local_fixture="$BATS_TEST_DIRNAME/../../$AGENT_HOME_PATH"
 
-  # Both of these are explained in rix-job-e2e.bats's setup: a relative RIX_BIN has to be resolved
+  # Both of these are explained in rix-agent-e2e.bats's setup: a relative RIX_BIN has to be resolved
   # while the caller's directory is still current, and rix is then launched from a directory these
   # tests own rather than from the caller's checkout.
   case "$RIX_BIN" in
@@ -75,7 +75,7 @@ setup() {
   mkdir -p "$HOME"
 }
 
-# Same check rix-job-e2e.bats makes for the same reason, and for one this file has to itself: it is
+# Same check rix-agent-e2e.bats makes for the same reason, and for one this file has to itself: it is
 # the only place a real binary prints a setupFailure, so the schema's setupFailure variant would
 # otherwise only ever be checked against results written by hand.
 assert_result_matches_schema() {

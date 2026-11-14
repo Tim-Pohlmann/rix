@@ -116,7 +116,7 @@ permissions:
 
 jobs:
   run:
-    name: Run rix job
+    name: Run rix agent
     runs-on: ${{ inputs.runner }}
     steps:
       # A local `uses: ./...` action reference resolves against whatever is already checked out
@@ -138,8 +138,8 @@ jobs:
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
-      - name: Run rix job
-        uses: ./.github/actions/run-rix-job
+      - name: Run rix agent
+        uses: ./.github/actions/run-rix-agent
         with:
           repo: ${{ inputs.repo }}
           prompt: ${{ inputs.prompt }}
@@ -180,8 +180,8 @@ jobs:
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
-      - name: Submit rix job
-        uses: ./.github/actions/submit-rix-job
+      - name: Run rix submit
+        uses: ./.github/actions/run-rix-submit
         with:
           repo: ${{ inputs.repo }}
           write-token: ${{ secrets.write-token }}

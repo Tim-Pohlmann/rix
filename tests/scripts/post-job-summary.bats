@@ -45,7 +45,7 @@ write_submit() {
   run rix_post_job_summary "$RESULT" "$SUBMIT"
 
   [ "$status" -eq 0 ]
-  [[ "$(summary)" == *"## Rix job summary"* ]]
+  [[ "$(summary)" == *"## Rix agent summary"* ]]
   [[ "$(summary)" == *"**Status:** success"* ]]
   [[ "$(summary)" == *'**Cost:** $0.42'* ]]
   [[ "$(summary)" == *"**Duration:** 6m 12s"* ]]
@@ -60,7 +60,7 @@ write_submit() {
   run rix_post_job_summary "$RESULT" "$SUBMIT"
 
   [ "$status" -eq 0 ]
-  [[ "$(summary)" == *"## Rix job summary"* ]]
+  [[ "$(summary)" == *"## Rix agent summary"* ]]
   [[ "$(summary)" != *"Pull requests opened"* ]]
 }
 

@@ -188,7 +188,7 @@ jobs:
           rix-bin: ${{ inputs.rix-bin }}
 
   run:
-    name: Run rix job
+    name: Run rix agent
     needs: detect
     if: needs.detect.outputs.branch != ''
     runs-on: ${{ inputs.runner }}
@@ -203,8 +203,8 @@ jobs:
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
-      - name: Run rix job
-        uses: ./.github/actions/run-rix-job
+      - name: Run rix agent
+        uses: ./.github/actions/run-rix-agent
         with:
           repo: ${{ inputs.repo || github.repository }}
           prompt-artifact: rix-prompt
@@ -258,8 +258,8 @@ jobs:
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
-      - name: Submit rix job
-        uses: ./.github/actions/submit-rix-job
+      - name: Run rix submit
+        uses: ./.github/actions/run-rix-submit
         with:
           repo: ${{ inputs.repo || github.repository }}
           write-token: ${{ secrets.write-token }}

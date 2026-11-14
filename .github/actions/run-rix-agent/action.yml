@@ -1,4 +1,4 @@
-name: Run rix job
+name: Run rix agent
 description: >-
   Runs `rix agent` against a target repo, writing result.json and any git bundles to ./out.
 
@@ -68,7 +68,7 @@ inputs:
   output-artifact:
     description: >-
       Name to upload ./out under once the job has succeeded, for a later job to pick up with
-      submit-rix-job's input-artifact. Omit when that step runs in this same job, where ./out is
+      run-rix-submit's input-artifact. Omit when that step runs in this same job, where ./out is
       already there.
     required: false
   rix-version:
@@ -96,7 +96,7 @@ runs:
         name: ${{ inputs.prompt-artifact }}
         path: prompt
 
-    - name: Run rix job
+    - name: Run rix agent
       env:
         AGENT_API_KEY: ${{ inputs.agent-api-key }}
         AGENT_API_KEY_ENV: ${{ inputs.agent-api-key-env }}

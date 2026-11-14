@@ -158,7 +158,7 @@ diagnostic_of() {
 2. Run: printf "rix e2e\n" > rix-e2e-check.txt
 3. Run: git add rix-e2e-check.txt && git commit -m "rix e2e check"
 4. POST to the pull request endpoint of the local API with exactly this JSON body:
-   {"branch":"rix/e2e-pr-check","baseBranch":"main","title":"rix e2e check","body":"queued by the rix job e2e test"}
+   {"branch":"rix/e2e-pr-check","baseBranch":"main","title":"rix e2e check","body":"queued by the rix agent e2e test"}
 Make no other changes and run no other commands.'
 
   run "$RIX_BIN" agent

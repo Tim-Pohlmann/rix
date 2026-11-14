@@ -94,7 +94,7 @@ ordinary process in the same workspace and can rewrite that file afterwards, and
 where the write token actually is. Only the second check decides what reaches the remote, so
 `submit` takes the list from its own input and never from `result.json`. The `job.yml` workflow
 passes your `allowed-push-branches` to both jobs; if you drive the composite actions yourself,
-give `submit-rix-job` the same value you gave `run-rix-job`, or its pushes will all be refused.
+give `run-rix-submit` the same value you gave `run-rix-agent`, or its pushes will all be refused.
 
 Pending pull requests need no such input. A PR names a branch that cannot exist yet, and the
 `rix/*` rule bounding it is carried by `result.json`'s own type (`RixBranchName`), so it is
@@ -229,7 +229,7 @@ run URL, failing step logs), and runs the agent against it. It's the building bl
 patterns below — write the "turn a failure into a prompt" logic once, reuse it either way.
 
 It runs as three jobs, one composite action each: `detect-ci-failure` decides whether to act and
-writes the prompt, `run-rix-job` runs the agent against it, and `submit-rix-job` pushes the result
+writes the prompt, `run-rix-agent` runs the agent against it, and `run-rix-submit` pushes the result
 and opens the PRs. They are separate jobs rather than steps because only the middle one executes
 code from the failing branch — see [What the agent's machine is trusted
 with](#what-the-agents-machine-is-trusted-with).

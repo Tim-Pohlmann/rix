@@ -102,7 +102,7 @@ jobs:
     env:
       RIX_BIN_PATH: ${{ github.workspace }}/rix-bin/rix
 
-    # Runs the real .github/actions/run-rix-job composite action (the same one job.yml's `run`
+    # Runs the real .github/actions/run-rix-agent composite action (the same one job.yml's `run`
     # job uses) against this repo itself, using the binary build-rix just published from this PR's
     # own source. This exercises the actual end-to-end plumbing - CLI parsing, the agent process,
     # the result, submit - rather than a hand-copied mirror of it, so a regression in the composite
@@ -113,8 +113,8 @@ jobs:
     # npm install. It used to run the real CLI on opencode's keyless free tier; that tier was
     # withdrawn upstream, and nothing a runner can reach for free replaces it. What that costs is
     # catching a real CLI growing a new required flag - the stub asserts the invocation it is handed
-    # instead, and rix-job-e2e still launches the real claude and pi CLIs. Failure-mode assertions (auth errors, bad models, ...) live in the
-    # `rix-job-e2e` bats test instead, where they can do real JSON parsing without embedding that
+    # instead, and rix-agent-e2e still launches the real claude and pi CLIs. Failure-mode assertions (auth errors, bad models, ...) live in the
+    # `rix-agent-e2e` bats test instead, where they can do real JSON parsing without embedding that
     # logic in workflow YAML.
     steps:
       # Only the composite actions under .github/actions are needed here, plus the stub agent they
@@ -146,8 +146,8 @@ jobs:
           install -m 0755 tests/e2e/stub-opencode "$RUNNER_TEMP/stub-bin/opencode"
           echo "$RUNNER_TEMP/stub-bin" >> "$GITHUB_PATH"
 
-      - name: Run rix job
-        uses: ./.github/actions/run-rix-job
+      - name: Run rix agent
+        uses: ./.github/actions/run-rix-agent
         with:
           repo: ${{ github.repository }}
           prompt: >-
@@ -158,7 +158,7 @@ jobs:
           # max-tokens/timeout are deliberately 0, not omitted: job.yml declares them as
           # workflow_call inputs of type: number with no default, so a caller who omits them
           # (the common case) makes GitHub Actions resolve the expressions to 0 rather than
-          # empty/null and pass that 0 through to this action. run-rix-job must treat that 0 as
+          # empty/null and pass that 0 through to this action. run-rix-agent must treat that 0 as
           # "unset" and let rix's own defaults (50k tokens, 30 min) apply instead of forwarding
           # it - rix rejects an explicit 0, so a regression that forwards it fails this job with
           # "--max-tokens must be a positive integer". (Omitting the inputs entirely would only
@@ -175,7 +175,7 @@ jobs:
       # end to end that a garbage write-token is safe here - SubmitRunner never touches it because
       # the prompt above guarantees zero PRs were queued.
       - name: Submit (garbage write-token; safe because zero PRs were requested)
-        uses: ./.github/actions/submit-rix-job
+        uses: ./.github/actions/run-rix-submit
         with:
           repo: ${{ github.repository }}
           write-token: not-a-real-token
@@ -407,7 +407,7 @@ jobs:
       RIX_REPO: ${{ github.repository }}
       RIX_READ_TOKEN: ${{ github.token }}
 
-    # What rix-job-e2e is to agent-plumbing, this is to ci-failure-plumbing: the built binary driven
+    # What rix-agent-e2e is to agent-plumbing, this is to ci-failure-plumbing: the built binary driven
     # directly, with the per-outcome assertions in a reviewable test script
     # (tests/e2e/ci-failure-e2e.bats) instead of workflow YAML. The plumbing job above can only ever
     # see its own unfinished run; this one also points rix at finished runs and at requests GitHub
@@ -438,8 +438,8 @@ jobs:
       - name: Run rix ci-failure e2e tests
         run: bats --print-output-on-failure tests/e2e/ci-failure-e2e.bats
 
-  rix-job-e2e:
-    name: rix job e2e
+  rix-agent-e2e:
+    name: rix agent e2e
     runs-on: ubuntu-latest
     needs: build-rix
     permissions:
@@ -461,7 +461,7 @@ jobs:
     # One level deeper than agent-plumbing above: invokes the built rix binary directly (bypassing
     # the composite-action/workflow layer) and does real JSON parsing on its result, so
     # per-failure-mode assertions live in proper, reviewable test scripts
-    # (tests/e2e/rix-job-e2e.bats for the agent itself, tests/e2e/agent-home-e2e.bats for the
+    # (tests/e2e/rix-agent-e2e.bats for the agent itself, tests/e2e/agent-home-e2e.bats for the
     # factory-repo agent home it runs with) instead of workflow YAML.
     steps:
       - uses: actions/checkout@v4
@@ -497,7 +497,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bats python3-jsonschema
 
-      - name: Run rix job e2e tests
+      - name: Run rix agent e2e tests
         # rix logs every line the agent CLI prints - its stdout, and its stderr marked `[stderr]`
         # (see the two line sinks AgentRunner hands the process) - onto rix's own stderr, and
         # `run` merges that into $output - print it on failure instead of silently discarding it,
@@ -511,7 +511,7 @@ jobs:
         # onto a runner does.
         run: |
           chmod +x tests/e2e/stub-opencode
-          bats --print-output-on-failure tests/e2e/rix-job-e2e.bats tests/e2e/agent-home-e2e.bats
+          bats --print-output-on-failure tests/e2e/rix-agent-e2e.bats tests/e2e/agent-home-e2e.bats
 
   download-rix:
     name: Download rix (release path)
@@ -519,7 +519,7 @@ jobs:
     permissions:
       contents: read
 
-    # The only job that exercises download-rix's actual download. agent-plumbing and rix-job-e2e
+    # The only job that exercises download-rix's actual download. agent-plumbing and rix-agent-e2e
     # both hand the actions a locally built binary via rix-bin - which is exactly what
     # download-rix's steps are gated against - so its version resolution, checksum verification
     # and extraction otherwise run nowhere in CI. That gap is why an empty rix-version silently

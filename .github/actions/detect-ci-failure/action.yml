@@ -24,7 +24,7 @@ inputs:
   prompt-artifact:
     description: >-
       Name to upload out/prompt.md under when there is a branch, for the job answering the failure
-      to pick up with run-rix-job's prompt-artifact. Omit to leave the prompt in out/.
+      to pick up with run-rix-agent's prompt-artifact. Omit to leave the prompt in out/.
     required: false
   rix-version:
     description: "Rix release tag to download, or 'latest'"
