@@ -4,7 +4,7 @@ namespace Rix.Initialize;
 
 /// <summary>The caller-workflow files <c>rix initialize</c> drops into a target repo, loaded from
 /// resources embedded in this assembly (see <c>Rix.csproj</c>) so a released single-file binary
-/// carries them with no network fetch at init time. Each <see cref="IInitializeSetup"/> has its
+/// carries them with no network fetch at init time. Each <see cref="IInitializeSetup"/> names its
 /// own folder under <c>Cli/Templates/</c>.</summary>
 internal static class WorkflowTemplates
 {
@@ -16,22 +16,11 @@ internal static class WorkflowTemplates
 
     internal const string ResourcePrefix = "Rix.Cli.Templates.";
 
-    /// <summary>The templates of a repo that runs rix on itself
-    /// (<c>Cli/Templates/Standalone/</c>).</summary>
-    internal static IReadOnlyList<(string RelativePath, string Content)> Standalone { get; } = Load("Standalone");
-
-    /// <summary>The templates of a factory repo (<c>Cli/Templates/Factory/</c>).</summary>
-    internal static IReadOnlyList<(string RelativePath, string Content)> Factory { get; } = Load("Factory");
-
     /// <summary>Each template of <paramref name="setup"/> as embedded, still carrying
     /// <see cref="RefPlaceholder"/>, paired with the repo-relative path it is written to, in the
     /// order <see cref="InitializeRunner"/> writes (and reports) them.</summary>
-    internal static IReadOnlyList<(string RelativePath, string Content)> Of(IInitializeSetup setup) => setup switch
-    {
-        StandaloneSetup => Standalone,
-        FactorySetup => Factory,
-        _ => throw new NotSupportedException($"Unexpected initialize setup type: {setup.GetType()}"),
-    };
+    internal static IReadOnlyList<(string RelativePath, string Content)> Of(IInitializeSetup setup)
+    => Load(setup.TemplateFolder);
 
     /// <summary>The templates of <paramref name="setup"/> pinned to <paramref name="reference"/>,
     /// each paired with the repo-relative path it is written to, in the order
@@ -39,7 +28,8 @@ internal static class WorkflowTemplates
     internal static IReadOnlyList<(string RelativePath, string Content)> For(IInitializeSetup setup, WorkflowRef reference)
     => [.. Of(setup).Select(template => (template.RelativePath, template.Content.Replace(RefPlaceholder, reference.Value, StringComparison.Ordinal)))];
 
-    /// <summary>Every template in <c>Cli/Templates/{folder}/</c>, discovered from the embedded
+    /// <summary>Every template in <c>Cli/Templates/{folder}/</c>, read afresh on each call (an init
+    /// writes once, so there is nothing to cache for), discovered from the embedded
     /// resources rather than a hand-kept list, so the glob in <c>Rix.csproj</c> is the only place a
     /// folder's file set is declared. MSBuild names a resource
     /// <c>{RootNamespace}.{path with '/' replaced by '.'}</c> and leaves the file name itself alone,

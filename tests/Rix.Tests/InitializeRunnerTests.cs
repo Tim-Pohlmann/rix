@@ -96,8 +96,8 @@ public class InitializeRunnerTests
         };
         // Names whichever template the runner reached first rather than a literal, so the
         // assertion keeps testing "the message says which file failed" if the discovered
-        // order of WorkflowTemplates.Standalone changes.
-        StringAssert.Contains(failure.Error, WorkflowTemplates.Standalone[0].RelativePath);
+        // order of the standalone templates changes.
+        StringAssert.Contains(failure.Error, WorkflowTemplates.Of(new StandaloneSetup())[0].RelativePath);
         StringAssert.Contains(failure.Error, "disk full");
     }
 }

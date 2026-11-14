@@ -79,7 +79,7 @@ internal static class InitializeCommand
         switch (result)
         {
             case InitializeSuccess:
-                await Console.Error.WriteLineAsync(NextSteps(config.Setup));
+                await Console.Error.WriteLineAsync(config.Setup.NextSteps);
                 return ExitCodes.Success;
             case InitializeFailure failure:
                 await Console.Error.WriteLineAsync($"error: {failure.Error}");
@@ -88,45 +88,4 @@ internal static class InitializeCommand
                 throw new NotSupportedException($"Unexpected initialize result type: {result.GetType()}");
         }
     }
-
-    /// <summary>The steps <c>rix initialize</c> can't do itself: it only writes files, so setting
-    /// up the secret and the environment that holds the write token, and committing, are left to
-    /// the user, along with whatever else <paramref name="setup"/> needs.</summary>
-    internal static string NextSteps(IInitializeSetup setup) => setup switch
-    {
-        StandaloneSetup => StandaloneNextSteps,
-        FactorySetup => FactoryNextSteps,
-        _ => throw new NotSupportedException($"Unexpected initialize setup type: {setup.GetType()}"),
-    };
-
-    /// <summary>Also names the watched CI workflow, which only a repo answering its own failures
-    /// has.</summary>
-    private const string StandaloneNextSteps = """
-
-        Next steps:
-          1. Add the read token as a repo secret (Settings -> Secrets and variables -> Actions):
-               RIX_READ_TOKEN   PAT, contents:read  (+ actions:read for the CI-failure workflow)
-          2. Add the write token to an environment named 'rix' (Settings -> Environments), and
-             limit that environment's deployment branches to the ones these workflows run on:
-               RIX_WRITE_TOKEN  PAT, contents:write + pull-requests:write
-          3. In rix-on-ci-failure.yml, set workflows: ["CI"] to your CI workflow's name.
-          4. Commit and push the two workflow files.
-        """;
-
-    /// <summary>The tokens span every served repo, and the write token's reach is what bounds the
-    /// factory, so its scope is spelled out. The served repos still need a trigger of their own,
-    /// since a workflow_run cannot cross repos.</summary>
-    private const string FactoryNextSteps = """
-
-        Next steps:
-          1. Add the read token as a repo secret (Settings -> Secrets and variables -> Actions):
-               RIX_READ_TOKEN   PAT, contents:read + actions:read on every repo this factory serves
-          2. Add the write token to an environment named 'rix' (Settings -> Environments), and
-             limit that environment's deployment branches to this repo's default branch:
-               RIX_WRITE_TOKEN  PAT, contents:write + pull-requests:write on exactly the repos
-                                this factory serves; it bounds where rix can open PRs
-          3. Commit and push the two workflow files.
-          4. In each repo this factory serves, add the workflow that dispatches its CI failures
-             here (README: "Advanced: a central factory repo").
-        """;
 }

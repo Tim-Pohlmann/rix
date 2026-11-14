@@ -1,0 +1,37 @@
+using Rix.Initialize;
+using System.Text.RegularExpressions;
+
+namespace Rix.Tests;
+
+[TestClass]
+public partial class InitializeSetupTests
+{
+    [TestMethod]
+    public void NextSteps_PointAFactoryAtTheReposItServes()
+    {
+        var steps = new FactorySetup().NextSteps;
+
+        StringAssert.Contains(steps, "on every repo this factory serves");
+        StringAssert.Contains(steps, "In each repo this factory serves");
+        // A factory answers dispatched failures, so there is no watched workflow to rename.
+        Assert.IsFalse(steps.Contains("workflows: [\"CI\"]", StringComparison.Ordinal));
+    }
+
+    /// <summary>The steps are prose about the templates, so nothing else would notice a template
+    /// renamed under them.</summary>
+    [TestMethod]
+    public void NextSteps_NameOnlyWorkflowsTheSetupWrites()
+    {
+        IInitializeSetup[] setups = [new StandaloneSetup(), new FactorySetup()];
+
+        foreach (var setup in setups)
+        {
+            var written = WorkflowTemplates.Of(setup).Select(t => Path.GetFileName(t.RelativePath)).ToArray();
+            foreach (var named in WorkflowFileName().Matches(setup.NextSteps).Select(m => m.Value))
+                CollectionAssert.Contains(written, named, $"{setup.GetType().Name}'s next steps name {named}");
+        }
+    }
+
+    [GeneratedRegex(@"[a-z][a-z-]*\.yml")]
+    private static partial Regex WorkflowFileName();
+}
