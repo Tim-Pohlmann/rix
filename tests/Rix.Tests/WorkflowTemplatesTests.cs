@@ -6,7 +6,7 @@ namespace Rix.Tests;
 public class WorkflowTemplatesTests
 {
     private static readonly string[] ExpectedRelativePaths =
-        [".github/workflows/rix-on-ci-failure.yml", ".github/workflows/rix.yml"];
+        [".github/workflows/rix-agent.yml", ".github/workflows/rix-on-ci-failure.yml"];
 
     private static readonly string[] ExpectedFactoryServedPaths = [".github/workflows/rix-notify-factory.yml"];
 
@@ -51,7 +51,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_RixCaller_TargetsAgentReusableWorkflow_AtTheGivenRef()
     {
-        var content = ContentOf(new StandaloneSetup(Ref, CiWorkflowName.Default), "rix.yml");
+        var content = ContentOf(new StandaloneSetup(Ref, CiWorkflowName.Default), "rix-agent.yml");
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@v9");
         StringAssert.Contains(content, "workflow_dispatch:");
         StringAssert.Contains(content, "repo: ${{ github.repository }}");
@@ -79,7 +79,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_FactoryRixCaller_TargetsTheRepoTheDispatchNames_DefaultingToItself()
     {
-        var content = ContentOf(new FactorySetup(Ref), "rix.yml");
+        var content = ContentOf(new FactorySetup(Ref), "rix-agent.yml");
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@v9");
         StringAssert.Contains(content, "repo: ${{ inputs.repo || github.repository }}");
     }

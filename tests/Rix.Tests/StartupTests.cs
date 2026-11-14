@@ -47,7 +47,7 @@ public class StartupTests
         var exitCode = await Startup.RunAsync(["initialize", "--single-repo", "--dir", dir]);
 
         Assert.AreEqual(0, exitCode);
-        Assert.IsTrue(File.Exists(Path.Combine(dir, ".github/workflows/rix.yml")));
+        Assert.IsTrue(File.Exists(Path.Combine(dir, ".github/workflows/rix-agent.yml")));
         Assert.IsTrue(File.Exists(Path.Combine(dir, ".github/workflows/rix-on-ci-failure.yml")));
     }
 

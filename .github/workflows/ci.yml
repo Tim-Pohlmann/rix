@@ -620,14 +620,14 @@ jobs:
           # Compared as a set, not file by file: the steps below glob whatever is there, so a new
           # template would otherwise sail through them without anyone deciding what else it needs.
           # Every path, not just the names, so a template written somewhere unexpected fails too.
-          # LC_ALL=C because a locale that ignores punctuation while sorting orders rix.yml and
-          # rix-on-ci-failure.yml the other way round.
+          # LC_ALL=C because a locale that ignores punctuation while sorting puts factory/ ahead of
+          # factory-served/.
           expected="$(printf '%s\n' \
             init-out/factory-served/.github/workflows/rix-notify-factory.yml \
+            init-out/factory/.github/workflows/rix-agent.yml \
             init-out/factory/.github/workflows/rix-on-ci-failure.yml \
-            init-out/factory/.github/workflows/rix.yml \
-            init-out/standalone/.github/workflows/rix-on-ci-failure.yml \
-            init-out/standalone/.github/workflows/rix.yml)"
+            init-out/standalone/.github/workflows/rix-agent.yml \
+            init-out/standalone/.github/workflows/rix-on-ci-failure.yml)"
           actual="$(find init-out -type f | LC_ALL=C sort)"
           if [[ "$actual" != "$expected" ]]; then
             echo "rix initialize wrote a different set of files than this job expects (< expected, > actual):" >&2

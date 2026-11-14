@@ -1,4 +1,4 @@
-name: rix
+name: rix (agent)
 on:
   workflow_dispatch:
     inputs:

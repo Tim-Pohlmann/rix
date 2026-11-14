@@ -46,7 +46,7 @@ public class InitializeRunnerTests
     {
         AssertSuccess(await Run(TestConfig.ValidInitialize(setup: new StandaloneSetup(new("release/2.x"), new("Build and test"))), Context()));
 
-        var rixYml = _writes.Single(w => w.Path.EndsWith("workflows/rix.yml", StringComparison.Ordinal)).Content;
+        var rixYml = _writes.Single(w => w.Path.EndsWith("workflows/rix-agent.yml", StringComparison.Ordinal)).Content;
         var ciYml = _writes.Single(w => w.Path.EndsWith("rix-on-ci-failure.yml", StringComparison.Ordinal)).Content;
 
         StringAssert.Contains(rixYml, "uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@release/2.x");

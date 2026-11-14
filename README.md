@@ -18,8 +18,10 @@ the resulting PRs. Each repo drives it through a small caller workflow.
 ### Quick start: `rix initialize`
 
 Run `rix initialize --single-repo` inside a checkout of the target repo to write both caller
-workflows (`.github/workflows/rix.yml` and `.github/workflows/rix-on-ci-failure.yml`; existing
-files are overwritten). The templates are baked into the `rix` binary, so this needs no network access.
+workflows (`.github/workflows/rix-agent.yml` and `.github/workflows/rix-on-ci-failure.yml`;
+existing files are overwritten). Releases up to v0.4 wrote the first one as `rix.yml`; delete that
+file when you re-run it, or the repo ends up with two identical manual triggers. The templates are
+baked into the `rix` binary, so this needs no network access.
 Their `uses:` lines point at the floating major-version tag of the release this `rix` comes
 from (`@v0` for any 0.x build), so the caller workflows call the reusable workflows they were
 released with. Then:
@@ -37,10 +39,10 @@ that serves several repos instead, run `rix initialize factory` in the factory r
 `rix initialize <owner/name>` in each repo it serves, naming the factory (see
 [Advanced: a central factory repo](#advanced-a-central-factory-repo)).
 
-### The `rix` caller workflow
+### The `rix-agent.yml` caller workflow
 
 ```yaml
-name: rix
+name: rix (agent)
 on:
   workflow_dispatch:
     inputs:
@@ -377,7 +379,7 @@ list: a PAT acts as its owner, so a bypass the owner has is one every project re
 branches don't matter, since the factory's workflows answer dispatches on the default branch and
 the `rix` environment releases the write token only there. Don't trade the token for
 `workflow_dispatch` either: its `actions:write` would let every project repo start the factory's
-`rix.yml` with a prompt of its own.
+`rix-agent.yml` with a prompt of its own.
 
 Run `rix initialize factory` in a checkout of the factory repo to write its two workflows. The
 first answers the dispatched failures:
@@ -410,12 +412,12 @@ jobs:
       write-token: ${{ secrets.RIX_WRITE_TOKEN }}
 ```
 
-The second is the factory's `rix.yml`, a manual run like the simple pattern's, with a `repo` input
+The second is the factory's `rix-agent.yml`, a manual run like the simple pattern's, with a `repo` input
 naming the repo to work on:
 
 ```yaml
-# In the factory repo: .github/workflows/rix.yml
-name: rix
+# In the factory repo: .github/workflows/rix-agent.yml
+name: rix (agent)
 on:
   workflow_dispatch:
     inputs:
