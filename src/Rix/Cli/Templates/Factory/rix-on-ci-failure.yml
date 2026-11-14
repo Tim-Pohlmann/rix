@@ -1,0 +1,24 @@
+name: rix (on CI failure)
+# Answers the CI failures that the repos this factory serves dispatch here, each from its own
+# notify-rix-factory.yml. Nothing in a repository_dispatch says who sent it, so on-ci-failure.yml
+# re-checks the payload against the API: the run must exist, have failed, and have run on a branch
+# of the repo the payload names.
+on:
+  repository_dispatch:
+    types: [rix-ci-failure]
+jobs:
+  rix:
+    # One rix run per branch at a time, as in a single repo's rix-on-ci-failure.yml. A
+    # repository_dispatch carries neither repo nor branch of its own, so the key comes from the
+    # payload, and a repo holding the dispatch token can name another one's branch and cancel the
+    # run it had queued.
+    concurrency:
+      group: rix-on-ci-failure-${{ github.event.client_payload.repo }}-${{ github.event.client_payload.branch }}
+      cancel-in-progress: false
+    uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@__RIX_REF__
+    with:
+      repo: ${{ github.event.client_payload.repo }}
+      run-id: ${{ github.event.client_payload.run_id }}
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
