@@ -53,11 +53,11 @@ public partial class AgentHomeSkillsTests
     }
 
     /// <summary>The skill writes the notify workflow with the served-repo setup of the binary
-    /// running the agent, naming the factory the way a bare <c>rix initialize</c> takes it, rather
+    /// running the agent, naming the factory the way a bare <c>rix init</c> takes it, rather
     /// than with a copy of the template that could drift.</summary>
     [TestMethod]
     public void TheOnboardingSkill_RunsTheServedRepoSetupOfThisRun()
-    => StringAssert.Contains(FactorySkills[0].Content, "\"$RIX_BIN\" initialize \"$GITHUB_REPOSITORY\" --ci-workflow ");
+    => StringAssert.Contains(FactorySkills[0].Content, "\"$RIX_BIN\" init \"$GITHUB_REPOSITORY\" --ci-workflow ");
 
     private static string Field(Match frontmatter, string key)
     => Regex.Match(frontmatter.Groups[1].Value, $"^{key}: (.*)$", RegexOptions.Multiline).Groups[1].Value.Trim();

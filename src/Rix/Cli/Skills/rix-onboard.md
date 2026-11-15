@@ -32,10 +32,10 @@ repo on pull requests or pushes. rix answers that workflow's failures, so you ne
 
 ## 3. Write the notify workflow
 
-From the clone's root:
+From the clone's root, run `rix init` with the rix binary running you, naming the factory:
 
 ```sh
-"$RIX_BIN" initialize "$GITHUB_REPOSITORY" --ci-workflow "<the name: from step 2>"
+"$RIX_BIN" init "$GITHUB_REPOSITORY" --ci-workflow "<the name: from step 2>"
 ```
 
 That writes `.github/workflows/rix-notify-factory.yml` and nothing else; it overwrites an existing
