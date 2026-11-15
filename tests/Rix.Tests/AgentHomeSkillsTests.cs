@@ -64,7 +64,8 @@ public partial class AgentHomeSkillsTests
     private static string Field(Match frontmatter, string key)
     => Regex.Match(frontmatter.Groups[1].Value, $"^{key}: (.*)$", RegexOptions.Multiline).Groups[1].Value.Trim();
 
-    [GeneratedRegex(@"\A---\n(.*?)\n---\n", RegexOptions.Singleline)]
+    /// <summary>Either line ending: a Windows checkout embeds the skill with CRLF.</summary>
+    [GeneratedRegex(@"\A---\r?\n(.*?)\r?\n---\r?\n", RegexOptions.Singleline)]
     private static partial Regex Frontmatter();
 
     [GeneratedRegex(@"^[a-z0-9]+(-[a-z0-9]+)*$")]

@@ -626,6 +626,8 @@ jobs:
             init-out/factory-served/.github/workflows/rix-notify-factory.yml \
             init-out/factory/.github/workflows/rix-agent.yml \
             init-out/factory/.github/workflows/rix-on-ci-failure.yml \
+            init-out/factory/.rix/agent-home/.agents/skills/rix-onboard/SKILL.md \
+            init-out/factory/.rix/agent-home/.claude/skills/rix-onboard/SKILL.md \
             init-out/standalone/.github/workflows/rix-agent.yml \
             init-out/standalone/.github/workflows/rix-on-ci-failure.yml)"
           actual="$(find init-out -type f | LC_ALL=C sort)"
