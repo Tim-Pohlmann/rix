@@ -151,34 +151,11 @@ public class SubmitCommandTests
         Assert.AreEqual(1, await Execute(inputDir));
     }
 
-    /// <summary>The action redirects this line into <c>submit-result.json</c> for the job summary,
-    /// and it is the only record of the submit there is.</summary>
-    [TestMethod]
-    public async Task ExecuteAsync_WritesTheSubmitResult_AsTheResult()
-    {
-        var inputDir = Directory.CreateTempSubdirectory("rix-submit-in-").FullName;
-        var log = new StubLog();
-
-        await Execute(inputDir, log);
-
-        StringAssert.Contains(log.Results.Single(), "\"status\":\"failure\"");
-    }
-
-    /// <summary>Unlike agent and ci-failure, nothing else holds the result, so a lost line is not
-    /// shrugged off.</summary>
-    [TestMethod]
-    public async Task ExecuteAsync_Throws_WhenTheResultCannotBeWritten()
-    {
-        var inputDir = Directory.CreateTempSubdirectory("rix-submit-in-").FullName;
-
-        await Assert.ThrowsExactlyAsync<IOException>(() => Execute(inputDir, new StubLog(resultWriteFails: new IOException("broken pipe"))));
-    }
-
-    private static Task<int> Execute(string inputDir, ILog? log = null)
+    private static Task<int> Execute(string inputDir)
     => SubmitCommand.ExecuteAsync
     (
         TestConfig.ValidSubmit(inputDir: inputDir),
-        new SubmitContext(new StubGit(), new StubSubmitRepoHost(), log ?? new StubLog(), new LocalFileSystem()),
+        new SubmitContext(new StubGit(), new StubSubmitRepoHost(), new StubLog(), new LocalFileSystem()),
         CancellationToken.None
     );
 

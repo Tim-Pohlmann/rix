@@ -18,6 +18,6 @@ internal interface ILog
 
     /// <summary>Writes the command's result, once its outcome is decided. Throws what the stream
     /// throws (a broken pipe, say), since what a lost result costs differs by command: see
-    /// <see cref="Cli.BestEffortOutput"/>.</summary>
+    /// <see cref="BestEffortOutput"/>.</summary>
     void WriteResult(string line);
 }

@@ -212,13 +212,29 @@ public class AgentRunnerTests
     }
 
     [TestMethod]
-    public async Task ExecuteAgentAsync_WritesTheResultJson_AsTheResult()
+    public async Task RunAsync_WritesTheResultJson_AsTheResult()
     {
         var log = new StubLog();
 
-        await Run(log: log);
+        await AgentRunner.RunAsync(MakeConfig(),
+            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()), log),
+            CancellationToken.None);
 
         Assert.AreEqual(await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json")), log.Results.Single());
+    }
+
+    /// <summary>With <c>result.json</c> lost, the line is the only copy of the outcome left.</summary>
+    [TestMethod]
+    public async Task RunAsync_StillWritesTheResult_WhenResultJsonIsLost()
+    {
+        var log = new StubLog();
+
+        await AgentRunner.RunAsync(MakeConfig(),
+            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()), log,
+                new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full"))),
+            CancellationToken.None);
+
+        StringAssert.Contains(log.Results.Single(), "\"status\":\"success\"");
     }
 
     [TestMethod]

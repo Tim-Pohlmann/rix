@@ -25,13 +25,15 @@ internal static class CiFailureRunner
     /// — nothing here re-trims what comes back.</summary>
     private const int LogTailChars = 20_000;
 
-    /// <summary>Checks a run and leaves its output in <see cref="CiFailureConfig.OutputDir"/>. The
-    /// writes happen here rather than in the caller because <c>result.json</c> and <c>prompt.md</c>
-    /// are the check's product (see <see cref="CiFailureArtifacts"/>), and because one of them can
-    /// still change the verdict: a prompt that never reached disk is reported as a
-    /// <see cref="CiFailureError"/>, which only works while the write is inside the thing that
-    /// returns the verdict. What the caller adds is a CLI's own: printing the verdict and choosing
-    /// an exit code.</summary>
+    /// <summary>Checks a run, leaves its output in <see cref="CiFailureConfig.OutputDir"/>, and writes
+    /// the verdict to <see cref="ILog.WriteResult"/>. The writes happen here rather than in the
+    /// caller because <c>result.json</c> and <c>prompt.md</c> are the check's product (see
+    /// <see cref="CiFailureArtifacts"/>), and because one of them can still change the verdict: a
+    /// prompt that never reached disk is reported as a <see cref="CiFailureError"/>, which only
+    /// works while the write is inside the thing that returns the verdict. The line printed is that
+    /// final verdict, and the same JSON has already gone to <c>result.json</c>, which is why losing
+    /// it to a broken pipe costs nothing but the echo (see <see cref="BestEffortOutput"/>). What the
+    /// caller adds is a CLI's own: choosing an exit code.</summary>
     internal static async Task<ICiFailureResult> RunAsync
     (
         CiFailureConfig config,
@@ -39,8 +41,10 @@ internal static class CiFailureRunner
         CancellationToken cancellationToken
     )
     {
-        var result = await CheckAsync(config, context, cancellationToken);
-        return await CiFailureArtifacts.WriteAsync(config, context, result);
+        var checkedResult = await CheckAsync(config, context, cancellationToken);
+        var result = await CiFailureArtifacts.WriteAsync(config, context, checkedResult);
+        BestEffortOutput.WriteResult(context.Log, CiFailureArtifacts.Serialize(result));
+        return result;
     }
 
     /// <summary>The check itself, in one method so each way it can end is a plain <c>return</c> and

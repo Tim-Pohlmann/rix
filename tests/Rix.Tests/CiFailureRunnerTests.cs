@@ -250,10 +250,9 @@ public class CiFailureRunnerTests
     }
 
     /// <summary>The imperative shell's own tests, beside the core's like
-    /// <c>AgentRunnerTests</c>'s are: <see cref="CiFailureCommand.ExecuteAsync"/> adds exactly two
-    /// things to a detection - the exit code it maps the verdict to, and the files it drops in the
-    /// output directory - and both are only meaningful next to the verdict that produced
-    /// them.</summary>
+    /// <c>AgentRunnerTests</c>'s are: <see cref="CiFailureCommand.ExecuteAsync"/> adds the exit code
+    /// it maps the verdict to, which is only meaningful next to the verdict and the files that
+    /// produced it, so these check all three.</summary>
     [TestMethod]
     public async Task ExecuteCiFailureAsync_Returns0_AndWritesTheVerdict_WhenRunDidNotFail()
     {
@@ -364,6 +363,36 @@ public class CiFailureRunnerTests
 
         Assert.AreEqual(0, exitCode);
         CollectionAssert.Contains(log.Lines, "warning: failed to write result.json: disk full");
+    }
+
+    /// <summary>The final verdict, not the check's: a prompt that never reached disk turns a
+    /// detection into an error, and the line says so the same way <c>result.json</c> does.</summary>
+    [TestMethod]
+    public async Task RunAsync_WritesTheFinalVerdict_AsTheResult()
+    {
+        Directory.CreateDirectory(Path.Combine(_outputDir, "prompt.md"));
+        var ci = new StubCiHost(
+            getRun: _ => Task.FromResult(TestRuns.Sample(new CiFailed(), branch: "rix/fix")),
+            getLogs: _ => Task.FromResult("boom: it broke"));
+        var log = new StubLog();
+
+        await CiFailureRunner.RunAsync(Config(), new CiFailureContext(ci, new StubCiFailureRepoHost(), new LocalFileSystem(), log), CancellationToken.None);
+
+        Assert.AreEqual(await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json")), log.Results.Single());
+        StringAssert.Contains(log.Results.Single(), "\"status\":\"error\"");
+    }
+
+    /// <summary>The same JSON is in <c>result.json</c>, so a broken stdout costs only the echo.</summary>
+    [TestMethod]
+    public async Task RunAsync_ReturnsTheVerdict_WhenStdoutIsABrokenPipe()
+    {
+        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
+        var log = new StubLog(resultWriteFails: new IOException("broken pipe"));
+
+        var result = await CiFailureRunner.RunAsync(Config(), new CiFailureContext(ci, new StubCiFailureRepoHost(), new LocalFileSystem(), log), CancellationToken.None);
+
+        AssertSkipped(result);
+        Assert.AreEqual("skipped", StatusOfWrittenResult());
     }
 
     private CiFailureConfig Config(int maxRixCommits = CiFailureConfig.DefaultMaxRixCommits)

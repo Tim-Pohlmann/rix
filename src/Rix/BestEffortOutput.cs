@@ -1,9 +1,9 @@
 using Rix.Artifacts;
 
-namespace Rix.Cli;
+namespace Rix;
 
-/// <summary>A command's result line for a command that has already recorded it elsewhere: the
-/// result JSON, so a caller watching the command sees the same verdict that went to disk. Reports
+/// <summary>A run's result line for a run that has already recorded it elsewhere: the result
+/// JSON, so a caller watching the command sees the same verdict that went to disk. Reports
 /// a failure instead of raising it - a broken pipe in the window after the work finished must not
 /// stop the correct exit code from being returned. Only the line is lost.
 ///

@@ -1,4 +1,3 @@
-using Rix.Artifacts;
 using Rix.CiFailure;
 using System.CommandLine;
 
@@ -82,18 +81,12 @@ internal static class CiFailureCommand
     /// does so from a <see cref="CiFailureDetected.Prompt"/> the check wrote, on a machine this one
     /// never touches.
     ///
-    /// What a CLI adds to a check: the verdict on stdout for a human or a shell watching the
-    /// command, and an exit code. The files the check leaves behind are
-    /// <see cref="CiFailureRunner.RunAsync"/>'s (see <see cref="CiFailureArtifacts"/>), so nothing
-    /// here can leave a check half-recorded. The same JSON has already gone to <c>result.json</c>,
-    /// which is why losing stdout to a broken pipe costs nothing but the echo.
+    /// What a CLI adds to a check: an exit code. Everything the check produces - its files and the
+    /// verdict line - is <see cref="CiFailureRunner.RunAsync"/>'s, so nothing here can leave a
+    /// check half-recorded.
     /// </summary>
     internal static async Task<int> ExecuteAsync(CiFailureConfig config, CiFailureContext context, CancellationToken cancellationToken)
-    {
-        var result = await CiFailureRunner.RunAsync(config, context, cancellationToken);
-        BestEffortOutput.WriteResult(context.Log, CiFailureArtifacts.Serialize(result));
-        return ExitCode(result);
-    }
+    => ExitCode(await CiFailureRunner.RunAsync(config, context, cancellationToken));
 
     /// <summary>The verdicts a caller distinguishes, as exit codes. A detected failure exits
     /// successfully like the rest: it is a verdict, not an outcome, and the caller decides what to
