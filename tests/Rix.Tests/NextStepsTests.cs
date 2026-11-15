@@ -24,7 +24,7 @@ public partial class NextStepsTests
 
         foreach (var setup in setups)
         {
-            var written = WorkflowTemplates.Of(setup).Select(t => Path.GetFileName(t.RelativePath)).ToArray();
+            var written = WorkflowTemplates.For(setup).Select(t => Path.GetFileName(t.RelativePath)).ToArray();
             foreach (var named in WorkflowFileName().Matches(NextSteps.For(setup)).Select(m => m.Value))
                 CollectionAssert.Contains(written, named, $"{setup.GetType().Name}'s next steps name {named}");
         }

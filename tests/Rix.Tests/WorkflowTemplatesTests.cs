@@ -43,7 +43,7 @@ public class WorkflowTemplatesTests
 
         IInitializeSetup[] setups = [new StandaloneSetup(Ref, CiWorkflowName.Default), new FactorySetup(Ref)];
 
-        Assert.AreEqual(setups.Sum(setup => WorkflowTemplates.Of(setup).Count), embedded);
+        Assert.AreEqual(setups.Sum(setup => WorkflowTemplates.For(setup).Count), embedded);
     }
 
     [TestMethod]

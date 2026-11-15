@@ -20,12 +20,6 @@ internal static class WorkflowTemplates
 
     internal const string ResourcePrefix = "Rix.Cli.Templates.";
 
-    /// <summary>Each template of <paramref name="setup"/> as embedded, still carrying its
-    /// placeholders, paired with the repo-relative path it is written to, in the
-    /// order <see cref="InitializeRunner"/> writes (and reports) them.</summary>
-    internal static IReadOnlyList<(string RelativePath, string Content)> Of(IInitializeSetup setup)
-    => Load(Layout(setup).Folder);
-
     /// <summary>The templates of <paramref name="setup"/> with its placeholders filled in, each
     /// paired with the repo-relative path it is written to, in the order
     /// <see cref="InitializeRunner"/> writes (and reports) them.</summary>
