@@ -54,7 +54,7 @@ public class InitializeRunnerTests
         StringAssert.Contains(ciYml, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@release/2.x");
         StringAssert.Contains(ciYml, "workflows: [\"CI\"] # change \"CI\" to the name:");
         // Every occurrence is substituted, not just the first one the runner happens to hit.
-        Assert.IsFalse(_writes.Any(w => w.Content.Contains(WorkflowTemplates.RefPlaceholder, StringComparison.Ordinal)));
+        Assert.IsFalse(_writes.Any(w => w.Content.Contains(WorkflowRef.Placeholder, StringComparison.Ordinal)));
     }
 
     [TestMethod]

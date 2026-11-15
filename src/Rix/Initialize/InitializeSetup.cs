@@ -9,8 +9,7 @@ internal interface IInitializeSetup
     /// <see cref="WorkflowTemplates"/>).</summary>
     string TemplateFolder { get; }
 
-    /// <summary>Each placeholder this setup's templates carry (see <see cref="WorkflowTemplates"/>),
-    /// with what replaces it.</summary>
+    /// <summary>Each placeholder this setup's templates carry, with what replaces it.</summary>
     IReadOnlyDictionary<string, string> Placeholders { get; }
 
     /// <summary>What <c>rix initialize</c> can't do itself: it only writes files, so the secrets,
@@ -27,7 +26,7 @@ internal sealed record StandaloneSetup(WorkflowRef Ref) : IInitializeSetup
     public string TemplateFolder => "Standalone";
 
     public IReadOnlyDictionary<string, string> Placeholders
-    => new Dictionary<string, string> { [WorkflowTemplates.RefPlaceholder] = Ref.Value };
+    => new Dictionary<string, string> { [WorkflowRef.Placeholder] = Ref.Value };
 
     public string NextSteps => """
 
@@ -51,7 +50,7 @@ internal sealed record FactorySetup(WorkflowRef Ref) : IInitializeSetup
     public string TemplateFolder => "Factory";
 
     public IReadOnlyDictionary<string, string> Placeholders
-    => new Dictionary<string, string> { [WorkflowTemplates.RefPlaceholder] = Ref.Value };
+    => new Dictionary<string, string> { [WorkflowRef.Placeholder] = Ref.Value };
 
     public string NextSteps => """
 

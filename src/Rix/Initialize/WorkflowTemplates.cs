@@ -8,12 +8,6 @@ namespace Rix.Initialize;
 /// own folder under <c>Cli/Templates/</c>.</summary>
 internal static class WorkflowTemplates
 {
-    /// <summary>What the embedded templates carry after the <c>@</c> of their <c>uses:</c> lines in
-    /// place of a real ref. A placeholder rather than a default ref the substitution overwrites, so
-    /// a template that is never substituted fails visibly instead of quietly shipping whichever ref
-    /// happened to be checked in.</summary>
-    internal const string RefPlaceholder = "__RIX_REF__";
-
     internal const string ResourcePrefix = "Rix.Cli.Templates.";
 
     /// <summary>Each template of <paramref name="setup"/> as embedded, still carrying its

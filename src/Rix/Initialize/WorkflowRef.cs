@@ -38,6 +38,12 @@ internal sealed record WorkflowRef
     internal static WorkflowRef ForThisBuild { get; } =
         new($"v{MajorOf(Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion)}");
 
+    /// <summary>What the embedded templates carry after the <c>@</c> of their <c>uses:</c> lines in
+    /// place of a real ref. A placeholder rather than a default ref the substitution overwrites, so
+    /// a template that is never substituted fails visibly instead of quietly shipping whichever ref
+    /// happened to be checked in.</summary>
+    internal const string Placeholder = "__RIX_REF__";
+
     internal string Value { get; }
 
     internal WorkflowRef(string value)
