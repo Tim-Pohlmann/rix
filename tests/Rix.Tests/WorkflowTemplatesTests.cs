@@ -17,7 +17,7 @@ public class WorkflowTemplatesTests
     private static string ContentOf(IInitializeSetup setup, string fileName)
     => WorkflowTemplates.For(setup).Single(t => t.RelativePath == $".github/workflows/{fileName}").Content;
 
-    private static readonly WorkflowRef Ref = new("v9");
+    private static readonly RixRef Ref = new("v9");
 
     [TestMethod]
     public void For_ResolvesBothEmbeddedTemplates_Nonempty()

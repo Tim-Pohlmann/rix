@@ -10,12 +10,12 @@ internal interface IInitializeSetup;
 /// <summary>A repo that runs rix on itself and holds its own tokens.</summary>
 /// <param name="Ref">The revision of rix its workflows call.</param>
 /// <param name="CiWorkflow">The workflow whose failures rix answers.</param>
-internal sealed record StandaloneSetup(WorkflowRef Ref, CiWorkflowName CiWorkflow) : IInitializeSetup;
+internal sealed record StandaloneSetup(RixRef Ref, CiWorkflowName CiWorkflow) : IInitializeSetup;
 
 /// <summary>A factory repo: it runs rix against the repos it serves, holds the tokens for all of
 /// them, and answers the CI failures they dispatch to it.</summary>
 /// <param name="Ref">The revision of rix its workflows call.</param>
-internal sealed record FactorySetup(WorkflowRef Ref) : IInitializeSetup;
+internal sealed record FactorySetup(RixRef Ref) : IInitializeSetup;
 
 /// <summary>A repo a factory serves: it runs no rix of its own and holds none of rix's tokens. It
 /// only dispatches the failures of <see cref="CiWorkflow"/> to <see cref="FactoryRepo"/>.</summary>

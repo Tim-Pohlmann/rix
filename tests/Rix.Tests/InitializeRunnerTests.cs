@@ -42,7 +42,7 @@ public class InitializeRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_WritesTemplateContent_WithReusableWorkflowRefsAndTheWatchedWorkflow()
+    public async Task RunAsync_WritesTemplateContent_WithReusableRixRefsAndTheWatchedWorkflow()
     {
         AssertSuccess(await Run(TestConfig.ValidInitialize(setup: new StandaloneSetup(new("release/2.x"), new("Build and test"))), Context()));
 

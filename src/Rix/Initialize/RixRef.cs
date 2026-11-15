@@ -3,14 +3,15 @@ using System.Text.RegularExpressions;
 
 namespace Rix.Initialize;
 
-/// <summary>The git ref of the rix repo that the workflows written by <c>rix initialize</c> name
-/// after the <c>@</c> in their <c>uses:</c> lines — a tag, branch, or commit SHA. Validated because
+/// <summary>Which revision of rix the workflows written by <c>rix initialize</c> call: the git ref
+/// of the rix repo after the <c>@</c> in their <c>uses:</c> lines. Usually a version tag (see
+/// <see cref="ForThisBuild"/>), but a branch or commit SHA works too. Validated because
 /// it is interpolated into a YAML file the caller then commits: anything with whitespace or a quote
 /// in it would produce a workflow GitHub rejects at parse time, and the error would surface in the
 /// target repo's Actions tab rather than here. Shapes git itself refuses are rejected for the same
 /// reason — they cost a round trip through the target repo to discover — though no check here can
 /// promise the ref resolves, since a well-formed tag that was never cut looks identical.</summary>
-internal sealed record WorkflowRef
+internal sealed record RixRef
 {
     // Deliberately narrower than what git itself accepts: every ref anyone would reasonably pin to
     // (v1, v1.2.3, main, release/2.x, a SHA) fits, and nothing that needs YAML quoting does.
@@ -35,15 +36,15 @@ internal sealed record WorkflowRef
     /// means the workflows a given rix writes call the reusable workflows it was released with,
     /// while still picking up fixes within the major — the same version-skew rule the reusable
     /// workflows already follow when they download their binary, applied one level up.</summary>
-    internal static WorkflowRef ForThisBuild { get; } =
+    internal static RixRef ForThisBuild { get; } =
         new($"v{MajorOf(Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion)}");
 
     internal string Value { get; }
 
-    internal WorkflowRef(string value)
+    internal RixRef(string value)
     {
         if (!Pattern.IsMatch(value))
-            throw new InvalidInputException($"'{value}' is not a valid workflow ref; expected a tag, branch, or commit SHA.");
+            throw new InvalidInputException($"'{value}' is not a valid rix ref; expected a tag, branch, or commit SHA.");
         Value = value;
     }
 

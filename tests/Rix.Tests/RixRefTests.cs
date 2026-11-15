@@ -6,7 +6,7 @@ namespace Rix.Tests;
 /// <summary>Covers the ref that ends up after the <c>@</c> of the written workflows' <c>uses:</c>
 /// lines: what a caller is allowed to pin to, and what rix pins to on its own.</summary>
 [TestClass]
-public class WorkflowRefTests
+public class RixRefTests
 {
     [TestMethod]
     [DataRow("v0")]
@@ -19,7 +19,7 @@ public class WorkflowRefTests
     // rejection below is the one git makes and not a per-component rule that only looks similar.
     [DataRow("release./2.x")]
     public void Constructor_AcceptsTagsBranchesAndShas(string value)
-    => Assert.AreEqual(value, new WorkflowRef(value).Value);
+    => Assert.AreEqual(value, new RixRef(value).Value);
 
     [TestMethod]
     [DataRow("")]
@@ -33,8 +33,8 @@ public class WorkflowRefTests
     [DataRow("main\n")]
     public void Constructor_RejectsAnythingThatWouldNotSurviveYaml(string value)
     {
-        var error = Assert.ThrowsExactly<InvalidInputException>(() => new WorkflowRef(value).ToString()).Message;
-        StringAssert.Contains(error, "not a valid workflow ref");
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new RixRef(value).ToString()).Message;
+        StringAssert.Contains(error, "not a valid rix ref");
     }
 
     /// <summary>Shapes that survive YAML intact but that git itself refuses, so pinning to one
@@ -51,15 +51,15 @@ public class WorkflowRefTests
     [DataRow("release/2.x.")]
     public void Constructor_RejectsRefsGitWouldReject(string value)
     {
-        var error = Assert.ThrowsExactly<InvalidInputException>(() => new WorkflowRef(value).ToString()).Message;
-        StringAssert.Contains(error, "not a valid workflow ref");
+        var error = Assert.ThrowsExactly<InvalidInputException>(() => new RixRef(value).ToString()).Message;
+        StringAssert.Contains(error, "not a valid rix ref");
     }
 
     [TestMethod]
     [DataRow("0.5.0+10f8ca55a5edface0e59d9bc19e60664ad917024", "0")]
     [DataRow("12.1.0", "12")]
     public void MajorOf_TakesTheMajor_OffTheStampedInformationalVersion(string informationalVersion, string expected)
-    => Assert.AreEqual(expected, WorkflowRef.MajorOf(informationalVersion));
+    => Assert.AreEqual(expected, RixRef.MajorOf(informationalVersion));
 
     [TestMethod]
     [DataRow(null)]
@@ -69,7 +69,7 @@ public class WorkflowRefTests
     {
         // A broken build, not caller input: it surfaces as an InvalidOperationException rather than
         // the InvalidInputException a bad --ref raises, so it is never reported as the user's fault.
-        var error = Assert.ThrowsExactly<InvalidOperationException>(() => WorkflowRef.MajorOf(informationalVersion)).Message;
+        var error = Assert.ThrowsExactly<InvalidOperationException>(() => RixRef.MajorOf(informationalVersion)).Message;
         StringAssert.Contains(error, "not a semantic version");
     }
 
@@ -78,7 +78,7 @@ public class WorkflowRefTests
     {
         // Read from the assembly's own version rather than the informational one the property
         // parses, so a change to how that string is split shows up here as a mismatch.
-        var major = typeof(WorkflowRef).Assembly.GetName().Version?.Major;
-        Assert.AreEqual($"v{major}", WorkflowRef.ForThisBuild.Value);
+        var major = typeof(RixRef).Assembly.GetName().Version?.Major;
+        Assert.AreEqual($"v{major}", RixRef.ForThisBuild.Value);
     }
 }

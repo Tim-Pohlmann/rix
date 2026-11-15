@@ -39,7 +39,7 @@ internal static class WorkflowTemplates
     /// <param name="Ref">What replaces <see cref="RefPlaceholder"/>.</param>
     /// <param name="CiWorkflow">What replaces <see cref="CiWorkflowPlaceholder"/>.</param>
     /// <param name="FactoryRepo">What replaces <see cref="FactoryRepoPlaceholder"/>.</param>
-    private sealed record TemplateValues(WorkflowRef? Ref = null, CiWorkflowName? CiWorkflow = null, RepoIdentifier? FactoryRepo = null);
+    private sealed record TemplateValues(RixRef? Ref = null, CiWorkflowName? CiWorkflow = null, RepoIdentifier? FactoryRepo = null);
 
     /// <summary>The folder under <c>Cli/Templates/</c> holding <paramref name="setup"/>'s templates,
     /// and the values their placeholders are filled in with.</summary>

@@ -16,7 +16,7 @@ internal static class InitializeCommand
     private static readonly Option<string> RefOption = new("--ref")
     {
         Recursive = true,
-        Description = $"Ref of the rix repo the written workflows call, i.e. what follows '@' in their uses: lines (default: {WorkflowRef.ForThisBuild}, the major-version tag of this binary's release)"
+        Description = $"Ref of the rix repo the written workflows call, i.e. what follows '@' in their uses: lines (default: {RixRef.ForThisBuild}, the major-version tag of this binary's release)"
     };
 
     // Not recursive: a factory answers the failures its served repos dispatch, so it watches no
@@ -76,7 +76,7 @@ internal static class InitializeCommand
     /// than resolved by precedence.</summary>
     private static IInitializeSetup Setup(ParseResult parsed)
     {
-        var reference = Input.Optional(RefOption.Name, parsed.GetValue(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild);
+        var reference = Input.Optional(RefOption.Name, parsed.GetValue(RefOption), value => new RixRef(value), RixRef.ForThisBuild);
         var factoryRepo = parsed.GetValue(FactoryRepoArgument);
         var singleRepo = parsed.GetValue(SingleRepoOption);
         if (parsed.CommandResult.Command == FactoryCommand)

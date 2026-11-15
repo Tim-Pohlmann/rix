@@ -14,7 +14,7 @@ public class InitializeCommandTests
     => Read(args, null);
 
     /// <summary>The ref the setup's workflows call.</summary>
-    private static WorkflowRef RefOf(InitializeConfig config) => config.Setup switch
+    private static RixRef RefOf(InitializeConfig config) => config.Setup switch
     {
         StandaloneSetup standalone => standalone.Ref,
         FactorySetup factory => factory.Ref,
@@ -70,8 +70,8 @@ public class InitializeCommandTests
     [TestMethod]
     public void Command_DefaultsRefToThisBuildsMajorTag_WhenFlagAbsentOrBlank()
     {
-        Assert.AreEqual(WorkflowRef.ForThisBuild, RefOf(ReadSingleRepo()));
-        Assert.AreEqual(WorkflowRef.ForThisBuild, RefOf(ReadSingleRepo("--ref", "  ")));
+        Assert.AreEqual(RixRef.ForThisBuild, RefOf(ReadSingleRepo()));
+        Assert.AreEqual(RixRef.ForThisBuild, RefOf(ReadSingleRepo("--ref", "  ")));
     }
 
     [TestMethod]
@@ -192,7 +192,7 @@ public class InitializeCommandTests
     {
         var ex = Assert.ThrowsExactly<InvalidInputException>(() => ReadSingleRepo("--ref", "main branch"));
 
-        StringAssert.StartsWith(ex.Message, "--ref: 'main branch' is not a valid workflow ref");
+        StringAssert.StartsWith(ex.Message, "--ref: 'main branch' is not a valid rix ref");
     }
 
     [TestMethod]
