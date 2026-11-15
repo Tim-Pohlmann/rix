@@ -86,5 +86,5 @@ internal static class TestConfig
     );
 
     internal static InitializeConfig ValidInitialize(string? dir = null, IInitializeSetup? setup = null)
-    => new(new DirectoryPath(dir ?? Path.GetTempPath(), new LocalFileSystem()), setup ?? new StandaloneSetup(new("v0")));
+    => new(new DirectoryPath(dir ?? Path.GetTempPath(), new LocalFileSystem()), setup ?? new StandaloneSetup(new("v0"), CiWorkflowName.Default));
 }

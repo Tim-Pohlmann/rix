@@ -13,8 +13,6 @@ public partial class NextStepsTests
 
         StringAssert.Contains(steps, "on every repo this factory serves");
         StringAssert.Contains(steps, "In each repo this factory serves");
-        // A factory answers dispatched failures, so there is no watched workflow to rename.
-        Assert.IsFalse(steps.Contains("workflows: [\"CI\"]", StringComparison.Ordinal));
     }
 
     /// <summary>The steps are prose about the templates, so nothing else would notice a template
@@ -22,7 +20,7 @@ public partial class NextStepsTests
     [TestMethod]
     public void For_NamesOnlyWorkflowsTheSetupWrites()
     {
-        IInitializeSetup[] setups = [new StandaloneSetup(new("v0")), new FactorySetup(new("v0"))];
+        IInitializeSetup[] setups = [new StandaloneSetup(new("v0"), CiWorkflowName.Default), new FactorySetup(new("v0"))];
 
         foreach (var setup in setups)
         {

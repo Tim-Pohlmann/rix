@@ -26,12 +26,12 @@ released with. Then:
 
 1. Add the repo secret `RIX_READ_TOKEN`, and add `RIX_WRITE_TOKEN` to an environment named
    `rix` (see [Secrets](#secrets)).
-2. In `rix-on-ci-failure.yml`, change `workflows: ["CI"]` to the `name:` of the workflow rix
-   should react to.
-3. Commit and push the two files.
+2. Commit and push the two files.
 
-Pass `--dir <path>` to target a repo other than the current directory, and `--ref <git-ref>` to
-pin the written workflows to a different tag, branch, or commit SHA of this repo. The sections
+`rix-on-ci-failure.yml` reacts to failures of the workflow named `CI`; pass `--ci-workflow <name>`
+with the `name:` of yours if it is called something else. Pass `--dir <path>` to target a repo
+other than the current directory, and `--ref <git-ref>` to pin the written workflows to a
+different tag, branch, or commit SHA of this repo. The sections
 below describe the files it writes and how to customize them further. To set up a factory repo
 that serves several repos instead, run `rix initialize factory` in it (see
 [Advanced: a central factory repo](#advanced-a-central-factory-repo)).
@@ -239,8 +239,8 @@ with](#what-the-agents-machine-is-trusted-with).
 ### Simple: directly in a project repo
 
 A caller triggered by `workflow_run` instead of `workflow_dispatch` — this is the
-`rix-on-ci-failure.yml` that [`rix initialize`](#quick-start-rix-initialize) writes; edit the
-watched workflow name after generating it:
+`rix-on-ci-failure.yml` that [`rix initialize`](#quick-start-rix-initialize) writes, with the
+watched workflow named by `--ci-workflow`:
 
 ```yaml
 name: rix (on CI failure)

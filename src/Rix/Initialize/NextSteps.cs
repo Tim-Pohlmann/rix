@@ -8,7 +8,6 @@ internal static class NextSteps
 {
     internal static string For(IInitializeSetup setup) => setup switch
     {
-        // Only a repo answering its own failures names the CI workflow it watches.
         StandaloneSetup => """
 
             Next steps:
@@ -17,8 +16,7 @@ internal static class NextSteps
               2. Add the write token to an environment named 'rix' (Settings -> Environments), and
                  limit that environment's deployment branches to your default branch:
                    RIX_WRITE_TOKEN  PAT, contents:write + pull-requests:write
-              3. In rix-on-ci-failure.yml, set workflows: ["CI"] to your CI workflow's name.
-              4. Commit and push the two workflow files.
+              3. Commit and push the two workflow files.
             """,
         // The tokens span every served repo, and the write token's reach is what bounds the
         // factory, so the scope is spelled out. The served repos still need a trigger of their

@@ -36,15 +36,15 @@ public class InitializeRunnerTests
 
         CollectionAssert.AreEqual
         (
-            WorkflowTemplates.For(new StandaloneSetup(new("v0"))).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
+            WorkflowTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
             _writes.Select(w => w.Path).ToArray()
         );
     }
 
     [TestMethod]
-    public async Task RunAsync_WritesTemplateContent_WithReusableWorkflowRefsAndCiPlaceholder()
+    public async Task RunAsync_WritesTemplateContent_WithReusableWorkflowRefsAndTheWatchedWorkflow()
     {
-        AssertSuccess(await Run(TestConfig.ValidInitialize(setup: new StandaloneSetup(new("release/2.x"))), Context()));
+        AssertSuccess(await Run(TestConfig.ValidInitialize(setup: new StandaloneSetup(new("release/2.x"), new("Build and test"))), Context()));
 
         var rixYml = _writes.Single(w => w.Path.EndsWith("workflows/rix.yml", StringComparison.Ordinal)).Content;
         var ciYml = _writes.Single(w => w.Path.EndsWith("rix-on-ci-failure.yml", StringComparison.Ordinal)).Content;
@@ -52,9 +52,9 @@ public class InitializeRunnerTests
         StringAssert.Contains(rixYml, "uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@release/2.x");
         StringAssert.Contains(rixYml, "read-token: ${{ secrets.RIX_READ_TOKEN }}");
         StringAssert.Contains(ciYml, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@release/2.x");
-        StringAssert.Contains(ciYml, "workflows: [\"CI\"] # change \"CI\" to the name:");
+        StringAssert.Contains(ciYml, "workflows: [\"Build and test\"]");
         // Every occurrence is substituted, not just the first one the runner happens to hit.
-        Assert.IsFalse(_writes.Any(w => w.Content.Contains(WorkflowTemplates.RefPlaceholder, StringComparison.Ordinal)));
+        Assert.IsFalse(_writes.Any(w => w.Content.Contains("__RIX_", StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -92,7 +92,7 @@ public class InitializeRunnerTests
         _writes.Clear();
         AssertSuccess(await Run(config, Context()));
 
-        Assert.AreEqual(WorkflowTemplates.For(new StandaloneSetup(new("v0"))).Count, _writes.Count);
+        Assert.AreEqual(WorkflowTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)).Count, _writes.Count);
     }
 
     [TestMethod]
@@ -109,7 +109,7 @@ public class InitializeRunnerTests
         // Names whichever template the runner reached first rather than a literal, so the
         // assertion keeps testing "the message says which file failed" if the discovered
         // order of the standalone templates changes.
-        StringAssert.Contains(failure.Error, WorkflowTemplates.Of(new StandaloneSetup(new("v0")))[0].RelativePath);
+        StringAssert.Contains(failure.Error, WorkflowTemplates.Of(new StandaloneSetup(new("v0"), CiWorkflowName.Default))[0].RelativePath);
         StringAssert.Contains(failure.Error, "disk full");
     }
 }

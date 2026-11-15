@@ -7,7 +7,8 @@ internal interface IInitializeSetup;
 
 /// <summary>A repo that runs rix on itself and holds its own tokens.</summary>
 /// <param name="Ref">The revision of rix its workflows call.</param>
-internal sealed record StandaloneSetup(WorkflowRef Ref) : IInitializeSetup;
+/// <param name="CiWorkflow">The workflow whose failures rix answers.</param>
+internal sealed record StandaloneSetup(WorkflowRef Ref, CiWorkflowName CiWorkflow) : IInitializeSetup;
 
 /// <summary>A factory repo: it runs rix against the repos it serves, holds the tokens for all of
 /// them, and answers the CI failures they dispatch to it.</summary>

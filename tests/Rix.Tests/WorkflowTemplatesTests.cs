@@ -19,7 +19,7 @@ public class WorkflowTemplatesTests
 
     [TestMethod]
     public void For_ResolvesBothEmbeddedTemplates_Nonempty()
-    => AssertBothTemplatesResolve(new StandaloneSetup(Ref));
+    => AssertBothTemplatesResolve(new StandaloneSetup(Ref, CiWorkflowName.Default));
 
     [TestMethod]
     public void For_Factory_ResolvesBothEmbeddedTemplates_Nonempty()
@@ -41,7 +41,7 @@ public class WorkflowTemplatesTests
         var embedded = typeof(WorkflowTemplates).Assembly.GetManifestResourceNames()
             .Count(name => name.StartsWith(WorkflowTemplates.ResourcePrefix, StringComparison.Ordinal));
 
-        IInitializeSetup[] setups = [new StandaloneSetup(Ref), new FactorySetup(Ref)];
+        IInitializeSetup[] setups = [new StandaloneSetup(Ref, CiWorkflowName.Default), new FactorySetup(Ref)];
 
         Assert.AreEqual(setups.Sum(setup => WorkflowTemplates.Of(setup).Count), embedded);
     }
@@ -49,7 +49,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_RixCaller_TargetsAgentReusableWorkflow_AtTheGivenRef()
     {
-        var content = ContentOf(new StandaloneSetup(Ref), "rix.yml");
+        var content = ContentOf(new StandaloneSetup(Ref, CiWorkflowName.Default), "rix.yml");
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@v9");
         StringAssert.Contains(content, "workflow_dispatch:");
         StringAssert.Contains(content, "repo: ${{ github.repository }}");
@@ -58,12 +58,20 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_CiFailureCaller_TargetsOnCiFailureReusableWorkflow_AtTheGivenRef()
     {
-        var content = ContentOf(new StandaloneSetup(Ref), "rix-on-ci-failure.yml");
+        var content = ContentOf(new StandaloneSetup(Ref, CiWorkflowName.Default), "rix-on-ci-failure.yml");
         StringAssert.Contains(content, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@v9");
         StringAssert.Contains(content, "workflow_run:");
         // Rix refuses a fork's run itself (see CiFailureRunner), but the generated caller must
         // not hand one a runner and this repo's secrets in the first place.
         StringAssert.Contains(content, "github.event.workflow_run.head_repository.full_name == github.repository");
+    }
+
+    /// <summary>Spaces and all: a workflow's name is free text, so it lands quoted.</summary>
+    [TestMethod]
+    public void For_CiFailureCaller_WatchesTheGivenWorkflow()
+    {
+        var content = ContentOf(new StandaloneSetup(Ref, new("Build and test")), "rix-on-ci-failure.yml");
+        StringAssert.Contains(content, "workflows: [\"Build and test\"]");
     }
 
     [TestMethod]
@@ -91,8 +99,8 @@ public class WorkflowTemplatesTests
         // process with different refs must not have the first one's ref baked into the second's.
         Assert.AreEqual
         (
-            WorkflowTemplates.For(new StandaloneSetup(new("v1")))[0].Content.Replace("@v1", "@v2", StringComparison.Ordinal),
-            WorkflowTemplates.For(new StandaloneSetup(new("v2")))[0].Content
+            WorkflowTemplates.For(new StandaloneSetup(new("v1"), CiWorkflowName.Default))[0].Content.Replace("@v1", "@v2", StringComparison.Ordinal),
+            WorkflowTemplates.For(new StandaloneSetup(new("v2"), CiWorkflowName.Default))[0].Content
         );
     }
 

@@ -19,6 +19,13 @@ internal static class InitializeCommand
         Description = $"Ref of the rix repo the written workflows call, i.e. what follows '@' in their uses: lines (default: {WorkflowRef.ForThisBuild}, the major-version tag of this binary's release)"
     };
 
+    // Not recursive: a factory answers the failures its served repos dispatch, so it watches no
+    // workflow of its own.
+    private static readonly Option<string> CiWorkflowOption = new("--ci-workflow")
+    {
+        Description = $"The name: of the workflow whose failures rix answers (default: {CiWorkflowName.Default})"
+    };
+
     /// <summary>A subcommand rather than a flag: a factory is a different kind of repo, not a
     /// variation of the one <c>rix init</c> sets up.</summary>
     private static readonly Command FactoryCommand = new("factory", "Write the workflows of a factory repo, which runs rix against the repos it serves");
@@ -30,6 +37,7 @@ internal static class InitializeCommand
         command.Aliases.Add("init");
         command.Options.Add(DirOption);
         command.Options.Add(RefOption);
+        command.Options.Add(CiWorkflowOption);
         command.Subcommands.Add(FactoryCommand);
 
         return command;
@@ -54,7 +62,8 @@ internal static class InitializeCommand
         var reference = Input.Optional(RefOption.Name, parsed.GetValue(RefOption), value => new WorkflowRef(value), WorkflowRef.ForThisBuild);
         if (parsed.CommandResult.Command == FactoryCommand)
             return new FactorySetup(reference);
-        return new StandaloneSetup(reference);
+        var ciWorkflow = Input.Optional(CiWorkflowOption.Name, parsed.GetValue(CiWorkflowOption), value => new CiWorkflowName(value), CiWorkflowName.Default);
+        return new StandaloneSetup(reference, ciWorkflow);
     }
 
     /// <summary>Runs <paramref name="config"/> against the production context. Separate from

@@ -612,7 +612,8 @@ jobs:
           # --dir must already exist (DirectoryPath rejects a missing one); the .github/workflows
           # path under it is rix's to create.
           mkdir -p init-out/standalone init-out/factory
-          ./rix-bin/rix initialize --dir init-out/standalone
+          # A name with a space, so actionlint below sees the quoting a real name needs.
+          ./rix-bin/rix initialize --dir init-out/standalone --ci-workflow "Build and test"
           ./rix-bin/rix initialize factory --dir init-out/factory
 
           # Compared as a set, not file by file: the steps below glob whatever is there, so a new
@@ -633,9 +634,10 @@ jobs:
           fi
 
           # A template that failed to substitute would still be valid YAML, so actionlint below
-          # would pass it - and every `uses:` in it would resolve to a ref that cannot exist.
-          if grep -rn '__RIX_REF__' init-out; then
-            echo "a template reached the target repo with its ref placeholder unsubstituted" >&2
+          # would pass it - and every `uses:` in it would resolve to a ref that cannot exist, or
+          # the CI-failure caller would watch a workflow nobody named.
+          if grep -rnE '__RIX_[A-Z_]+__' init-out; then
+            echo "a template reached the target repo with a placeholder unsubstituted" >&2
             exit 1
           fi
 

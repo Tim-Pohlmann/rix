@@ -21,6 +21,13 @@ public class InitializeCommandTests
         _ => throw new AssertFailedException($"setup {config.Setup.GetType().Name} has no ref"),
     };
 
+    /// <summary>The workflow a standalone setup's CI-failure caller watches.</summary>
+    private static CiWorkflowName CiWorkflowOf(InitializeConfig config) => config.Setup switch
+    {
+        StandaloneSetup standalone => standalone.CiWorkflow,
+        _ => throw new AssertFailedException($"setup {config.Setup.GetType().Name} watches no CI workflow"),
+    };
+
     [TestMethod]
     public void Command_PassesDirFlag_ToConfig()
     {
@@ -65,6 +72,36 @@ public class InitializeCommandTests
     public void Command_PassesRefFlag_ToConfig()
     {
         Assert.AreEqual("v1.2.3", RefOf(Read("--ref", "v1.2.3")).Value);
+    }
+
+    [TestMethod]
+    public void Command_DefaultsTheCiWorkflowToCI_WhenFlagAbsentOrBlank()
+    {
+        Assert.AreEqual(CiWorkflowName.Default, CiWorkflowOf(Read()));
+        Assert.AreEqual(CiWorkflowName.Default, CiWorkflowOf(Read("--ci-workflow", "  ")));
+    }
+
+    [TestMethod]
+    public void Command_PassesCiWorkflowFlag_ToConfig()
+    {
+        Assert.AreEqual("Build and test", CiWorkflowOf(Read("--ci-workflow", "Build and test")).Value);
+    }
+
+    [TestMethod]
+    public void Command_ReportsTheFlag_WhenCiWorkflowCannotBeWritten()
+    {
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => Read("--ci-workflow", "say \"hi\""));
+
+        StringAssert.StartsWith(ex.Message, "--ci-workflow: 'say \"hi\"' is not a workflow name rix can write");
+    }
+
+    /// <summary>A factory watches no workflow of its own, so the flag is not one it takes.</summary>
+    [TestMethod]
+    public void FactorySubcommand_RejectsTheCiWorkflowFlag()
+    {
+        var parsed = CommandArgs.Parse(InitializeCommand.Build(), "factory", "--ci-workflow", "CI");
+
+        Assert.AreNotEqual(0, parsed.Errors.Count);
     }
 
     [TestMethod]

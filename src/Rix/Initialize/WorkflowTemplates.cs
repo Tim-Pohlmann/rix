@@ -14,6 +14,10 @@ internal static class WorkflowTemplates
     /// happened to be checked in.</summary>
     internal const string RefPlaceholder = "__RIX_REF__";
 
+    /// <summary>What a template carries in place of the name of the workflow whose failures rix
+    /// answers.</summary>
+    internal const string CiWorkflowPlaceholder = "__RIX_CI_WORKFLOW__";
+
     internal const string ResourcePrefix = "Rix.Cli.Templates.";
 
     /// <summary>Each template of <paramref name="setup"/> as embedded, still carrying its
@@ -35,20 +39,25 @@ internal static class WorkflowTemplates
     /// filled in for every setup; one a setup has no value for is null, and a template of that
     /// setup must not carry it.</summary>
     /// <param name="Ref">What replaces <see cref="RefPlaceholder"/>.</param>
-    private sealed record TemplateValues(WorkflowRef? Ref = null);
+    /// <param name="CiWorkflow">What replaces <see cref="CiWorkflowPlaceholder"/>.</param>
+    private sealed record TemplateValues(WorkflowRef? Ref = null, CiWorkflowName? CiWorkflow = null);
 
     /// <summary>The folder under <c>Cli/Templates/</c> holding <paramref name="setup"/>'s templates,
     /// and the values their placeholders are filled in with.</summary>
     private static (string Folder, TemplateValues Values) Layout(IInitializeSetup setup) => setup switch
     {
-        StandaloneSetup standalone => ("Standalone", new(Ref: standalone.Ref)),
+        StandaloneSetup standalone => ("Standalone", new(Ref: standalone.Ref, CiWorkflow: standalone.CiWorkflow)),
         FactorySetup factory => ("Factory", new(Ref: factory.Ref)),
         _ => throw new NotSupportedException($"Unexpected initialize setup type: {setup.GetType()}"),
     };
 
     private static string Fill((string RelativePath, string Content) template, TemplateValues values)
     {
-        (string Placeholder, string? Value)[] fills = [(RefPlaceholder, values.Ref?.Value)];
+        (string Placeholder, string? Value)[] fills =
+        [
+            (RefPlaceholder, values.Ref?.Value),
+            (CiWorkflowPlaceholder, values.CiWorkflow?.Value),
+        ];
         return fills.Aggregate(template.Content, (content, fill) => FillIn(content, fill.Placeholder, fill.Value, template.RelativePath));
     }
 
