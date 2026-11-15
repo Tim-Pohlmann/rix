@@ -15,7 +15,7 @@ public class InitializeCommandTests
 
     /// <summary>The ref the setup fills its templates in with.</summary>
     private static WorkflowRef RefOf(InitializeConfig config)
-    => new(config.Setup.Placeholders[WorkflowRef.Placeholder]);
+    => new(config.Setup.Placeholders[IInitializeSetup.RefPlaceholder]);
 
     [TestMethod]
     public void Command_PassesDirFlag_ToConfig()

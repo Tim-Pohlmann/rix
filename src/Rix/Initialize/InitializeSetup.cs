@@ -9,6 +9,12 @@ internal interface IInitializeSetup
     /// <see cref="WorkflowTemplates"/>).</summary>
     string TemplateFolder { get; }
 
+    /// <summary>What the embedded templates carry after the <c>@</c> of their <c>uses:</c> lines in
+    /// place of a real ref. A placeholder rather than a default ref the substitution overwrites, so
+    /// a template that is never substituted fails visibly instead of quietly shipping whichever ref
+    /// happened to be checked in.</summary>
+    const string RefPlaceholder = "__RIX_REF__";
+
     /// <summary>Each placeholder this setup's templates carry, with what replaces it.</summary>
     IReadOnlyDictionary<string, string> Placeholders { get; }
 
@@ -26,7 +32,7 @@ internal sealed record StandaloneSetup(WorkflowRef Ref) : IInitializeSetup
     public string TemplateFolder => "Standalone";
 
     public IReadOnlyDictionary<string, string> Placeholders
-    => new Dictionary<string, string> { [WorkflowRef.Placeholder] = Ref.Value };
+    => new Dictionary<string, string> { [IInitializeSetup.RefPlaceholder] = Ref.Value };
 
     public string NextSteps => """
 
@@ -50,7 +56,7 @@ internal sealed record FactorySetup(WorkflowRef Ref) : IInitializeSetup
     public string TemplateFolder => "Factory";
 
     public IReadOnlyDictionary<string, string> Placeholders
-    => new Dictionary<string, string> { [WorkflowRef.Placeholder] = Ref.Value };
+    => new Dictionary<string, string> { [IInitializeSetup.RefPlaceholder] = Ref.Value };
 
     public string NextSteps => """
 
