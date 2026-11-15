@@ -47,12 +47,6 @@ public class SubmitRunnerTests
         StringAssert.Contains(log.Results.Single(), "result.json not found");
     }
 
-    /// <summary>Unlike agent and ci-failure, nothing else holds the result, so a lost line is not
-    /// shrugged off.</summary>
-    [TestMethod]
-    public async Task RunAsync_Throws_WhenTheResultCannotBeWritten()
-    => await Assert.ThrowsExactlyAsync<IOException>(() => Run(new StubGit(), log: new StubLog(resultWriteFails: new IOException("broken pipe"))));
-
     [TestMethod]
     public async Task RunAsync_Fails_WhenTheAgentWasNotSuccessful()
     {

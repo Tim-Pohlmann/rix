@@ -31,9 +31,7 @@ internal static class CiFailureRunner
     /// <see cref="CiFailureArtifacts"/>), and because one of them can still change the verdict: a
     /// prompt that never reached disk is reported as a <see cref="CiFailureError"/>, which only
     /// works while the write is inside the thing that returns the verdict. The line printed is that
-    /// final verdict, and the same JSON has already gone to <c>result.json</c>, which is why losing
-    /// it to a broken pipe costs nothing but the echo (see <see cref="BestEffortOutput"/>). What the
-    /// caller adds is a CLI's own: choosing an exit code.</summary>
+    /// final verdict. What the caller adds is a CLI's own: choosing an exit code.</summary>
     internal static async Task<ICiFailureResult> RunAsync
     (
         CiFailureConfig config,
@@ -43,7 +41,7 @@ internal static class CiFailureRunner
     {
         var checkedResult = await CheckAsync(config, context, cancellationToken);
         var result = await CiFailureArtifacts.WriteAsync(config, context, checkedResult);
-        BestEffortOutput.WriteResult(context.Log, CiFailureArtifacts.Serialize(result));
+        context.Log.WriteResult(CiFailureArtifacts.Serialize(result));
         return result;
     }
 

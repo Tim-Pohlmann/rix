@@ -20,9 +20,8 @@ namespace Rix.Submit;
 /// </summary>
 internal static class SubmitRunner
 {
-    /// <summary>Submits and writes the result to <see cref="ILog.WriteResult"/>. Not best-effort,
-    /// unlike agent and ci-failure: submit records its result nowhere else, so a lost line is a
-    /// failure of the command and the exception is left to say so.</summary>
+    /// <summary>Submits and writes the result to <see cref="ILog.WriteResult"/> - the only record
+    /// of the submit there is.</summary>
     internal static async Task<ISubmitResult> RunAsync
     (
         SubmitConfig config,

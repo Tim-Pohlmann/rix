@@ -382,19 +382,6 @@ public class CiFailureRunnerTests
         StringAssert.Contains(log.Results.Single(), "\"status\":\"error\"");
     }
 
-    /// <summary>The same JSON is in <c>result.json</c>, so a broken stdout costs only the echo.</summary>
-    [TestMethod]
-    public async Task RunAsync_ReturnsTheVerdict_WhenStdoutIsABrokenPipe()
-    {
-        var ci = new StubCiHost(getRun: _ => Task.FromResult(TestRuns.Sample(new CiSucceeded())));
-        var log = new StubLog(resultWriteFails: new IOException("broken pipe"));
-
-        var result = await CiFailureRunner.RunAsync(Config(), new CiFailureContext(ci, new StubCiFailureRepoHost(), new LocalFileSystem(), log), CancellationToken.None);
-
-        AssertSkipped(result);
-        Assert.AreEqual("skipped", StatusOfWrittenResult());
-    }
-
     private CiFailureConfig Config(int maxRixCommits = CiFailureConfig.DefaultMaxRixCommits)
     => TestConfig.ValidCiFailure(outputDir: _outputDir, maxRixCommits: maxRixCommits);
 

@@ -16,8 +16,6 @@ internal interface ILog
     /// own logging both arrive on threadpool threads.</summary>
     void WriteLine(string line);
 
-    /// <summary>Writes the command's result, once its outcome is decided. Throws what the stream
-    /// throws (a broken pipe, say), since what a lost result costs differs by command: see
-    /// <see cref="BestEffortOutput"/>.</summary>
+    /// <summary>Writes the command's result, once its outcome is decided.</summary>
     void WriteResult(string line);
 }

@@ -196,22 +196,6 @@ public class AgentRunnerTests
     }
 
     [TestMethod]
-    public async Task ExecuteAgentAsync_StillWritesResultJson_WhenStdoutIsABrokenPipe()
-    => await AssertSurvivesStdoutFailure(new IOException("broken pipe"));
-
-    [TestMethod]
-    public async Task ExecuteAgentAsync_StillWritesResultJson_WhenStdoutIsAlreadyDisposed()
-    => await AssertSurvivesStdoutFailure(new ObjectDisposedException(nameof(TextWriter)));
-
-    private async Task AssertSurvivesStdoutFailure(Exception writeException)
-    {
-        var result = await Run(log: new StubLog(resultWriteFails: writeException));
-
-        Assert.AreEqual(0, result);
-        Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "result.json")));
-    }
-
-    [TestMethod]
     public async Task RunAsync_WritesTheResultJson_AsTheResult()
     {
         var log = new StubLog();
@@ -959,13 +943,12 @@ public class AgentRunnerTests
         return Task.FromResult<ProcessResult>(new ProcessSuccess());
     };
 
-    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null, ILog? log = null)
+    private Task<int> Run(int claudeExitCode = 0, bool claudeTimedOut = false, QueuedPrSpec? pr = null, IFileSystem? fileSystem = null)
     => AgentCommand.ExecuteAsync(MakeConfig(),
         Context(new StubGit(),
             FakeRunner(claudeExitCode, claudeTimedOut, pr),
             _ => Task.FromResult<InstallResult>(new Installed()),
-            log,
-            fileSystem), CancellationToken.None);
+            fileSystem: fileSystem), CancellationToken.None);
 
     /// <summary>The run's own result, for the tests that are about what the run did rather than
     /// about whether <c>result.json</c> landed. The few that are about the file call

@@ -24,8 +24,7 @@ internal static class AgentRunner
     /// <see cref="AgentArtifacts"/>), and because every way the run can end - including a setup
     /// failure before the agent started - has to leave the same artifacts behind. The result line
     /// is written even when <c>result.json</c> was not, and is then the only copy of the outcome
-    /// left; otherwise the file has it too, which is why losing the line to a broken pipe costs
-    /// nothing but the echo (see <see cref="BestEffortOutput"/>).
+    /// left.
     ///
     /// What the caller adds is a CLI's own: choosing an exit code - which is why what comes back is
     /// a <see cref="AgentOutcome"/> and not just the result: the exit code depends on whether
@@ -40,7 +39,7 @@ internal static class AgentRunner
         var transcript = new List<string>();
         var result = await RunCoreAsync(config, context, transcript, cancellationToken);
         var resultFile = await AgentArtifacts.WriteAsync(config, context, result, transcript);
-        BestEffortOutput.WriteResult(context.Log, AgentArtifacts.Serialize(result));
+        context.Log.WriteResult(AgentArtifacts.Serialize(result));
         return new AgentOutcome(result, resultFile);
     }
 
