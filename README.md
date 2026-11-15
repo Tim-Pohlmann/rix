@@ -35,8 +35,9 @@ with the `name:` of yours if it is called something else. Pass `--dir <path>` to
 other than the current directory, and `--ref <git-ref>` to pin the written workflows to a
 different tag, branch, or commit SHA of this repo. The sections
 below describe the files it writes and how to customize them further. To set up a factory repo
-that serves several repos instead, run `rix initialize factory` in the factory repo and
-`rix initialize <owner/name>` in each repo it serves, naming the factory (see
+that serves several repos instead, run `rix initialize factory` in the factory repo, then onboard
+each repo it serves, either through the factory's own agent or by running
+`rix initialize <owner/name>` in it, naming the factory (see
 [Advanced: a central factory repo](#advanced-a-central-factory-repo)).
 
 ### The `rix-agent.yml` caller workflow
@@ -381,8 +382,11 @@ the `rix` environment releases the write token only there. Don't trade the token
 `workflow_dispatch` either: its `actions:write` would let every project repo start the factory's
 `rix-agent.yml` with a prompt of its own.
 
-Run `rix initialize factory` in a checkout of the factory repo to write its two workflows. The
-first answers the dispatched failures:
+Run `rix initialize factory` in a checkout of the factory repo to write its two workflows and its
+agent home, `.rix/agent-home`, which holds the onboarding skill (see [Onboarding a
+repo](#onboarding-a-repo)). Both workflows pass the factory as their own `factory-repo` (see
+[Supplying agent home files from a factory repo](#supplying-agent-home-files-from-a-factory-repo)),
+so a run fails if that directory is missing. The first workflow answers the dispatched failures:
 
 ```yaml
 # In the factory repo: .github/workflows/rix-on-ci-failure.yml
@@ -407,6 +411,10 @@ jobs:
     with:
       repo: ${{ github.event.client_payload.repo }}
       run-id: ${{ github.event.client_payload.run_id }}
+      # Copies this repo's .rix/agent-home into the runner's home before the agent starts, as in
+      # rix-agent.yml, so both kinds of run see the same agent home. The run fails while that
+      # directory is missing.
+      factory-repo: ${{ github.repository }}
     secrets:
       read-token: ${{ secrets.RIX_READ_TOKEN }}
       write-token: ${{ secrets.RIX_WRITE_TOKEN }}
@@ -434,6 +442,9 @@ jobs:
       # Any repo read-token reaches; the PR only opens where write-token can push.
       repo: ${{ inputs.repo || github.repository }}
       prompt: ${{ inputs.prompt }}
+      # Copies this repo's .rix/agent-home into the runner's home before the agent starts, which is
+      # where the agent finds the rix-onboard skill. The run fails while that directory is missing.
+      factory-repo: ${{ github.repository }}
       # agent: claude   # optional; defaults to 'opencode'
     secrets:
       read-token: ${{ secrets.RIX_READ_TOKEN }}
@@ -442,7 +453,25 @@ jobs:
 
 The factory repo's `read-token`/`write-token` need access across every project repo it serves
 (e.g. a GitHub App installation token), which is the trade-off of centralizing: one PAT with a
-much bigger blast radius than the per-repo tokens in the simple pattern.
+much bigger blast radius than the per-repo tokens in the simple pattern. `read-token` also needs
+read access to the factory itself, for the agent home.
+
+#### Onboarding a repo
+
+To onboard a project repo, run the factory's `rix (agent)` workflow with `repo` set to the
+project's owner/name and a prompt such as `Onboard this repo to the factory`. The agent picks up
+the `rix-onboard` skill from the factory's agent home: it finds the project's CI workflow, writes
+`rix-notify-factory.yml` with `rix initialize`, naming the factory, and opens a PR. The PR body
+lists what is left to a human: the project's `RIX_FACTORY_DISPATCH_TOKEN` secret, and adding the
+project to the factory's tokens.
+
+That PR adds a workflow file, so `write-token` needs the Workflows permission on the project
+repos. The `rix` environment is what keeps that permission from reaching a run on any branch but
+the factory's default branch (see [Secrets](#secrets)). Without the permission, run
+`rix initialize <factory owner/name>` in a checkout of the project repo yourself.
+
+The skill is written twice, to `.claude/skills/` and to `.agents/skills/`, since Claude Code and
+pi each look in only one of them; opencode reads both.
 
 **The tokens bound the factory, not the payload:** `RIX_FACTORY_DISPATCH_TOKEN` reaches
 only the factory repo, but the `repo`/`run_id`/`branch` values inside `client_payload` are
