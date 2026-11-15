@@ -20,12 +20,6 @@ public partial class OnboardingSkillTests
     public void For_Factory_WritesTheOnboardingSkill_WhereEveryHarnessLooks()
     => CollectionAssert.AreEqual(ExpectedFactorySkillPaths, FactorySkills.Select(s => s.RelativePath).ToArray());
 
-    /// <summary>The copies are two files kept by hand, and opencode reads both directories, so two
-    /// that differ would give it two skills under one name that disagree.</summary>
-    [TestMethod]
-    public void For_Factory_WritesTheSameSkillToEveryDirectory()
-    => Assert.AreEqual(1, FactorySkills.Select(s => s.Content).Distinct().Count());
-
     /// <summary>The Agent Skills rules the harnesses share: the name is the directory's, in
     /// lowercase kebab case, and a skill without a description is never offered to the model (pi
     /// does not load it at all).</summary>

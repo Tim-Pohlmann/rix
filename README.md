@@ -466,8 +466,8 @@ repos. The `rix` environment is what keeps that permission from reaching a run o
 the factory's default branch (see [Secrets](#secrets)). Without the permission, run
 `rix initialize <factory owner/name>` in a checkout of the project repo yourself.
 
-The skill sits in the agent home twice, under `.claude/skills/` and `.agents/skills/`, since
-Claude Code and pi each look in only one of them; opencode reads both.
+The skill is written to the agent home twice, under `.agents/skills/` and `.claude/skills/`, since
+Claude Code reads only the latter; pi reads only the former, and opencode reads both.
 
 **The tokens bound the factory, not the payload:** `RIX_FACTORY_DISPATCH_TOKEN` reaches
 only the factory repo, but the `repo`/`run_id`/`branch` values inside `client_payload` are
