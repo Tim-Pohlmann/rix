@@ -44,18 +44,30 @@ public class StartupTests
     public async Task RunInitializeAsync_WritesCallerWorkflows_AndReturnsZero()
     {
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
-        var exitCode = await Startup.RunAsync(["initialize", "--dir", dir]);
+        var exitCode = await Startup.RunAsync(["initialize", "--single-repo", "--dir", dir]);
 
         Assert.AreEqual(0, exitCode);
-        Assert.IsTrue(File.Exists(Path.Combine(dir, ".github/workflows/rix.yml")));
+        Assert.IsTrue(File.Exists(Path.Combine(dir, ".github/workflows/rix-agent.yml")));
         Assert.IsTrue(File.Exists(Path.Combine(dir, ".github/workflows/rix-on-ci-failure.yml")));
+    }
+
+    /// <summary>The subcommand runs at all: <see cref="Startup"/> has to hand it the parent's
+    /// action, since System.CommandLine does not.</summary>
+    [TestMethod]
+    public async Task RunInitializeAsync_WritesTheFactoryWorkflows_ForTheFactorySubcommand()
+    {
+        var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
+        var exitCode = await Startup.RunAsync(["initialize", "factory", "--dir", dir]);
+
+        Assert.AreEqual(0, exitCode);
+        StringAssert.Contains(File.ReadAllText(Path.Combine(dir, ".github/workflows/rix-on-ci-failure.yml")), "repository_dispatch:");
     }
 
     [TestMethod]
     public async Task RunInitializeAsync_Returns2_WhenTargetDirDoesNotExist()
     {
         using var stderr = new ConsoleErrorScope();
-        var exitCode = await Startup.RunAsync(["initialize", "--dir", "/nonexistent/path/xyz"]);
+        var exitCode = await Startup.RunAsync(["initialize", "--single-repo", "--dir", "/nonexistent/path/xyz"]);
 
         Assert.AreEqual(2, exitCode);
         StringAssert.Contains(stderr.Text, "error: --dir: directory does not exist: /nonexistent/path/xyz");

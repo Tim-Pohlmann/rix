@@ -607,19 +607,27 @@ jobs:
       - name: Make rix binary executable
         run: chmod +x rix-bin/rix
 
-      - name: Write the caller workflows into an empty target
+      - name: Write the caller workflows into an empty target per setup
         run: |
           # --dir must already exist (DirectoryPath rejects a missing one); the .github/workflows
           # path under it is rix's to create.
-          mkdir -p init-out
-          ./rix-bin/rix initialize --dir init-out
+          mkdir -p init-out/standalone init-out/factory init-out/factory-served
+          # A name with a space, so actionlint below sees the quoting a real name needs.
+          ./rix-bin/rix initialize --single-repo --dir init-out/standalone --ci-workflow "Build and test"
+          ./rix-bin/rix initialize factory --dir init-out/factory
+          ./rix-bin/rix initialize acme/rix-factory --dir init-out/factory-served
 
           # Compared as a set, not file by file: the steps below glob whatever is there, so a new
           # template would otherwise sail through them without anyone deciding what else it needs.
           # Every path, not just the names, so a template written somewhere unexpected fails too.
-          # LC_ALL=C because a locale that ignores punctuation while sorting orders rix.yml and
-          # rix-on-ci-failure.yml the other way round.
-          expected=$'init-out/.github/workflows/rix-on-ci-failure.yml\ninit-out/.github/workflows/rix.yml'
+          # LC_ALL=C because a locale that ignores punctuation while sorting puts factory/ ahead of
+          # factory-served/.
+          expected="$(printf '%s\n' \
+            init-out/factory-served/.github/workflows/rix-notify-factory.yml \
+            init-out/factory/.github/workflows/rix-agent.yml \
+            init-out/factory/.github/workflows/rix-on-ci-failure.yml \
+            init-out/standalone/.github/workflows/rix-agent.yml \
+            init-out/standalone/.github/workflows/rix-on-ci-failure.yml)"
           actual="$(find init-out -type f | LC_ALL=C sort)"
           if [[ "$actual" != "$expected" ]]; then
             echo "rix initialize wrote a different set of files than this job expects (< expected, > actual):" >&2
@@ -628,9 +636,11 @@ jobs:
           fi
 
           # A template that failed to substitute would still be valid YAML, so actionlint below
-          # would pass it - and every `uses:` in it would resolve to a ref that cannot exist.
-          if grep -rn '__RIX_REF__' init-out; then
-            echo "a template reached the target repo with its ref placeholder unsubstituted" >&2
+          # would pass it - and every `uses:` in it would resolve to a ref that cannot exist, or
+          # the CI-failure caller would watch a workflow nobody named, or the dispatch would go to
+          # a factory repo that cannot.
+          if grep -rnE '__RIX_[A-Z_]+__' init-out; then
+            echo "a template reached the target repo with a placeholder unsubstituted" >&2
             exit 1
           fi
 
@@ -675,12 +685,15 @@ jobs:
 
 
           errors = []
-          for caller_path in sorted(glob.glob("init-out/.github/workflows/*.yml")):
+          for caller_path in sorted(glob.glob("init-out/*/.github/workflows/*.yml")):
               caller = yaml.safe_load(open(caller_path))
               for job_name, job in caller["jobs"].items():
                   uses = job.get("uses")
                   if uses is None:
-                      errors.append(f"{caller_path}: job {job_name} calls no reusable workflow")
+                      # A job of steps (the factory-served repo's dispatch) has no callee to pair
+                      # with; one with neither is a template that lost its `uses:`.
+                      if "steps" not in job:
+                          errors.append(f"{caller_path}: job {job_name} calls no reusable workflow and runs no steps")
                       continue
                   repo_and_path, _, ref = uses.partition("@")
                   owner, repo, callee_path = repo_and_path.split("/", 2)
@@ -716,7 +729,7 @@ jobs:
       - name: Lint the written workflows (actionlint)
         uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
         with:
-          files: init-out/.github/workflows/*.yml
+          files: init-out/*/.github/workflows/*.yml
           # The matcher annotates a PR's changed lines, which these files are not - they are
           # generated into a scratch directory, so annotations would point at paths that do not
           # exist in the repo.

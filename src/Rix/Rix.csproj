@@ -28,7 +28,7 @@
   <!-- Caller-workflow templates `rix initialize` writes into a target repo. Embedded so a
        released single-file binary carries them itself, with no network fetch at init time. -->
   <ItemGroup>
-    <EmbeddedResource Include="Cli/Templates/*.yml" />
+    <EmbeddedResource Include="Cli/Templates/*/*.yml" />
   </ItemGroup>
 
 </Project>

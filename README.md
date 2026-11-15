@@ -17,27 +17,32 @@ the resulting PRs. Each repo drives it through a small caller workflow.
 
 ### Quick start: `rix initialize`
 
-Run `rix initialize` inside a checkout of the target repo to write both caller workflows
-(`.github/workflows/rix.yml` and `.github/workflows/rix-on-ci-failure.yml`; existing files are
-overwritten). The templates are baked into the `rix` binary, so this needs no network access.
+Run `rix initialize --single-repo` inside a checkout of the target repo to write both caller
+workflows (`.github/workflows/rix-agent.yml` and `.github/workflows/rix-on-ci-failure.yml`;
+existing files are overwritten). Releases up to v0.4 wrote the first one as `rix.yml`; delete that
+file when you re-run it, or the repo ends up with two identical manual triggers. The templates are
+baked into the `rix` binary, so this needs no network access.
 Their `uses:` lines point at the floating major-version tag of the release this `rix` comes
 from (`@v0` for any 0.x build), so the caller workflows call the reusable workflows they were
 released with. Then:
 
 1. Add the repo secret `RIX_READ_TOKEN`, and add `RIX_WRITE_TOKEN` to an environment named
    `rix` (see [Secrets](#secrets)).
-2. In `rix-on-ci-failure.yml`, change `workflows: ["CI"]` to the `name:` of the workflow rix
-   should react to.
-3. Commit and push the two files.
+2. Commit and push the two files.
 
-Pass `--dir <path>` to target a repo other than the current directory, and `--ref <git-ref>` to
-pin the written workflows to a different tag, branch, or commit SHA of this repo. The sections
-below describe the files it writes and how to customize them further.
+The written workflows react to failures of the workflow named `CI`; pass `--ci-workflow <name>`
+with the `name:` of yours if it is called something else. Pass `--dir <path>` to target a repo
+other than the current directory, and `--ref <git-ref>` to pin the written workflows to a
+different tag, branch, or commit SHA of this repo. The sections
+below describe the files it writes and how to customize them further. To set up a factory repo
+that serves several repos instead, run `rix initialize factory` in the factory repo and
+`rix initialize <owner/name>` in each repo it serves, naming the factory (see
+[Advanced: a central factory repo](#advanced-a-central-factory-repo)).
 
-### The `rix` caller workflow
+### The `rix-agent.yml` caller workflow
 
 ```yaml
-name: rix
+name: rix (agent)
 on:
   workflow_dispatch:
     inputs:
@@ -237,8 +242,8 @@ with](#what-the-agents-machine-is-trusted-with).
 ### Simple: directly in a project repo
 
 A caller triggered by `workflow_run` instead of `workflow_dispatch` — this is the
-`rix-on-ci-failure.yml` that [`rix initialize`](#quick-start-rix-initialize) writes; edit the
-watched workflow name after generating it:
+`rix-on-ci-failure.yml` that [`rix initialize`](#quick-start-rix-initialize) writes, with the
+watched workflow named by `--ci-workflow`:
 
 ```yaml
 name: rix (on CI failure)
@@ -322,32 +327,36 @@ Two consequences worth stating outright:
 Useful when several project repos should share one set of `read-token`/`write-token`/
 `agent-api-key` secrets instead of each holding its own. `workflow_run` can't cross repos, so
 each project repo still needs a small local trigger — but it only *notifies* the factory repo
-instead of running rix itself, using a PAT scoped just to dispatch to that one repo:
+instead of running rix itself, using a PAT scoped just to dispatch to that one repo. Run
+`rix initialize <owner/name>` in each project repo to write it, with the factory
+repo's name filled in (and the watched workflow's, from `--ci-workflow` as above):
 
 ```yaml
-# In each project repo: .github/workflows/notify-rix-factory.yml
-name: notify rix factory
+# In each project repo: .github/workflows/rix-notify-factory.yml
+name: rix (notify factory)
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI"] # the name: of the workflow rix reacts to
     types: [completed]
 jobs:
   notify:
-    # Same two conditions as the simple pattern: rix re-checks both against the API, so this only
-    # saves the round trip through the factory.
+    # The factory re-checks both conditions against the API, so this only saves the round trip. The
+    # head_repository check keeps runs from forks' pull requests out: anyone can push to a fork.
     if: >-
       github.event.workflow_run.conclusion == 'failure' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    # The dispatch goes through RIX_FACTORY_DISPATCH_TOKEN; this job needs no GITHUB_TOKEN access.
+    permissions: {}
     steps:
-      - name: Dispatch to factory repo
+      - name: Dispatch to the factory repo
         # Every value reaches the script through env, never through ${{ }} inside `run:` - an
         # expression there is pasted into the script before bash sees it. A fork PR's branch name
         # is chosen by its author and git allows `$(...)` and backticks in one, so interpolating
         # it would run the author's command in this step, which holds the dispatch token.
         env:
           GH_TOKEN: ${{ secrets.RIX_FACTORY_DISPATCH_TOKEN }}
-          FACTORY_REPO: ${{ vars.RIX_FACTORY_REPO }}
+          FACTORY_REPO: my-org/rix-factory
           PROJECT_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -360,27 +369,37 @@ jobs:
 ```
 
 `RIX_FACTORY_DISPATCH_TOKEN` needs `contents:write` on the factory repo (required by the
-`dispatches` API) and nothing else — it never touches RIX's own credentials.
+`dispatches` API) and nothing else — it never touches RIX's own credentials. That grant is more
+than a dispatch, though: `contents:write` can also push to the factory, and every project repo
+holds the token. Changing a workflow file takes the separate Workflows permission, which the token
+lacks, but everything else in the factory is open to it, including an agent home rix copies into
+the runner (`factory-repo` above). So **protect the factory's default branch** with a ruleset that
+requires a pull request (Settings → Rules → Rulesets), and keep the token's owner off its bypass
+list: a PAT acts as its owner, so a bypass the owner has is one every project repo has. Other
+branches don't matter, since the factory's workflows answer dispatches on the default branch and
+the `rix` environment releases the write token only there. Don't trade the token for
+`workflow_dispatch` either: its `actions:write` would let every project repo start the factory's
+`rix-agent.yml` with a prompt of its own.
+
+Run `rix initialize factory` in a checkout of the factory repo to write its two workflows. The
+first answers the dispatched failures:
 
 ```yaml
-# In the factory repo: .github/workflows/rix-on-failure.yml
-name: rix (dispatched CI failure)
+# In the factory repo: .github/workflows/rix-on-ci-failure.yml
+name: rix (on CI failure)
+# Answers the CI failures that the repos this factory serves dispatch here, each from its own
+# rix-notify-factory.yml. Nothing in a repository_dispatch says who sent it, so on-ci-failure.yml
+# re-checks the payload against the API: the run must exist, have failed, and have run on a branch
+# of the repo the payload names.
 on:
   repository_dispatch:
     types: [rix-ci-failure]
-
 jobs:
   rix:
-    # Bounds which repos the factory will act on, but does not say who asked — see the
-    # trust caveat below.
-    if: contains(fromJSON(vars.RIX_FACTORY_ALLOWED_REPOS), github.event.client_payload.repo)
-    # The factory's equivalent of the simple pattern's group, on the job for the same reason and
-    # below the allowlist so a payload naming a repo this factory does not serve never reaches it.
-    # `repository_dispatch` carries neither repo nor branch of its own, so the key comes from the
-    # payload. Those fields are unauthenticated: an onboarded repo can name another one's pair and
-    # cancel its queued response. That is a real denial rather than mere serialization, and it is
-    # the same mutual trust the allowlist already asks for - not something the allowlist bounds.
-    # See the caveat below.
+    # One rix run per branch at a time, as in a single repo's rix-on-ci-failure.yml. A
+    # repository_dispatch carries neither repo nor branch of its own, so the key comes from the
+    # payload, and a repo holding the dispatch token can name another one's branch and cancel the
+    # run it had queued.
     concurrency:
       group: rix-on-ci-failure-${{ github.event.client_payload.repo }}-${{ github.event.client_payload.branch }}
       cancel-in-progress: false
@@ -393,29 +412,59 @@ jobs:
       write-token: ${{ secrets.RIX_WRITE_TOKEN }}
 ```
 
+The second is the factory's `rix-agent.yml`, a manual run like the simple pattern's, with a `repo` input
+naming the repo to work on:
+
+```yaml
+# In the factory repo: .github/workflows/rix-agent.yml
+name: rix (agent)
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: Task for the agent
+        required: true
+      repo:
+        description: "Target repo (owner/name); defaults to this repo"
+        required: false
+jobs:
+  rix:
+    uses: Tim-Pohlmann/rix/.github/workflows/agent.yml@v0
+    with:
+      # Any repo read-token reaches; the PR only opens where write-token can push.
+      repo: ${{ inputs.repo || github.repository }}
+      prompt: ${{ inputs.prompt }}
+      # agent: claude   # optional; defaults to 'opencode'
+    secrets:
+      read-token: ${{ secrets.RIX_READ_TOKEN }}
+      write-token: ${{ secrets.RIX_WRITE_TOKEN }}
+```
+
 The factory repo's `read-token`/`write-token` need access across every project repo it serves
 (e.g. a GitHub App installation token), which is the trade-off of centralizing: one PAT with a
 much bigger blast radius than the per-repo tokens in the simple pattern.
 
-**Validate the dispatch payload:** `RIX_FACTORY_DISPATCH_TOKEN` can only dispatch to the
-factory repo, but the `repo`/`run-id` values inside `client_payload` are unauthenticated free
-text — any repo holding that token can ask the factory to act against *any* `repo`/`run-id`,
-not just its own. Since the factory's `read-token`/`write-token` span every project repo it
-serves, an unvalidated payload lets one onboarded repo trigger rix runs (and PR writes) against
-another. Gate the factory job on an explicit allowlist of onboarded repos (as shown above with
-`RIX_FACTORY_ALLOWED_REPOS`) rather than trusting `client_payload.repo` directly.
+**The tokens bound the factory, not the payload:** `RIX_FACTORY_DISPATCH_TOKEN` reaches
+only the factory repo, but the `repo`/`run_id`/`branch` values inside `client_payload` are
+unauthenticated free text — any repo holding that token can ask the factory to act on *any* repo
+and run, not just its own. The factory does not check the payload against a list of onboarded
+repos; what limits it is what its own tokens reach. A PR can only land where `write-token` can
+push, so scope that token to exactly the repos the factory serves. Outside that set a request gets
+as far as `read-token` reaches, and a fine-grained PAT can read every public repo: a payload naming
+a real failing run in someone else's public repo starts the agent there, and the run fails only
+when it tries to open the PR. That costs agent spend and writes nothing — the trade for not keeping
+a list of onboarded repos in step with the tokens that already define it.
 
-**Onboarding a repo is mutual trust:** the allowlist bounds *which* repos the factory will act
-on, but nothing in a `repository_dispatch` says *who asked*. All project repos share one
-`RIX_FACTORY_DISPATCH_TOKEN`, so an onboarded repo can name any other onboarded repo in
-`client_payload[repo]` along with a real failing run ID from it, and every check downstream
-passes — the run exists, it failed, and its head repo matches. rix then spends the factory's
-cross-repo write token on that other repo. What an attacker gets is the trigger, not the
+**Onboarding a repo is mutual trust:** nothing in a `repository_dispatch` says *who asked*. All
+project repos share one `RIX_FACTORY_DISPATCH_TOKEN`, so an onboarded repo can name any other
+onboarded repo in `client_payload[repo]` along with a real failing run ID from it, and every check
+downstream passes — the run exists, it failed, and its head repo matches. rix then spends the
+factory's cross-repo write token on that other repo. What an attacker gets is the trigger, not the
 content: rix still answers a genuine CI failure and still opens an ordinary `rix/*` PR. But the
 timing and the target are theirs to pick, and the reachable set is exactly the repos worth
 reaching. The same holds in the other direction: `client_payload` also supplies the concurrency
-key, so an onboarded repo can name another's `repo`/`branch` and cancel a response that repo
-had queued. Read the allowlist as a blast-radius bound, not as authentication.
+key, so an onboarded repo can name another's `repo`/`branch` and cancel a response that repo had
+queued.
 
 Two things that don't close this, despite looking like they should: `github.event.sender`
 names the account or App that called the dispatch API, not the repo it was called from, so with
@@ -426,8 +475,8 @@ So either **run one factory per trust domain**, keeping the onboarded set small 
 members may as well trust each other (usually what an org reaching for a factory wants anyway),
 or, when the set spans trust boundaries, **make each project prove who it is**: have it send an
 HMAC of `repo`/`run_id` under a per-project secret, and have the factory recompute it using the
-secret it holds *for the repo the payload claims to be*. That lookup is what the allowlist is
-missing — claiming to be another repo then requires that repo's secret. The cost is that the
+secret it holds *for the repo the payload claims to be*. That lookup is what the payload alone
+cannot give — claiming to be another repo then requires that repo's secret. The cost is that the
 factory now stores one secret per project, which is most of the per-repo key management
 centralizing was meant to avoid; that trade is the reason to prefer the first option when the
 trust domain allows it.

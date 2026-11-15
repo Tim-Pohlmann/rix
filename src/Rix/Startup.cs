@@ -48,7 +48,9 @@ internal static class Startup
     /// <summary>Makes invoking <paramref name="command"/> build its config and run it. The build
     /// happens inside the action so an <see cref="InvalidInputException"/> it throws is reported
     /// like any other (see <see cref="CliPipeline.ReportingInvalidInput"/>). Both halves are the
-    /// command's own: it turns the parse result into a config and it runs one.</summary>
+    /// command's own: it turns the parse result into a config and it runs one. Its subcommands get
+    /// the same action, so <paramref name="create"/> is where they are told apart (e.g.
+    /// <c>rix init factory</c>).</summary>
     private static Command Runs<TConfig>
     (
         Command command,
@@ -56,7 +58,10 @@ internal static class Startup
         Func<TConfig, CancellationToken, Task<int>> execute
     )
     {
-        command.SetAction(CliPipeline.ReportingInvalidInput((parsed, cancellationToken) => execute(create(parsed), cancellationToken)));
+        var action = CliPipeline.ReportingInvalidInput((parsed, cancellationToken) => execute(create(parsed), cancellationToken));
+        command.SetAction(action);
+        foreach (var subcommand in command.Subcommands)
+            subcommand.SetAction(action);
         return command;
     }
 

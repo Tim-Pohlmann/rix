@@ -20,7 +20,23 @@ namespace Rix.Submit;
 /// </summary>
 internal static class SubmitRunner
 {
+    /// <summary>Submits and writes the result to <see cref="ILog.WriteResult"/> - the only record
+    /// of the submit there is.</summary>
     internal static async Task<ISubmitResult> RunAsync
+    (
+        SubmitConfig config,
+        SubmitContext context,
+        CancellationToken cancellationToken
+    )
+    {
+        var result = await SubmitAsync(config, context, cancellationToken);
+        context.Log.WriteResult(JsonSerializer.Serialize(result, SubmitJsonContext.Default.ISubmitResult));
+        return result;
+    }
+
+    /// <summary>The submit itself, in one method so each way it can end is a plain <c>return</c>
+    /// and the result is written once, by <see cref="RunAsync"/>, whichever one it took.</summary>
+    private static async Task<ISubmitResult> SubmitAsync
     (
         SubmitConfig config,
         SubmitContext context,

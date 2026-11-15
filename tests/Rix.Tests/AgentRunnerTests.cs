@@ -196,36 +196,29 @@ public class AgentRunnerTests
     }
 
     [TestMethod]
-    public async Task ExecuteAgentAsync_StillWritesResultJson_WhenStdoutIsABrokenPipe()
-    => await AssertSurvivesStdoutFailure(new IOException("broken pipe"));
-
-    [TestMethod]
-    public async Task ExecuteAgentAsync_StillWritesResultJson_WhenStdoutIsAlreadyDisposed()
-    => await AssertSurvivesStdoutFailure(new ObjectDisposedException(nameof(TextWriter)));
-
-    private async Task AssertSurvivesStdoutFailure(Exception writeException)
+    public async Task RunAsync_WritesTheResultJson_AsTheResult()
     {
-        var original = Console.Out;
-        Console.SetOut(new ThrowingWriter(writeException));
-        int result;
-        try { result = await Run(); }
-        finally { Console.SetOut(original); }
+        var log = new StubLog();
 
-        Assert.AreEqual(0, result);
-        Assert.IsTrue(File.Exists(Path.Combine(_outputDir, "result.json")));
+        await AgentRunner.RunAsync(MakeConfig(),
+            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()), log),
+            CancellationToken.None);
+
+        Assert.AreEqual(await File.ReadAllTextAsync(Path.Combine(_outputDir, "result.json")), log.Results.Single());
     }
 
-    /// <summary>Simulates a broken/closed stdout: every line write fails with
-    /// <paramref name="exception"/>, e.g. <see cref="IOException"/> for a broken pipe or
-    /// <see cref="ObjectDisposedException"/> for an already-disposed stream. Overrides the
-    /// synchronous <see cref="WriteLine(string?)"/> rather than <c>WriteLineAsync</c> -
-    /// <see cref="Console.SetOut"/> wraps the writer in a synchronized <see cref="TextWriter"/>
-    /// whose async methods delegate to the synchronous ones under a lock, so an override of the
-    /// async method alone is never reached.</summary>
-    private sealed class ThrowingWriter(Exception exception) : TextWriter
+    /// <summary>With <c>result.json</c> lost, the line is the only copy of the outcome left.</summary>
+    [TestMethod]
+    public async Task RunAsync_StillWritesTheResult_WhenResultJsonIsLost()
     {
-        public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
-        public override void WriteLine(string? value) => throw exception;
+        var log = new StubLog();
+
+        await AgentRunner.RunAsync(MakeConfig(),
+            Context(new StubGit(), FakeRunner(), _ => Task.FromResult<InstallResult>(new Installed()), log,
+                new StubFileSystem(writeAllText: (_, _) => throw new IOException("disk full"))),
+            CancellationToken.None);
+
+        StringAssert.Contains(log.Results.Single(), "\"status\":\"success\"");
     }
 
     [TestMethod]

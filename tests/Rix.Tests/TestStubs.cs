@@ -224,12 +224,17 @@ internal sealed class StubProcessRunner(RunProcess run) : IProcessRunner
 
 /// <summary>A log that keeps every line it was given, so a test asserts what a run reported the
 /// same way it asserts a result. Doubles as the "nobody is listening" sink: a test that doesn't
-/// care simply never reads <see cref="Lines"/>.</summary>
+/// care simply never reads <see cref="Lines"/>. Keeps the result lines apart in
+/// <see cref="Results"/>.</summary>
 internal sealed class StubLog : ILog
 {
     internal List<string> Lines { get; } = [];
 
+    internal List<string> Results { get; } = [];
+
     public void WriteLine(string line) => Lines.Add(line);
+
+    public void WriteResult(string line) => Results.Add(line);
 }
 
 internal sealed class StubFileSystem(

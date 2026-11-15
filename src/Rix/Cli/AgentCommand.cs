@@ -71,18 +71,11 @@ internal static class AgentCommand
         Composition.FileSystem()
     );
 
-    /// <summary>What a CLI adds to a run: the result on stdout for a human or a shell watching the
-    /// command, and an exit code. The artifacts the run itself produces are
-    /// <see cref="AgentRunner.RunAsync"/>'s (see <see cref="AgentArtifacts"/>), so nothing here can leave a
-    /// run half-recorded. Stdout is still written when <c>result.json</c> was not, and is then the
-    /// only copy of the outcome left - which is also why losing stdout to a broken pipe normally
-    /// costs nothing but the echo.</summary>
+    /// <summary>What a CLI adds to a run: an exit code. Everything the run produces - its artifacts
+    /// and the result line - is <see cref="AgentRunner.RunAsync"/>'s, so nothing here can leave a
+    /// run half-recorded.</summary>
     internal static async Task<int> ExecuteAsync(AgentConfig config, AgentContext context, CancellationToken cancellationToken)
-    {
-        var outcome = await AgentRunner.RunAsync(config, context, cancellationToken);
-        await BestEffortOutput.WriteLineAsync(Console.Out, AgentArtifacts.Serialize(outcome.Result));
-        return ExitCode(outcome);
-    }
+    => ExitCode(await AgentRunner.RunAsync(config, context, cancellationToken));
 
     /// <summary>A lost <c>result.json</c> first, whatever the run's own outcome was: the file is
     /// what <c>rix submit</c> and the job summary read, so a caller that got

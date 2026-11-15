@@ -35,9 +35,8 @@ internal static class Composition
     internal static ProcessWrapper ProcessRunner()
     => new();
 
-    /// <summary>Diagnostics to stderr, which is where they belong when stdout carries the result a
-    /// caller parses.</summary>
-    internal static StderrLog Log()
+    /// <summary>The result to stdout and diagnostics to stderr.</summary>
+    internal static ConsoleLog Log()
     => new();
 
     /// <summary>Git against repos on GitHub, authenticated with <paramref name="token"/> — the one

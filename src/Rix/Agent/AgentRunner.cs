@@ -18,13 +18,17 @@ internal partial class AgentJsonContext : JsonSerializerContext { }
 
 internal static class AgentRunner
 {
-    /// <summary>Runs the agent and leaves its output in <see cref="AgentConfig.OutputDir"/>. The writes
-    /// happen here rather than in the caller because <c>result.json</c> and <c>transcript.md</c> are
-    /// the run's product (see <see cref="AgentArtifacts"/>), and because every way the run can end -
-    /// including a setup failure before the agent started - has to leave the same artifacts behind.
-    /// What the caller adds is a CLI's own: printing the result and choosing an exit code - which
-    /// is why what comes back is a <see cref="AgentOutcome"/> and not just the result: the exit code
-    /// depends on whether <c>result.json</c> got there, and only this knows.</summary>
+    /// <summary>Runs the agent, leaves its output in <see cref="AgentConfig.OutputDir"/>, and writes
+    /// the result to <see cref="ILog.WriteResult"/>. The writes happen here rather than in the caller
+    /// because <c>result.json</c> and <c>transcript.md</c> are the run's product (see
+    /// <see cref="AgentArtifacts"/>), and because every way the run can end - including a setup
+    /// failure before the agent started - has to leave the same artifacts behind. The result line
+    /// is written even when <c>result.json</c> was not, and is then the only copy of the outcome
+    /// left.
+    ///
+    /// What the caller adds is a CLI's own: choosing an exit code - which is why what comes back is
+    /// a <see cref="AgentOutcome"/> and not just the result: the exit code depends on whether
+    /// <c>result.json</c> got there, and only this knows.</summary>
     internal static async Task<AgentOutcome> RunAsync
     (
         AgentConfig config,
@@ -35,6 +39,7 @@ internal static class AgentRunner
         var transcript = new List<string>();
         var result = await RunCoreAsync(config, context, transcript, cancellationToken);
         var resultFile = await AgentArtifacts.WriteAsync(config, context, result, transcript);
+        context.Log.WriteResult(AgentArtifacts.Serialize(result));
         return new AgentOutcome(result, resultFile);
     }
 

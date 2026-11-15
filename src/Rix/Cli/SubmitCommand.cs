@@ -1,6 +1,5 @@
 using Rix.Submit;
 using System.CommandLine;
-using System.Text.Json;
 
 namespace Rix.Cli;
 
@@ -61,19 +60,17 @@ internal static class SubmitCommand
     );
 
     /// <summary>
-    /// Imperative shell around <see cref="SubmitRunner.RunAsync"/>: runs the submit, writes the
-    /// result JSON to stdout, and maps the result to an exit code.
+    /// Imperative shell around <see cref="SubmitRunner.RunAsync"/>: runs the submit, which writes
+    /// its own result line, and maps the result to an exit code.
     /// </summary>
     internal static async Task<int> ExecuteAsync(SubmitConfig config, SubmitContext context, CancellationToken cancellationToken)
+    => ExitCode(await SubmitRunner.RunAsync(config, context, cancellationToken));
+
+    private static int ExitCode(ISubmitResult result)
+    => result switch
     {
-        var result = await SubmitRunner.RunAsync(config, context, cancellationToken);
-        var json = JsonSerializer.Serialize(result, SubmitJsonContext.Default.ISubmitResult);
-        Console.WriteLine(json);
-        return result switch
-        {
-            SubmitSuccess => ExitCodes.Success,
-            SubmitFailure => ExitCodes.Failed,
-            _ => throw new NotSupportedException($"Unexpected submit result type: {result.GetType()}"),
-        };
-    }
+        SubmitSuccess => ExitCodes.Success,
+        SubmitFailure => ExitCodes.Failed,
+        _ => throw new NotSupportedException($"Unexpected submit result type: {result.GetType()}"),
+    };
 }

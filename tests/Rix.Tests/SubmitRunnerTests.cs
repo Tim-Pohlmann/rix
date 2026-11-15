@@ -33,6 +33,20 @@ public class SubmitRunnerTests
         AssertFailure(result, "result.json not found");
     }
 
+    /// <summary>The action redirects this line into <c>submit-result.json</c> for the job summary,
+    /// and it is the only record of the submit there is. Written for an early return as well as
+    /// the full delivery.</summary>
+    [TestMethod]
+    public async Task RunAsync_WritesTheSubmitResult_AsTheResult()
+    {
+        var log = new StubLog();
+
+        await Run(new StubGit(), log: log);
+
+        StringAssert.Contains(log.Results.Single(), "\"status\":\"failure\"");
+        StringAssert.Contains(log.Results.Single(), "result.json not found");
+    }
+
     [TestMethod]
     public async Task RunAsync_Fails_WhenTheAgentWasNotSuccessful()
     {
@@ -264,12 +278,13 @@ public class SubmitRunnerTests
     (
         StubGit git,
         StubSubmitRepoHost? host = null,
-        string? allowedPushBranches = "rix/my-fix"
+        string? allowedPushBranches = "rix/my-fix",
+        ILog? log = null
     )
     => SubmitRunner.RunAsync
     (
         TestConfig.ValidSubmit(inputDir: _inputDir, workDir: _workDir, allowedPushBranches: allowedPushBranches),
-        new SubmitContext(git, host ?? new StubSubmitRepoHost(), new StubLog(), new LocalFileSystem()),
+        new SubmitContext(git, host ?? new StubSubmitRepoHost(), log ?? new StubLog(), new LocalFileSystem()),
         CancellationToken.None
     );
 
