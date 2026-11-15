@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace Rix.Initialize;
 
 /// <summary>Which kind of repo <c>rix initialize</c> sets up, with the values that kind takes.
-/// Pattern-matched by what acts on it (<see cref="WorkflowTemplates"/>, <see cref="NextSteps"/>);
+/// Pattern-matched by what acts on it (<see cref="InitializeTemplates"/>, <see cref="NextSteps"/>);
 /// never cast.</summary>
 internal interface IInitializeSetup;
 

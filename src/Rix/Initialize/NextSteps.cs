@@ -32,7 +32,8 @@ internal static class NextSteps
                  limit that environment's deployment branches to your default branch:
                    RIX_WRITE_TOKEN  PAT, contents:write + pull-requests:write + workflows on exactly
                                     the repos this factory serves; it bounds where rix can open PRs
-              3. Commit and push the written files: the two workflows and .rix/agent-home.
+              3. Commit and push the written files: the two workflows and .rix/agent-home, which
+                 rix copies into the agent's home on every run.
               4. Onboard each repo this factory serves: run this repo's "rix (agent)" workflow with
                  repo set to its owner/name and the prompt "Onboard this repo to the factory". The
                  PR it opens adds the workflow that dispatches the repo's CI failures here, and

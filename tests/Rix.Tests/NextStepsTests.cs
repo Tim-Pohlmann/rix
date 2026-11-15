@@ -28,7 +28,7 @@ public partial class NextStepsTests
     /// fails without it.</summary>
     [TestMethod]
     public void For_HasAFactoryCommitItsAgentHome()
-    => StringAssert.Contains(NextSteps.For(new FactorySetup(new("v0"))), AgentHomeSkills.AgentHomePath);
+    => StringAssert.Contains(NextSteps.For(new FactorySetup(new("v0"))), ".rix/agent-home");
 
     /// <summary>The steps are prose about the templates, so nothing else would notice a template
     /// renamed under them.</summary>
@@ -39,7 +39,7 @@ public partial class NextStepsTests
 
         foreach (var setup in setups)
         {
-            var written = WorkflowTemplates.For(setup).Select(t => Path.GetFileName(t.RelativePath)).ToArray();
+            var written = InitializeTemplates.For(setup).Select(t => Path.GetFileName(t.RelativePath)).ToArray();
             foreach (var named in WorkflowFileName().Matches(NextSteps.For(setup)).Select(m => m.Value))
                 CollectionAssert.Contains(written, named, $"{setup.GetType().Name}'s next steps name {named}");
         }

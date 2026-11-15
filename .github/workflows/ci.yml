@@ -587,7 +587,7 @@ jobs:
 
     # `rix initialize` writes caller workflows into someone else's repo, and nothing checked that
     # what it writes is valid GitHub Actions YAML, or that it still fits the reusable workflows it
-    # calls. InitializeRunnerTests covers which files land and where, and WorkflowTemplatesTests
+    # calls. InitializeRunnerTests covers which files land and where, and InitializeTemplatesTests
     # that the ref placeholder is substituted, but the templates are embedded resources - no C# test
     # can tell whether Actions would accept them. A broken one is invisible here and surfaces in a
     # consumer repo at the moment they adopt rix, which is the worst place to find out.
@@ -628,6 +628,7 @@ jobs:
             init-out/factory/.github/workflows/rix-on-ci-failure.yml \
             init-out/factory/.rix/agent-home/.agents/skills/rix-onboard/SKILL.md \
             init-out/factory/.rix/agent-home/.claude/skills/rix-onboard/SKILL.md \
+            init-out/factory/.rix/agent-home/README.md \
             init-out/standalone/.github/workflows/rix-agent.yml \
             init-out/standalone/.github/workflows/rix-on-ci-failure.yml)"
           actual="$(find init-out -type f | LC_ALL=C sort)"

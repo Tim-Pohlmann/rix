@@ -25,13 +25,12 @@
     <PackageReference Include="System.CommandLine" Version="2.0.12" />
   </ItemGroup>
 
-  <!-- Caller-workflow templates `rix initialize` writes into a target repo. Embedded so a
-       released single-file binary carries them itself, with no network fetch at init time. -->
+  <!-- The files `rix initialize` writes into a target repo, one folder per setup, laid out as
+       they land in the repo. Embedded so a released single-file binary carries them itself, with
+       no network fetch at init time. Named by path rather than MSBuild's dotted default, which
+       would lose where one folder ends and the next begins. -->
   <ItemGroup>
-    <EmbeddedResource Include="Cli/Templates/*/*.yml" />
-    <!-- The agent skills `rix initialize factory` writes into the factory's agent home, one file
-         per skill, named after it. -->
-    <EmbeddedResource Include="Cli/Skills/*.md" />
+    <EmbeddedResource Include="Cli/Templates/**/*" LogicalName="Rix.Cli.Templates/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

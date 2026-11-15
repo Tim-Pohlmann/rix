@@ -36,7 +36,7 @@ public class InitializeRunnerTests
 
         CollectionAssert.AreEqual
         (
-            WorkflowTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
+            InitializeTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
             _writes.Select(w => w.Path).ToArray()
         );
     }
@@ -58,28 +58,16 @@ public class InitializeRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_WritesTheFactoryFiles_ForAFactorySetup()
+    public async Task RunAsync_WritesTheFactoryTemplates_ForAFactorySetup()
     {
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
         AssertSuccess(await Run(TestConfig.ValidInitialize(dir, new FactorySetup(new("v9"))), Context()));
 
         CollectionAssert.AreEqual
         (
-            InitializeRunner.FilesFor(new FactorySetup(new("v9"))).Select(t => (Path.Combine(dir, t.RelativePath), t.Content)).ToArray(),
+            InitializeTemplates.For(new FactorySetup(new("v9"))).Select(t => (Path.Combine(dir, t.RelativePath), t.Content)).ToArray(),
             _writes.ToArray()
         );
-    }
-
-    /// <summary>The factory's workflows copy its agent home into the runner, and a run fails when
-    /// that directory is missing, so the setup writing those workflows has to write the directory
-    /// too.</summary>
-    [TestMethod]
-    public void FilesFor_AFactory_WritesItsWorkflowsAndAnAgentHome()
-    {
-        var paths = InitializeRunner.FilesFor(new FactorySetup(new("v9"))).Select(t => t.RelativePath).ToArray();
-
-        CollectionAssert.IsSubsetOf(WorkflowTemplates.For(new FactorySetup(new("v9"))).Select(t => t.RelativePath).ToArray(), paths);
-        Assert.IsTrue(paths.Any(path => path.StartsWith($"{AgentHomeSkills.AgentHomePath}/", StringComparison.Ordinal)));
     }
 
     /// <summary>The steps only make sense once the files they talk about exist, so they come last,
@@ -104,7 +92,7 @@ public class InitializeRunnerTests
         _writes.Clear();
         AssertSuccess(await Run(config, Context()));
 
-        Assert.AreEqual(WorkflowTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)).Count, _writes.Count);
+        Assert.AreEqual(InitializeTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)).Count, _writes.Count);
     }
 
     [TestMethod]
@@ -121,7 +109,7 @@ public class InitializeRunnerTests
         // Names whichever template the runner reached first rather than a literal, so the
         // assertion keeps testing "the message says which file failed" if the discovered
         // order of the standalone templates changes.
-        StringAssert.Contains(failure.Error, WorkflowTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default))[0].RelativePath);
+        StringAssert.Contains(failure.Error, InitializeTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default))[0].RelativePath);
         StringAssert.Contains(failure.Error, "disk full");
     }
 }

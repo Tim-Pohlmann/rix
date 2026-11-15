@@ -15,8 +15,8 @@ jobs:
       # Any repo read-token reaches; the PR only opens where write-token can push.
       repo: ${{ inputs.repo || github.repository }}
       prompt: ${{ inputs.prompt }}
-      # Copies this repo's .rix/agent-home into the runner's home before the agent starts, which is
-      # where the agent finds the rix-onboard skill. The run fails while that directory is missing.
+      # Copies this repo's .rix/agent-home into the runner's home before the agent starts. The run
+      # fails while that directory is missing.
       factory-repo: ${{ github.repository }}
       # agent: claude   # optional; defaults to 'opencode'
     secrets:

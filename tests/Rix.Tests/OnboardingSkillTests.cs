@@ -4,34 +4,27 @@ using System.Text.RegularExpressions;
 namespace Rix.Tests;
 
 [TestClass]
-public partial class AgentHomeSkillsTests
+public partial class OnboardingSkillTests
 {
+    /// <summary>Every skill in the factory's agent home, wherever a harness looks for it.</summary>
     private static readonly IReadOnlyList<(string RelativePath, string Content)> FactorySkills =
-        AgentHomeSkills.For(new FactorySetup(new("v0")));
+        [.. InitializeTemplates.For(new FactorySetup(new("v0"))).Where(t => t.RelativePath.EndsWith("/SKILL.md", StringComparison.Ordinal))];
 
     private static readonly string[] ExpectedFactorySkillPaths =
     [
-        ".rix/agent-home/.claude/skills/rix-onboard/SKILL.md",
         ".rix/agent-home/.agents/skills/rix-onboard/SKILL.md",
+        ".rix/agent-home/.claude/skills/rix-onboard/SKILL.md",
     ];
 
     [TestMethod]
     public void For_Factory_WritesTheOnboardingSkill_WhereEveryHarnessLooks()
     => CollectionAssert.AreEqual(ExpectedFactorySkillPaths, FactorySkills.Select(s => s.RelativePath).ToArray());
 
-    /// <summary>opencode reads both directories, so two copies that differ would give it two skills
-    /// under one name that disagree.</summary>
+    /// <summary>The copies are two files kept by hand, and opencode reads both directories, so two
+    /// that differ would give it two skills under one name that disagree.</summary>
     [TestMethod]
     public void For_Factory_WritesTheSameSkillToEveryDirectory()
     => Assert.AreEqual(1, FactorySkills.Select(s => s.Content).Distinct().Count());
-
-    /// <summary>Only a factory run has a factory to onboard a repo to.</summary>
-    [TestMethod]
-    public void For_WritesNoSkills_ForAnyOtherSetup()
-    {
-        Assert.IsEmpty(AgentHomeSkills.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)));
-        Assert.IsEmpty(AgentHomeSkills.For(new FactoryServedSetup(new("acme/rix-factory"), CiWorkflowName.Default)));
-    }
 
     /// <summary>The Agent Skills rules the harnesses share: the name is the directory's, in
     /// lowercase kebab case, and a skill without a description is never offered to the model (pi

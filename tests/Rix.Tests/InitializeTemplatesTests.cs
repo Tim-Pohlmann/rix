@@ -3,7 +3,7 @@ using Rix.Initialize;
 namespace Rix.Tests;
 
 [TestClass]
-public class WorkflowTemplatesTests
+public class InitializeTemplatesTests
 {
     private static readonly string[] ExpectedRelativePaths =
         [".github/workflows/rix-agent.yml", ".github/workflows/rix-on-ci-failure.yml"];
@@ -15,7 +15,7 @@ public class WorkflowTemplatesTests
     /// about the two that were already there. Filled in, because what the assertions are about is
     /// the text a caller is actually handed.</summary>
     private static string ContentOf(IInitializeSetup setup, string fileName)
-    => WorkflowTemplates.For(setup).Single(t => t.RelativePath == $".github/workflows/{fileName}").Content;
+    => InitializeTemplates.For(setup).Single(t => t.RelativePath == $".github/workflows/{fileName}").Content;
 
     private static readonly RixRef Ref = new("v9");
 
@@ -29,7 +29,7 @@ public class WorkflowTemplatesTests
 
     private static void AssertBothTemplatesResolve(IInitializeSetup setup)
     {
-        var templates = WorkflowTemplates.For(setup);
+        var templates = InitializeTemplates.For(setup).Where(t => t.RelativePath.StartsWith(".github/workflows/", StringComparison.Ordinal)).ToArray();
         CollectionAssert.AreEqual(ExpectedRelativePaths, templates.Select(t => t.RelativePath).ToArray());
         Assert.IsTrue(templates.All(t => t.Content.Contains("jobs:") && t.Content.Contains("uses:")));
     }
@@ -40,12 +40,12 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void Setups_CoverEveryEmbeddedTemplate()
     {
-        var embedded = typeof(WorkflowTemplates).Assembly.GetManifestResourceNames()
-            .Count(name => name.StartsWith(WorkflowTemplates.ResourcePrefix, StringComparison.Ordinal));
+        var embedded = typeof(InitializeTemplates).Assembly.GetManifestResourceNames()
+            .Count(name => name.StartsWith(InitializeTemplates.ResourcePrefix, StringComparison.Ordinal));
 
         IInitializeSetup[] setups = [new StandaloneSetup(Ref, CiWorkflowName.Default), new FactorySetup(Ref), new FactoryServedSetup(new("acme/rix-factory"), CiWorkflowName.Default)];
 
-        Assert.AreEqual(setups.Sum(setup => WorkflowTemplates.For(setup).Count), embedded);
+        Assert.AreEqual(setups.Sum(setup => InitializeTemplates.For(setup).Count), embedded);
     }
 
     [TestMethod]
@@ -84,13 +84,18 @@ public class WorkflowTemplatesTests
         StringAssert.Contains(content, "repo: ${{ inputs.repo || github.repository }}");
     }
 
-    /// <summary>Both kinds of factory run copy the factory's own agent home, which is where the
-    /// onboarding skill reaches the agent.</summary>
+    /// <summary>Both kinds of factory run copy the factory's own agent home.</summary>
     [TestMethod]
     [DataRow("rix-agent.yml")]
     [DataRow("rix-on-ci-failure.yml")]
     public void For_FactoryCallers_CopyTheFactorysAgentHome(string fileName)
     => StringAssert.Contains(ContentOf(new FactorySetup(Ref), fileName), "factory-repo: ${{ github.repository }}");
+
+    /// <summary>The factory's workflows fail while its agent home is missing, so the setup writing
+    /// them writes the folder too, and git only keeps a folder that holds a file.</summary>
+    [TestMethod]
+    public void For_Factory_WritesAnAgentHome()
+    => Assert.IsTrue(InitializeTemplates.For(new FactorySetup(Ref)).Any(t => t.RelativePath.StartsWith(".rix/agent-home/", StringComparison.Ordinal)));
 
     [TestMethod]
     public void For_FactoryCiFailureCaller_AnswersTheDispatchedRun()
@@ -105,7 +110,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_FactoryServed_WritesOnlyTheNotifyWorkflow_DispatchingToTheNamedFactory()
     {
-        var templates = WorkflowTemplates.For(new FactoryServedSetup(new("acme/rix-factory"), CiWorkflowName.Default));
+        var templates = InitializeTemplates.For(new FactoryServedSetup(new("acme/rix-factory"), CiWorkflowName.Default));
 
         CollectionAssert.AreEqual(ExpectedFactoryServedPaths, templates.Select(t => t.RelativePath).ToArray());
         var content = templates[0].Content;
@@ -152,23 +157,23 @@ public class WorkflowTemplatesTests
         // process with different refs must not have the first one's ref baked into the second's.
         Assert.AreEqual
         (
-            WorkflowTemplates.For(new StandaloneSetup(new("v1"), CiWorkflowName.Default))[0].Content.Replace("@v1", "@v2", StringComparison.Ordinal),
-            WorkflowTemplates.For(new StandaloneSetup(new("v2"), CiWorkflowName.Default))[0].Content
+            InitializeTemplates.For(new StandaloneSetup(new("v1"), CiWorkflowName.Default))[0].Content.Replace("@v1", "@v2", StringComparison.Ordinal),
+            InitializeTemplates.For(new StandaloneSetup(new("v2"), CiWorkflowName.Default))[0].Content
         );
     }
 
     [TestMethod]
     public void FillIn_ReplacesEveryOccurrence_WhenTheValueIsGiven()
-    => Assert.AreEqual("a@v9 b@v9", WorkflowTemplates.FillIn("a@__X__ b@__X__", "__X__", "v9", "t.yml"));
+    => Assert.AreEqual("a@v9 b@v9", InitializeTemplates.FillIn("a@__X__ b@__X__", "__X__", "v9", "t.yml"));
 
     [TestMethod]
     public void FillIn_LeavesTheContent_WhenThereIsNoValueAndNoPlaceholder()
-    => Assert.AreEqual("a b", WorkflowTemplates.FillIn("a b", "__X__", null, "t.yml"));
+    => Assert.AreEqual("a b", InitializeTemplates.FillIn("a b", "__X__", null, "t.yml"));
 
     [TestMethod]
     public void FillIn_Throws_WhenATemplateCarriesAPlaceholderItsSetupHasNoValueFor()
     {
-        var thrown = Assert.ThrowsExactly<InvalidOperationException>(() => WorkflowTemplates.FillIn("a@__X__", "__X__", null, "t.yml"));
+        var thrown = Assert.ThrowsExactly<InvalidOperationException>(() => InitializeTemplates.FillIn("a@__X__", "__X__", null, "t.yml"));
         StringAssert.Contains(thrown.Message, "t.yml");
         StringAssert.Contains(thrown.Message, "__X__");
     }
