@@ -29,6 +29,9 @@
        released single-file binary carries them itself, with no network fetch at init time. -->
   <ItemGroup>
     <EmbeddedResource Include="Cli/Templates/*/*.yml" />
+    <!-- The agent skills `rix initialize factory` writes into the factory's agent home, one file
+         per skill, named after it. -->
+    <EmbeddedResource Include="Cli/Skills/*.md" />
   </ItemGroup>
 
 </Project>

@@ -58,16 +58,28 @@ public class InitializeRunnerTests
     }
 
     [TestMethod]
-    public async Task RunAsync_WritesTheFactoryTemplates_ForAFactorySetup()
+    public async Task RunAsync_WritesTheFactoryFiles_ForAFactorySetup()
     {
         var dir = Directory.CreateTempSubdirectory("rix-init-").FullName;
         AssertSuccess(await Run(TestConfig.ValidInitialize(dir, new FactorySetup(new("v9"))), Context()));
 
         CollectionAssert.AreEqual
         (
-            WorkflowTemplates.For(new FactorySetup(new("v9"))).Select(t => (Path.Combine(dir, t.RelativePath), t.Content)).ToArray(),
+            InitializeRunner.FilesFor(new FactorySetup(new("v9"))).Select(t => (Path.Combine(dir, t.RelativePath), t.Content)).ToArray(),
             _writes.ToArray()
         );
+    }
+
+    /// <summary>The factory's workflows copy its agent home into the runner, and a run fails when
+    /// that directory is missing, so the setup writing those workflows has to write the directory
+    /// too.</summary>
+    [TestMethod]
+    public void FilesFor_AFactory_WritesItsWorkflowsAndAnAgentHome()
+    {
+        var paths = InitializeRunner.FilesFor(new FactorySetup(new("v9"))).Select(t => t.RelativePath).ToArray();
+
+        CollectionAssert.IsSubsetOf(WorkflowTemplates.For(new FactorySetup(new("v9"))).Select(t => t.RelativePath).ToArray(), paths);
+        Assert.IsTrue(paths.Any(path => path.StartsWith($"{AgentHomeSkills.AgentHomePath}/", StringComparison.Ordinal)));
     }
 
     /// <summary>The steps only make sense once the files they talk about exist, so they come last,

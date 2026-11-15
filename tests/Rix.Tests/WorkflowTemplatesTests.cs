@@ -84,6 +84,14 @@ public class WorkflowTemplatesTests
         StringAssert.Contains(content, "repo: ${{ inputs.repo || github.repository }}");
     }
 
+    /// <summary>Both kinds of factory run copy the factory's own agent home, which is where the
+    /// onboarding skill reaches the agent.</summary>
+    [TestMethod]
+    [DataRow("rix-agent.yml")]
+    [DataRow("rix-on-ci-failure.yml")]
+    public void For_FactoryCallers_CopyTheFactorysAgentHome(string fileName)
+    => StringAssert.Contains(ContentOf(new FactorySetup(Ref), fileName), "factory-repo: ${{ github.repository }}");
+
     [TestMethod]
     public void For_FactoryCiFailureCaller_AnswersTheDispatchedRun()
     {
