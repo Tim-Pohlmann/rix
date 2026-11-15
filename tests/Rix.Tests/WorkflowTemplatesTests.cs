@@ -95,4 +95,20 @@ public class WorkflowTemplatesTests
             WorkflowTemplates.For(new StandaloneSetup(new("v2")))[0].Content
         );
     }
+
+    [TestMethod]
+    public void FillIn_ReplacesEveryOccurrence_WhenTheValueIsGiven()
+    => Assert.AreEqual("a@v9 b@v9", WorkflowTemplates.FillIn("a@__X__ b@__X__", "__X__", "v9", "t.yml"));
+
+    [TestMethod]
+    public void FillIn_LeavesTheContent_WhenThereIsNoValueAndNoPlaceholder()
+    => Assert.AreEqual("a b", WorkflowTemplates.FillIn("a b", "__X__", null, "t.yml"));
+
+    [TestMethod]
+    public void FillIn_Throws_WhenATemplateCarriesAPlaceholderItsSetupHasNoValueFor()
+    {
+        var thrown = Assert.ThrowsExactly<InvalidOperationException>(() => WorkflowTemplates.FillIn("a@__X__", "__X__", null, "t.yml"));
+        StringAssert.Contains(thrown.Message, "t.yml");
+        StringAssert.Contains(thrown.Message, "__X__");
+    }
 }

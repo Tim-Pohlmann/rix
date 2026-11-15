@@ -27,21 +27,43 @@ internal static class WorkflowTemplates
     /// <see cref="InitializeRunner"/> writes (and reports) them.</summary>
     internal static IReadOnlyList<(string RelativePath, string Content)> For(IInitializeSetup setup)
     {
-        var (folder, placeholders) = Layout(setup);
-        return [.. Load(folder).Select(template => (template.RelativePath, Fill(template.Content, placeholders)))];
+        var (folder, values) = Layout(setup);
+        return [.. Load(folder).Select(template => (template.RelativePath, Fill(template, values)))];
     }
 
+    /// <summary>The values the templates' placeholders are filled in with. Every placeholder is
+    /// filled in for every setup; one a setup has no value for is null, and a template of that
+    /// setup must not carry it.</summary>
+    /// <param name="Ref">What replaces <see cref="RefPlaceholder"/>.</param>
+    private sealed record TemplateValues(WorkflowRef? Ref = null);
+
     /// <summary>The folder under <c>Cli/Templates/</c> holding <paramref name="setup"/>'s templates,
-    /// and each placeholder they carry with what replaces it.</summary>
-    private static (string Folder, IReadOnlyDictionary<string, string> Placeholders) Layout(IInitializeSetup setup) => setup switch
+    /// and the values their placeholders are filled in with.</summary>
+    private static (string Folder, TemplateValues Values) Layout(IInitializeSetup setup) => setup switch
     {
-        StandaloneSetup standalone => ("Standalone", new Dictionary<string, string> { [RefPlaceholder] = standalone.Ref.Value }),
-        FactorySetup factory => ("Factory", new Dictionary<string, string> { [RefPlaceholder] = factory.Ref.Value }),
+        StandaloneSetup standalone => ("Standalone", new(Ref: standalone.Ref)),
+        FactorySetup factory => ("Factory", new(Ref: factory.Ref)),
         _ => throw new NotSupportedException($"Unexpected initialize setup type: {setup.GetType()}"),
     };
 
-    private static string Fill(string content, IReadOnlyDictionary<string, string> placeholders)
-    => placeholders.Aggregate(content, (filled, placeholder) => filled.Replace(placeholder.Key, placeholder.Value, StringComparison.Ordinal));
+    private static string Fill((string RelativePath, string Content) template, TemplateValues values)
+    {
+        (string Placeholder, string? Value)[] fills = [(RefPlaceholder, values.Ref?.Value)];
+        return fills.Aggregate(template.Content, (content, fill) => FillIn(content, fill.Placeholder, fill.Value, template.RelativePath));
+    }
+
+    /// <summary>Replaces every <paramref name="placeholder"/> in <paramref name="content"/> with
+    /// <paramref name="value"/>. A null value means the setup has none, so a template that still
+    /// carries the placeholder is a bug in rix's templates, not in the user's input: it throws
+    /// rather than writing a workflow with the placeholder left in.</summary>
+    internal static string FillIn(string content, string placeholder, string? value, string relativePath)
+    {
+        if (value is not null)
+            return content.Replace(placeholder, value, StringComparison.Ordinal);
+        if (content.Contains(placeholder, StringComparison.Ordinal))
+            throw new InvalidOperationException($"{relativePath} carries {placeholder}, but its setup has no value for it");
+        return content;
+    }
 
     /// <summary>Every template in <c>Cli/Templates/{folder}/</c>, read afresh on each call (an init
     /// writes once, so there is nothing to cache for), discovered from the embedded
