@@ -28,7 +28,7 @@ released with. Then:
    `rix` (see [Secrets](#secrets)).
 2. Commit and push the two files.
 
-`rix-on-ci-failure.yml` reacts to failures of the workflow named `CI`; pass `--ci-workflow <name>`
+The written workflows react to failures of the workflow named `CI`; pass `--ci-workflow <name>`
 with the `name:` of yours if it is called something else. Pass `--dir <path>` to target a repo
 other than the current directory, and `--ref <git-ref>` to pin the written workflows to a
 different tag, branch, or commit SHA of this repo. The sections
@@ -327,14 +327,14 @@ Useful when several project repos should share one set of `read-token`/`write-to
 each project repo still needs a small local trigger — but it only *notifies* the factory repo
 instead of running rix itself, using a PAT scoped just to dispatch to that one repo. Run
 `rix initialize <owner/name>` in each project repo to write it, with the factory
-repo's name filled in:
+repo's name filled in (and the watched workflow's, from `--ci-workflow` as above):
 
 ```yaml
 # In each project repo: .github/workflows/rix-notify-factory.yml
 name: rix (notify factory)
 on:
   workflow_run:
-    workflows: ["CI"] # change "CI" to the name: of the workflow rix should react to
+    workflows: ["CI"] # the name: of the workflow rix reacts to
     types: [completed]
 jobs:
   notify:

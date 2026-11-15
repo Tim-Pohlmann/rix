@@ -18,7 +18,7 @@ public partial class NextStepsTests
     [TestMethod]
     public void For_ScopesTheDispatchTokenToTheNamedFactory()
     {
-        var steps = NextSteps.For(new FactoryServedSetup(new("acme/rix-factory")));
+        var steps = NextSteps.For(new FactoryServedSetup(new("acme/rix-factory"), CiWorkflowName.Default));
 
         StringAssert.Contains(steps, "RIX_FACTORY_DISPATCH_TOKEN   PAT, contents:write on acme/rix-factory only");
     }
@@ -28,7 +28,7 @@ public partial class NextStepsTests
     [TestMethod]
     public void For_NamesOnlyWorkflowsTheSetupWrites()
     {
-        IInitializeSetup[] setups = [new StandaloneSetup(new("v0"), CiWorkflowName.Default), new FactorySetup(new("v0")), new FactoryServedSetup(new("acme/rix-factory"))];
+        IInitializeSetup[] setups = [new StandaloneSetup(new("v0"), CiWorkflowName.Default), new FactorySetup(new("v0")), new FactoryServedSetup(new("acme/rix-factory"), CiWorkflowName.Default)];
 
         foreach (var setup in setups)
         {

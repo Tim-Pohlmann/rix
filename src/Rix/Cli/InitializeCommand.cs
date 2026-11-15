@@ -85,16 +85,16 @@ internal static class InitializeCommand
                 throw new InvalidInputException($"{FactoryCommand.Name} takes neither a factory repo nor {SingleRepoOption.Name}; it sets up the factory itself");
             return new FactorySetup(reference);
         }
+        var ciWorkflow = Input.Optional(CiWorkflowOption.Name, parsed.GetValue(CiWorkflowOption), value => new CiWorkflowName(value), CiWorkflowName.Default);
         if (singleRepo)
         {
             if (!string.IsNullOrWhiteSpace(factoryRepo))
                 throw new InvalidInputException($"{SingleRepoOption.Name} and a factory repo cannot be combined; a single repo runs rix on itself");
-            var ciWorkflow = Input.Optional(CiWorkflowOption.Name, parsed.GetValue(CiWorkflowOption), value => new CiWorkflowName(value), CiWorkflowName.Default);
             return new StandaloneSetup(reference, ciWorkflow);
         }
         if (string.IsNullOrWhiteSpace(factoryRepo))
             throw new InvalidInputException($"name the factory repo that serves this one (rix initialize <owner/name>), pass {SingleRepoOption.Name} for a repo that runs rix on itself, or run rix initialize {FactoryCommand.Name} in the factory repo");
-        return Input.Named($"<{FactoryRepoArgument.Name}>", () => new FactoryServedSetup(new RepoIdentifier(factoryRepo)));
+        return Input.Named($"<{FactoryRepoArgument.Name}>", () => new FactoryServedSetup(new RepoIdentifier(factoryRepo), ciWorkflow));
     }
 
     /// <summary>Runs <paramref name="config"/> against the production context. Separate from

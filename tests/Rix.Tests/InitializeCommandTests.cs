@@ -26,10 +26,11 @@ public class InitializeCommandTests
     private static InitializeConfig ReadSingleRepo(params string[] args)
     => Read(["--single-repo", .. args], null);
 
-    /// <summary>The workflow a standalone setup's CI-failure caller watches.</summary>
+    /// <summary>The workflow whose failures the setup's workflows react to.</summary>
     private static CiWorkflowName CiWorkflowOf(InitializeConfig config) => config.Setup switch
     {
         StandaloneSetup standalone => standalone.CiWorkflow,
+        FactoryServedSetup served => served.CiWorkflow,
         _ => throw new AssertFailedException($"setup {config.Setup.GetType().Name} watches no CI workflow"),
     };
 
@@ -149,6 +150,13 @@ public class InitializeCommandTests
 
         Assert.IsInstanceOfType<FactoryServedSetup>(setup, out var served);
         Assert.AreEqual(new RepoIdentifier("acme/rix-factory"), served.FactoryRepo);
+    }
+
+    [TestMethod]
+    public void Command_PassesCiWorkflowFlag_ToAServedRepo()
+    {
+        Assert.AreEqual(CiWorkflowName.Default, CiWorkflowOf(Read("acme/rix-factory")));
+        Assert.AreEqual("Build and test", CiWorkflowOf(Read("acme/rix-factory", "--ci-workflow", "Build and test")).Value);
     }
 
     [TestMethod]

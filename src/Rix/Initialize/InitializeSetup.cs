@@ -18,20 +18,23 @@ internal sealed record StandaloneSetup(WorkflowRef Ref, CiWorkflowName CiWorkflo
 internal sealed record FactorySetup(WorkflowRef Ref) : IInitializeSetup;
 
 /// <summary>A repo a factory serves: it runs no rix of its own and holds none of rix's tokens. It
-/// only dispatches its CI failures to <see cref="FactoryRepo"/>.</summary>
+/// only dispatches the failures of <see cref="CiWorkflow"/> to <see cref="FactoryRepo"/>.</summary>
 internal sealed partial record FactoryServedSetup : IInitializeSetup
 {
     internal RepoIdentifier FactoryRepo { get; }
+
+    internal CiWorkflowName CiWorkflow { get; }
 
     /// <summary>Narrower than <see cref="RepoIdentifier"/>, because the name is pasted into a YAML
     /// file the caller then commits: a quote or a space in it would surface as a broken workflow in
     /// their Actions tab rather than here. These are the characters GitHub allows in owner and repo
     /// names.</summary>
-    internal FactoryServedSetup(RepoIdentifier factoryRepo)
+    internal FactoryServedSetup(RepoIdentifier factoryRepo, CiWorkflowName ciWorkflow)
     {
         if (!GitHubRepoName().IsMatch(factoryRepo.Value))
             throw new InvalidInputException($"'{factoryRepo.Value}' is not a GitHub repo name; expected owner/name with letters, digits, '-', '_' or '.'.");
         FactoryRepo = factoryRepo;
+        CiWorkflow = ciWorkflow;
     }
 
     // Anchored with \z, not $: $ also matches before a trailing newline, which would carry into

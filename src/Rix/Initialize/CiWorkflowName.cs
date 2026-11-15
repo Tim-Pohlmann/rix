@@ -1,7 +1,8 @@
 namespace Rix.Initialize;
 
 /// <summary>The <c>name:</c> of the workflow whose failures rix answers, which the written
-/// <c>rix-on-ci-failure.yml</c> lists under <c>workflow_run.workflows</c>. A workflow's name is
+/// <c>rix-on-ci-failure.yml</c> or <c>rix-notify-factory.yml</c> lists under
+/// <c>workflow_run.workflows</c>. A workflow's name is
 /// free text, spaces included, so it is written inside double quotes; validated because it is
 /// interpolated there, and a quote, a backslash, or a control character would end the string
 /// early or turn into an escape, giving a workflow that watches a different name or one GitHub

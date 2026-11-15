@@ -42,9 +42,8 @@ internal static class NextSteps
             Next steps:
               1. Add the dispatch token as a repo secret (Settings -> Secrets and variables -> Actions):
                    RIX_FACTORY_DISPATCH_TOKEN   PAT, contents:write on {served.FactoryRepo} only
-              2. In rix-notify-factory.yml, set workflows: ["CI"] to your CI workflow's name.
-              3. Make sure the factory's RIX_READ_TOKEN and RIX_WRITE_TOKEN include this repo.
-              4. Commit and push the workflow file.
+              2. Make sure the factory's RIX_READ_TOKEN and RIX_WRITE_TOKEN include this repo.
+              3. Commit and push the workflow file.
             """,
         _ => throw new NotSupportedException($"Unexpected initialize setup type: {setup.GetType()}"),
     };

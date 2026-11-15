@@ -47,7 +47,7 @@ internal static class WorkflowTemplates
     {
         StandaloneSetup standalone => ("Standalone", new(Ref: standalone.Ref, CiWorkflow: standalone.CiWorkflow)),
         FactorySetup factory => ("Factory", new(Ref: factory.Ref)),
-        FactoryServedSetup served => ("FactoryServed", new(FactoryRepo: served.FactoryRepo)),
+        FactoryServedSetup served => ("FactoryServed", new(CiWorkflow: served.CiWorkflow, FactoryRepo: served.FactoryRepo)),
         _ => throw new NotSupportedException($"Unexpected initialize setup type: {setup.GetType()}"),
     };
 

@@ -43,7 +43,7 @@ public class WorkflowTemplatesTests
         var embedded = typeof(WorkflowTemplates).Assembly.GetManifestResourceNames()
             .Count(name => name.StartsWith(WorkflowTemplates.ResourcePrefix, StringComparison.Ordinal));
 
-        IInitializeSetup[] setups = [new StandaloneSetup(Ref, CiWorkflowName.Default), new FactorySetup(Ref), new FactoryServedSetup(new("acme/rix-factory"))];
+        IInitializeSetup[] setups = [new StandaloneSetup(Ref, CiWorkflowName.Default), new FactorySetup(Ref), new FactoryServedSetup(new("acme/rix-factory"), CiWorkflowName.Default)];
 
         Assert.AreEqual(setups.Sum(setup => WorkflowTemplates.For(setup).Count), embedded);
     }
@@ -97,7 +97,7 @@ public class WorkflowTemplatesTests
     [TestMethod]
     public void For_FactoryServed_WritesOnlyTheNotifyWorkflow_DispatchingToTheNamedFactory()
     {
-        var templates = WorkflowTemplates.For(new FactoryServedSetup(new("acme/rix-factory")));
+        var templates = WorkflowTemplates.For(new FactoryServedSetup(new("acme/rix-factory"), CiWorkflowName.Default));
 
         CollectionAssert.AreEqual(ExpectedFactoryServedPaths, templates.Select(t => t.RelativePath).ToArray());
         var content = templates[0].Content;
@@ -107,12 +107,19 @@ public class WorkflowTemplatesTests
         Assert.IsFalse(content.Contains("__RIX_", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void For_FactoryServed_NotifiesOnTheGivenWorkflow()
+    {
+        var content = ContentOf(new FactoryServedSetup(new("acme/rix-factory"), new("Build and test")), "rix-notify-factory.yml");
+        StringAssert.Contains(content, "workflows: [\"Build and test\"]");
+    }
+
     /// <summary>The event type is the whole contract between the two sides, and each lives in a
     /// different repo, so a mismatch would only show as dispatches nothing answers.</summary>
     [TestMethod]
     public void For_FactoryServed_DispatchesTheEventTypeTheFactoryAnswers()
     {
-        var notify = ContentOf(new FactoryServedSetup(new("acme/rix-factory")), "rix-notify-factory.yml");
+        var notify = ContentOf(new FactoryServedSetup(new("acme/rix-factory"), CiWorkflowName.Default), "rix-notify-factory.yml");
         var receiver = ContentOf(new FactorySetup(Ref), "rix-on-ci-failure.yml");
 
         StringAssert.Contains(notify, "-f event_type=rix-ci-failure");
@@ -125,7 +132,7 @@ public class WorkflowTemplatesTests
     [DataRow("acme/rix-factory\n")]
     public void FactoryServedSetup_RejectsANameThatNeedsYamlQuoting(string name)
     {
-        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new FactoryServedSetup(new(name)));
+        var ex = Assert.ThrowsExactly<InvalidInputException>(() => _ = new FactoryServedSetup(new(name), CiWorkflowName.Default));
 
         StringAssert.Contains(ex.Message, "is not a GitHub repo name");
     }

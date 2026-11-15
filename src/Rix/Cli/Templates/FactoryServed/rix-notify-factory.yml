@@ -1,7 +1,7 @@
 name: rix (notify factory)
 on:
   workflow_run:
-    workflows: ["CI"] # change "CI" to the name: of the workflow rix should react to
+    workflows: ["__RIX_CI_WORKFLOW__"] # the name: of the workflow rix reacts to
     types: [completed]
 jobs:
   notify:
