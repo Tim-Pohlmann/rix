@@ -36,7 +36,7 @@ public class InitializeRunnerTests
 
         CollectionAssert.AreEqual
         (
-            WorkflowTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
+            InitializeTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)).Select(t => Path.Combine(dir, t.RelativePath)).ToArray(),
             _writes.Select(w => w.Path).ToArray()
         );
     }
@@ -65,7 +65,7 @@ public class InitializeRunnerTests
 
         CollectionAssert.AreEqual
         (
-            WorkflowTemplates.For(new FactorySetup(new("v9"))).Select(t => (Path.Combine(dir, t.RelativePath), t.Content)).ToArray(),
+            InitializeTemplates.For(new FactorySetup(new("v9"))).Select(t => (Path.Combine(dir, t.RelativePath), t.Content)).ToArray(),
             _writes.ToArray()
         );
     }
@@ -92,7 +92,7 @@ public class InitializeRunnerTests
         _writes.Clear();
         AssertSuccess(await Run(config, Context()));
 
-        Assert.AreEqual(WorkflowTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)).Count, _writes.Count);
+        Assert.AreEqual(InitializeTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default)).Count, _writes.Count);
     }
 
     [TestMethod]
@@ -109,7 +109,7 @@ public class InitializeRunnerTests
         // Names whichever template the runner reached first rather than a literal, so the
         // assertion keeps testing "the message says which file failed" if the discovered
         // order of the standalone templates changes.
-        StringAssert.Contains(failure.Error, WorkflowTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default))[0].RelativePath);
+        StringAssert.Contains(failure.Error, InitializeTemplates.For(new StandaloneSetup(new("v0"), CiWorkflowName.Default))[0].RelativePath);
         StringAssert.Contains(failure.Error, "disk full");
     }
 }

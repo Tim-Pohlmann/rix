@@ -19,18 +19,21 @@ internal static class NextSteps
               3. Commit and push the two workflow files.
             """,
         // The tokens span every served repo, and the write token's reach is what bounds the
-        // factory, so the scope is spelled out. The served repos still need a trigger of their
-        // own, since a workflow_run cannot cross repos.
+        // factory, so the scope is spelled out. The read token reads the factory too, for its
+        // agent home. The served repos still need a trigger of their own, since a workflow_run
+        // cannot cross repos.
         FactorySetup => """
 
             Next steps:
               1. Add the read token as a repo secret (Settings -> Secrets and variables -> Actions):
-                   RIX_READ_TOKEN   PAT, contents:read + actions:read on every repo this factory serves
+                   RIX_READ_TOKEN   PAT, contents:read + actions:read on this repo and every repo
+                                    it serves
               2. Add the write token to an environment named 'rix' (Settings -> Environments), and
                  limit that environment's deployment branches to your default branch:
                    RIX_WRITE_TOKEN  PAT, contents:write + pull-requests:write on exactly the repos
                                     this factory serves; it bounds where rix can open PRs
-              3. Commit and push the two workflow files.
+              3. Commit and push the written files: the two workflows and .rix/agent-home, which
+                 rix copies into the agent's home on every run.
               4. In each repo this factory serves, write the workflow that dispatches its CI
                  failures here:
                    rix initialize <this repo's owner/name>

@@ -381,8 +381,12 @@ the `rix` environment releases the write token only there. Don't trade the token
 `workflow_dispatch` either: its `actions:write` would let every project repo start the factory's
 `rix-agent.yml` with a prompt of its own.
 
-Run `rix initialize factory` in a checkout of the factory repo to write its two workflows. The
-first answers the dispatched failures:
+Run `rix initialize factory` in a checkout of the factory repo to write its two workflows and its
+agent home, `.rix/agent-home`. Both workflows name the factory as their own `factory-repo` (see
+[Supplying agent home files from a factory repo](#supplying-agent-home-files-from-a-factory-repo)),
+so whatever you commit there reaches the agent on every run. It starts out holding only a README,
+since git keeps no empty folder, and a run fails while it is missing. The first workflow answers
+the dispatched failures:
 
 ```yaml
 # In the factory repo: .github/workflows/rix-on-ci-failure.yml
@@ -407,6 +411,7 @@ jobs:
     with:
       repo: ${{ github.event.client_payload.repo }}
       run-id: ${{ github.event.client_payload.run_id }}
+      factory-repo: ${{ github.repository }}
     secrets:
       read-token: ${{ secrets.RIX_READ_TOKEN }}
       write-token: ${{ secrets.RIX_WRITE_TOKEN }}
@@ -434,14 +439,15 @@ jobs:
       # Any repo read-token reaches; the PR only opens where write-token can push.
       repo: ${{ inputs.repo || github.repository }}
       prompt: ${{ inputs.prompt }}
+      factory-repo: ${{ github.repository }}
       # agent: claude   # optional; defaults to 'opencode'
     secrets:
       read-token: ${{ secrets.RIX_READ_TOKEN }}
       write-token: ${{ secrets.RIX_WRITE_TOKEN }}
 ```
 
-The factory repo's `read-token`/`write-token` need access across every project repo it serves
-(e.g. a GitHub App installation token), which is the trade-off of centralizing: one PAT with a
+The factory repo's `read-token`/`write-token` need access across every project repo it serves,
+and `read-token` to the factory itself as well, for its agent home (e.g. a GitHub App installation token), which is the trade-off of centralizing: one PAT with a
 much bigger blast radius than the per-repo tokens in the simple pattern.
 
 **The tokens bound the factory, not the payload:** `RIX_FACTORY_DISPATCH_TOKEN` reaches

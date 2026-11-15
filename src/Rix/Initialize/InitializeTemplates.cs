@@ -2,11 +2,12 @@ using System.Reflection;
 
 namespace Rix.Initialize;
 
-/// <summary>The caller-workflow files <c>rix initialize</c> drops into a target repo, loaded from
-/// resources embedded in this assembly (see <c>Rix.csproj</c>) so a released single-file binary
-/// carries them with no network fetch at init time. Each <see cref="IInitializeSetup"/> has its
-/// own folder under <c>Cli/Templates/</c>.</summary>
-internal static class WorkflowTemplates
+/// <summary>The files <c>rix initialize</c> drops into a target repo, loaded from resources
+/// embedded in this assembly (see <c>Rix.csproj</c>) so a released single-file binary carries them
+/// with no network fetch at init time. Each <see cref="IInitializeSetup"/> has its own folder under
+/// <c>Cli/Templates/</c>, laid out as the files land in the repo: the caller workflows under
+/// <c>.github/workflows/</c>, and for a factory its agent home under <c>.rix/agent-home/</c>.</summary>
+internal static class InitializeTemplates
 {
     /// <summary>What the embedded templates carry after the <c>@</c> of their <c>uses:</c> lines in
     /// place of a real ref. A placeholder rather than a default ref the substitution overwrites, so
@@ -22,7 +23,7 @@ internal static class WorkflowTemplates
     /// repo it dispatches to.</summary>
     internal const string FactoryRepoPlaceholder = "__RIX_FACTORY_REPO__";
 
-    internal const string ResourcePrefix = "Rix.Cli.Templates.";
+    internal const string ResourcePrefix = "Rix.Cli.Templates/";
 
     /// <summary>The templates of <paramref name="setup"/> with its placeholders filled in, each
     /// paired with the repo-relative path it is written to, in the order
@@ -78,28 +79,24 @@ internal static class WorkflowTemplates
     /// <summary>Every template in <c>Cli/Templates/{folder}/</c>, read afresh on each call (an init
     /// writes once, so there is nothing to cache for), discovered from the embedded
     /// resources rather than a hand-kept list, so the glob in <c>Rix.csproj</c> is the only place a
-    /// folder's file set is declared. MSBuild names a resource
-    /// <c>{RootNamespace}.{path with '/' replaced by '.'}</c> and leaves the file name itself alone,
-    /// so stripping the folder's prefix recovers the name verbatim - hyphens and all. Ordered by
-    /// resource name because <see cref="Assembly.GetManifestResourceNames"/> promises no order of
-    /// its own, and a stable one keeps the <c>wrote ...</c> lines identical from run to run.</summary>
+    /// folder's file set is declared. <c>Rix.csproj</c> names each resource after its path below
+    /// <c>Cli/Templates/</c>, so stripping the folder's prefix leaves the path the file is written
+    /// to. MSBuild builds that name with the build machine's separator, so a Windows build's
+    /// backslashes are turned back into slashes. Ordered by path because
+    /// <see cref="Assembly.GetManifestResourceNames"/> promises no order of its own, and a stable one
+    /// keeps the <c>wrote ...</c> lines identical from run to run.</summary>
     private static IReadOnlyList<(string RelativePath, string Content)> Load(string folder)
     {
-        var prefix = $"{ResourcePrefix}{folder}.";
+        var prefix = $"{ResourcePrefix}{folder}/";
         var assembly = Assembly.GetExecutingAssembly();
         var resources = assembly.GetManifestResourceNames()
-            .Where(name => name.StartsWith(prefix, StringComparison.Ordinal))
-            .Order(StringComparer.Ordinal)
+            .Select(name => (Resource: name, Path: name.Replace('\\', '/')))
+            .Where(resource => resource.Path.StartsWith(prefix, StringComparison.Ordinal))
+            .OrderBy(resource => resource.Path, StringComparer.Ordinal)
             .ToArray();
         if (resources.Length == 0)
             throw new InvalidOperationException($"no embedded templates found under {prefix}");
-        return
-        [
-            .. resources.Select
-            (
-                name => ($".github/workflows/{name[prefix.Length..]}", Read(assembly, name))
-            )
-        ];
+        return [.. resources.Select(resource => (resource.Path[prefix.Length..], Read(assembly, resource.Resource)))];
     }
 
     private static string Read(Assembly assembly, string resource)
