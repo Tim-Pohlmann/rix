@@ -9,17 +9,15 @@ public partial class AgentHomeSkillsTests
     private static readonly IReadOnlyList<(string RelativePath, string Content)> FactorySkills =
         AgentHomeSkills.For(new FactorySetup(new("v0")));
 
+    private static readonly string[] ExpectedFactorySkillPaths =
+    [
+        ".rix/agent-home/.claude/skills/rix-onboard/SKILL.md",
+        ".rix/agent-home/.agents/skills/rix-onboard/SKILL.md",
+    ];
+
     [TestMethod]
     public void For_Factory_WritesTheOnboardingSkill_WhereEveryHarnessLooks()
-    => CollectionAssert.AreEqual
-    (
-        new[]
-        {
-            ".rix/agent-home/.claude/skills/rix-onboard/SKILL.md",
-            ".rix/agent-home/.agents/skills/rix-onboard/SKILL.md",
-        },
-        FactorySkills.Select(s => s.RelativePath).ToArray()
-    );
+    => CollectionAssert.AreEqual(ExpectedFactorySkillPaths, FactorySkills.Select(s => s.RelativePath).ToArray());
 
     /// <summary>opencode reads both directories, so two copies that differ would give it two skills
     /// under one name that disagree.</summary>
