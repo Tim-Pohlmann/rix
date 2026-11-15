@@ -13,9 +13,13 @@ public class InitializeCommandTests
     private static InitializeConfig Read(params string[] args)
     => Read(args, null);
 
-    /// <summary>The ref the setup fills its templates in with.</summary>
-    private static WorkflowRef RefOf(InitializeConfig config)
-    => new(config.Setup.Placeholders[IInitializeSetup.RefPlaceholder]);
+    /// <summary>The ref the setup's workflows call.</summary>
+    private static WorkflowRef RefOf(InitializeConfig config) => config.Setup switch
+    {
+        StandaloneSetup standalone => standalone.Ref,
+        FactorySetup factory => factory.Ref,
+        _ => throw new AssertFailedException($"setup {config.Setup.GetType().Name} has no ref"),
+    };
 
     [TestMethod]
     public void Command_PassesDirFlag_ToConfig()

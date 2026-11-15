@@ -54,7 +54,7 @@ public class InitializeRunnerTests
         StringAssert.Contains(ciYml, "uses: Tim-Pohlmann/rix/.github/workflows/on-ci-failure.yml@release/2.x");
         StringAssert.Contains(ciYml, "workflows: [\"CI\"] # change \"CI\" to the name:");
         // Every occurrence is substituted, not just the first one the runner happens to hit.
-        Assert.IsFalse(_writes.Any(w => w.Content.Contains(IInitializeSetup.RefPlaceholder, StringComparison.Ordinal)));
+        Assert.IsFalse(_writes.Any(w => w.Content.Contains(WorkflowTemplates.RefPlaceholder, StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -68,6 +68,18 @@ public class InitializeRunnerTests
             WorkflowTemplates.For(new FactorySetup(new("v9"))).Select(t => (Path.Combine(dir, t.RelativePath), t.Content)).ToArray(),
             _writes.ToArray()
         );
+    }
+
+    /// <summary>The steps only make sense once the files they talk about exist, so they come last,
+    /// after every <c>wrote</c> line.</summary>
+    [TestMethod]
+    public async Task RunAsync_LogsTheSetupsNextSteps_AfterTheWrittenFiles()
+    {
+        var setup = new FactorySetup(new("v9"));
+        AssertSuccess(await Run(TestConfig.ValidInitialize(setup: setup), Context()));
+
+        Assert.AreEqual(NextSteps.For(setup), _log.Lines[^1]);
+        Assert.IsTrue(_log.Lines[..^1].All(line => line.StartsWith("wrote ", StringComparison.Ordinal)));
     }
 
     [TestMethod]

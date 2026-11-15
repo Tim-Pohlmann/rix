@@ -69,9 +69,8 @@ internal static class InitializeCommand
     => new(Composition.FileSystem(), Composition.Log());
 
     /// <summary>
-    /// Imperative shell around <see cref="InitializeRunner.RunAsync"/>: writes the caller
-    /// workflows, then prints the manual follow-up steps of the configured setup on success, or the
-    /// error on failure, and maps the result to an exit code.
+    /// Imperative shell around <see cref="InitializeRunner.RunAsync"/>: prints the error on failure
+    /// and maps the result to an exit code.
     /// </summary>
     internal static async Task<int> ExecuteAsync(InitializeConfig config, InitializeContext context, CancellationToken cancellationToken)
     {
@@ -79,7 +78,6 @@ internal static class InitializeCommand
         switch (result)
         {
             case InitializeSuccess:
-                await Console.Error.WriteLineAsync(config.Setup.NextSteps);
                 return ExitCodes.Success;
             case InitializeFailure failure:
                 await Console.Error.WriteLineAsync($"error: {failure.Error}");

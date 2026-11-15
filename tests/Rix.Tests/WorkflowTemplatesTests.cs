@@ -33,9 +33,8 @@ public class WorkflowTemplatesTests
     }
 
     /// <summary>Each setup reads its own folder, and a folder is only ever read because a setup
-    /// names it in <see cref="IInitializeSetup.TemplateFolder"/>. A template under a folder nothing
-    /// names would be embedded and never written, so every embedded one has to belong to some
-    /// setup.</summary>
+    /// maps to it. A template under a folder no setup maps to would be embedded and never written,
+    /// so every embedded one has to belong to some setup.</summary>
     [TestMethod]
     public void Setups_CoverEveryEmbeddedTemplate()
     {

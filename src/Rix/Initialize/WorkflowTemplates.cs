@@ -4,24 +4,41 @@ namespace Rix.Initialize;
 
 /// <summary>The caller-workflow files <c>rix initialize</c> drops into a target repo, loaded from
 /// resources embedded in this assembly (see <c>Rix.csproj</c>) so a released single-file binary
-/// carries them with no network fetch at init time. Each <see cref="IInitializeSetup"/> names its
+/// carries them with no network fetch at init time. Each <see cref="IInitializeSetup"/> has its
 /// own folder under <c>Cli/Templates/</c>.</summary>
 internal static class WorkflowTemplates
 {
+    /// <summary>What the embedded templates carry after the <c>@</c> of their <c>uses:</c> lines in
+    /// place of a real ref. A placeholder rather than a default ref the substitution overwrites, so
+    /// a template that is never substituted fails visibly instead of quietly shipping whichever ref
+    /// happened to be checked in.</summary>
+    internal const string RefPlaceholder = "__RIX_REF__";
+
     internal const string ResourcePrefix = "Rix.Cli.Templates.";
 
     /// <summary>Each template of <paramref name="setup"/> as embedded, still carrying its
     /// placeholders, paired with the repo-relative path it is written to, in the
     /// order <see cref="InitializeRunner"/> writes (and reports) them.</summary>
     internal static IReadOnlyList<(string RelativePath, string Content)> Of(IInitializeSetup setup)
-    => Load(setup.TemplateFolder);
+    => Load(Layout(setup).Folder);
 
-    /// <summary>The templates of <paramref name="setup"/> with its
-    /// <see cref="IInitializeSetup.Placeholders"/> filled in, each paired with the repo-relative
-    /// path it is written to, in the order <see cref="InitializeRunner"/> writes (and reports)
-    /// them.</summary>
+    /// <summary>The templates of <paramref name="setup"/> with its placeholders filled in, each
+    /// paired with the repo-relative path it is written to, in the order
+    /// <see cref="InitializeRunner"/> writes (and reports) them.</summary>
     internal static IReadOnlyList<(string RelativePath, string Content)> For(IInitializeSetup setup)
-    => [.. Of(setup).Select(template => (template.RelativePath, Fill(template.Content, setup.Placeholders)))];
+    {
+        var (folder, placeholders) = Layout(setup);
+        return [.. Load(folder).Select(template => (template.RelativePath, Fill(template.Content, placeholders)))];
+    }
+
+    /// <summary>The folder under <c>Cli/Templates/</c> holding <paramref name="setup"/>'s templates,
+    /// and each placeholder they carry with what replaces it.</summary>
+    private static (string Folder, IReadOnlyDictionary<string, string> Placeholders) Layout(IInitializeSetup setup) => setup switch
+    {
+        StandaloneSetup standalone => ("Standalone", new Dictionary<string, string> { [RefPlaceholder] = standalone.Ref.Value }),
+        FactorySetup factory => ("Factory", new Dictionary<string, string> { [RefPlaceholder] = factory.Ref.Value }),
+        _ => throw new NotSupportedException($"Unexpected initialize setup type: {setup.GetType()}"),
+    };
 
     private static string Fill(string content, IReadOnlyDictionary<string, string> placeholders)
     => placeholders.Aggregate(content, (filled, placeholder) => filled.Replace(placeholder.Key, placeholder.Value, StringComparison.Ordinal));
