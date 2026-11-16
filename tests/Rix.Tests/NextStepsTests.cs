@@ -11,7 +11,8 @@ public partial class NextStepsTests
     {
         var steps = NextSteps.For(new FactorySetup(new("v0")));
 
-        StringAssert.Contains(steps, "on every repo this factory serves");
+        StringAssert.Contains(steps, "on this repo and every repo");
+        StringAssert.Contains(steps, "Onboard this repo to the factory");
         StringAssert.Contains(steps, "rix initialize <this repo's owner/name>");
     }
 
@@ -23,6 +24,12 @@ public partial class NextStepsTests
         StringAssert.Contains(steps, "RIX_FACTORY_DISPATCH_TOKEN   PAT, contents:write on acme/rix-factory only");
     }
 
+    /// <summary>A factory's steps have the agent home committed with the workflows, since a run
+    /// fails without it.</summary>
+    [TestMethod]
+    public void For_HasAFactoryCommitItsAgentHome()
+    => StringAssert.Contains(NextSteps.For(new FactorySetup(new("v0"))), ".rix/agent-home");
+
     /// <summary>The steps are prose about the templates, so nothing else would notice a template
     /// renamed under them.</summary>
     [TestMethod]
@@ -32,7 +39,7 @@ public partial class NextStepsTests
 
         foreach (var setup in setups)
         {
-            var written = WorkflowTemplates.For(setup).Select(t => Path.GetFileName(t.RelativePath)).ToArray();
+            var written = InitializeTemplates.For(setup).Select(t => Path.GetFileName(t.RelativePath)).ToArray();
             foreach (var named in WorkflowFileName().Matches(NextSteps.For(setup)).Select(m => m.Value))
                 CollectionAssert.Contains(written, named, $"{setup.GetType().Name}'s next steps name {named}");
         }

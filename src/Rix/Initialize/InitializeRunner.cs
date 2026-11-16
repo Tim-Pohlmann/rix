@@ -1,9 +1,8 @@
 namespace Rix.Initialize;
 
 /// <summary>
-/// Writes the caller-workflow templates of <see cref="InitializeConfig.Setup"/>
-/// (<see cref="WorkflowTemplates.For"/>) into the target repo's <c>.github/workflows/</c>,
-/// overwriting any file that is already there. This is the whole
+/// Writes the files of <see cref="InitializeConfig.Setup"/> (<see cref="InitializeTemplates.For"/>)
+/// into the target repo, overwriting any file that is already there. This is the whole
 /// job of <c>rix initialize</c>: the reusable workflows the callers invoke live in the rix repo
 /// and are referenced by <c>uses:</c> at the setup's ref, not copied here. What is left to the
 /// user (<see cref="NextSteps"/>) is logged once every file is written.
@@ -17,7 +16,7 @@ internal static class InitializeRunner
         CancellationToken cancellationToken
     )
     {
-        foreach (var (relativePath, content) in WorkflowTemplates.For(config.Setup))
+        foreach (var (relativePath, content) in InitializeTemplates.For(config.Setup))
         {
             var fullPath = Path.Combine(config.TargetDir.Value, relativePath);
             try

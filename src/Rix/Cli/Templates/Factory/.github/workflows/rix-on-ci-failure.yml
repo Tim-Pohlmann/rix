@@ -19,6 +19,9 @@ jobs:
     with:
       repo: ${{ github.event.client_payload.repo }}
       run-id: ${{ github.event.client_payload.run_id }}
+      # Copies this repo's .rix/agent-home into the runner's home before the agent starts, as in
+      # rix-agent.yml. The run fails while that directory is missing.
+      factory-repo: ${{ github.repository }}
     secrets:
       read-token: ${{ secrets.RIX_READ_TOKEN }}
       write-token: ${{ secrets.RIX_WRITE_TOKEN }}
