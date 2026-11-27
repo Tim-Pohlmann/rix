@@ -32,6 +32,10 @@ internal sealed class ClaudeAgent : ICodingAgent
             // --output-format=stream-json; omitting it fails fast with a usage error.
             "--output-format", "stream-json", "--print", "--verbose", config.Agent.Prompt,
             "--append-system-prompt", systemPrompt,
+            // Print mode has nobody to approve a permission prompt, so the default mode denies
+            // every tool call outside Claude's read-only allowlist (env, the rix binary, gh, ...).
+            // Approving everything matches OpenCode's --auto.
+            "--permission-mode", "bypassPermissions",
         ];
         if (!string.IsNullOrWhiteSpace(config.Agent.Model))
             args.AddRange(["--model", config.Agent.Model]);

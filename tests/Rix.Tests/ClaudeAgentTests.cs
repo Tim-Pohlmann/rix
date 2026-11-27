@@ -188,6 +188,20 @@ public class ClaudeAgentTests
     }
 
     [TestMethod]
+    public void BuildInvocation_BypassesPermissionPrompts()
+    {
+        // Nobody can answer a permission prompt in print mode, so without this the agent is
+        // denied every tool call outside Claude's read-only allowlist.
+        var config = TestConfig.Valid(agent: AgentKind.Claude);
+
+        var args = Agent.BuildInvocation(config, "SYSTEM").Arguments.ToList();
+
+        var modeIndex = args.IndexOf("--permission-mode");
+        Assert.AreNotEqual(-1, modeIndex);
+        Assert.AreEqual("bypassPermissions", args[modeIndex + 1]);
+    }
+
+    [TestMethod]
     public void BuildInvocation_IncludesModelFlag_WhenModelSet()
     {
         var config = TestConfig.Valid(agent: AgentKind.Claude, model: "claude-opus-4");
