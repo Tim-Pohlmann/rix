@@ -111,7 +111,7 @@ public class GitCliTests
         Assert.IsTrue(await git.BranchExistsOnRemoteAsync(Repo, new BranchName("rix/fix"), CancellationToken.None));
         CollectionAssert.AreEqual(ExpectedLsRemoteArgs, capturedArgs);
         Assert.IsNotNull(capturedEnv);
-        Assert.AreEqual("1", capturedEnv["GIT_CONFIG_COUNT"]);
+        Assert.AreEqual("2", capturedEnv["GIT_CONFIG_COUNT"]);
     }
 
     [TestMethod]
@@ -228,11 +228,13 @@ public class GitCliTests
         await git.CloneAsync(Repo, "/tmp/target", CancellationToken.None);
 
         Assert.IsNotNull(capturedEnv);
-        Assert.AreEqual("1", capturedEnv["GIT_CONFIG_COUNT"]);
+        Assert.AreEqual("2", capturedEnv["GIT_CONFIG_COUNT"]);
         Assert.AreEqual("http.https://github.com/.extraheader", capturedEnv["GIT_CONFIG_KEY_0"]);
+        Assert.AreEqual("", capturedEnv["GIT_CONFIG_VALUE_0"], "an empty value first clears inherited headers");
+        Assert.AreEqual("http.https://github.com/.extraheader", capturedEnv["GIT_CONFIG_KEY_1"]);
         var expected = "Authorization: Basic " +
             Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("x-access-token:my-read-token"));
-        Assert.AreEqual(expected, capturedEnv["GIT_CONFIG_VALUE_0"]);
+        Assert.AreEqual(expected, capturedEnv["GIT_CONFIG_VALUE_1"]);
     }
 
     /// <summary>One instance serves every repo on its host - a run reads its target and the factory
@@ -250,7 +252,7 @@ public class GitCliTests
 
         string[] expectedUrls = ["https://github.com/owner/repo.git", "https://github.com/acme/factory.git"];
         CollectionAssert.AreEqual(expectedUrls, runs.Select(run => run.Url).ToArray());
-        Assert.AreEqual(runs[0].Env?["GIT_CONFIG_VALUE_0"], runs[1].Env?["GIT_CONFIG_VALUE_0"]);
+        Assert.AreEqual(runs[0].Env?["GIT_CONFIG_VALUE_1"], runs[1].Env?["GIT_CONFIG_VALUE_1"]);
     }
 
     [TestMethod]
@@ -342,7 +344,7 @@ public class GitCliTests
         CollectionAssert.AreEqual(ExpectedPushArgs, capturedArgs);
         Assert.AreEqual("/tmp/clone", capturedWorkingDir);
         Assert.IsNotNull(capturedEnv);
-        Assert.AreEqual("1", capturedEnv["GIT_CONFIG_COUNT"]);
+        Assert.AreEqual("2", capturedEnv["GIT_CONFIG_COUNT"]);
     }
 
     [TestMethod]
@@ -429,10 +431,10 @@ public class GitCliTests
         CollectionAssert.AreEqual(ExpectedSparseCloneArgs, runs[0].Args);
         CollectionAssert.AreEqual(ExpectedSparseCheckoutArgs, runs[1].Args);
         Assert.AreEqual("/tmp/checkout", runs[1].WorkingDir);
-        Assert.IsTrue(runs[0].Env?.ContainsKey("GIT_CONFIG_VALUE_0"), "clone must carry the auth extraheader env");
+        Assert.IsTrue(runs[0].Env?.ContainsKey("GIT_CONFIG_VALUE_1"), "clone must carry the auth extraheader env");
         // The clone is blobless, so sparse-checkout fetches the files from the remote: without the
         // credential, a private repo fails right here.
-        Assert.IsTrue(runs[1].Env?.ContainsKey("GIT_CONFIG_VALUE_0"), "sparse-checkout fetches blobs, so it must carry the auth extraheader env");
+        Assert.IsTrue(runs[1].Env?.ContainsKey("GIT_CONFIG_VALUE_1"), "sparse-checkout fetches blobs, so it must carry the auth extraheader env");
     }
 
     [TestMethod]
