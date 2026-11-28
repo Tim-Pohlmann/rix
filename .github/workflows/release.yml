@@ -112,7 +112,7 @@ jobs:
           ref: refs/tags/${{ github.event.inputs.version }}
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.x'
 
