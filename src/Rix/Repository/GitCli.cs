@@ -42,15 +42,22 @@ internal sealed class GitCli : IGit
     /// or persisting it into the clone's <c>.git/config</c> remote URL. Git reads these <c>GIT_CONFIG_*</c> variables
     /// as ad-hoc config, so the credential is supplied only via the git subprocess environment for each invocation,
     /// and only for requests to <paramref name="host"/>.
+    /// <para>The header is added after an empty one, which clears every extra header git collected
+    /// from its config files first. A working directory inside a checkout made by
+    /// <c>actions/checkout</c> inherits that checkout's persisted <c>Authorization</c> header, and
+    /// GitHub rejects a request carrying two with a 400 ("Duplicate header").</para>
     /// </summary>
     private static Dictionary<string, string> BuildAuthEnv(Uri host, GitReadToken token)
     {
+        var key = $"http.{host.GetLeftPart(UriPartial.Authority)}/.extraheader";
         var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{token.Value}"));
         return new Dictionary<string, string>
         {
-            ["GIT_CONFIG_COUNT"] = "1",
-            ["GIT_CONFIG_KEY_0"] = $"http.{host.GetLeftPart(UriPartial.Authority)}/.extraheader",
-            ["GIT_CONFIG_VALUE_0"] = $"Authorization: Basic {basic}",
+            ["GIT_CONFIG_COUNT"] = "2",
+            ["GIT_CONFIG_KEY_0"] = key,
+            ["GIT_CONFIG_VALUE_0"] = "",
+            ["GIT_CONFIG_KEY_1"] = key,
+            ["GIT_CONFIG_VALUE_1"] = $"Authorization: Basic {basic}",
         };
     }
 
