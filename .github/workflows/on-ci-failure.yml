@@ -171,6 +171,9 @@ jobs:
           ref: ${{ job.workflow_sha }}
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
+          # Only the action files are needed. A persisted token would sit in the workspace's
+          # .git/config for every later step to read, the agent included.
+          persist-credentials: false
 
       - name: Detect CI failure
         id: detect
@@ -202,6 +205,9 @@ jobs:
           ref: ${{ job.workflow_sha }}
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
+          # Only the action files are needed. A persisted token would sit in the workspace's
+          # .git/config for every later step to read, the agent included.
+          persist-credentials: false
 
       - name: Run rix agent
         uses: ./.github/actions/rix-agent
@@ -257,6 +263,9 @@ jobs:
           ref: ${{ job.workflow_sha }}
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
+          # Only the action files are needed. A persisted token would sit in the workspace's
+          # .git/config for every later step to read, the agent included.
+          persist-credentials: false
 
       - name: Run rix submit
         uses: ./.github/actions/rix-submit
