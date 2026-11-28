@@ -34,7 +34,7 @@ runs:
         # The one place the pinned release is written down - every caller that leaves
         # rix-version empty converges here, and an input forwarded as '' never picks up an
         # action's `default:`, so the fallback has to be in the expression rather than above.
-        VERSION: ${{ inputs.rix-version || 'v0.5.1' }}
+        VERSION: ${{ inputs.rix-version || 'v0.5.2' }}
       shell: bash
       run: bash "$GITHUB_ACTION_PATH/download-rix.sh" "$VERSION"
 
