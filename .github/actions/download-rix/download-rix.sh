@@ -146,11 +146,12 @@ rix_main() {
   tar -xf "$archive" -C rix-bin
 
   # The Windows build is rix.exe; every other RID is rix. Resolve the real path so later steps
-  # never have to assume a name.
+  # never have to assume a name. Absolute, because RIX_BIN is also handed to the agent, which runs
+  # in its own clone under the work dir, where a path relative to here names nothing.
   if [[ -f rix-bin/rix.exe ]]; then
-    bin="rix-bin/rix.exe"
+    bin="$PWD/rix-bin/rix.exe"
   else
-    bin="rix-bin/rix"
+    bin="$PWD/rix-bin/rix"
     chmod +x "$bin"
   fi
   echo "Resolved rix binary: $bin"

@@ -576,6 +576,8 @@ jobs:
         run: |
           [[ -n "${RIX_BIN:-}" ]] || { echo "download-rix exported no RIX_BIN" >&2; exit 1; }
           [[ -x "$RIX_BIN" ]] || { echo "RIX_BIN=$RIX_BIN is not executable" >&2; exit 1; }
+          # The agent runs in its own clone, so a relative RIX_BIN would name nothing there.
+          [[ "$RIX_BIN" == /* ]] || { echo "RIX_BIN=$RIX_BIN is not absolute" >&2; exit 1; }
           echo "Explicit download OK: $RIX_BIN"
 
   initialize-templates:
